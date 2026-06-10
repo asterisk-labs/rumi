@@ -30,6 +30,37 @@ std::unexpected<std::string> err(const char* fmt, ...)
     return std::unexpected(std::string(buf));
 }
 
+// shortcog accepts only little-endian BigTIFF
+std::expected<void, std::string> check_bigtiff_le(const char* path)
+{
+    VSILFILE* fp = VSIFOpenL(path, "rb");
+    if (!fp) return err("could not open for magic check: %s", path);
+
+    unsigned char magic[4] = {0, 0, 0, 0};
+    const std::size_t got = VSIFReadL(magic, 1, sizeof(magic), fp);
+    VSIFCloseL(fp);
+
+    if (got != sizeof(magic)) {
+        return err("file too short to be a TIFF (read %zu of 4 bytes)", got);
+    }
+    // 'II' = little-endian, 'MM' = big-endian.
+    if (magic[0] != 'I' || magic[1] != 'I') {
+        return err("shortcog requires little-endian TIFF (II); file starts "
+                   "with 0x%02X 0x%02X", magic[0], magic[1]);
+    }
+    // Little-endian version word: 42 = classic TIFF, 43 = BigTIFF.
+    const unsigned version =
+        static_cast<unsigned>(magic[2]) | (static_cast<unsigned>(magic[3]) << 8);
+    if (version == 42) {
+        return err("shortcog requires BigTIFF; file is classic TIFF "
+                   "(rewrite with -co BIGTIFF=YES)");
+    }
+    if (version != 43) {
+        return err("not a TIFF file (bad version word %u)", version);
+    }
+    return {};
+}
+
 // For complex sample_format (5 and 6), bits_per_sample is the sum of real and
 // imaginary component widths.
 std::expected<std::pair<std::uint8_t, std::uint8_t>, std::string>
@@ -130,6 +161,11 @@ build_blob_from_file(const char* path) noexcept
 {
     if (!path) return err("path is null");
 
+    // Profile rules: little-endian byte order and BigTIFF.
+    if (auto ok = check_bigtiff_le(path); !ok) {
+        return std::unexpected(ok.error());
+    }
+
     DatasetPtr ds(GDALDataset::FromHandle(
         GDALOpenEx(path, GDAL_OF_RASTER | GDAL_OF_READONLY,
                    nullptr, nullptr, nullptr)));
@@ -192,13 +228,18 @@ build_blob_from_file(const char* path) noexcept
     if (bxs <= 0 || bys <= 0 || bxs > 65535 || bys > 65535) {
         return err("invalid block size: %dx%d", bxs, bys);
     }
-    // Strips are always image-wide; tiles can be narrower. An image-wide
-    // block is legit only when the whole image fits in a single block.
-    if (static_cast<std::uint32_t>(bxs) == iw &&
-        static_cast<std::uint32_t>(bys) <  ih) {
-        return err("file is stripped, not tiled (multiple blocks of image width); "
-                   "rewrite with TILED=YES (the COG driver does this by default)");
+
+    // shortcog depends on the COG ghost framing. GDAL reports
+    // LAYOUT=COG only when that ghost area is present with
+    // KNOWN_INCOMPATIBLE_EDITION=NO, which is exactly the structure we need :)
+    const char* layout = ds->GetMetadataItem("LAYOUT", "IMAGE_STRUCTURE");
+    if (!layout || std::strcmp(layout, "COG") != 0) {
+        return err("shortcog requires the COG layout with BLOCK_LEADER/"
+                   "BLOCK_TRAILER framing; file has LAYOUT=%s. Rewrite with "
+                   "the COG driver (gdal_translate -of COG ...)",
+                   layout ? layout : "(unset)");
     }
+
     const std::uint16_t tw = static_cast<std::uint16_t>(bxs);
     const std::uint16_t th = static_cast<std::uint16_t>(bys);
     if (tw > iw || th > ih) {

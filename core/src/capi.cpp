@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -223,13 +224,14 @@ shortcog_image_open(const char* path,
             nullptr
         };
 
-        // Do not request GDAL_OF_THREAD_SAFE here. Image::Open sets it
-        // on the returned dataset; asking for it at GDALOpenEx makes
-        // GDAL wrap us in a proxy and the dynamic_cast below returns null.
+        // Restrict the open to our driver.
+        const char* const allowed_drivers[] = { "SHORTCOG", nullptr };
+
+        // Do not request GDAL_OF_THREAD_SAFE here!
         GDALDataset* ds = GDALDataset::FromHandle(GDALOpenEx(
             path,
             GDAL_OF_RASTER | GDAL_OF_READONLY,
-            nullptr,
+            allowed_drivers,
             const_cast<const char* const*>(options),
             nullptr));
 

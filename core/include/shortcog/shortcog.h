@@ -11,7 +11,7 @@ extern "C" {
 // The build hides symbols by default; SHORTCOG_API marks the C ABI surface.
 // SHORTCOG_BUILD is defined only on the targets that compile the library.
 #if defined(_WIN32)
-#  if defined(SHORTCO   G_BUILD)
+#  if defined(SHORTCOG_BUILD)
 #    define SHORTCOG_API __declspec(dllexport)
 #  else
 #    define SHORTCOG_API __declspec(dllimport)
