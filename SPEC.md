@@ -3,7 +3,7 @@
 Specification 1.0.0  
 Binary format 1  
 Status Draft  
-Date 2026-06-05  
+Date 2026-06-12  
 License CC BY 4.0  
 
 shortcog is a profile for Cloud Optimized GeoTIFFs (COGs), paired with a compact binary header that lets a reader locate every tile without parsing the COG IFD.
@@ -29,13 +29,12 @@ A COG is shortcog compliant only when all of the following are true.
 - `PlanarConfiguration` is `2`, meaning Separate;
 - the tiles use `INTERLEAVE=TILE` ordering, with samples innermost. `INTERLEAVE=BAND` and `INTERLEAVE=PIXEL` are not compliant;
 - the file carries the COG structural metadata `LAYOUT=IFDS_BEFORE_DATA`, `BLOCK_ORDER=ROW_MAJOR`, `BLOCK_LEADER=SIZE_AS_UINT4`, and `BLOCK_TRAILER=LAST_4_BYTES_REPEATED`;
-- `Compression` is `50000`, meaning ZSTD;
-- `Predictor` is `1` or `2`;
+- `Compression` is `50000`, meaning ZSTD. The value `60000` is reserved for OpenZL and is not yet defined by this profile;
+- `Predictor` is `1` or `2` when `Compression` is `50000`;
 - `Predictor` is `2` only when `SampleFormat` is `1`, `2`, or `3`;
 - the blob's `bits_per_sample` field is `8`, `16`, `32`, `64`, or `128`;
 - `SampleFormat` is `1`, `2`, `3`, `5`, or `6`;
 - the `(sample_format, bits_per_sample)` pair is one of the valid sample encodings listed in this specification;
-- `tile_width <= image_width` and `tile_length <= image_length`;
 - `TileOffsets` and `TileByteCounts` are present;
 - `TileOffsets` and `TileByteCounts` have `tiles_across * tiles_down * samples_per_pixel` entries;
 - no tile is sparse. Every tile payload is physically present in the file and every `TileByteCounts` entry is greater than zero. A sparse file leaves holes where it omits zero or nodata tiles, and those holes break the prefix-sum reconstruction; and
@@ -91,6 +90,8 @@ These creation options matter for compliance:
 - `BIGTIFF=YES` is required because the profile accepts BigTIFF only. With compression, GDAL cannot know the final size in advance, so the default BigTIFF heuristic is not enough for this profile.
 
 `SPARSE_OK=FALSE` is already the default. What the profile really needs is that no tile is missing and no byte count is zero. `SPARSE_OK=TRUE` would break that, because it drops empty tiles and leaves holes. You do not have to trust the flag though. The check further down rebuilds the offsets and rejects any gap or any zero byte count, so a file that passes it is fine no matter how it was made. Just do not set `SPARSE_OK=TRUE`.
+
+An image smaller than the block size needs no special handling. The COG driver pads it into a single tile per sample, and a tile larger than the image is compliant. A `BLOCKSIZE` creation option MAY still be used to pick a smaller tile, but it is not required for compliance.
 
 To use horizontal differencing (`Predictor = 2`), replace `-co PREDICTOR=NO` with:
 
@@ -164,9 +165,9 @@ Each value MUST be at least `1` and at most `2147483647`. The upper bound is the
 
 The tile size in pixels. These fields match the COG tags `TileWidth` and `TileLength`.
 
-Each value MUST be at least `1`. `tile_width` MUST be less than or equal to `image_width`, and `tile_length` MUST be less than or equal to `image_length`.
+Each value MUST be at least `1`. A tile dimension MAY exceed the corresponding image dimension. TIFF requires tile dimensions to be multiples of 16, so an image smaller than its tile size is stored as a single padded tile, and that file is compliant. Forbidding `tile_width > image_width` would make any image whose width is below the tile size and not a multiple of 16 impossible to encode, which matters for the small training chips this profile targets.
 
-Tiles are uniform. Edge tiles are padded to the full tile size, as in normal tiled TIFF storage.
+Tiles are uniform. Edge tiles are padded to the full tile size, as in normal tiled TIFF storage. The tile grid is always `ceil(image_width / tile_width)` by `ceil(image_length / tile_length)`, so a tile larger than the image yields a 1x1 grid per sample.
 
 ### `samples_per_pixel`
 
@@ -227,6 +228,8 @@ The predictor used before compression.
 - `2` means horizontal differencing.
 
 The floating point predictor, value `3`, is not compliant with this profile.
+
+These values apply when `Compression` is `50000` (ZSTD). A future `Compression` of `60000` (OpenZL) would carry its own modelling and not use a TIFF predictor; the encoding of this field under OpenZL is reserved and not yet defined by this profile.
 
 When `sample_format` is `3` and `predictor` is `2`, the predictor is applied bitwise. In other words, the stored bytes of each floating point sample are treated as an unsigned integer of the same width, and horizontal differencing is computed on that integer representation. A writer producing a shortcog file with `(sample_format = 3, predictor = 2)` MUST encode the predictor using this bitwise convention. A reader MUST decode it the same way.
 

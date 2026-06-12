@@ -137,21 +137,25 @@ bool run_case(const Case& c)
     return true;
 }
 
-bool run_baseline_sanity(const std::vector<std::byte>& baseline)
+bool run_accepts(const char* name, const std::vector<std::byte>& blob)
 {
-    auto r = try_open(baseline);
+    auto r = try_open(blob);
     if (r.ds) GDALClose(r.ds);
-    // The driver logs "SHORTCOG blob invalid" only when parse_blob rejects.
-    // A clean parse may still fail to open the /vsimem dummy on some builds;
-    // that's fine here, we only assert parse_blob accepted the baseline.
+    // The driver logs "SHORTCOG blob invalid" only when parse_blob rejects;
+    // the /vsimem open may still fail, which is fine here.
     if (r.log.find("SHORTCOG blob invalid") != std::string::npos) {
         std::fprintf(stderr,
-            "[FAIL] baseline_parses_cleanly\n  parse_blob rejected the baseline:\n  %s",
-            r.log.c_str());
+            "[FAIL] %s\n  parse_blob rejected a blob it should accept:\n  %s",
+            name, r.log.c_str());
         return false;
     }
-    std::printf("[PASS] baseline_parses_cleanly\n");
+    std::printf("[PASS] %s\n", name);
     return true;
+}
+
+bool run_baseline_sanity(const std::vector<std::byte>& baseline)
+{
+    return run_accepts("baseline_parses_cleanly", baseline);
 }
 
 int run()
@@ -165,6 +169,20 @@ int run()
     const auto baseline = make_baseline_blob();
     int failures = 0;
     if (!run_baseline_sanity(baseline)) ++failures;
+
+    {
+        // 512x512 tile over a 256x256 image: now a 1x1 grid, one count.
+        shortcog::BlobHeader bh{};
+        std::memcpy(&bh, baseline.data(), sizeof(bh));
+        bh.tile_width  = 512;
+        bh.tile_length = 512;
+
+        std::vector<std::byte> b(shortcog::HEADER_SIZE + sizeof(std::uint32_t));
+        std::memcpy(b.data(), &bh, sizeof(bh));
+        const std::uint32_t one_count = 4242;
+        std::memcpy(b.data() + shortcog::HEADER_SIZE, &one_count, sizeof(one_count));
+        if (!run_accepts("tile_larger_than_image_accepted", b)) ++failures;
+    }
 
     std::vector<Case> cases;
 
@@ -210,15 +228,6 @@ int run()
         "invalid dimensions"});
 
     {
-        // 512x512 tile against a 256x256 image.
-        auto b = baseline;
-        const std::uint16_t big = 512;
-        std::memcpy(b.data() + 14, &big, 2);
-        std::memcpy(b.data() + 16, &big, 2);
-        cases.push_back({"tile_larger_than_image", b, "tile dimensions exceed image"});
-    }
-
-    {
         // Trailing array half its expected length.
         auto b = baseline;
         b.resize(shortcog::HEADER_SIZE + 8);
@@ -239,7 +248,7 @@ int run()
 
     VSIUnlink(DUMMY_PATH);
 
-    const std::size_t total = cases.size() + 1;
+    const std::size_t total = cases.size() + 2;
     std::printf("\nSummary: %zu test(s), %d failure(s)\n", total, failures);
     return failures == 0 ? 0 : 1;
 }

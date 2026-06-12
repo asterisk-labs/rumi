@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <initializer_list>
 #include <span>
 #include <string>
 #include <string_view>
@@ -41,12 +42,14 @@ struct CplScope {
     CplScope& operator=(const CplScope&) = delete;
 };
 
-// Wraps the work of one C ABI call. Installs the CPL handler, catches any
-// C++ exception, and maps catch-all failures to SHORTCOG_ERR_INTERNAL. The
-// body returns the success or domain-specific failure status directly.
 template <typename F>
 shortcog_status capi_call(F&& body) noexcept
 {
+    // The header documents the last error as valid until the next library
+    // call on the same thread. Clearing here implements that contract and,
+    // more importantly, stops a stale message from a previous call from
+    // masking this call's error in the `g_last_error.empty()` checks below.
+    g_last_error.clear();
     CplScope scope;
     try {
         return body();
@@ -155,6 +158,23 @@ shortcog_compile_layout(const char* pattern,
 
 
 namespace {
+
+// Overflow-checked size_t product of the requested read extents.
+bool checked_read_size(std::initializer_list<size_t> extents,
+                       size_t bytes_per_sample, size_t* out) noexcept
+{
+    size_t need = bytes_per_sample;
+    for (size_t v : extents) {
+#if defined(__GNUC__) || defined(__clang__)
+        if (__builtin_mul_overflow(need, v, &need)) return false;
+#else
+        if (v != 0 && need > static_cast<size_t>(-1) / v) return false;
+        need *= v;
+#endif
+    }
+    *out = need;
+    return true;
+}
 
 // Expands a NULL/0 bands argument into all bands in file order, 1-based.
 std::vector<int> resolve_bands(const int* bands, size_t n_bands, uint16_t spp)
@@ -281,10 +301,14 @@ shortcog_read(const char* path, const shortcog_spec* spec,
             return SHORTCOG_ERR_INVALID;
         }
 
-        const size_t need = static_cast<size_t>(picked.size())
-                          * static_cast<size_t>(y_size)
-                          * static_cast<size_t>(x_size)
-                          * h.bytes_per_sample;
+        size_t need = 0;
+        if (!checked_read_size({picked.size(),
+                                static_cast<size_t>(y_size),
+                                static_cast<size_t>(x_size)},
+                               h.bytes_per_sample, &need)) {
+            set_error("requested read size overflows size_t");
+            return SHORTCOG_ERR_INVALID;
+        }
         if (dst_size < need) {
             set_error("dst buffer too small for the requested read");
             return SHORTCOG_ERR_INVALID;
@@ -350,11 +374,14 @@ shortcog_read_stack(const char* const* paths,
             return SHORTCOG_ERR_INVALID;
         }
 
-        const size_t need = static_cast<size_t>(picked_n.size())
-                          * static_cast<size_t>(picked_b.size())
-                          * static_cast<size_t>(y_size)
-                          * static_cast<size_t>(x_size)
-                          * h.bytes_per_sample;
+        size_t need = 0;
+        if (!checked_read_size({picked_n.size(), picked_b.size(),
+                                static_cast<size_t>(y_size),
+                                static_cast<size_t>(x_size)},
+                               h.bytes_per_sample, &need)) {
+            set_error("requested read size overflows size_t");
+            return SHORTCOG_ERR_INVALID;
+        }
         if (dst_size < need) {
             set_error("dst buffer too small for the requested read");
             return SHORTCOG_ERR_INVALID;

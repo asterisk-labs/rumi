@@ -96,6 +96,11 @@ CPLErr read_via_mem(const Image* img,
             static_cast<GSpacing>(bps),
             static_cast<GSpacing>(bps) * ax_size,
             false);
+        if (!b) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "shortcog: MEMCreateRasterBandEx failed for band %d", i + 1);
+            return CE_Failure;
+        }
         mem->AddMEMBand(b);
     }
 
@@ -302,7 +307,23 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
                         GSpacing pixel_space, GSpacing line_space, GSpacing band_space,
                         GDALRasterIOExtraArg* extra_arg)
 {
-    if (rw_flag != GF_Read || !data || !band_map || band_count <= 0) {
+    if (rw_flag != GF_Read) {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "shortcog: dataset is read-only");
+        return CE_Failure;
+    }
+    if (!data || !band_map || band_count <= 0) {
+        CPLError(CE_Failure, CPLE_IllegalArg,
+                 "shortcog: invalid RasterIO arguments");
+        return CE_Failure;
+    }
+
+    // The copy path casts spacings to size_t for the pitch arithmetic, so
+    // negative or zero spacings would corrupt memory rather than fail.
+    if (pixel_space <= 0 || line_space <= 0 ||
+        (band_count > 1 && band_space <= 0)) {
+        CPLError(CE_Failure, CPLE_IllegalArg,
+                 "shortcog: non-positive buffer spacing is not supported");
         return CE_Failure;
     }
 

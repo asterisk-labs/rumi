@@ -56,7 +56,6 @@ enum class ParseError {
     invalid_sample_format,
     invalid_predictor,
     invalid_dimensions,
-    tile_larger_than_image,
     blob_size_mismatch,
     tile_count_overflow,
     tile_size_overflow,
@@ -196,6 +195,7 @@ compile_layout(std::string_view pattern,
 // Stateless read
 
 // Opens path via VSI, plans the window, runs it, closes. bands are 1-based.
+// dst must be aligned to bytes_per_sample.
 // num_threads > 1 uses the process-global pool (sized on first use).
 [[nodiscard]] SHORTCOG_API std::expected<void, std::string>
 read_window(const char* path, const Header& h,

@@ -1,9 +1,13 @@
 #include "shortcog/shortcog.hpp"
 
+#include <bit>
 #include <cstring>
 #include <limits>
 
 namespace shortcog {
+
+static_assert(std::endian::native == std::endian::little,
+              "shortcog requires a little-endian host");
 
 std::string_view describe(ParseError e) noexcept
 {
@@ -15,7 +19,6 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::invalid_sample_format:        return "invalid sample format";
         case ParseError::invalid_predictor:            return "invalid predictor";
         case ParseError::invalid_dimensions:           return "invalid dimensions";
-        case ParseError::tile_larger_than_image:       return "tile dimensions exceed image";
         case ParseError::blob_size_mismatch:           return "blob size does not match tile count";
         case ParseError::tile_count_overflow:          return "tile count overflows uint32";
         case ParseError::tile_size_overflow:           return "tile byte size overflows size_t";
@@ -116,9 +119,6 @@ parse_blob(std::span<const std::byte> blob)
     if (bh.image_width  > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         bh.image_length > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
         return std::unexpected(ParseError::invalid_dimensions);
-    }
-    if (bh.tile_width > bh.image_width || bh.tile_length > bh.image_length) {
-        return std::unexpected(ParseError::tile_larger_than_image);
     }
 
     Header h;

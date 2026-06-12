@@ -133,8 +133,9 @@ shortcog_spec_header(const shortcog_spec* spec, shortcog_header* out);
 
 // Opens path, reads the window, closes. path is a VSI path. bands holds
 // 1-based indices in output order, NULL with n_bands = 0 means all bands in
-// file order. pattern NULL is shorthand for "b y x". dst_size is checked up
-// front. num_threads > 1 uses the process-global pool (sized on first use).
+// file order. pattern NULL is shorthand for "b y x". dst must be aligned to
+// the sample size and dst_size is checked up front. num_threads > 1 uses the
+// process-global pool (sized on first use).
 SHORTCOG_API shortcog_status
 shortcog_read(const char*          path,
               const shortcog_spec* spec,
@@ -148,7 +149,8 @@ shortcog_read(const char*          path,
 // Stack form. One path+spec per image, all sharing grid, tile size, band
 // count, dtype and predictor. n_index holds 1-based image indices, NULL with
 // n_n = 0 means all images in order. The pattern must contain n when more
-// than one image is selected.
+// than one image is selected. dst follows the same alignment rule as
+// shortcog_read.
 SHORTCOG_API shortcog_status
 shortcog_read_stack(const char* const*          paths,
                     const shortcog_spec* const* specs,  size_t n_images,

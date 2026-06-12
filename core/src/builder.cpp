@@ -161,7 +161,9 @@ build_blob_from_file(const char* path) noexcept
 {
     if (!path) return err("path is null");
 
-    GDALAllRegister();
+    if (GDALGetDriverByName("GTiff") == nullptr) {
+        GDALAllRegister();
+    }
 
     // Profile rules: little-endian byte order and BigTIFF.
     if (auto ok = check_bigtiff_le(path); !ok) {
@@ -244,9 +246,6 @@ build_blob_from_file(const char* path) noexcept
 
     const std::uint16_t tw = static_cast<std::uint16_t>(bxs);
     const std::uint16_t th = static_cast<std::uint16_t>(bys);
-    if (tw > iw || th > ih) {
-        return err("tile larger than image: tile=%ux%u, image=%ux%u", tw, th, iw, ih);
-    }
 
     auto enc = sample_encoding(band1->GetRasterDataType());
     if (!enc) return std::unexpected(enc.error());
