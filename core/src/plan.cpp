@@ -90,8 +90,10 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
         ws.compressed.data(), t.compressed_size, t.offset);
     if (got != t.compressed_size) {
         CPLError(CE_Failure, CPLE_FileIO,
-                 "shortcog: short read at " CPL_FRMT_GUIB ": %zu of %u",
-                 static_cast<GUIntBig>(t.offset), got, t.compressed_size);
+                 "shortcog: short read at " CPL_FRMT_GUIB ": %llu of %llu",
+                 static_cast<GUIntBig>(t.offset),
+                 static_cast<unsigned long long>(got),
+                 static_cast<unsigned long long>(t.compressed_size));
         return false;
     }
 
@@ -119,8 +121,9 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
     }
     if (produced != spec.tile_bytes) {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "shortcog: decompressed %zu bytes, expected %zu",
-                 produced, spec.tile_bytes);
+                 "shortcog: decompressed %llu bytes, expected %llu",
+                 static_cast<unsigned long long>(produced),
+                 static_cast<unsigned long long>(spec.tile_bytes));
         return false;
     }
 

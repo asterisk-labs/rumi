@@ -237,8 +237,6 @@ public:
                      GSpacing pixel_space, GSpacing line_space,
                      GDALRasterIOExtraArg* extra_arg) override;
 
-    bool MayMultiBlockReadingBeMultiThreaded() const override;
-
     // The default block cache is not internally locked, so serialize the
     // entry points that GDAL_OF_THREAD_SAFE may reach from several threads.
     GDALRasterBlock* GetLockedBlockRef(int x_block, int y_block,

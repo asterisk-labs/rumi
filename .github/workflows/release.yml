@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     branches:
-      - main
-    
+      - release
+
 permissions:
   contents: read
 
@@ -79,6 +79,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # conda-forge's libgdal on Windows is built with MSVC, so the lib must
+      # be built with MSVC too (cl.exe) or the C++ ABI will not match. Unix
+      # uses conda's own compiler; Windows uses the runner's MSVC and lets
+      # micromamba supply only the libraries.
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build
@@ -88,17 +92,33 @@ jobs:
             zstd
             cmake
             ninja
-            cxx-compiler
             make
+            ${{ runner.os != 'Windows' && 'cxx-compiler' || '' }}
+
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - uses: actions/download-artifact@v4
         with:
           name: fixtures
           path: core/tests/fixtures/data/
 
-      - name: Build lib and run C++ tests
+      - name: Build lib and run C++ tests (Unix)
+        if: runner.os != 'Windows'
         shell: bash -el {0}
         run: |
+          make lib
+          KEEP_FIXTURES=1 make test
+
+      # msvc-dev-cmd has put cl.exe and the MSVC INCLUDE/LIB on PATH; force
+      # CMake to pick it over any conda compiler that slipped in.
+      - name: Build lib and run C++ tests (Windows)
+        if: runner.os == 'Windows'
+        shell: bash -el {0}
+        run: |
+          export CC=cl CXX=cl
           make lib
           KEEP_FIXTURES=1 make test
 
