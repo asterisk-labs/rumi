@@ -115,7 +115,7 @@ OpenResult try_open(const std::vector<std::byte>& blob)
 struct Case {
     const char*            name;
     std::vector<std::byte> blob;
-    const char*            expected_substring;  // from describe(ParseError)
+    const char*            expected_substring;
 };
 
 bool run_case(const Case& c)
@@ -249,7 +249,8 @@ int run()
     VSIUnlink(DUMMY_PATH);
 
     const std::size_t total = cases.size() + 2;
-    std::printf("\nSummary: %zu test(s), %d failure(s)\n", total, failures);
+    std::printf("\nSummary: %llu test(s), %d failure(s)\n",
+                static_cast<unsigned long long>(total), failures);
     return failures == 0 ? 0 : 1;
 }
 

@@ -41,7 +41,8 @@ std::expected<void, std::string> check_bigtiff_le(const char* path)
     VSIFCloseL(fp);
 
     if (got != sizeof(magic)) {
-        return err("file too short to be a TIFF (read %zu of 4 bytes)", got);
+        return err("file too short to be a TIFF (read %llu of 4 bytes)",
+                   static_cast<unsigned long long>(got));
     }
     // 'II' = little-endian, 'MM' = big-endian.
     if (magic[0] != 'I' || magic[1] != 'I') {

@@ -130,11 +130,6 @@ Band::Band(Image* image, int band_index) noexcept : image_(image)
     nBlockYSize = image->header().tile_length;
 }
 
-bool Band::MayMultiBlockReadingBeMultiThreaded() const
-{
-    return image_->pool() != nullptr;
-}
-
 GDALRasterBlock* Band::GetLockedBlockRef(int x_block, int y_block,
                                          int just_initialize)
 {
