@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="680" height="520" viewBox="0 0 680 520" role="img" aria-label="rumi data model">
 <style>
-svg{--ink:#1A1A1A;--mut:#3D3D3D;--hint:#5E5E5E;--rule:rgba(0,0,0,.18);}
+svg{--ink:#1f2328;--mut:#59636e;--hint:#818b98;--rule:#d1d9e0;--bg:#ffffff;}
+@media (prefers-color-scheme:dark){
+svg{--ink:#e6edf3;--mut:#9198a1;--hint:#6e7681;--rule:#3d444d;--bg:#0d1117;}
+}
 text{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;}
 .t{font-size:14px;font-weight:500;fill:var(--ink);}
 .s{font-size:12px;font-weight:400;fill:var(--mut);}
@@ -9,6 +12,7 @@ text{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-se
 .rule{stroke:var(--rule);stroke-width:.6;}
 </style>
 <title>rumi data model</title><desc>Six levels of the rumi data model as an isometric visual grammar.</desc>
+<rect x="0" y="0" width="680" height="520" fill="var(--bg)"/>
 <line class="rule" x1="236" y1="44" x2="236" y2="496"/>
 <line class="rule" x1="452" y1="44" x2="452" y2="496"/>
 <line class="rule" x1="24" y1="290" x2="656" y2="290"/>

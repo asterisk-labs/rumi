@@ -10,9 +10,11 @@
 
 <p align="center"><b>The GeoTIFF profile for AI4EO training data.</b></p>
 
-A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. rumi goes the other direction and accepts only one layout. A rumi file is always BigTIFF, tiled, band separate, and tile interleaved. Every tile is a self-contained OpenZL frame. There are no predictors, no overviews, and nothing left to guess about. The full rules live in the [specification](SPEC.md).
+A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. Deep learning reads millions of chips per epoch, and with loose layouts a reader has to work out each file before it can touch the pixels.
 
-Because the layout is fixed, reading is stateless. You index a file once into a small blob, a 30-byte header plus one size per tile, and keep it in your catalog. Later you parse that blob into a `Header` with no I/O and read straight to the bytes. That suits deep learning datasets where millions of images stay parsed and ready instead of being opened one at a time.
+rumi solves that with one layout. A rumi file is always BigTIFF, tiled, band separate, and tile interleaved. Every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. There are no predictors, no overviews, and nothing left to guess about. The full rules live in the [specification](SPEC.md).
+
+Because the layout is fixed, almost everything about a rumi file is predictable. The rest is a small header, and a million of those fit in memory, so a whole dataset stays indexed and reads go straight to the pixels.
 
 ## Install
 
@@ -24,11 +26,53 @@ pip install rumi
 
 ```python
 import rumi
+import openzl.ext as zl
 
-blob   = rumi.index_file("scene.tif")   # once per asset, store the blob
-header = rumi.parse(blob)               # local, no I/O
-arr    = rumi.read("scene.tif", header, "b y x", num_threads=4)
+# build any OpenZL compressor, here delta then zstd
+c = zl.Compressor()
+g = zl.graphs.Zstd()
+g = zl.nodes.ConvertNumToSerialLE()(c, g)
+g = zl.nodes.DeltaInt()(c, g)
+c.select_starting_graph(g)
+
+# write: tile the array, compress each chunk, assemble
+chunks, layout = rumi.tile(arr, tile=512)
+cctx = zl.CCtx()
+cctx.ref_compressor(c)
+cctx.set_parameter(zl.CParam.FormatVersion, rumi.OPENZL_VERSION)
+frames = [cctx.compress([zl.Input(zl.Type.Numeric, ch)]) for ch in chunks]
+rumi.write("scene.tif", frames, layout)
+
+# read: index the file into a blob, parse it with no I/O, then read with an einops layout
+blob = rumi.index_file("scene.tif")
+header = rumi.parse(blob)
+arr = rumi.read("scene.tif", header, "b y x")     # (B, Y, X)
 ```
+
+## Write
+
+Writing is three steps, and the compression in the middle is entirely yours. rumi tiles, you compress, rumi assembles.
+
+```python
+chunks, layout = rumi.tile(arr, tile=512)
+```
+
+`tile` cuts a `(B, Y, X)` array into chunks in tile order, samples innermost, padding edge tiles to the full tile size. It returns the chunks as `(N, T, T)` and a `layout` carrying the grid and dtype. The order is fixed, so a chunk never lands in the wrong place.
+
+```python
+cctx = zl.CCtx()
+cctx.ref_compressor(c)
+cctx.set_parameter(zl.CParam.FormatVersion, rumi.OPENZL_VERSION)
+frames = [cctx.compress([zl.Input(zl.Type.Numeric, ch)]) for ch in chunks]
+```
+
+You compress each chunk with your own OpenZL compressor `c`. Because this runs per chunk, the graph can vary chunk by chunk, a light one for flat tiles and a heavier one for dense ones, all inside your loop. rumi never sees it.
+
+```python
+rumi.write("scene.tif", frames, layout)
+```
+
+`write` takes the compressed frames in tile order plus the `layout` and assembles the rumi file. The OpenZL decoder is universal, so a reader needs nothing about which graph you used.
 
 ## Index
 
@@ -36,7 +80,7 @@ arr    = rumi.read("scene.tif", header, "b y x", num_threads=4)
 blob = rumi.index_file("scene.tif")
 ```
 
-Run this once per asset. It reads the file, pulls the tile table, and returns a compact blob. Store it next to the path in your catalog, a Parquet column works well. The catalog format is up to you.
+Run this once per file to get its blob. It reads the file, pulls the tile table, and returns the blob. Store it next to the path in your catalog, a Parquet column works well.
 
 ## Parse
 
@@ -78,8 +122,6 @@ Pass lists of paths and headers and `read` adds an `n` axis over the assets. Reo
 
 ## Data model
 
-rumi sits at the bottom of a small hierarchy built for training.
-
 <p align="center">
   <img src="img/rumi-data-model.svg" alt="rumi data model" width="720"/>
 </p>
@@ -93,7 +135,7 @@ rumi sits at the bottom of a small hierarchy built for training.
 | ImageCollection | set of Images | Images that do not share a grid |
 | CubeCollection | set of Cubes | Cubes that do not share a grid |
 
-One rumi file is one Image. An `ImageCollection` is just a set of rumi files, so it needs no format of its own. `Cube` and `CubeCollection` come from the companion `pirca` format.
+One rumi file is one Image. An `ImageCollection` is just a set of rumi files, so it needs no format of its own. The `Cube` comes from the companion `pirca` format, and a `CubeCollection` is just a set of pircas.
 
 ## License
 
