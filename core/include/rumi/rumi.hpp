@@ -1,6 +1,6 @@
 #pragma once
 
-#include "shortcog.h"
+#include "rumi.h"
 
 #include "gdal_priv.h"
 #include "cpl_vsi.h"
@@ -16,14 +16,13 @@
 #include <type_traits>
 #include <vector>
 
-namespace shortcog {
+namespace rumi {
 
 class ThreadPool;
 
-inline constexpr std::uint32_t MAGIC            = 0x333C333C;  // "<3<3"
-inline constexpr std::uint16_t VERSION          = 1;
-inline constexpr std::size_t   HEADER_SIZE      = 31;
-inline constexpr std::uint64_t COG_TILE_FRAMING = 8;          // 4B leader + 4B trailer
+inline constexpr std::uint32_t MAGIC       = 0x333C333C;  // "<3<3"
+inline constexpr std::uint16_t VERSION     = 1;
+inline constexpr std::size_t   HEADER_SIZE = 26;
 
 
 // Blob format
@@ -40,8 +39,7 @@ struct BlobHeader {
     // For complex formats (5, 6) this holds the summed component widths.
     std::uint8_t  bits_per_sample;
     std::uint8_t  sample_format;
-    std::uint8_t  predictor;
-    std::uint64_t base_tiles_offset;
+    std::uint32_t base_tiles_offset;
 };
 #pragma pack(pop)
 
@@ -54,7 +52,6 @@ enum class ParseError {
     unsupported_version,
     invalid_bits_per_sample,
     invalid_sample_format,
-    invalid_predictor,
     invalid_dimensions,
     blob_size_mismatch,
     tile_count_overflow,
@@ -63,7 +60,7 @@ enum class ParseError {
     offset_overflow,
 };
 
-[[nodiscard]] SHORTCOG_API std::string_view describe(ParseError e) noexcept;
+[[nodiscard]] RUMI_API std::string_view describe(ParseError e) noexcept;
 
 struct Header {
     std::uint32_t image_width{};
@@ -73,7 +70,6 @@ struct Header {
     std::uint16_t samples_per_pixel{};
     std::uint8_t  bits_per_sample{};
     std::uint8_t  sample_format{};
-    std::uint8_t  predictor{};
     std::uint64_t base_tiles_offset{};
 
     std::uint32_t tiles_across{};
@@ -98,26 +94,17 @@ struct Header {
 };
 
 // Allocates the tile arrays, so not noexcept. Format errors use ParseError.
-[[nodiscard]] SHORTCOG_API std::expected<Header, ParseError>
+[[nodiscard]] RUMI_API std::expected<Header, ParseError>
 parse_blob(std::span<const std::byte> blob);
 
-[[nodiscard]] SHORTCOG_API GDALDataType
+[[nodiscard]] RUMI_API GDALDataType
 infer_gdal_type(std::uint8_t bits_per_sample,
                 std::uint8_t sample_format) noexcept;
-
-
-// Predictor
-
-SHORTCOG_API void apply_horizontal_predictor(std::span<std::byte> tile,
-                                              std::uint16_t tile_width,
-                                              std::uint16_t tile_length,
-                                              std::uint8_t  bytes_per_sample) noexcept;
 
 
 // Plan / Executor
 
 struct TileSpec {
-    std::uint8_t  predictor;
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint8_t  bytes_per_sample;
@@ -156,11 +143,11 @@ private:
     ThreadPool* pool_;
 };
 
-[[nodiscard]] SHORTCOG_API TileSpec make_tile_spec(const Header& h) noexcept;
+[[nodiscard]] RUMI_API TileSpec make_tile_spec(const Header& h) noexcept;
 
 // Maps a window/band/stride request onto TileTasks. Callers validate the
 // window and band indices (1-based) beforehand.
-[[nodiscard]] SHORTCOG_API Plan
+[[nodiscard]] RUMI_API Plan
 build_plan(const Header& h, VSILFILE* file,
            int x_off, int y_off, int x_size, int y_size,
            std::byte* data,
@@ -186,7 +173,7 @@ struct LayoutPlan {
 // Maps a pattern to per-axis strides for a read of size (n, b, y, x), the
 // post-selection extents. A single image uses n = 1 with no n in the pattern.
 // Whole-axis permute and merge only. Allocates, so not noexcept.
-[[nodiscard]] SHORTCOG_API std::expected<LayoutPlan, std::string>
+[[nodiscard]] RUMI_API std::expected<LayoutPlan, std::string>
 compile_layout(std::string_view pattern,
                std::int64_t n, std::int64_t b,
                std::int64_t y, std::int64_t x);
@@ -197,17 +184,17 @@ compile_layout(std::string_view pattern,
 // Opens path via VSI, plans the window, runs it, closes. bands are 1-based.
 // dst must be aligned to bytes_per_sample.
 // num_threads > 1 uses the process-global pool (sized on first use).
-[[nodiscard]] SHORTCOG_API std::expected<void, std::string>
+[[nodiscard]] RUMI_API std::expected<void, std::string>
 read_window(const char* path, const Header& h,
             std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
             const LayoutPlan& layout, std::byte* dst,
             int num_threads);
 
-// Validates that every header shares grid, tile size, band count, dtype and
-// predictor, then reads each selected asset (n_index, 1-based) into its
-// layout.sn slice of dst.
-[[nodiscard]] SHORTCOG_API std::expected<void, std::string>
+// Validates that every header shares grid, tile size, band count and dtype,
+// then reads each selected asset (n_index, 1-based) into its layout.sn slice
+// of dst.
+[[nodiscard]] RUMI_API std::expected<void, std::string>
 read_stack(std::span<const char* const> paths,
            std::span<const Header* const> headers,
            std::span<const int> n_index,
@@ -250,9 +237,9 @@ private:
     std::recursive_mutex block_cache_mutex_;
 };
 
-class SHORTCOG_API Image : public GDALDataset {
+class RUMI_API Image : public GDALDataset {
 public:
-    static constexpr const char* OPEN_OPTION_HEADER  = "SHORTCOG_HEADER";
+    static constexpr const char* OPEN_OPTION_HEADER  = "RUMI_HEADER";
     static constexpr const char* OPEN_OPTION_THREADS = "NUM_THREADS";
 
     Image();
@@ -285,9 +272,23 @@ private:
 // Builder
 
 // Stays noexcept. Its large allocations are wrapped and reported as a string.
-[[nodiscard]] SHORTCOG_API std::expected<std::vector<std::byte>, std::string>
+[[nodiscard]] RUMI_API std::expected<std::vector<std::byte>, std::string>
 build_blob_from_file(const char* path) noexcept;
 
-SHORTCOG_API void register_driver();
+// The three GeoTIFF CRS tag payloads, raw little-endian, ready to embed.
+// double_params and ascii_params are empty when the CRS needs neither.
+struct GeoKeys {
+    std::vector<std::byte> directory;      // GeoKeyDirectory, SHORT
+    std::vector<std::byte> double_params;  // GeoDoubleParams, DOUBLE
+    std::vector<std::byte> ascii_params;   // GeoAsciiParams, ASCII
+};
 
-}  // namespace shortcog
+// Encodes a CRS to GeoTIFF keys by driving GDAL, the only place that turns an
+// arbitrary CRS into keys. srs is anything OSRSetFromUserInput takes. noexcept,
+// failures come back as a string.
+[[nodiscard]] RUMI_API std::expected<GeoKeys, std::string>
+build_geokeys(std::string_view srs, bool pixel_is_point) noexcept;
+
+RUMI_API void register_driver();
+
+}  // namespace rumi

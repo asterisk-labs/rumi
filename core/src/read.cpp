@@ -1,5 +1,5 @@
-#include "shortcog/shortcog.hpp"
-#include "shortcog/thread_pool.hpp"
+#include "rumi/rumi.hpp"
+#include "rumi/thread_pool.hpp"
 
 #include "cpl_vsi_virtual.h"
 
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace shortcog {
+namespace rumi {
 namespace {
 
 std::unexpected<std::string> err(std::string msg)
@@ -54,7 +54,6 @@ int clamp_threads(int n) noexcept
 TileSpec make_tile_spec(const Header& h) noexcept
 {
     return TileSpec{
-        h.predictor,
         h.tile_width,
         h.tile_length,
         static_cast<std::uint8_t>(h.bytes_per_sample),
@@ -214,9 +213,6 @@ read_stack(std::span<const char* const> paths,
         if (h.gdal_type != ref.gdal_type) {
             return err("image " + std::to_string(i + 1) + ": dtype mismatch");
         }
-        if (h.predictor != ref.predictor) {
-            return err("image " + std::to_string(i + 1) + ": predictor mismatch");
-        }
     }
 
     if (n_index.empty()) return err("no images selected");
@@ -242,4 +238,4 @@ read_stack(std::span<const char* const> paths,
     return {};
 }
 
-}  // namespace shortcog
+}  // namespace rumi

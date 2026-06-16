@@ -1,13 +1,13 @@
-#include "shortcog/shortcog.hpp"
+#include "rumi/rumi.hpp"
 
 #include <bit>
 #include <cstring>
 #include <limits>
 
-namespace shortcog {
+namespace rumi {
 
 static_assert(std::endian::native == std::endian::little,
-              "shortcog requires a little-endian host");
+              "rumi requires a little-endian host");
 
 std::string_view describe(ParseError e) noexcept
 {
@@ -17,7 +17,6 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::unsupported_version:          return "unsupported version";
         case ParseError::invalid_bits_per_sample:      return "invalid bits per sample";
         case ParseError::invalid_sample_format:        return "invalid sample format";
-        case ParseError::invalid_predictor:            return "invalid predictor";
         case ParseError::invalid_dimensions:           return "invalid dimensions";
         case ParseError::blob_size_mismatch:           return "blob size does not match tile count";
         case ParseError::tile_count_overflow:          return "tile count overflows uint32";
@@ -96,13 +95,6 @@ parse_blob(std::span<const std::byte> blob)
         bh.sample_format != 6) {
         return std::unexpected(ParseError::invalid_sample_format);
     }
-    if (bh.predictor != 1 && bh.predictor != 2) {
-        return std::unexpected(ParseError::invalid_predictor);
-    }
-    // Horizontal differencing across real/imag components is undefined.
-    if (bh.predictor == 2 && (bh.sample_format == 5 || bh.sample_format == 6)) {
-        return std::unexpected(ParseError::invalid_predictor);
-    }
 
     const GDALDataType gdt = infer_gdal_type(bh.bits_per_sample, bh.sample_format);
     if (gdt == GDT_Unknown) {
@@ -129,7 +121,6 @@ parse_blob(std::span<const std::byte> blob)
     h.samples_per_pixel = bh.samples_per_pixel;
     h.bits_per_sample   = bh.bits_per_sample;
     h.sample_format     = bh.sample_format;
-    h.predictor         = bh.predictor;
     h.base_tiles_offset = bh.base_tiles_offset;
     h.gdal_type         = gdt;
     h.bytes_per_sample  = bh.bits_per_sample / 8u;
@@ -164,8 +155,8 @@ parse_blob(std::span<const std::byte> blob)
                 blob.data() + HEADER_SIZE,
                 static_cast<std::size_t>(h.tile_count) * sizeof(std::uint32_t));
 
-    // Prefix sum. With every byte count >= 1, the only failure mode left is
-    // u64 wraparound on the running offset.
+    // Prefix sum over the framing-free run. With every byte count >= 1, the
+    // only failure mode left is u64 wraparound on the running offset.
     h.tile_offsets.resize(h.tile_count);
     std::uint64_t offset = bh.base_tiles_offset;
     for (std::uint32_t i = 0; i < h.tile_count; ++i) {
@@ -174,8 +165,7 @@ parse_blob(std::span<const std::byte> blob)
         }
         h.tile_offsets[i] = offset;
 
-        const std::uint64_t step =
-            static_cast<std::uint64_t>(h.tile_byte_counts[i]) + COG_TILE_FRAMING;
+        const std::uint64_t step = h.tile_byte_counts[i];
         if (offset > std::numeric_limits<std::uint64_t>::max() - step) {
             return std::unexpected(ParseError::offset_overflow);
         }

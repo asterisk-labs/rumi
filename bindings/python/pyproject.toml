@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 
 [project]
-name            = "shortcog"
+name            = "rumi"
 dynamic         = ["version"]
-description     = "A COG profile for AI training data."
+description     = "A GeoTIFF profile for AI training data."
 readme          = "README.md"
 license         = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 
 authors = [
     { name = "Cesar Aybar",     email = "cesar@asterisk.coop" },
@@ -30,6 +30,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
@@ -42,9 +43,9 @@ test = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/asterisk-labs/shortcog"
-Repository = "https://github.com/asterisk-labs/shortcog"
-Issues     = "https://github.com/asterisk-labs/shortcog/issues"
+Homepage   = "https://github.com/asterisk-labs/rumi"
+Repository = "https://github.com/asterisk-labs/rumi"
+Issues     = "https://github.com/asterisk-labs/rumi/issues"
 
 
 [tool.hatch.version]
@@ -52,12 +53,12 @@ path    = "../../VERSION"
 pattern = "(?P<version>\\S+)"
 
 [tool.hatch.build.targets.wheel]
-packages  = ["shortcog"]
+packages  = ["rumi"]
 artifacts = [
-    "shortcog/_lib/*.so",
-    "shortcog/_lib/*.so.*",
-    "shortcog/_lib/*.dylib",
-    "shortcog/_lib/*.dll",
+    "rumi/_lib/*.so",
+    "rumi/_lib/*.so.*",
+    "rumi/_lib/*.dylib",
+    "rumi/_lib/*.dll",
 ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
@@ -65,16 +66,16 @@ path = "hatch_build.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "shortcog/**",
+    "rumi/**",
     "tests/**",
     "hatch_build.py",
     "README.md",
 ]
 exclude = [
-    "shortcog/_lib/*.so",
-    "shortcog/_lib/*.so.*",
-    "shortcog/_lib/*.dylib",
-    "shortcog/_lib/*.dll",
+    "rumi/_lib/*.so",
+    "rumi/_lib/*.so.*",
+    "rumi/_lib/*.dylib",
+    "rumi/_lib/*.dll",
 ]
 
 
@@ -84,7 +85,7 @@ addopts   = "-ra --strict-markers"
 
 [tool.ruff]
 line-length    = 100
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "NPY"]

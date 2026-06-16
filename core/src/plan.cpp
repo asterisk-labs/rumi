@@ -1,28 +1,29 @@
-#include "shortcog/shortcog.hpp"
-#include "shortcog/thread_pool.hpp"
+#include "rumi/rumi.hpp"
+#include "rumi/thread_pool.hpp"
 
 #include "cpl_error.h"
 #include "cpl_vsi_virtual.h"
 
-#include <zstd.h>
+#include "openzl/zl_decompress.h"    // ZL_DCtx, ZL_DCtx_decompressTyped, ZL_OutputInfo
+#include "openzl/zl_common_types.h"  // ZL_TernaryParam
 
 #include <atomic>
 #include <cstring>
 #include <new>
 #include <vector>
 
-namespace shortcog {
+namespace rumi {
 namespace {
 
-// One dctx per thread; ZSTD_decompressDCtx resets it per call. Buffers grow to
-// the largest tile seen and never shrink.
+// One decompression context per worker thread. The context is reusable across
+// tiles. Buffers grow to the largest tile seen and never shrink.
 struct WorkerState {
-    ZSTD_DCtx*             dctx = ZSTD_createDCtx();
+    ZL_DCtx*               dctx = ZL_DCtx_create();
     std::vector<std::byte> compressed;
     std::vector<std::byte> scratch;
 
     WorkerState() = default;
-    ~WorkerState() { if (dctx) ZSTD_freeDCtx(dctx); }
+    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }
 
     WorkerState(const WorkerState&)            = delete;
     WorkerState& operator=(const WorkerState&) = delete;
@@ -34,8 +35,9 @@ WorkerState& worker_state() noexcept
     return ws;
 }
 
-// dst_pixel_stride == sample size: contiguous row. Larger: the output layout
-// puts another axis inner, so place pixels one by one. Result buffer only.
+// dst_pixel_stride == sample size means a contiguous row. Larger means the
+// output layout puts another axis inner, so place pixels one by one. Result
+// buffer only.
 void copy_rect(const TileTask& t, const TileSpec& spec,
                const std::byte* tile) noexcept
 {
@@ -71,7 +73,7 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
         CPLError(CE_Failure, CPLE_OutOfMemory,
-                 "shortcog: could not allocate ZSTD context");
+                 "rumi: could not allocate OpenZL decompression context");
         return false;
     }
 
@@ -80,23 +82,27 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
             ws.compressed.resize(t.compressed_size);
         } catch (const std::bad_alloc&) {
             CPLError(CE_Failure, CPLE_OutOfMemory,
-                     "shortcog: out of memory growing compressed scratch");
+                     "rumi: out of memory growing compressed scratch");
             return false;
         }
     }
 
-    // PRead: the parallel path holds no file lock.
+    // PRead, the parallel path holds no file lock.
     const std::size_t got = t.file->PRead(
         ws.compressed.data(), t.compressed_size, t.offset);
     if (got != t.compressed_size) {
         CPLError(CE_Failure, CPLE_FileIO,
-                 "shortcog: short read at " CPL_FRMT_GUIB ": %llu of %llu",
+                 "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu",
                  static_cast<GUIntBig>(t.offset),
                  static_cast<unsigned long long>(got),
                  static_cast<unsigned long long>(t.compressed_size));
         return false;
     }
 
+    // A full unclipped tile decodes straight into the output buffer, otherwise
+    // into per-thread scratch that copy_rect then places. The numeric decode
+    // wants the destination aligned to the element width, which holds for GDAL
+    // block buffers and element-strided output, and always for scratch.
     std::byte* tile = t.direct;
     if (!tile) {
         if (ws.scratch.size() < spec.tile_bytes) {
@@ -104,33 +110,42 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
                 ws.scratch.resize(spec.tile_bytes);
             } catch (const std::bad_alloc&) {
                 CPLError(CE_Failure, CPLE_OutOfMemory,
-                         "shortcog: out of memory growing tile scratch");
+                         "rumi: out of memory growing tile scratch");
                 return false;
             }
         }
         tile = ws.scratch.data();
     }
 
-    const std::size_t produced = ZSTD_decompressDCtx(
-        ws.dctx, tile, spec.tile_bytes, ws.compressed.data(), t.compressed_size);
+    // Each rumi tile is one OpenZL frame holding a single numeric output. The
+    // typed decode writes the values in host endianness and reports back the
+    // element type and width, which we check against the header. To trade
+    // integrity for speed on hot paths a worker could disable the content
+    // checksum with
+    // ZL_DCtx_setParameter(ws.dctx, ZL_DParam_checkContentChecksum, ZL_TernaryParam_disable).
+    ZL_OutputInfo info;
+    const ZL_Report rep = ZL_DCtx_decompressTyped(
+        ws.dctx, &info, tile, spec.tile_bytes,
+        ws.compressed.data(), t.compressed_size);
 
-    if (ZSTD_isError(produced)) {
+    if (ZL_isError(rep)) {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "shortcog: ZSTD failed: %s", ZSTD_getErrorName(produced));
+                 "rumi: OpenZL decode failed: %s",
+                 ZL_DCtx_getErrorContextString(ws.dctx, rep));
         return false;
     }
-    if (produced != spec.tile_bytes) {
+    if (info.type != ZL_Type_numeric ||
+        info.fixedWidth != spec.bytes_per_sample ||
+        info.decompressedByteSize != spec.tile_bytes) {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "shortcog: decompressed %llu bytes, expected %llu",
-                 static_cast<unsigned long long>(produced),
+                 "rumi: unexpected tile output (type %u, width %u, size %llu; "
+                 "expected numeric width %u, size %llu)",
+                 static_cast<unsigned>(info.type),
+                 static_cast<unsigned>(info.fixedWidth),
+                 static_cast<unsigned long long>(info.decompressedByteSize),
+                 static_cast<unsigned>(spec.bytes_per_sample),
                  static_cast<unsigned long long>(spec.tile_bytes));
         return false;
-    }
-
-    if (spec.predictor == 2) {
-        apply_horizontal_predictor(
-            std::span<std::byte>(tile, spec.tile_bytes),
-            spec.tile_width, spec.tile_length, spec.bytes_per_sample);
     }
 
     if (!t.direct) copy_rect(t, spec, tile);
@@ -168,4 +183,4 @@ bool Executor::run(const Plan& plan) const
     return ok.load();
 }
 
-}  // namespace shortcog
+}  // namespace rumi

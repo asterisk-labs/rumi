@@ -1,5 +1,5 @@
-#include "shortcog/shortcog.hpp"
-#include "shortcog/thread_pool.hpp"
+#include "rumi/rumi.hpp"
+#include "rumi/thread_pool.hpp"
 
 #include "cpl_multiproc.h"
 #include "cpl_string.h"
@@ -15,7 +15,7 @@
 #include <span>
 #include <vector>
 
-namespace shortcog {
+namespace rumi {
 
 namespace {
 
@@ -71,7 +71,7 @@ CPLErr read_via_mem(const Image* img,
         buffer.resize(band_stride * static_cast<std::size_t>(band_count));
     } catch (const std::bad_alloc&) {
         CPLError(CE_Failure, CPLE_OutOfMemory,
-                 "shortcog: out of memory for staging buffer");
+                 "rumi: out of memory for staging buffer");
         return CE_Failure;
     }
 
@@ -98,7 +98,7 @@ CPLErr read_via_mem(const Image* img,
             false);
         if (!b) {
             CPLError(CE_Failure, CPLE_AppDefined,
-                     "shortcog: MEMCreateRasterBandEx failed for band %d", i + 1);
+                     "rumi: MEMCreateRasterBandEx failed for band %d", i + 1);
             return CE_Failure;
         }
         mem->AddMEMBand(b);
@@ -201,7 +201,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
 {
     if (Identify(open_info) != TRUE) return nullptr;
     if (open_info->eAccess == GA_Update) {
-        CPLError(CE_Failure, CPLE_NotSupported, "SHORTCOG is read-only");
+        CPLError(CE_Failure, CPLE_NotSupported, "RUMI is read-only");
         return nullptr;
     }
 
@@ -213,7 +213,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         reinterpret_cast<GByte*>(decoded.data()));
     if (decoded_size <= 0) {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "Failed to base64-decode SHORTCOG_HEADER");
+                 "Failed to base64-decode RUMI_HEADER");
         return nullptr;
     }
 
@@ -224,7 +224,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     if (!parsed) {
         const auto why = describe(parsed.error());
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "SHORTCOG blob invalid: %.*s",
+                 "RUMI blob invalid: %.*s",
                  static_cast<int>(why.size()), why.data());
         return nullptr;
     }
@@ -235,7 +235,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     // the in-tree drivers do before touching the file.
     if (!GDALCheckBandCount(parsed->samples_per_pixel, FALSE)) {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "SHORTCOG: unreasonable band count %u",
+                 "RUMI: unreasonable band count %u",
                  parsed->samples_per_pixel);
         return nullptr;
     }
@@ -282,7 +282,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     if (n_threads < 1) {
         n_threads = 1;
     } else if (n_threads > MAX_THREADS) {
-        CPLDebug("SHORTCOG", "NUM_THREADS=%d clamped to %d",
+        CPLDebug("RUMI", "NUM_THREADS=%d clamped to %d",
                  n_threads, MAX_THREADS);
         n_threads = MAX_THREADS;
     }
@@ -304,12 +304,12 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
 {
     if (rw_flag != GF_Read) {
         CPLError(CE_Failure, CPLE_NotSupported,
-                 "shortcog: dataset is read-only");
+                 "rumi: dataset is read-only");
         return CE_Failure;
     }
     if (!data || !band_map || band_count <= 0) {
         CPLError(CE_Failure, CPLE_IllegalArg,
-                 "shortcog: invalid RasterIO arguments");
+                 "rumi: invalid RasterIO arguments");
         return CE_Failure;
     }
 
@@ -318,7 +318,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
     if (pixel_space <= 0 || line_space <= 0 ||
         (band_count > 1 && band_space <= 0)) {
         CPLError(CE_Failure, CPLE_IllegalArg,
-                 "shortcog: non-positive buffer spacing is not supported");
+                 "rumi: non-positive buffer spacing is not supported");
         return CE_Failure;
     }
 
@@ -328,13 +328,13 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         static_cast<std::int64_t>(x_off) + x_size > nRasterXSize ||
         static_cast<std::int64_t>(y_off) + y_size > nRasterYSize) {
         CPLError(CE_Failure, CPLE_IllegalArg,
-                 "shortcog: requested window out of bounds");
+                 "rumi: requested window out of bounds");
         return CE_Failure;
     }
     for (int i = 0; i < band_count; ++i) {
         if (band_map[i] < 1 || band_map[i] > header_.samples_per_pixel) {
             CPLError(CE_Failure, CPLE_IllegalArg,
-                     "shortcog: band %d out of range [1, %u]",
+                     "rumi: band %d out of range [1, %u]",
                      band_map[i], header_.samples_per_pixel);
             return CE_Failure;
         }
@@ -366,16 +366,16 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
 
 void register_driver()
 {
-    if (GDALGetDriverByName("SHORTCOG") != nullptr) return;
+    if (GDALGetDriverByName("RUMI") != nullptr) return;
 
     auto driver = std::make_unique<GDALDriver>();
-    driver->SetDescription("SHORTCOG");
-    driver->SetMetadataItem(GDAL_DMD_LONGNAME, "Shortcog fast read path");
+    driver->SetDescription("RUMI");
+    driver->SetMetadataItem(GDAL_DMD_LONGNAME, "rumi fast read path");
     driver->SetMetadataItem(GDAL_DMD_EXTENSIONS, "tif tiff");
     driver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     driver->SetMetadataItem(GDAL_DMD_OPENOPTIONLIST,
         "<OpenOptionList>"
-        "  <Option name='SHORTCOG_HEADER' type='string' required='true'/>"
+        "  <Option name='RUMI_HEADER' type='string' required='true'/>"
         "  <Option name='NUM_THREADS' type='string' default='1'/>"
         "</OpenOptionList>");
 
@@ -385,4 +385,4 @@ void register_driver()
     GetGDALDriverManager()->RegisterDriver(driver.release());
 }
 
-}  // namespace shortcog
+}  // namespace rumi

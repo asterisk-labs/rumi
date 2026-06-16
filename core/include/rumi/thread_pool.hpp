@@ -9,14 +9,13 @@
 #include <utility>
 #include <vector>
 
-namespace shortcog {
+namespace rumi {
 
-// Small fixed-size pool, one process-global instance shared by every Image.
-// GDAL's own worker pool lives behind headers that aren't installed, so an
-// out-of-tree build can't reach it; this is the replacement. Work goes in
-// batches: wait() blocks only on its own batch's jobs, so concurrent reads
-// don't wait on each other. No nesting — a worker must never create a batch
-// and wait on it. shortcog plans and runs reads from the calling thread.
+// Fixed-size pool, one process-global instance shared by every Image. It
+// replaces GDAL's own pool, which sits behind headers an out-of-tree build
+// can't reach. Work goes in batches and wait() blocks only on its own batch,
+// so concurrent reads don't stall each other. Reads are planned and run on
+//  the calling thread.
 class ThreadPool {
 public:
     explicit ThreadPool(unsigned threads);
@@ -120,4 +119,4 @@ inline ThreadPool& global_thread_pool(unsigned threads)
     return pool;
 }
 
-}  // namespace shortcog
+}  // namespace rumi

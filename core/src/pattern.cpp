@@ -1,4 +1,4 @@
-#include "shortcog/shortcog.hpp"
+#include "rumi/rumi.hpp"
 
 #include <array>
 #include <limits>
@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace shortcog {
+namespace rumi {
 namespace {
 
 // n, b, y, x -> 0..3; anything else -> -1.
@@ -113,4 +113,4 @@ compile_layout(std::string_view pattern,
     return plan;
 }
 
-}  // namespace shortcog
+}  // namespace rumi

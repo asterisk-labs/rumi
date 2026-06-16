@@ -1,39 +1,12 @@
 import numpy as np
 
 from . import _repr
+from ._dtype import np_dtype
 from ._ffi import _check, ffi, lib
-
-# Spec dtype encoding (sample_format, bits_per_sample) -> numpy dtype.
-# Complex int and 16-bit complex float have no numpy equivalent and raise.
-_DTYPE: dict[tuple[int, int], type[np.generic]] = {
-    (1, 8):   np.uint8,
-    (1, 16):  np.uint16,
-    (1, 32):  np.uint32,
-    (1, 64):  np.uint64,
-    (2, 8):   np.int8,
-    (2, 16):  np.int16,
-    (2, 32):  np.int32,
-    (2, 64):  np.int64,
-    (3, 16):  np.float16,
-    (3, 32):  np.float32,
-    (3, 64):  np.float64,
-    (6, 64):  np.complex64,
-    (6, 128): np.complex128,
-}
-
 
 # predictor doubles as codec selector. 1/2 are ZSTD (TIFF predictor none/
 # horizontal); reserved high values pick a codec that needs no predictor.
 _CODEC = {1: "ZSTD", 2: "ZSTD + horizontal", 42: "OpenZL"}
-
-
-def _np_dtype(sf: int, bps: int) -> type[np.generic]:
-    try:
-        return _DTYPE[(sf, bps)]
-    except KeyError:
-        raise NotImplementedError(
-            f"no numpy dtype for (sample_format={sf}, bits_per_sample={bps})"
-        ) from None
 
 
 class Spec:
@@ -52,7 +25,7 @@ class Spec:
         header = ffi.new("shortcog_header*")
         _check(lib.shortcog_spec_header(self._handle, header))
         self._header = header
-        self._dtype = _np_dtype(header.sample_format, header.bits_per_sample)
+        self._dtype = np_dtype(header.sample_format, header.bits_per_sample)
 
     @property
     def shape(self) -> tuple[int, int, int]:

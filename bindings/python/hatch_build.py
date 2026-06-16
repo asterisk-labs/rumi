@@ -7,7 +7,7 @@ _LIB_GLOBS = ("*.so", "*.so.*", "*.dylib", "*.dll")
 
 class CustomBuildHook(BuildHookInterface):
     def initialize(self, version, build_data):
-        lib_dir = Path(self.root) / "shortcog" / "_lib"
+        lib_dir = Path(self.root) / "rumi" / "_lib"
         found = [p for g in _LIB_GLOBS for p in lib_dir.glob(g)]
         if not found:
             raise RuntimeError(

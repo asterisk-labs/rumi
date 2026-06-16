@@ -1,0 +1,3 @@
+[submodule "extern/openzl"]
+	path = extern/openzl
+	url = https://github.com/facebook/openzl.git
