@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/rumi/"><img src="https://img.shields.io/pypi/v/rumi.svg?color=2b8a3e" alt="PyPI"/></a>
+  <a href="https://pypi.org/project/rumi-eo/"><img src="https://img.shields.io/pypi/v/rumi-eo.svg?color=2b8a3e" alt="PyPI"/></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue" alt="Platform"/>
   <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-green.svg" alt="License: GPLv3"/></a>
 </p>
 
-<p align="center"><b>The GeoTIFF profile for AI4EO training data.</b></p>
+<p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
 A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. Deep learning reads millions of chips per epoch, and with loose layouts a reader has to work out each file before it can touch the pixels.
 
@@ -23,7 +23,7 @@ Because the layout is fixed, almost everything about a rumi file is predictable.
 ## Install
 
 ```bash
-pip install rumi
+pip install rumi-eo
 ```
 
 ## Quick start
@@ -122,7 +122,7 @@ arr = rumi.read(paths, headers, "(n b) y x", b=(0,4))           # fuse layers an
 arr = rumi.read(paths, headers, "n (y x) b", b=(0,4))           # tokens per layer
 ```
 
-Pass lists of paths and headers and `read` adds an `n` axis over the assets. Reorder it, fuse it into channels with `(n b)`, or unfold space into tokens. The assets must match in size and encoding or it raises, no ragged cubes. This stacking is in memory at read time. For an N cube that lives on disk as one object, see the companion `pirca` format.
+Pass lists of paths and headers and `read` adds an `n` axis over the assets. Reorder it, fuse it into channels with `(n b)`, or unfold space into tokens. The assets must match in size and encoding or it raises, no ragged cubes. This stacking is in memory at read time. For an N cube that lives on disk as one object, see the companion `rumikuna` format.
 
 ## Data model
 
@@ -139,7 +139,9 @@ Pass lists of paths and headers and `read` adds an `n` axis over the assets. Reo
 | ImageCollection | set of Images | Images that do not share a grid |
 | CubeCollection | set of Cubes | Cubes that do not share a grid |
 
-One rumi file is one Image. An `ImageCollection` is just a set of rumi files, so it needs no format of its own. The `Cube` comes from the companion `pirca` format, and a `CubeCollection` is just a set of pircas.
+One rumi file is one Image. An `ImageCollection` is just a set of rumi files, so it needs no format of its own. The `Cube` comes from the companion `rumikuna` format, and a `CubeCollection` is just a set of rumikunas.
+
+The names come from stone. rumi is a single stone, one Image. rumikuna is the wall raised from them, the Cube.
 
 ## License
 

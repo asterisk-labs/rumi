@@ -16,5 +16,5 @@
 <polygon class="s s4" points="0,32 43,38 70,50 50,72 58,100 0,100"/>
 </g>
 <text class="wm" x="208" y="118" font-size="78" letter-spacing="-2">rumi</text>
-<text class="tag" x="212" y="150" font-size="18">the format for AI4EO</text>
+<text class="tag" x="212" y="150" font-size="16">A GeoTIFF profile for AI4EO training data</text>
 </svg>

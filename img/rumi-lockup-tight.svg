@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="372" height="144" viewBox="54 22 372 144" role="img" aria-label="rumi — the format for AI4EO">
+<svg xmlns="http://www.w3.org/2000/svg" width="504" height="144" viewBox="54 22 504 144" role="img" aria-label="rumi — A GeoTIFF profile for AI4EO training data">
 <style>
 .s{stroke:#E6EDF3;stroke-width:1;stroke-linejoin:round;animation:pulse 6s step-end infinite;}
 .s1{--on:#4A2BE8;animation-delay:0s}
@@ -16,5 +16,5 @@
 <polygon class="s s4" points="0,32 43,38 70,50 50,72 58,100 0,100"/>
 </g>
 <text class="wm" x="208" y="118" font-size="78" letter-spacing="-2">rumi</text>
-<text class="tag" x="212" y="150" font-size="18">the format for AI4EO</text>
+<text class="tag" x="212" y="150" font-size="16">A GeoTIFF profile for AI4EO training data</text>
 </svg>
