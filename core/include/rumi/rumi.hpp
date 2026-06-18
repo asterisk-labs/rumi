@@ -10,6 +10,7 @@
 #include <expected>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -105,6 +106,27 @@ infer_gdal_type(std::uint8_t bits_per_sample,
                 std::uint8_t sample_format) noexcept;
 
 
+// File reader
+
+// PRead when the handle has it, a mutex around seek+read otherwise. The lock
+// covers the read, never the decode. One per file, shared by every task.
+class FileReader {
+public:
+    explicit FileReader(VSILFILE* fp) noexcept;
+
+    [[nodiscard]] std::size_t
+    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept;
+
+    FileReader(const FileReader&)            = delete;
+    FileReader& operator=(const FileReader&) = delete;
+
+private:
+    VSILFILE*  fp_;
+    bool       has_pread_;
+    std::mutex mutex_;
+};
+
+
 // Plan / Executor
 
 struct TileSpec {
@@ -119,7 +141,7 @@ struct TileSpec {
 // with dst_pitch per row and dst_pixel_stride per pixel. All positions are in
 // the result buffer, never the disk layout.
 struct TileTask {
-    VSILFILE*     file;
+    FileReader*   reader;
     std::uint64_t offset;
     std::uint32_t compressed_size;
     std::byte*    direct;
@@ -153,9 +175,10 @@ private:
 [[nodiscard]] RUMI_API TileSpec make_tile_spec(const Header& h) noexcept;
 
 // Maps a window/band/stride request onto TileTasks. Callers validate the
-// window and band indices (1-based) beforehand.
+// window and band indices (1-based) beforehand. The reader is shared by every
+// task and must outlive the run.
 [[nodiscard]] RUMI_API Plan
-build_plan(const Header& h, VSILFILE* file,
+build_plan(const Header& h, FileReader* reader,
            int x_off, int y_off, int x_size, int y_size,
            std::byte* data,
            std::span<const int> bands,
@@ -268,11 +291,15 @@ public:
     [[nodiscard]] const Header& header() const noexcept { return header_; }
     [[nodiscard]] VSILFILE*     file()   const noexcept { return file_.get(); }
     [[nodiscard]] ThreadPool*   pool()   const noexcept { return pool_; }
+    [[nodiscard]] FileReader*   reader() const noexcept {
+        return reader_ ? &*reader_ : nullptr;
+    }
 
 private:
-    Header                    header_{};
-    std::shared_ptr<VSILFILE> file_;
-    ThreadPool*               pool_{nullptr};
+    Header                       header_{};
+    std::shared_ptr<VSILFILE>    file_;
+    mutable std::optional<FileReader> reader_;  // mutable, reads hold its lock
+    ThreadPool*                  pool_{nullptr};
 };
 
 

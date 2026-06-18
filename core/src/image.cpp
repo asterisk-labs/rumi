@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -26,7 +27,7 @@ CPLErr read_native(const Image* img,
                    int band_count, const int* band_map,
                    GSpacing pixel_space, GSpacing line_space, GSpacing band_space)
 {
-    Plan plan = build_plan(img->header(), img->file(),
+    Plan plan = build_plan(img->header(), img->reader(),
                            x_off, y_off, x_size, y_size,
                            static_cast<std::byte*>(data),
                            std::span<const int>(band_map,
@@ -159,7 +160,7 @@ CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
     plan.spec = make_tile_spec(h);
 
     TileTask task{};
-    task.file            = image_->file();
+    task.reader          = image_->reader();
     task.offset          = h.tile_offset(idx);
     task.compressed_size = h.tile_byte_counts[idx];
     task.direct          = static_cast<std::byte*>(buffer);
@@ -243,20 +244,12 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
-    // PRead is mandatory because we advertise GDAL_OF_THREAD_SAFE and lock nothing.
-    if (!fp->HasPRead()) {
-        VSIFCloseL(fp);
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "%s: VSI handle does not support PRead",
-                 open_info->pszFilename);
-        return nullptr;
-    }
-
     auto file = std::shared_ptr<VSILFILE>(fp, [](VSILFILE* f) { VSIFCloseL(f); });
 
     auto img = std::make_unique<Image>();
     img->header_      = std::move(*parsed);
     img->file_        = std::move(file);
+    img->reader_.emplace(img->file_.get());  // thread safe stays, reader locks
     img->nRasterXSize = static_cast<int>(img->header_.image_width);
     img->nRasterYSize = static_cast<int>(img->header_.image_length);
 

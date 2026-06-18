@@ -11,7 +11,13 @@ extern "C" {
 // The build hides symbols by default and RUMI_API marks the C ABI
 // surface. RUMI_BUILD is defined only on the targets that compile the
 // library.
-#if defined(RUMI_BUILD)
+#if defined(_WIN32)
+#  if defined(RUMI_BUILD)
+#    define RUMI_API __declspec(dllexport)
+#  else
+#    define RUMI_API __declspec(dllimport)
+#  endif
+#elif defined(RUMI_BUILD)
 #  define RUMI_API __attribute__((visibility("default")))
 #else
 #  define RUMI_API

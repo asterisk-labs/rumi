@@ -87,9 +87,9 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
         }
     }
 
-    // PRead, the parallel path holds no file lock.
-    const std::size_t got = t.file->PRead(
-        ws.compressed.data(), t.compressed_size, t.offset);
+    // Frame bytes. Lockless under PRead, locked otherwise, decode runs after.
+    const std::size_t got = t.reader->read(
+        t.offset, t.compressed_size, ws.compressed.data());
     if (got != t.compressed_size) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu",

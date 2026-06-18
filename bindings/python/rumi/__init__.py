@@ -5,7 +5,7 @@ from ._read import index_file, parse, read
 from ._spec import Spec
 from ._write import Layout, tile, write
 
-__version__ = version("rumi")
+__version__ = version("rumi-eo")
 
 # The OpenZL frame format version.
 OPENZL_VERSION = lib.rumi_openzl_format_version()
