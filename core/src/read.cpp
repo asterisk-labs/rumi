@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <expected>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -51,6 +53,24 @@ int clamp_threads(int n) noexcept
 }  // namespace
 
 
+// File reader
+
+FileReader::FileReader(VSILFILE* fp) noexcept
+    : fp_(fp), has_pread_(fp->HasPRead())
+{
+}
+
+std::size_t
+FileReader::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
+{
+    if (has_pread_) {
+        return fp_->PRead(buffer, count, offset);
+    }
+    std::lock_guard lock(mutex_);
+    return fp_->Seek(offset, SEEK_SET) == 0 ? fp_->Read(buffer, 1, count) : 0;
+}
+
+
 TileSpec make_tile_spec(const Header& h) noexcept
 {
     return TileSpec{
@@ -63,7 +83,7 @@ TileSpec make_tile_spec(const Header& h) noexcept
 
 // One TileTask per intersecting (tile, band). A full tile with contiguous
 // output decodes straight into the buffer; the rest goes through scratch.
-Plan build_plan(const Header& h, VSILFILE* file,
+Plan build_plan(const Header& h, FileReader* reader,
                 int x_off, int y_off, int x_size, int y_size,
                 std::byte* data,
                 std::span<const int> bands,
@@ -120,7 +140,7 @@ Plan build_plan(const Header& h, VSILFILE* file,
                     + static_cast<GSpacing>(i)          * band_space;
 
                 TileTask task{};
-                task.file            = file;
+                task.reader          = reader;
                 task.offset          = h.tile_offset(idx);
                 task.compressed_size = h.tile_byte_counts[idx];
                 if (direct) {
@@ -157,9 +177,9 @@ read_window(const char* path, const Header& h,
 
     FilePtr file(VSIFOpenL(path, "rb"));
     if (!file) return err(std::string("could not open: ") + path);
-    if (!file->HasPRead()) {
-        return err(std::string(path) + ": VSI handle does not support PRead");
-    }
+
+    // Lives for the whole run, every task points at it.
+    FileReader reader(file.get());
 
     ThreadPool* pool = nullptr;
     if (clamp_threads(num_threads) > 1) {
@@ -168,7 +188,7 @@ read_window(const char* path, const Header& h,
     }
 
     const std::size_t bps = h.bytes_per_sample;
-    Plan plan = build_plan(h, file.get(),
+    Plan plan = build_plan(h, &reader,
                            x_off, y_off, x_size, y_size, dst, bands,
                            static_cast<GSpacing>(layout.sx) * bps,
                            static_cast<GSpacing>(layout.sy) * bps,

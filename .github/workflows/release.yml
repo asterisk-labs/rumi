@@ -107,6 +107,45 @@ jobs:
           path: staged/
           if-no-files-found: error
 
+  # OpenZL needs real C11 (designated initializers), which MSVC cl trips on
+  # with C2099. clang-cl has full C11 and keeps the MSVC ABI, so it still links
+  # cleanly against conda's MSVC-built libgdal. No conda cxx-compiler here, that
+  # one is MinGW and would break the ABI.
+  build-lib-windows:
+    name: librumi (windows-x86_64)
+    needs: validate
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Init OpenZL deps (zstd, lz4 only, no xgboost)
+        run: git -C extern/openzl submodule update --init deps/zstd deps/lz4
+      - name: Put clang-cl on PATH
+        shell: bash
+        run: echo "C:/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: build
+          create-args: >-
+            python=3.12
+            gdal=3.12
+            cmake
+            ninja
+            make
+      - name: Build lib (clang-cl, MSVC ABI)
+        shell: bash -el {0}
+        run: make lib CC=clang-cl CXX=clang-cl
+      - name: Stage lib for artifact
+        shell: bash -el {0}
+        run: make stage-lib STAGE_DIR=staged
+      - uses: actions/upload-artifact@v4
+        with:
+          name: librumi-windows-x86_64
+          path: staged/
+          if-no-files-found: error
+
   build-wheel-linux:
     name: Wheel (${{ matrix.name }})
     needs: [validate, build-lib-linux]
@@ -278,9 +317,70 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
+  # rumi is cffi in ABI mode, so the wheel has no .pyd, just rumi.dll loaded at
+  # runtime. delvewheel only follows .pyd by default, so --analyze-existing makes
+  # it treat rumi.dll as a root and vendor gdal and friends from the conda env.
+  build-wheel-windows:
+    name: Wheel (windows-x86_64)
+    needs: [validate, build-lib-windows]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip build hatchling cffi wheel
+      - uses: actions/download-artifact@v4
+        with:
+          name: librumi-windows-x86_64
+          path: lib-bin/
+      - name: Bundle native lib
+        shell: bash
+        run: |
+          mkdir -p bindings/python/rumi/_lib
+          cp -a lib-bin/* bindings/python/rumi/_lib/
+      - name: Build wheel
+        working-directory: bindings/python
+        run: python -m build --wheel --outdir ../../wheelhouse-raw
+      - name: Normalise wheel tags
+        shell: bash
+        run: |
+          python -m wheel tags --python-tag py3 --abi-tag none \
+            --platform-tag win_amd64 --remove wheelhouse-raw/*.whl
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: build
+          create-args: >-
+            python=3.12
+            gdal=3.12
+      - name: Repair wheel (vendor GDAL)
+        shell: bash -el {0}
+        run: |
+          set -euo pipefail
+          python -m pip install delvewheel
+          libbin=$(cygpath -w "$CONDA_PREFIX/Library/bin")
+          mkdir -p wheelhouse
+          delvewheel repair --analyze-existing \
+            --add-path "$libbin" \
+            -w wheelhouse wheelhouse-raw/*.whl
+          ls -1 wheelhouse/
+      - name: Install and smoke-test (GDAL-free)
+        shell: bash
+        run: |
+          python -m venv /tmp/clean
+          source /tmp/clean/Scripts/activate
+          python -m pip install --upgrade pip
+          python -m pip install wheelhouse/*.whl
+          python -c "import rumi; print('rumi', rumi.__version__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows-x86_64
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
   check-wheels:
     name: Check wheel platform tags
-    needs: [build-wheel-linux, build-wheel-macos]
+    needs: [build-wheel-linux, build-wheel-macos, build-wheel-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -304,6 +404,7 @@ jobs:
               "linux x86_64":  lambda n: "manylinux" in n and n.endswith("x86_64.whl"),
               "linux aarch64": lambda n: "manylinux" in n and n.endswith("aarch64.whl"),
               "macos arm64":   lambda n: "macosx" in n and n.endswith("arm64.whl"),
+              "windows x86_64": lambda n: n.endswith("win_amd64.whl"),
           }
           for label, pred in targets.items():
               if not any(pred(n) for n in wheels):
@@ -341,7 +442,7 @@ jobs:
 
   gh-release:
     name: GitHub Release
-    needs: [validate, build-lib-linux, build-lib-macos, build-wheel-linux, build-wheel-macos, build-sdist]
+    needs: [validate, build-lib-linux, build-lib-macos, build-lib-windows, build-wheel-linux, build-wheel-macos, build-wheel-windows, build-sdist]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -372,7 +473,7 @@ jobs:
   # Trusted publishing (OIDC): needs the `pypi` environment + a PyPI pending publisher.
   publish-pypi:
     name: Publish to PyPI
-    needs: [build-wheel-linux, build-wheel-macos, build-sdist, check-wheels]
+    needs: [build-wheel-linux, build-wheel-macos, build-wheel-windows, build-sdist, check-wheels]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
