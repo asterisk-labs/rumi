@@ -140,6 +140,17 @@ jobs:
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
+      - name: Assert C ABI is exported
+        shell: bash -el {0}
+        run: |
+          set -euo pipefail
+          dll=$(ls staged/*rumi*.dll | head -1)
+          echo "exports in $dll"
+          if ! dumpbin //exports "$dll" | grep -qi rumi_openzl_format_version; then
+            echo "::error::rumi.dll exports no rumi_* symbols, check RUMI_API dllexport and RUMI_BUILD"
+            dumpbin //exports "$dll" | head -60
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: librumi-windows-x86_64
