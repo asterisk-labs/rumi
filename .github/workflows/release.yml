@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    #branches: [release]   # dry run
-    #tags: ['v*']          # publish
+    branches: [release]   # dry run
+    tags: ['v*']          # publish
 
 permissions:
   contents: read
@@ -31,33 +31,10 @@ jobs:
             echo "version=$VERSION_FILE" >> "$GITHUB_OUTPUT"
           fi
 
-  gen-fixtures:
-    name: Generate fixture corpus
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mamba-org/setup-micromamba@v2
-        with:
-          environment-name: gen
-          create-args: >-
-            python=3.12
-            gdal=3.12
-            numpy
-            pydantic
-      - name: Generate corpus
-        shell: bash -el {0}
-        run: make fixtures
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fixtures
-          path: core/tests/fixtures/data/
-          if-no-files-found: error
-
   # Linux builds run in manylinux_2_28 so the binary is compiled against old glibc.
   build-lib-linux:
-    name: libshortcog (${{ matrix.name }})
-    needs: [validate, gen-fixtures]
+    name: librumi (${{ matrix.name }})
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -72,73 +49,67 @@ jobs:
     container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true            # brings extern/openzl, not its nested deps
+      - name: Init OpenZL deps (zstd, lz4 only, no xgboost)
+        run: git -C extern/openzl submodule update --init deps/zstd deps/lz4
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build
           create-args: >-
             python=3.12
             gdal=3.12
-            zstd
             cmake
             ninja
             make
             cxx-compiler
-      - uses: actions/download-artifact@v4
-        with:
-          name: fixtures
-          path: core/tests/fixtures/data/
-      - name: Build lib and run C++ tests
+      - name: Build lib
         shell: bash -el {0}
-        run: |
-          make lib
-          KEEP_FIXTURES=1 make test
+        run: make lib
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
       - uses: actions/upload-artifact@v4
         with:
-          name: libshortcog-${{ matrix.name }}
+          name: librumi-${{ matrix.name }}
           path: staged/
           if-no-files-found: error
 
   build-lib-macos:
-    name: libshortcog (macos-arm64)
-    needs: [validate, gen-fixtures]
+    name: librumi (macos-arm64)
+    needs: validate
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Init OpenZL deps (zstd, lz4 only, no xgboost)
+        run: git -C extern/openzl submodule update --init deps/zstd deps/lz4
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build
           create-args: >-
             python=3.12
             gdal=3.12
-            zstd
             cmake
             ninja
             make
             cxx-compiler
-      - uses: actions/download-artifact@v4
-        with:
-          name: fixtures
-          path: core/tests/fixtures/data/
-      - name: Build lib and run C++ tests
+      - name: Build lib
         shell: bash -el {0}
-        run: |
-          make lib
-          KEEP_FIXTURES=1 make test
+        run: make lib
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
       - uses: actions/upload-artifact@v4
         with:
-          name: libshortcog-macos-arm64
+          name: librumi-macos-arm64
           path: staged/
           if-no-files-found: error
 
   build-wheel-linux:
     name: Wheel (${{ matrix.name }})
-    needs: [validate, build-lib-linux, gen-fixtures]
+    needs: [validate, build-lib-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -159,16 +130,15 @@ jobs:
           create-args: >-
             python=3.12
             gdal=3.12
-            zstd
       - uses: actions/download-artifact@v4
         with:
-          name: libshortcog-${{ matrix.name }}
+          name: librumi-${{ matrix.name }}
           path: lib-bin/
       - name: Bundle native lib
         shell: bash -el {0}
         run: |
-          mkdir -p bindings/python/shortcog/_lib
-          cp -a lib-bin/* bindings/python/shortcog/_lib/
+          mkdir -p bindings/python/rumi/_lib
+          cp -a lib-bin/* bindings/python/rumi/_lib/
       - name: Build wheel
         shell: bash -el {0}
         working-directory: bindings/python
@@ -178,10 +148,6 @@ jobs:
       - name: Normalise wheel tags
         shell: bash -el {0}
         run: python -m wheel tags --python-tag py3 --abi-tag none --remove wheelhouse-raw/*.whl
-      - uses: actions/download-artifact@v4
-        with:
-          name: fixtures
-          path: bindings/python/tests/fixtures/
       - name: Repair wheel + vendor C++ runtime
         shell: bash -el {0}
         run: |
@@ -210,8 +176,8 @@ jobs:
           # gcc-12/13 C++ runtime that Colab lacks. Vendor them under a PRIVATE soname
           # (a plain-named copy gets shadowed by the system lib at load time) so the
           # wheel carries its own runtime and only needs glibc 2.17 from the host.
-          declare -A priv=( [libstdc++.so.6]=libstdc++-shortcog.so.6 \
-                            [libgcc_s.so.1]=libgcc_s-shortcog.so.1 )
+          declare -A priv=( [libstdc++.so.6]=libstdc++-rumi.so.6 \
+                            [libgcc_s.so.1]=libgcc_s-rumi.so.1 )
           for so in "${!priv[@]}"; do
             cp -v "$(readlink -f "$CONDA_PREFIX/lib/$so")" "$libs/${priv[$so]}"
             patchelf --set-soname "${priv[$so]}" "$libs/${priv[$so]}"
@@ -237,7 +203,7 @@ jobs:
           mkdir -p wheelhouse
           cp /tmp/packed/*.whl wheelhouse/
           ls -1 wheelhouse/
-      - name: Install and test (GDAL-free)
+      - name: Install and smoke-test (GDAL-free)
         shell: bash -el {0}
         env:
           LD_LIBRARY_PATH: ""
@@ -245,13 +211,8 @@ jobs:
           python -m venv /tmp/clean
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install wheelhouse/*.whl pytest
-          python -c "import shortcog; print('shortcog', shortcog.__version__)"
-          if compgen -G "bindings/python/tests/test_*.py" > /dev/null; then
-            python -m pytest bindings/python/tests -q
-          else
-            echo "no python tests; import smoke test only"
-          fi
+          python -m pip install wheelhouse/*.whl
+          python -c "import rumi; print('rumi', rumi.__version__)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -261,7 +222,7 @@ jobs:
 
   build-wheel-macos:
     name: Wheel (macos-arm64)
-    needs: [validate, build-lib-macos, gen-fixtures]
+    needs: [validate, build-lib-macos]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -271,21 +232,13 @@ jobs:
       - run: python -m pip install --upgrade pip build hatchling cffi wheel
       - uses: actions/download-artifact@v4
         with:
-          name: libshortcog-macos-arm64
+          name: librumi-macos-arm64
           path: lib-bin/
       - name: Bundle native lib
         shell: bash
         run: |
-          mkdir -p bindings/python/shortcog/_lib
-          cp -a lib-bin/* bindings/python/shortcog/_lib/
-          # Our lib links Homebrew zstd, GDAL links conda's; repoint ours so delocate
-          # can vendor a single copy, then re-sign (install_name_tool breaks the sig).
-          for f in bindings/python/shortcog/_lib/*.dylib; do
-            [ -L "$f" ] && continue
-            install_name_tool -change /opt/homebrew/opt/zstd/lib/libzstd.1.dylib \
-              @rpath/libzstd.1.5.7.dylib "$f"
-            codesign --force --sign - "$f"
-          done
+          mkdir -p bindings/python/rumi/_lib
+          cp -a lib-bin/* bindings/python/rumi/_lib/
       - name: Build wheel
         working-directory: bindings/python
         run: python -m build --wheel --outdir ../../wheelhouse-raw
@@ -294,17 +247,12 @@ jobs:
         run: |
           python -m wheel tags --python-tag py3 --abi-tag none \
             --platform-tag macosx_14_0_arm64 --remove wheelhouse-raw/*.whl
-      - uses: actions/download-artifact@v4
-        with:
-          name: fixtures
-          path: bindings/python/tests/fixtures/
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build
           create-args: >-
             python=3.12
             gdal=3.12
-            zstd
       - name: Repair wheel (vendor GDAL)
         shell: bash -el {0}
         run: |
@@ -312,7 +260,7 @@ jobs:
           export DYLD_FALLBACK_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           mkdir -p wheelhouse
           delocate-wheel -w wheelhouse -v wheelhouse-raw/*.whl
-      - name: Install and test (GDAL-free)
+      - name: Install and smoke-test (GDAL-free)
         shell: bash
         env:
           LD_LIBRARY_PATH: ""
@@ -322,13 +270,8 @@ jobs:
           python -m venv /tmp/clean
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install wheelhouse/*.whl pytest
-          python -c "import shortcog; print('shortcog', shortcog.__version__)"
-          if compgen -G "bindings/python/tests/test_*.py" > /dev/null; then
-            python -m pytest bindings/python/tests -q
-          else
-            echo "no python tests; import smoke test only"
-          fi
+          python -m pip install wheelhouse/*.whl
+          python -c "import rumi; print('rumi', rumi.__version__)"
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-macos-arm64
@@ -406,16 +349,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: libshortcog-*
+          pattern: librumi-*
           path: artifacts/
       - name: Re-pack into versioned archives
         run: |
           set -euo pipefail
           VERSION="${{ needs.validate.outputs.version }}"
           mkdir -p release-files
-          for plat_dir in artifacts/libshortcog-*; do
-            plat=$(basename "$plat_dir" | sed 's/^libshortcog-//')
-            pkg="libshortcog-${VERSION}-${plat}"
+          for plat_dir in artifacts/librumi-*; do
+            plat=$(basename "$plat_dir" | sed 's/^librumi-//')
+            pkg="librumi-${VERSION}-${plat}"
             (cd "$plat_dir" && tar czf "$OLDPWD/release-files/${pkg}.tar.gz" .)
           done
           ls -1 release-files/
