@@ -1,0 +1,105 @@
+<svg width="720" viewBox="0 0 720 392" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="t">What a reader stores to locate every tile, and the two rumi steps</title>
+  <desc id="d">A generic GeoTIFF stores the full TIFF IFD plus two arrays, TileOffsets and TileByteCounts. A rumi index stores a fixed 26 byte header, one base offset and a single TileByteCounts array. index_file builds the compact index from the file. parse expands it back, rebuilding every tile offset by prefix sum with no I/O.</desc>
+  <style>
+    .title{font-size:16px;font-weight:600;fill:#E6EDF3}
+    .sub{font-size:12px;fill:#8B949E}
+    .col{font-size:12px;font-weight:600;fill:#8B949E}
+    .bt{font-size:13px;font-weight:600;fill:#C9D1D9}
+    .bs{font-size:11px;fill:#8B949E}
+    .gt{font-size:13px;font-weight:600;fill:#A9FFA6}
+    .gs{font-size:11px;fill:#7FA88B}
+    .val{font-size:12px;fill:#C9D1D9;font-family:'SF Mono',Menlo,Consolas,monospace}
+    .gval{font-size:12px;fill:#A9FFA6;font-family:'SF Mono',Menlo,Consolas,monospace}
+    .dots{font-size:14px;fill:#6E7681}
+    .note{font-size:11px;fill:#8B949E}
+    .form{font-size:11px;fill:#A9FFA6;font-family:'SF Mono',Menlo,Consolas,monospace}
+    .pt{font-size:12px;font-weight:600;fill:#E6EDF3}
+    .ptg{font-size:12px;font-weight:600;fill:#A9FFA6}
+    .ps{font-size:11px;fill:#8B949E;font-family:'SF Mono',Menlo,Consolas,monospace}
+    .psg{font-size:11px;fill:#7FA88B;font-family:'SF Mono',Menlo,Consolas,monospace}
+    .fn{font-size:11px;fill:#A9FFA6;font-family:'SF Mono',Menlo,Consolas,monospace}
+    .cell{fill:#161B22;stroke:#30363D;stroke-width:1}
+    .band{fill:#161B22;stroke:#30363D;stroke-width:1}
+    .gband{fill:#0E2A1A;stroke:#2EA043;stroke-width:1}
+    .arr{stroke:#8B949E;stroke-width:1.5;fill:none}
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#8B949E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <line x1="360" y1="46" x2="360" y2="296" stroke="#21262D" stroke-width="1"/>
+
+  <text class="title" x="36" y="52">Generic GeoTIFF</text>
+  <text class="sub" x="36" y="72">parse the whole IFD, then read two arrays</text>
+  <rect class="band" x="36" y="88" width="300" height="44" rx="10"/>
+  <text class="bt" x="52" y="110">TIFF IFD</text>
+  <text class="bs" x="52" y="126">width, length, tile size, compression, …</text>
+
+  <text class="col" x="100" y="152" text-anchor="middle">TileOffsets</text>
+  <text class="col" x="246" y="152" text-anchor="middle">TileByteCounts</text>
+
+  <rect class="cell" x="40" y="160" width="120" height="22" rx="5"/>
+  <rect class="cell" x="40" y="184" width="120" height="22" rx="5"/>
+  <rect class="cell" x="40" y="208" width="120" height="22" rx="5"/>
+  <rect class="cell" x="40" y="232" width="120" height="22" rx="5"/>
+  <text class="val" x="100" y="175" text-anchor="middle">4096</text>
+  <text class="val" x="100" y="199" text-anchor="middle">4168</text>
+  <text class="val" x="100" y="223" text-anchor="middle">4220</text>
+  <text class="val" x="100" y="247" text-anchor="middle">4308</text>
+  <text class="dots" x="100" y="266" text-anchor="middle">⋮</text>
+
+  <rect class="cell" x="186" y="160" width="120" height="22" rx="5"/>
+  <rect class="cell" x="186" y="184" width="120" height="22" rx="5"/>
+  <rect class="cell" x="186" y="208" width="120" height="22" rx="5"/>
+  <rect class="cell" x="186" y="232" width="120" height="22" rx="5"/>
+  <text class="val" x="246" y="175" text-anchor="middle">72</text>
+  <text class="val" x="246" y="199" text-anchor="middle">52</text>
+  <text class="val" x="246" y="223" text-anchor="middle">88</text>
+  <text class="val" x="246" y="247" text-anchor="middle">60</text>
+  <text class="dots" x="246" y="266" text-anchor="middle">⋮</text>
+
+  <text class="title" x="384" y="52">rumi</text>
+  <text class="sub" x="384" y="72">26 byte header, no IFD, one array</text>
+  <rect class="gband" x="384" y="88" width="300" height="44" rx="10"/>
+  <text class="gt" x="400" y="110">rumi header</text>
+  <text class="gs" x="400" y="126">26 bytes, fixed layout</text>
+
+  <rect class="gband" x="384" y="140" width="300" height="28" rx="8"/>
+  <text class="gval" x="534" y="158" text-anchor="middle">base_tiles_offset = 4096</text>
+
+  <text class="col" x="444" y="190" text-anchor="middle">TileByteCounts</text>
+  <rect class="cell" x="384" y="198" width="120" height="22" rx="5"/>
+  <rect class="cell" x="384" y="222" width="120" height="22" rx="5"/>
+  <rect class="cell" x="384" y="246" width="120" height="22" rx="5"/>
+  <text class="val" x="444" y="213" text-anchor="middle">72</text>
+  <text class="val" x="444" y="237" text-anchor="middle">52</text>
+  <text class="val" x="444" y="261" text-anchor="middle">88</text>
+  <text class="dots" x="444" y="282" text-anchor="middle">⋮</text>
+
+  <line class="arr" x1="506" y1="232" x2="524" y2="232" marker-end="url(#a)"/>
+  <text class="note" x="530" y="220">offsets are derived</text>
+  <text class="form" x="530" y="238">offset[i] = base + Σc[&lt;i]</text>
+  <text class="note" x="530" y="256">no offset array stored</text>
+
+  <line x1="36" y1="306" x2="684" y2="306" stroke="#21262D" stroke-width="1"/>
+
+  <rect class="band" x="64" y="322" width="116" height="44" rx="10"/>
+  <text class="val" x="122" y="348" text-anchor="middle">scene.tif</text>
+
+  <text class="fn" x="214" y="338" text-anchor="middle">index_file</text>
+  <line class="arr" x1="184" y1="344" x2="246" y2="344" marker-end="url(#a)"/>
+
+  <rect class="gband" x="252" y="322" width="168" height="44" rx="10"/>
+  <text class="ptg" x="336" y="341" text-anchor="middle">rumi blob</text>
+  <text class="psg" x="336" y="357" text-anchor="middle">26 B + counts[N]</text>
+
+  <text class="fn" x="447" y="338" text-anchor="middle">parse</text>
+  <line class="arr" x1="424" y1="344" x2="470" y2="344" marker-end="url(#a)"/>
+
+  <rect x="474" y="322" width="178" height="44" rx="10" fill="#161B22" stroke="#2EA043" stroke-width="1"/>
+  <text class="pt" x="563" y="341" text-anchor="middle">Header</text>
+  <text class="ps" x="563" y="357" text-anchor="middle">offsets rebuilt</text>
+</svg>

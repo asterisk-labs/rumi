@@ -12,9 +12,13 @@
 
 A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. Deep learning reads millions of chips per epoch, and with loose layouts a reader has to work out each file before it can touch the pixels.
 
-rumi solves that with one layout. A rumi file is always BigTIFF, tiled, band separate, and tile interleaved. Every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. There are no predictors, no overviews, and nothing left to guess about. The full rules live in the [specification](SPEC.md).
+rumi solves that with one layout. A rumi file is always **BigTIFF, tiled, band separate, and tile interleaved**. Every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. There are no predictors, no overviews, and nothing left to guess about. The full rules live in the [specification](SPEC.md).
 
 Because the layout is fixed, almost everything about a rumi file is predictable. The rest is a small header, and a million of those fit in memory, so a whole dataset stays indexed and reads go straight to the pixels.
+
+<p align="center">
+  <img src="img/rumi-index.svg" alt="rumi index" width="720"/>
+</p>
 
 ## Install
 

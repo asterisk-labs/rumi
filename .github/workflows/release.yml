@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     #branches: [release]   # dry run
-    tags: ['v*']          # publish
+    #tags: ['v*']          # publish
 
 permissions:
   contents: read
