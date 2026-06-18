@@ -1,7 +1,6 @@
 import numpy as np
 
-# (sample_format, bits_per_sample) is the canonical sample encoding from the
-# spec. Complex int (5) and 16-bit complex float have no numpy equivalent.
+# (sample_format, bits_per_sample) is the canonical sample encoding from the spec.
 _ENCODING: dict[type[np.generic], tuple[int, int]] = {
     np.uint8:      (1, 8),
     np.uint16:     (1, 16),

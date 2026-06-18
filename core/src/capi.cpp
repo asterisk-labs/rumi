@@ -15,9 +15,8 @@
 
 // Error plumbing.
 
-// Last error is thread-local so concurrent calls don't smash each other.
-// CPLError messages produced inside the C++ core are routed here too via
-// a scoped error handler installed on every public entry point.
+// Thread-local last error. A scoped handler on each entry point also captures
+// CPLError messages from the C++ core.
 
 namespace {
 
@@ -45,10 +44,8 @@ struct CplScope {
 template <typename F>
 rumi_status capi_call(F&& body) noexcept
 {
-    // The header documents the last error as valid until the next library
-    // call on the same thread. Clearing here implements that contract and,
-    // more importantly, stops a stale message from a previous call from
-    // masking this call's error in the `g_last_error.empty()` checks below.
+    // Clear so a stale message can't mask this call's error in the
+    // g_last_error.empty() checks below.
     g_last_error.clear();
     CplScope scope;
     try {
@@ -78,6 +75,11 @@ extern "C" int rumi_api_version(void)
 extern "C" const char* rumi_version_string(void)
 {
     return RUMI_VERSION_STRING;
+}
+
+extern "C" int rumi_openzl_format_version(void)
+{
+    return rumi::openzl_format_version();
 }
 
 extern "C" const char* rumi_last_error(void)
@@ -427,9 +429,8 @@ rumi_geokeys(const char* srs, int pixel_is_point,
             return RUMI_ERR_INVALID;
         }
 
-        // Dup each payload into a caller-owned buffer; an empty one stays
-        // (NULL, 0). Assign the out-params only after all three succeed so a
-        // failure leaves them untouched, as the header promises.
+        // Copy each payload into a caller-owned buffer. Assign the out-params
+        // only after all three succeed, so a failure leaves them untouched.
         unsigned char* bufs[3] = {nullptr, nullptr, nullptr};
         const std::vector<std::byte>* src[3] = {
             &result->directory, &result->double_params, &result->ascii_params};

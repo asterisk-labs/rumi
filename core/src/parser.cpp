@@ -106,8 +106,8 @@ parse_blob(std::span<const std::byte> blob)
         bh.samples_per_pixel == 0) {
         return std::unexpected(ParseError::invalid_dimensions);
     }
-    // image_width and image_length are uint32 in the blob but become int raster
-    // sizes in GDAL. A value too big for int would cast negative, so reject it.
+    // These become int raster sizes in GDAL; a value above INT_MAX would cast
+    // negative, so reject it.
     if (bh.image_width  > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         bh.image_length > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
         return std::unexpected(ParseError::invalid_dimensions);
@@ -155,8 +155,8 @@ parse_blob(std::span<const std::byte> blob)
                 blob.data() + HEADER_SIZE,
                 static_cast<std::size_t>(h.tile_count) * sizeof(std::uint32_t));
 
-    // Prefix sum over the framing-free run. With every byte count >= 1, the
-    // only failure mode left is u64 wraparound on the running offset.
+    // Prefix sum over the contiguous run. With counts >= 1, the only failure
+    // left is u64 overflow on the running offset.
     h.tile_offsets.resize(h.tile_count);
     std::uint64_t offset = bh.base_tiles_offset;
     for (std::uint32_t i = 0; i < h.tile_count; ++i) {

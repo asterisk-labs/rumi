@@ -15,9 +15,7 @@ def _enc(path: PathLike) -> bytes:
     return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
 
 
-# Tuple selectors are Python slices (start, stop), 0-based. Lists are 0-based
-# explicit indices in the order requested. Both convert to 1-based for the C
-# API. None means all and gets passed through as NULL/0.
+# convert to 1-based for the C API. None means all and gets passed through as NULL/0.
 def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     if sel is None:
         return None
@@ -58,11 +56,11 @@ def _to_c(lst: list[int] | None):
 def index_file(path: PathLike) -> bytes:
     blob_out = ffi.new("unsigned char**")
     size_out = ffi.new("size_t*")
-    _check(lib.shortcog_index_file(_enc(path), blob_out, size_out))
+    _check(lib.rumi_index_file(_enc(path), blob_out, size_out))
     try:
         return bytes(ffi.buffer(blob_out[0], size_out[0]))
     finally:
-        lib.shortcog_free(blob_out[0])
+        lib.rumi_free(blob_out[0])
 
 
 def parse(blob: bytes | bytearray | memoryview) -> Spec:
@@ -81,15 +79,15 @@ def _read_one(path: PathLike, spec: Spec, pattern: str | None,
     if pattern is None:
         pattern = "b y x"
 
-    layout = ffi.new("shortcog_layout*")
-    _check(lib.shortcog_compile_layout(
+    layout = ffi.new("rumi_layout*")
+    _check(lib.rumi_compile_layout(
         pattern.encode("ascii"), 1, n_bands, y_size, x_size, layout
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
     arr = np.empty(shape, dtype=spec._dtype)
 
     bands_c, n_bands_c = _to_c(bands)
-    _check(lib.shortcog_read(
+    _check(lib.rumi_read(
         _enc(path), spec._handle, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,
         pattern.encode("ascii"), num_threads,
@@ -122,8 +120,8 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[Spec],
     if pattern is None:
         pattern = "n b y x" if n_count > 1 else "b y x"
 
-    layout = ffi.new("shortcog_layout*")
-    _check(lib.shortcog_compile_layout(
+    layout = ffi.new("rumi_layout*")
+    _check(lib.rumi_compile_layout(
         pattern.encode("ascii"), n_count, n_bands, y_size, x_size, layout
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
@@ -131,11 +129,11 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[Spec],
 
     paths_c = [ffi.new("char[]", _enc(p)) for p in paths]
     paths_arr = ffi.new("char*[]", paths_c)
-    specs_arr = ffi.new("shortcog_spec*[]", [s._handle for s in specs])
+    specs_arr = ffi.new("rumi_spec*[]", [s._handle for s in specs])
 
     n_c, n_count_c = _to_c(n_sel)
     bands_c, n_bands_c = _to_c(bands)
-    _check(lib.shortcog_read_stack(
+    _check(lib.rumi_read_stack(
         paths_arr, specs_arr, len(specs),
         n_c, n_count_c, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,

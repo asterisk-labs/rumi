@@ -25,6 +25,9 @@ extern "C" {
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
 
+// The OpenZL frame format version.
+RUMI_API int         rumi_openzl_format_version(void);
+
 
 // Status.
 

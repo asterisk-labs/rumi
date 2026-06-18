@@ -44,6 +44,7 @@ typedef struct rumi_spec rumi_spec;
 
 int         rumi_api_version(void);
 const char* rumi_version_string(void);
+int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void        rumi_clear_error(void);
 void        rumi_free(void* ptr);
@@ -131,7 +132,7 @@ def _bundled_lib():
 
 
 def _load_lib():
-    # RUMI_LIB beats everything, then the bundled wheel copy, then the OS path.
+    # RUMI_LIB beats everything :D, then the bundled wheel copy, then the OS path.
     env_path = os.environ.get("RUMI_LIB")
     candidate = env_path or _bundled_lib() or ctypes.util.find_library("rumi")
     if candidate is None:

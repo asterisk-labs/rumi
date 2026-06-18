@@ -37,8 +37,7 @@ CPLErr read_native(const Image* img,
     return exec.run(plan) ? CE_None : CE_Failure;
 }
 
-// Read a tile-aligned native superset into a MEMDataset and let GDAL do the
-// resampling and type conversion.
+// Read a tile-aligned native superset, then let GDAL resample and convert.
 CPLErr read_via_mem(const Image* img,
                     int x_off, int y_off, int x_size, int y_size,
                     void* data, int buf_x_size, int buf_y_size,
@@ -52,8 +51,7 @@ CPLErr read_via_mem(const Image* img,
     const int tl = h.tile_length;
     const std::size_t bps = h.bytes_per_sample;
 
-    // The tile-rounded end can blow past int range, so clamp in int64 first.
-    // image_width and image_length fit int, so the clamped result does too.
+    // Tile-rounding can overflow int, so clamp the end in int64 first.
     const int ax_off = (x_off / tw) * tw;
     const int ay_off = (y_off / tl) * tl;
     const int ax_end = static_cast<int>(std::min<std::int64_t>(h.image_width,
@@ -229,10 +227,8 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
-    // parse_blob already guarantees samples_per_pixel is nonzero and fits
-    // uint16, but a count GDAL deems unreasonable (GDAL_MAX_BAND_COUNT) would
-    // still drive the SetBand loop into a huge allocation, so reject it like
-    // the in-tree drivers do before touching the file.
+    // Reject band counts GDAL deems unreasonable before the SetBand loop
+    // turns them into a huge allocation.
     if (!GDALCheckBandCount(parsed->samples_per_pixel, FALSE)) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "RUMI: unreasonable band count %u",
@@ -247,8 +243,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
-    // PRead is mandatory because we advertise GDAL_OF_THREAD_SAFE and the
-    // parallel path takes no file lock.
+    // PRead is mandatory because we advertise GDAL_OF_THREAD_SAFE and lock nothing.
     if (!fp->HasPRead()) {
         VSIFCloseL(fp);
         CPLError(CE_Failure, CPLE_NotSupported,
@@ -270,9 +265,8 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     }
     img->SetDescription(open_info->pszFilename);
 
-    // NUM_THREADS is an integer or ALL_CPUS, absent meaning single-threaded.
-    // The pool is process-global and sized on first use, so whichever dataset
-    // first enables threading fixes the worker count for every one after it.
+    // The pool is process-global and sized on first use, so the first dataset
+    // to enable threading fixes the worker count for the whole process.
     int n_threads = 1;
     if (const char* nt = CSLFetchNameValue(open_info->papszOpenOptions,
                                            OPEN_OPTION_THREADS)) {
@@ -313,8 +307,8 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         return CE_Failure;
     }
 
-    // The copy path casts spacings to size_t for the pitch arithmetic, so
-    // negative or zero spacings would corrupt memory rather than fail.
+    // Pitch arithmetic casts spacing to size_t, so non-positive spacing would
+    // corrupt memory rather than fail.
     if (pixel_space <= 0 || line_space <= 0 ||
         (band_count > 1 && band_space <= 0)) {
         CPLError(CE_Failure, CPLE_IllegalArg,
@@ -322,8 +316,8 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         return CE_Failure;
     }
 
-    // GDAL's public RasterIO already validates the window and bands, but
-    // ImageCube reads reach us directly, so the same checks are repeated here.
+    // ImageCube reads reach us directly, bypassing GDAL's public validation,
+    // so revalidate here.
     if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
         static_cast<std::int64_t>(x_off) + x_size > nRasterXSize ||
         static_cast<std::int64_t>(y_off) + y_size > nRasterYSize) {
@@ -344,8 +338,8 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
     INIT_RASTERIO_EXTRA_ARG(default_arg);
     if (!extra_arg) extra_arg = &default_arg;
 
-    // read_native handles any pixel/line/band spacing, so only resampling or a
-    // dtype change needs the staging path.
+    // read_native handles any spacing; only resampling or a dtype change needs
+    // the staging path.
     const bool fast_path =
         x_size == buf_x_size && y_size == buf_y_size &&
         buf_type == header_.gdal_type;

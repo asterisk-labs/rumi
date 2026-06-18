@@ -36,9 +36,7 @@ std::uint32_t rd32(std::span<const std::byte> b, std::size_t o) noexcept {
                          std::to_integer<unsigned>(b[o + 3]) << 24);
 }
 
-// The probe is forced to classic little-endian below, so this walks one classic
-// IFD and lifts the three CRS tags. Bounds checked since a malformed probe is a
-// bug, not input, but cheap to guard.
+// Walk the classic little-endian probe IFD and lift the three CRS tags.
 std::expected<GeoKeys, std::string>
 lift_geo_tags(std::span<const std::byte> t) {
     if (t.size() < 8 || rd16(t, 0) != 0x4949 || rd16(t, 2) != 42)
@@ -86,7 +84,7 @@ try {
     if (osr.SetFromUserInput(std::string(srs).c_str()) != OGRERR_NONE)
         return std::unexpected("unrecognised CRS: " + std::string(srs));
 
-    GDALAllRegister();  // idempotent; GTiff is unavailable until drivers register
+    GDALAllRegister();  // idempotent; needed before GTiff is available
     GDALDriver* drv = GetGDALDriverManager()->GetDriverByName("GTiff");
     if (!drv)
         return std::unexpected("GTiff driver unavailable");

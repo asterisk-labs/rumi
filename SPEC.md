@@ -127,7 +127,7 @@ Identifies the blob as a rumi header. The value is `0x333C333C`, the little-endi
 
 ### version
 
-The binary format version. The current value is `2`. A reader that implements only binary format 2 MUST reject any other version.
+The binary format version. The current value is `1`. A reader that implements only binary format 1 MUST reject any other version.
 
 ### image_width and image_length
 

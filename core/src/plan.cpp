@@ -6,6 +6,7 @@
 
 #include "openzl/zl_decompress.h"    // ZL_DCtx, ZL_DCtx_decompressTyped, ZL_OutputInfo
 #include "openzl/zl_common_types.h"  // ZL_TernaryParam
+#include "openzl/zl_version.h"       // ZL_MAX_FORMAT_VERSION
 
 #include <atomic>
 #include <cstring>
@@ -15,8 +16,8 @@
 namespace rumi {
 namespace {
 
-// One decompression context per worker thread. The context is reusable across
-// tiles. Buffers grow to the largest tile seen and never shrink.
+// Per-thread decode context and scratch, reused across tiles. Buffers grow to
+// the largest tile and never shrink.
 struct WorkerState {
     ZL_DCtx*               dctx = ZL_DCtx_create();
     std::vector<std::byte> compressed;
@@ -35,9 +36,8 @@ WorkerState& worker_state() noexcept
     return ws;
 }
 
-// dst_pixel_stride == sample size means a contiguous row. Larger means the
-// output layout puts another axis inner, so place pixels one by one. Result
-// buffer only.
+// A pixel stride equal to one sample is a contiguous row; a larger stride has
+// another axis inner, so place pixels one by one.
 void copy_rect(const TileTask& t, const TileSpec& spec,
                const std::byte* tile) noexcept
 {
@@ -99,10 +99,9 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
         return false;
     }
 
-    // A full unclipped tile decodes straight into the output buffer, otherwise
-    // into per-thread scratch that copy_rect then places. The numeric decode
-    // wants the destination aligned to the element width, which holds for GDAL
-    // block buffers and element-strided output, and always for scratch.
+    // Full tile decodes straight into the output, otherwise into scratch for
+    // copy_rect. The numeric decode needs element-width alignment, which holds
+    // for the output buffer and always for scratch.
     std::byte* tile = t.direct;
     if (!tile) {
         if (ws.scratch.size() < spec.tile_bytes) {
@@ -117,12 +116,8 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
         tile = ws.scratch.data();
     }
 
-    // Each rumi tile is one OpenZL frame holding a single numeric output. The
-    // typed decode writes the values in host endianness and reports back the
-    // element type and width, which we check against the header. To trade
-    // integrity for speed on hot paths a worker could disable the content
-    // checksum with
-    // ZL_DCtx_setParameter(ws.dctx, ZL_DParam_checkContentChecksum, ZL_TernaryParam_disable).
+    // One OpenZL frame per tile, one numeric output. The typed decode reports
+    // the element type and width, checked against the header below.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
         ws.dctx, &info, tile, spec.tile_bytes,
@@ -153,6 +148,12 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
 }
 
 }  // namespace
+
+
+int openzl_format_version() noexcept
+{
+    return ZL_MAX_FORMAT_VERSION;
+}
 
 
 Executor::Executor(ThreadPool* pool) noexcept : pool_(pool) {}

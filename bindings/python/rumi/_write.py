@@ -94,7 +94,7 @@ def _crs_geokeys(crs, pixel_is_point):
 
     s = (f"EPSG:{crs}" if isinstance(crs, int) else str(crs)).encode("utf-8")
     out = [(ffi.new("unsigned char**"), ffi.new("size_t*")) for _ in range(3)]
-    _check(lib.shortcog_geokeys(
+    _check(lib.rumi_geokeys(
         s, 1 if pixel_is_point else 0,
         out[0][0], out[0][1], out[1][0], out[1][1], out[2][0], out[2][1]))
     try:
@@ -103,7 +103,7 @@ def _crs_geokeys(crs, pixel_is_point):
     finally:
         for p, n in out:
             if n[0]:
-                lib.shortcog_free(p[0])
+                lib.rumi_free(p[0])
 
 
 def _geo_entries(transform, crs, pixel_is_point):
@@ -145,6 +145,11 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
     B = layout.samples_per_pixel
     sf, bps = layout.sample_format, layout.bits_per_sample
 
+    # rumi lays the tile bytes out tile-interleaved (samples innermost).
+    tpp = layout.tiles_across * layout.tiles_down
+    pm_order = [pos * B + b for b in range(B) for pos in range(tpp)]
+    counts_pm = [counts[i] for i in pm_order]
+
     # (tag, type, count, packed) in ascending tag order. TileOffsets packs once
     # the data offset is known. Geo tags, if any, append above 339.
     entries = [
@@ -159,7 +164,7 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
         _entry(322, _SHORT, [layout.tile_width]),
         _entry(323, _SHORT, [layout.tile_length]),
         (_TILE_OFFSETS, _LONG8, len(frames), None),
-        _entry(325, _LONG,  counts),
+        _entry(325, _LONG,  counts_pm),
         _entry(339, _SHORT, [sf] * B),
     ]
     entries += _geo_entries(transform, crs, pixel_is_point)
@@ -181,6 +186,7 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
     for c in counts:
         tile_offsets.append(off)
         off += c
+    offsets_pm = [tile_offsets[i] for i in pm_order]
 
     buf = bytearray()
     buf += struct.pack(_LE + "HHHH", 0x4949, 43, 8, 0)
@@ -190,7 +196,7 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
     ext = bytearray()
     for tag, type_, count, packed in entries:
         if tag == _TILE_OFFSETS:
-            packed = _pack(_LONG8, tile_offsets)
+            packed = _pack(_LONG8, offsets_pm)
         buf += struct.pack(_LE + "HHQ", tag, type_, count)
         if len(packed) <= 8:
             buf += packed.ljust(8, b"\x00")

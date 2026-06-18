@@ -4,10 +4,6 @@ from . import _repr
 from ._dtype import np_dtype
 from ._ffi import _check, ffi, lib
 
-# predictor doubles as codec selector. 1/2 are ZSTD (TIFF predictor none/
-# horizontal); reserved high values pick a codec that needs no predictor.
-_CODEC = {1: "ZSTD", 2: "ZSTD + horizontal", 42: "OpenZL"}
-
 
 class Spec:
     """Parsed header blob. Pure memory, no file handle, reusable across reads."""
@@ -17,13 +13,13 @@ class Spec:
             raise TypeError(f"blob must be bytes-like, got {type(blob).__name__}")
 
         blob_buf = ffi.from_buffer("unsigned char[]", blob)
-        handle_out = ffi.new("shortcog_spec**")
-        _check(lib.shortcog_spec_parse(blob_buf, len(blob), handle_out))
+        handle_out = ffi.new("rumi_spec**")
+        _check(lib.rumi_spec_parse(blob_buf, len(blob), handle_out))
         # ffi.gc frees the handle whenever it goes away, even mid-__init__.
-        self._handle = ffi.gc(handle_out[0], lib.shortcog_spec_destroy)
+        self._handle = ffi.gc(handle_out[0], lib.rumi_spec_destroy)
 
-        header = ffi.new("shortcog_header*")
-        _check(lib.shortcog_spec_header(self._handle, header))
+        header = ffi.new("rumi_header*")
+        _check(lib.rumi_spec_header(self._handle, header))
         self._header = header
         self._dtype = np_dtype(header.sample_format, header.bits_per_sample)
 
@@ -46,7 +42,7 @@ class Spec:
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
                 "tiles": h.tiles_across * h.tiles_down * h.samples_per_pixel,
-                "codec": _CODEC.get(h.predictor, "ZSTD"),
+                "codec": "OpenZL",
             }
         except Exception:
             return {"ok": False}

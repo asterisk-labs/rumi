@@ -34,7 +34,7 @@ def _bands(b):
 def _cube(b, x, y):
     return (
         '<svg width="100%" viewBox="0 0 215 205" '
-        f'role="img" aria-label="shortcog image cube, {b} bands">'
+        f'role="img" aria-label="rumi image cube, {b} bands">'
         f'<polygon points="55,72 88,39 178,39 145,72" fill="{_TOP}" '
         f'stroke="{_LINE}" stroke-width="1.3"/>'
         f'<polygon points="145,72 178,39 178,152 145,185" fill="{_SIDE}" '
@@ -75,17 +75,17 @@ _CSS = """
 
 
 def _wrap(inner):
-    uid = f"scog{next(_counter)}"
-    return (f'<div class="shortcog-repr" id="{uid}"><style>'
+    uid = f"rumi{next(_counter)}"
+    return (f'<div class="rumi-repr" id="{uid}"><style>'
             f'{_CSS.replace("#ID", f"#{uid}")}</style>{inner}</div>')
 
 
 def text(f):
     if not f["ok"]:
-        return "<shortcog.Spec (unreadable)>"
+        return "<rumi.Spec (unreadable)>"
     tw, tl = f["tile"]
     return "\n".join([
-        f"<shortcog.Spec ({f['b']}, {f['y']}, {f['x']})>",
+        f"<rumi.Spec ({f['b']}, {f['y']}, {f['x']})>",
         f"  dtype      : {f['dtype']}",
         f"  tile       : {tw} x {tl}",
         f"  tiles      : {f['tiles']}",
@@ -96,7 +96,7 @@ def text(f):
 
 def html_(f):
     if not f["ok"]:
-        return _wrap('<div class="hdr"><span class="cls">shortcog.Spec</span> '
+        return _wrap('<div class="hdr"><span class="cls">rumi.Spec</span> '
                      '<span class="dim">(unreadable)</span></div>')
     tw, tl = f["tile"]
     e = html.escape
@@ -107,7 +107,7 @@ def html_(f):
         f'<tr><td class="k">tiles/band</td><td>{f["across"] * f["down"]:,}</td></tr>'
         f'<tr><td class="k">codec</td><td>{e(f["codec"])}</td></tr>'
     )
-    meta = (f'<div><div class="hdr"><span class="cls">shortcog.Spec</span> '
+    meta = (f'<div><div class="hdr"><span class="cls">rumi.Spec</span> '
             f'<span class="dim">({f["b"]}, {f["y"]}, {f["x"]})</span></div>'
             f'<table>{rows}</table></div>')
     return _wrap(f'<div class="box">{meta}'

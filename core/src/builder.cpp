@@ -14,9 +14,7 @@
 namespace rumi {
 namespace {
 
-// Tight wrapper around snprintf for error messages. The format attribute lets
-// the compiler type-check call sites against the format string and silences
-// -Wformat-security.
+// printf-checked error builder; the format attribute validates call sites.
 [[gnu::format(printf, 1, 2)]]
 std::unexpected<std::string> err(const char* fmt, ...)
 {
@@ -39,9 +37,8 @@ bool read_at(VSILFILE* fp, std::uint64_t off, void* dst, std::size_t n) noexcept
     return VSIFReadL(dst, 1, n, fp) == n;
 }
 
-// One BigTIFF IFD entry, 20 bytes on disk. value holds the raw value-or-offset
-// field, used inline when count * type_size fits in 8 bytes and as a file
-// offset otherwise.
+// One BigTIFF IFD entry. value is the inline payload when it fits in 8 bytes,
+// otherwise a file offset.
 struct Entry {
     std::uint16_t tag;
     std::uint16_t type;
@@ -49,7 +46,7 @@ struct Entry {
     std::byte     value[8];
 };
 
-// Byte width of a TIFF field type. Zero for anything rumi does not read.
+// Byte width of a TIFF field type, zero if unsupported.
 std::size_t type_size(std::uint16_t t) noexcept
 {
     switch (t) {
@@ -61,7 +58,7 @@ std::size_t type_size(std::uint16_t t) noexcept
     }
 }
 
-// Host and file are both little-endian, so a raw copy is the value.
+// Little-endian host and file, so a raw copy is the value.
 std::uint64_t read_uint(const std::byte* p, std::size_t sz) noexcept
 {
     std::uint64_t v = 0;
@@ -80,8 +77,7 @@ build_blob_from_file(const char* path) noexcept
     if (!file) return err("could not open: %s", path);
     VSILFILE* fp = file.get();
 
-    // BigTIFF header, 16 bytes. II little-endian, version 43, 8-byte offsets,
-    // two reserved bytes, then the first IFD offset.
+    // BigTIFF header. II, version 43, 8-byte offsets, then the first IFD offset.
     unsigned char hdr[16];
     if (!read_at(fp, 0, hdr, sizeof(hdr))) {
         return err("could not read the 16-byte BigTIFF header");
@@ -105,8 +101,7 @@ build_blob_from_file(const char* path) noexcept
     std::uint64_t ifd_offset;
     std::memcpy(&ifd_offset, hdr + 8, 8);
 
-    // IFD. A uint64 entry count, that many 20-byte entries, then a uint64
-    // next-IFD offset. rumi is single IFD, so the trailer must be zero.
+    // Single IFD only, so the next-IFD trailer must be zero.
     std::uint64_t n_entries;
     if (!read_at(fp, ifd_offset, &n_entries, 8)) {
         return err("could not read the IFD entry count");
@@ -150,12 +145,12 @@ build_blob_from_file(const char* path) noexcept
         return nullptr;
     };
 
-    // SubIFDs are how overviews and masks hang off a file. All rejected.
+    // SubIFDs carry overviews and masks, which rumi forbids.
     if (find(330) != nullptr) {
         return err("rumi rejects SubIFDs (overviews or masks)");
     }
 
-    // First element of a scalar integer tag. Missing returns the default.
+    // First element of a scalar integer tag, or the default if absent.
     auto scalar = [&](std::uint16_t tag, std::uint64_t deflt)
         -> std::expected<std::uint64_t, std::string> {
         const Entry* e = find(tag);
@@ -175,7 +170,7 @@ build_blob_from_file(const char* path) noexcept
         return read_uint(buf, ts);
     };
 
-    // A full integer array tag, every element widened to uint64.
+    // A full integer array tag, widened to uint64.
     auto array = [&](std::uint16_t tag)
         -> std::expected<std::vector<std::uint64_t>, std::string> {
         const Entry* e = find(tag);
@@ -247,9 +242,8 @@ build_blob_from_file(const char* path) noexcept
                    static_cast<unsigned long long>(*pred_e));
     }
 
-    // dtype. SampleFormat defaults to 1 (unsigned int) when absent. Every
-    // sample must share one bits_per_sample and one sample_format. For complex
-    // samples BitsPerSample is already the summed real and imaginary width.
+    // SampleFormat defaults to 1 when absent. All bands must share one
+    // bits_per_sample and one sample_format.
     auto bits_e = array(258); if (!bits_e) return std::unexpected(bits_e.error());
     const auto& bits = *bits_e;
     if (bits.size() != spp) return err("BitsPerSample count does not match band count");
@@ -290,13 +284,8 @@ build_blob_from_file(const char* path) noexcept
         return err("TileOffsets/TileByteCounts length does not match the tile grid");
     }
 
-    // TIFF stores a PlanarConfig 2 tile table plane-major, every tile of sample
-    // 0 then every tile of sample 1 and so on. rumi orders samples innermost,
-    // index (row * tiles_across + col) * spp + sample, so remap into that order
-    // before the contiguity walk. For one sample the two orders coincide. The
-    // walk then proves the payloads form one framing-free run in rumi order,
-    // which is what tells a tile-interleaved file apart from a band-interleaved
-    // one since both report PlanarConfiguration 2.
+    // The TIFF table is plane-major; rumi is samples-innermost. Remap, then walk
+    // in rumi order. A contiguous run proves tile-interleaved.
     std::vector<std::uint32_t> counts(static_cast<std::size_t>(n_tiles));
     std::uint64_t base    = 0;
     std::uint64_t running = 0;

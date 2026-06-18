@@ -61,9 +61,8 @@ TileSpec make_tile_spec(const Header& h) noexcept
     };
 }
 
-// One TileTask per intersecting (tile, band). A full, unclipped tile whose
-// output is tile-contiguous decompresses straight into the buffer; everything
-// else lands in per-thread scratch and is copied out, honoring pixel_space.
+// One TileTask per intersecting (tile, band). A full tile with contiguous
+// output decodes straight into the buffer; the rest goes through scratch.
 Plan build_plan(const Header& h, VSILFILE* file,
                 int x_off, int y_off, int x_size, int y_size,
                 std::byte* data,
@@ -176,7 +175,9 @@ read_window(const char* path, const Header& h,
                            static_cast<GSpacing>(layout.sb) * bps);
 
     Executor exec(pool);
-    if (!exec.run(plan)) return err("read failed");
+    if (!exec.run(plan)) {
+        return err(exec.error().empty() ? std::string("read failed") : exec.error());
+    }
     return {};
 }
 

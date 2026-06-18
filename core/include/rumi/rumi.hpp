@@ -24,6 +24,9 @@ inline constexpr std::uint32_t MAGIC       = 0x333C333C;  // "<3<3"
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 26;
 
+// The OpenZL frame format version.
+[[nodiscard]] RUMI_API int openzl_format_version() noexcept;
+
 
 // Blob format
 
@@ -139,8 +142,12 @@ public:
     explicit Executor(ThreadPool* pool) noexcept;
     [[nodiscard]] bool run(const Plan& plan) const;
 
+    // First failing task's message after a run that returned false, else empty.
+    [[nodiscard]] const std::string& error() const noexcept { return error_; }
+
 private:
-    ThreadPool* pool_;
+    ThreadPool*         pool_;
+    mutable std::string error_;
 };
 
 [[nodiscard]] RUMI_API TileSpec make_tile_spec(const Header& h) noexcept;

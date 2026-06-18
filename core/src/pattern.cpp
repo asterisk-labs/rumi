@@ -38,8 +38,8 @@ compile_layout(std::string_view pattern,
 
     const std::array<std::int64_t, 4> size{ n, b, y, x };
 
-    // Parse into output groups. A bare axis is a group of one; parentheses merge
-    // several axes into one output axis. One level of parentheses, no splits.
+    // Parse into output groups. Parentheses merge axes into one output axis;
+    // one level only, no splits.
     std::vector<std::vector<int>> groups;
     std::vector<int>              cur;
     bool                          in_paren = false;
@@ -70,14 +70,14 @@ compile_layout(std::string_view pattern,
     if (in_paren)      return err("unbalanced '('");
     if (groups.empty()) return err("empty pattern");
 
-    // Axis set is exactly {b, y, x} or {n, b, y, x}. n present means a cube axis;
-    // absent means a single image, valid only when n == 1.
+    // Axes are {b, y, x} or {n, b, y, x}. Without n the pattern is a single
+    // image, valid only when n == 1.
     const bool has_n = seen[0];
     if (!seen[1] || !seen[2] || !seen[3]) return err("pattern must contain b, y, x");
     if (!has_n && n > 1)                  return err("n > 1 needs n in the pattern");
 
-    // Flatten to output order, then element strides right to left. run ends up
-    // as the full element count, so guarding it bounds every stride and shape.
+    // Flatten to output order, then strides right to left. Guarding run bounds
+    // every stride and shape.
     std::vector<int> flat;
     for (const auto& g : groups)
         for (int a : g) flat.push_back(a);
@@ -103,8 +103,7 @@ compile_layout(std::string_view pattern,
     plan.sy = stride[2];
     plan.sx = stride[3];
 
-    // native means the output order is canonical, so the buffer is plain
-    // C-contiguous.
+    // Canonical output order means the buffer is plain C-contiguous.
     const std::vector<int> canon = has_n
         ? std::vector<int>{ 0, 1, 2, 3 }
         : std::vector<int>{ 1, 2, 3 };
