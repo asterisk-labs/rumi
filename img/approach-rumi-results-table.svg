@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img" aria-label="Benchmark table on a Sentinel-2 band. JPEG2000 1.91x, 26.4 s, 13 MB/s. OpenZL delta 1.80x, 1.1 s, 290 MB/s. OpenZL transpose 1.64x, 1.6 s, 419 MB/s. ZSTD predictor 1.53x. ZSTD 1.46x, 395 MB/s. DEFLATE 1.43x.">
+<style>
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
+</style>
+<rect width="1000" height="470" fill="#FFFFFF"/>
+
+<text class="sans" x="60" y="46" font-size="14" font-weight="600" fill="#6B7280">Sentinel-2 band, uint16, 10980 &#215; 10980, 512 px tiles</text>
+<text class="sans" x="60" y="66" font-size="12.5" fill="#9CA3AF">single core, GDAL cache off</text>
+
+<!-- header -->
+<text class="mono" x="60"  y="104" font-size="11" fill="#9CA3AF">CODEC</text>
+<text class="mono" x="600" y="104" text-anchor="end" font-size="11" fill="#9CA3AF">RATIO</text>
+<text class="mono" x="770" y="104" text-anchor="end" font-size="11" fill="#9CA3AF">WRITE s</text>
+<text class="mono" x="940" y="104" text-anchor="end" font-size="11" fill="#9CA3AF">READ MB/s</text>
+<line x1="60" y1="116" x2="940" y2="116" stroke="#E5E7EB" stroke-width="1.2"/>
+
+<!-- row 1 JPEG2000 -->
+<text class="sans" x="60"  y="151" font-size="16" font-weight="600" fill="#1A1A1A">JPEG2000 lossless</text>
+<text class="sans" x="600" y="151" text-anchor="end" font-size="16" font-weight="700" fill="#1A1A1A">1.91&#215;</text>
+<text class="sans" x="770" y="151" text-anchor="end" font-size="16" fill="#1A1A1A">26.4</text>
+<text class="sans" x="940" y="151" text-anchor="end" font-size="16" font-weight="700" fill="#FE6B37">13</text>
+
+<!-- row 2 OpenZL delta (highlight) -->
+<rect x="44" y="166" width="912" height="44" rx="8" fill="#ECFDF5"/>
+<text class="sans" x="60"  y="195" font-size="16" font-weight="700" fill="#166534">OpenZL delta + entropy</text>
+<text class="sans" x="600" y="195" text-anchor="end" font-size="16" font-weight="700" fill="#166534">1.80&#215;</text>
+<text class="sans" x="770" y="195" text-anchor="end" font-size="16" font-weight="700" fill="#16A34A">1.1</text>
+<text class="sans" x="940" y="195" text-anchor="end" font-size="16" fill="#166534">290</text>
+
+<!-- row 3 OpenZL transpose (highlight) -->
+<rect x="44" y="214" width="912" height="44" rx="8" fill="#ECFDF5"/>
+<text class="sans" x="60"  y="243" font-size="16" font-weight="700" fill="#166534">OpenZL transpose + entropy</text>
+<text class="sans" x="600" y="243" text-anchor="end" font-size="16" font-weight="700" fill="#166534">1.64&#215;</text>
+<text class="sans" x="770" y="243" text-anchor="end" font-size="16" fill="#166534">1.6</text>
+<text class="sans" x="940" y="243" text-anchor="end" font-size="16" font-weight="700" fill="#16A34A">419</text>
+
+<!-- row 4 ZSTD+pred -->
+<text class="sans" x="60"  y="287" font-size="16" font-weight="600" fill="#1A1A1A">ZSTD + predictor</text>
+<text class="sans" x="600" y="287" text-anchor="end" font-size="16" fill="#1A1A1A">1.53&#215;</text>
+<text class="sans" x="770" y="287" text-anchor="end" font-size="16" fill="#1A1A1A">9.6</text>
+<text class="sans" x="940" y="287" text-anchor="end" font-size="16" fill="#1A1A1A">284</text>
+
+<!-- row 5 ZSTD -->
+<text class="sans" x="60"  y="331" font-size="16" font-weight="600" fill="#1A1A1A">ZSTD</text>
+<text class="sans" x="600" y="331" text-anchor="end" font-size="16" fill="#1A1A1A">1.46&#215;</text>
+<text class="sans" x="770" y="331" text-anchor="end" font-size="16" fill="#1A1A1A">8.5</text>
+<text class="sans" x="940" y="331" text-anchor="end" font-size="16" fill="#1A1A1A">395</text>
+
+<!-- row 6 DEFLATE -->
+<text class="sans" x="60"  y="375" font-size="16" font-weight="600" fill="#1A1A1A">DEFLATE</text>
+<text class="sans" x="600" y="375" text-anchor="end" font-size="16" fill="#1A1A1A">1.43&#215;</text>
+<text class="sans" x="770" y="375" text-anchor="end" font-size="16" fill="#1A1A1A">15.2</text>
+<text class="sans" x="940" y="375" text-anchor="end" font-size="16" fill="#1A1A1A">244</text>
+
+<line x1="60" y1="404" x2="940" y2="404" stroke="#F1F3F5" stroke-width="1"/>
+<text class="sans" x="60" y="440" font-size="13.5" fill="#6B7280">OpenZL reaches almost the JPEG2000 ratio while writing 24&#215; faster and reading 22&#215; faster.</text>
+</svg>

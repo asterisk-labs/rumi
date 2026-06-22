@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="500" viewBox="0 0 1000 500" role="img" aria-label="The khipu data model. rumi serializes tile, cell, Image and ImageCollection. rumikuna serializes the 4D Cube and CubeCollection. A cube is Images stacked over time.">
+<style>
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
+</style>
+<rect width="1000" height="500" fill="#FFFFFF"/>
+
+<text class="sans" x="40" y="42" font-size="15" font-weight="700" fill="#1A1A1A">khipu</text>
+<text class="sans" x="98" y="42" font-size="12.5" fill="#9CA3AF">the AI4EO data model</text>
+
+<!-- panel rumi -->
+<rect x="36" y="66" width="596" height="372" rx="14" fill="#F3FDF7" stroke="#86EFAC" stroke-width="1.4"/>
+<text class="sans" x="58" y="104" font-size="22" font-weight="700" fill="#166534">rumi</text>
+<text class="sans" x="58" y="124" font-size="12" fill="#16A34A">COG layout, one Image per file</text>
+
+<rect x="64"  y="170" width="120" height="56" rx="9" fill="#F2C879" stroke="#9C6B16" stroke-width="1"/>
+<text class="sans" x="124" y="196" text-anchor="middle" font-size="15" font-weight="700" fill="#1A1A1A">tile</text>
+<text class="mono" x="124" y="214" text-anchor="middle" font-size="10.5" fill="#7C5E10">T &#215; T</text>
+
+<line x1="184" y1="198" x2="215" y2="198" stroke="#94A3B8" stroke-width="1.6"/><path d="M222 198 L215 194 L215 202 Z" fill="#94A3B8"/>
+
+<rect x="224" y="170" width="120" height="56" rx="9" fill="#F2C879" stroke="#9C6B16" stroke-width="1"/>
+<text class="sans" x="284" y="196" text-anchor="middle" font-size="15" font-weight="700" fill="#1A1A1A">cell</text>
+<text class="mono" x="284" y="214" text-anchor="middle" font-size="10.5" fill="#7C5E10">B &#215; T &#215; T</text>
+
+<line x1="344" y1="198" x2="375" y2="198" stroke="#94A3B8" stroke-width="1.6"/><path d="M382 198 L375 194 L375 202 Z" fill="#94A3B8"/>
+
+<rect x="384" y="170" width="150" height="56" rx="9" fill="#F2C879" stroke="#9C6B16" stroke-width="1"/>
+<text class="sans" x="459" y="196" text-anchor="middle" font-size="15" font-weight="700" fill="#1A1A1A">Image</text>
+<text class="mono" x="459" y="214" text-anchor="middle" font-size="10.5" fill="#7C5E10">(B, Y, X)</text>
+
+<line x1="459" y1="228" x2="459" y2="323" stroke="#94A3B8" stroke-width="1.6"/><path d="M459 330 L455 323 L463 323 Z" fill="#94A3B8"/>
+
+<rect x="350" y="330" width="216" height="56" rx="9" fill="#ECFDF5" stroke="#16A34A" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text class="sans" x="458" y="356" text-anchor="middle" font-size="15" font-weight="700" fill="#166534">ImageCollection</text>
+<text class="mono" x="458" y="374" text-anchor="middle" font-size="10.5" fill="#16A34A">set of Images</text>
+
+<!-- panel rumikuna -->
+<rect x="648" y="66" width="316" height="372" rx="14" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.4"/>
+<text class="sans" x="668" y="104" font-size="22" font-weight="700" fill="#4E04EB">rumikuna</text>
+<text class="sans" x="668" y="124" font-size="12" fill="#6D4AEF">datacube, Images over time</text>
+
+<rect x="700" y="170" width="210" height="56" rx="9" fill="#DDD6FE" stroke="#4E04EB" stroke-width="1"/>
+<text class="sans" x="805" y="196" text-anchor="middle" font-size="15" font-weight="700" fill="#2E1065">Cube</text>
+<text class="mono" x="805" y="214" text-anchor="middle" font-size="10.5" fill="#4E04EB">(N, B, Y, X)</text>
+
+<line x1="805" y1="228" x2="805" y2="323" stroke="#94A3B8" stroke-width="1.6"/><path d="M805 330 L801 323 L809 323 Z" fill="#94A3B8"/>
+
+<rect x="700" y="330" width="210" height="56" rx="9" fill="#EDE9FE" stroke="#4E04EB" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text class="sans" x="805" y="356" text-anchor="middle" font-size="15" font-weight="700" fill="#4E04EB">CubeCollection</text>
+<text class="mono" x="805" y="374" text-anchor="middle" font-size="10.5" fill="#6D4AEF">set of Cubes</text>
+
+<!-- bridge Image to Cube -->
+<text class="mono" x="616" y="186" text-anchor="middle" font-size="10.5" fill="#9CA3AF">&#215; N over time</text>
+<line x1="534" y1="198" x2="691" y2="198" stroke="#6B7280" stroke-width="1.6" stroke-dasharray="4 3"/><path d="M698 198 L691 194 L691 202 Z" fill="#6B7280"/>
+
+<!-- coverage caption -->
+<text class="sans" x="500" y="472" text-anchor="middle" font-size="14" fill="#6B7280">rumi serializes tile, cell, Image and ImageCollection. The 4D cube and its collection are rumikuna.</text>
+</svg>

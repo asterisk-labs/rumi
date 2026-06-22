@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="380" viewBox="0 0 1000 380" role="img" aria-label="rumi collapses every GeoTIFF create option to a single fixed layout: one compression, one interleave, BigTIFF and band-separate, leaving exactly one layout to optimize for">
+<style>
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
+</style>
+<rect width="1000" height="380" fill="#FFFFFF"/>
+
+<!-- category headers, each pinned to one value -->
+<text class="mono" x="250" y="94" text-anchor="middle" font-size="13" fill="#1A1A1A">COMPRESS <tspan fill="#16A34A">&#215;1</tspan></text>
+<text class="mono" x="460" y="94" text-anchor="middle" font-size="13" fill="#1A1A1A">INTERLEAVE <tspan fill="#16A34A">&#215;1</tspan></text>
+<text class="mono" x="660" y="94" text-anchor="middle" font-size="13" fill="#16A34A">ALL FIXED</text>
+
+<line x1="250" y1="106" x2="250" y2="182" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="460" y1="106" x2="460" y2="182" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="660" y1="106" x2="660" y2="182" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="4 4"/>
+
+<!-- single rail -->
+<circle cx="60" cy="200" r="6" fill="#1A1A1A"/>
+<text class="mono" x="60" y="226" text-anchor="middle" font-size="11" fill="#6B7280">one array</text>
+<line x1="66" y1="200" x2="798" y2="200" stroke="#4E04EB" stroke-width="2.5"/>
+
+<rect x="212" y="185" width="76" height="30" rx="8" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.5"/>
+<text class="mono" x="250" y="204" text-anchor="middle" font-size="12" font-weight="700" fill="#1A1A1A">OpenZL</text>
+
+<rect x="395" y="185" width="130" height="30" rx="8" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.5"/>
+<text class="mono" x="460" y="204" text-anchor="middle" font-size="12" font-weight="700" fill="#1A1A1A">tile-interleaved</text>
+
+<rect x="562" y="185" width="196" height="30" rx="8" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.5"/>
+<text class="mono" x="660" y="204" text-anchor="middle" font-size="12" font-weight="700" fill="#1A1A1A">BigTIFF &#183; band-separate</text>
+
+<!-- result -->
+<line x1="815" y1="160" x2="815" y2="250" stroke="#CBD5E1" stroke-width="1.5"/>
+<line x1="818" y1="200" x2="842" y2="200" stroke="#9CA3AF" stroke-width="1.6"/><path d="M849 200 L842 204 L842 196 Z" fill="#9CA3AF"/>
+<text class="sans" x="905" y="218" text-anchor="middle" font-size="56" font-weight="700" fill="#4E04EB">1</text>
+<text class="sans" x="905" y="246" text-anchor="middle" font-size="18" fill="#1A1A1A">layout</text>
+
+<line x1="40" y1="336" x2="965" y2="336" stroke="#E5E7EB" stroke-width="1"/>
+<text class="sans" x="40" y="362" font-size="14" fill="#6B7280">One layout means one thing to optimize for, the same across every file.</text>
+</svg>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rumi — a GeoTIFF profile for AI4EO</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="progress" id="progress"></div>
+
+  <script>
+    window.DECK = {
+      cover: "project",
+      title: "rumi",
+      subtitle: "A GeoTIFF profile for AI4EO training data.",
+      note: "rumi is the Quechua word for stone.",
+      assetBase: "../img/",
+      project_logo: "rumi-white.svg",
+      brand_logo: "asterisk_banner.svg",
+      logo_is_lockup: true
+    };
+  </script>
+
+  <div class="deck" id="deck">
+    <div id="cover-slot"></div>
+
+    <!-- 01 — THE PROBLEM -->
+    <section class="slide" data-layout="section">
+      <div class="section-kicker">01</div>
+      <h1>The problem</h1>
+      <p class="section-subtitle">
+        The same flexibility that makes GeoTIFF universal makes it expensive at large scale.
+      </p>
+      <div class="section-bar"><span></span><span></span><span></span></div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>Flexibility is the enemy of scale</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="problem-rumi-geotiff-flavours.svg" alt="">
+      </div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>Every tile needs an offset and a size</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="problem-rumi-metadata-tax.svg" alt="">
+      </div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>A codec is a monolith</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="problem-rumi-codecs-monolith.svg" alt="">
+      </div>
+    </section>
+
+    <!-- 02 — THE APPROACH -->
+    <section class="slide" data-layout="section">
+      <div class="section-kicker">02</div>
+      <h1>The approach</h1>
+      <p class="section-subtitle">
+        Still a GeoTIFF on the outside. Predictable on the inside.
+      </p>
+      <div class="section-bar"><span></span><span></span><span></span></div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>One layout, fixed by the spec.</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="approach-rumi-one-layout.svg" alt="">
+      </div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>The index is a prefix sum</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="approach-rumi-index.svg" alt="">
+      </div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>Gigabytes of index become megabytes</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="approach-rumi-metadata-tax.svg" alt="">
+      </div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>Compression is a graph, not a monolith</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="approach-rumi-openzl.svg" alt="">
+      </div>
+    </section>
+
+    <!-- 03 — BENCHMARK -->
+    <section class="slide" data-layout="section">
+      <div class="section-kicker">03</div>
+      <h1>Benchmark</h1>
+      <p class="section-subtitle">
+        Measured on a real Sentinel-2 band — almost the best ratio, a fraction of the cost.
+      </p>
+      <div class="section-bar"><span></span><span></span><span></span></div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>Benchmark I</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="approach-rumi-benchmark.svg" alt="">
+      </div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>Benchmark II</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container compact-figure">
+        <img data-src="approach-rumi-results-table.svg" alt="">
+      </div>
+      <a class="fig-link" href="https://colab.research.google.com/drive/1wK6qybf5cogi4z842Mja2oeB8PR60LPz?usp=sharing" target="_blank" rel="noopener">
+        reproduce every number on Google Colab
+      </a>
+    </section>
+
+    <!-- 04 — THE DATA MODEL -->
+    <section class="slide" data-layout="section">
+      <div class="section-kicker">04</div>
+      <h1>The data model</h1>
+      <p class="section-subtitle">
+        rumi is one stone in a larger structure.
+      </p>
+      <div class="section-bar"><span></span><span></span><span></span></div>
+    </section>
+
+    <section class="slide" data-layout="figure">
+      <div class="slide-header">
+        <h2>rumi is part of the khipu data model</h2>
+        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+      <div class="fig-container">
+        <img data-src="approach-khipu-data-model.svg" alt="">
+      </div>
+    </section>
+
+    <!-- CLOSING -->
+    <section class="slide closing" data-layout="figure">
+      <div class="closing-inner">
+        <img class="closing-logo" data-src="asterisk_banner.svg" alt="Asterisk">
+      </div>
+    </section>
+  </div>
+
+  <div class="nav">
+    <button id="btn-prev" aria-label="Previous slide">&#8592;</button>
+    <span id="slide-num"></span>
+    <button id="btn-next" aria-label="Next slide">&#8594;</button>
+  </div>
+</body>
+</html>

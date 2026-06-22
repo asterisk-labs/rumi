@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img" aria-label="OpenZL separates compression from serialization. The compression graph is described inside the frame, so a single universal decoder reads any graph; you can compose, train and retrain new graphs without ever shipping a new decoder.">
+<style>
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
+</style>
+<rect width="1000" height="470" fill="#FFFFFF"/>
+
+<!-- left: compression vs serialization -->
+<text class="sans" x="70" y="156" font-size="21" font-weight="700" fill="#1A1A1A">OpenZL separates</text>
+<text class="sans" x="70" y="182" font-size="21" font-weight="700" fill="#1A1A1A">compression from</text>
+<text class="sans" x="70" y="208" font-size="21" font-weight="700" fill="#1A1A1A">serialization.</text>
+<text class="sans" x="70" y="246" font-size="14" fill="#374151">Serialize in Zarr, GeoTIFF,</text>
+<text class="sans" x="70" y="266" font-size="14" fill="#374151">or anything. The container</text>
+<text class="sans" x="70" y="286" font-size="14" fill="#374151">only stores the bytes.</text>
+<text class="sans" x="70" y="320" font-size="12.5" fill="#9CA3AF">Compression is a write-time</text>
+<text class="sans" x="70" y="340" font-size="12.5" fill="#9CA3AF">choice, not the format's.</text>
+
+<!-- right: the graph -->
+<rect x="360" y="190" width="40" height="40" rx="5" fill="#E5E7EB" stroke="#CBD5E1"/>
+<text class="sans" x="380" y="247" text-anchor="middle" font-size="10.5" fill="#9CA3AF">tile</text>
+<line x1="402" y1="210" x2="423" y2="210" stroke="#94A3B8" stroke-width="1.6"/><path d="M430 210 L423 214 L423 206 Z" fill="#94A3B8"/>
+
+<rect x="430" y="195" width="72" height="30" rx="8" fill="#E5E7EB"/><text class="mono" x="466" y="214" text-anchor="middle" font-size="11.5" fill="#475569">stream</text>
+<line x1="504" y1="210" x2="533" y2="210" stroke="#94A3B8" stroke-width="1.6"/><path d="M540 210 L533 214 L533 206 Z" fill="#94A3B8"/>
+
+<rect x="540" y="195" width="72" height="30" rx="8" fill="#4E04EB"/><text class="mono" x="576" y="214" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FFFFFF">split</text>
+
+<line x1="614" y1="208" x2="648" y2="176" stroke="#B6BEC8" stroke-width="1.5"/>
+<line x1="614" y1="212" x2="648" y2="244" stroke="#B6BEC8" stroke-width="1.5"/>
+<rect x="650" y="159" width="72" height="30" rx="8" fill="#F8CE00"/><text class="mono" x="686" y="178" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1A1A1A">delta</text>
+<rect x="650" y="231" width="72" height="30" rx="8" fill="#FE6B37"/><text class="mono" x="686" y="250" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FFFFFF">transpose</text>
+
+<line x1="724" y1="176" x2="758" y2="208" stroke="#B6BEC8" stroke-width="1.5"/>
+<line x1="724" y1="244" x2="758" y2="212" stroke="#B6BEC8" stroke-width="1.5"/>
+<rect x="760" y="195" width="72" height="30" rx="8" fill="#16A34A"/><text class="mono" x="796" y="214" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FFFFFF">FSE</text>
+<line x1="834" y1="210" x2="853" y2="210" stroke="#94A3B8" stroke-width="1.6"/><path d="M860 210 L853 214 L853 206 Z" fill="#94A3B8"/>
+
+<rect x="860" y="195" width="72" height="30" rx="8" fill="#1A1A1A"/><text class="mono" x="896" y="214" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FFFFFF">frame</text>
+<text class="sans" x="896" y="182" text-anchor="middle" font-size="10.5" fill="#9CA3AF">the graph spec rides inside the frame</text>
+
+<line x1="896" y1="227" x2="896" y2="313" stroke="#B6BEC8" stroke-width="1.5"/><path d="M896 315 L892 308 L900 308 Z" fill="#B6BEC8"/>
+<rect x="796" y="315" width="200" height="46" rx="10" fill="#1A1A1A"/>
+<text class="sans" x="896" y="337" text-anchor="middle" font-size="13.5" font-weight="700" fill="#FFFFFF">universal decoder</text>
+<text class="sans" x="896" y="353" text-anchor="middle" font-size="10.5" fill="#9CA3AF">reads any graph, no plugins</text>
+<text class="sans" x="896" y="388" text-anchor="middle" font-size="11" font-weight="700" fill="#166534">compose, train, retrain graphs</text>
+<text class="sans" x="896" y="406" text-anchor="middle" font-size="10.5" fill="#9CA3AF">without ever shipping a new decoder</text>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="440" viewBox="0 0 1000 440" role="img" aria-label="Per-file metadata: a kerchunk JSON is about 3.1 KB and a TIFF IFD about 1.7 KB, which across a million files runs to gigabytes">
+<style>
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
+</style>
+<rect width="1000" height="440" fill="#FFFFFF"/>
+<text class="sans" x="40" y="48" font-size="15" font-weight="600" fill="#6B7280">Metadata for one file of 64 tiles</text>
+<text class="sans" x="40" y="68" font-size="12.5" fill="#9CA3AF">512 &#215; 512 uint16, and 1,000,000 such files make the 34 TB dataset</text>
+<text class="mono" x="300" y="108" font-size="11" fill="#9CA3AF">PER FILE</text>
+<text class="mono" x="965" y="108" text-anchor="end" font-size="11" fill="#9CA3AF">&#215; 1,000,000 FILES</text>
+
+<text class="sans" x="40" y="184" font-size="23" font-weight="600" fill="#1A1A1A">kerchunk JSON</text>
+<text class="mono" x="40" y="207" font-size="12.5" fill="#9CA3AF">64 JSON refs (key, offset, size)</text>
+<rect x="300" y="161" width="420.0" height="48" rx="8" fill="#FE6B37"/>
+<text class="sans" x="734.0" y="193" font-size="22" font-weight="700" fill="#FE6B37">~3.1 KB</text>
+<text class="sans" x="965" y="193" text-anchor="end" font-size="21" font-weight="600" fill="#1A1A1A">~3.1 GB</text>
+
+<text class="sans" x="40" y="299" font-size="23" font-weight="600" fill="#1A1A1A">TIFF IFD</text>
+<text class="mono" x="40" y="322" font-size="12.5" fill="#9CA3AF">tags, geo keys, two tile arrays</text>
+<rect x="300" y="276" width="230.0" height="48" rx="8" fill="#94A3B8"/>
+<text class="sans" x="544.0" y="308" font-size="22" font-weight="700" fill="#475569">~1.7 KB</text>
+<text class="sans" x="965" y="308" text-anchor="end" font-size="21" font-weight="600" fill="#1A1A1A">~1.7 GB</text>
+
+<line x1="40" y1="382" x2="965" y2="382" stroke="#E5E7EB" stroke-width="1"/>
+<text class="sans" x="40" y="410" font-size="14" fill="#6B7280">Each file already carries kilobytes of index. Across a million files, that is gigabytes before a pixel is read.</text>
+</svg>
