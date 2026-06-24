@@ -201,6 +201,13 @@ std::vector<int> resolve_n_index(const int* n_index, size_t n_n, size_t total)
     return all;
 }
 
+// Standard message when a read fails because the reader lacks an experimental
+// codec. Used on the threaded path, where the worker's CPLError does not reach
+// the caller's handler, so g_last_error is empty.
+const char* k_unsupported_msg =
+    "file uses an experimental rumi codec this reader does not have, "
+    "update rumi to read it";
+
 }  // namespace
 
 
@@ -321,8 +328,12 @@ rumi_read(const char* path, const rumi_spec* spec,
                                    *plan, static_cast<std::byte*>(dst),
                                    num_threads);
         if (!r) {
-            if (g_last_error.empty()) set_error(r.error());
-            return RUMI_ERR_IO;
+            const rumi_status st = rumi::take_read_status();
+            if (g_last_error.empty()) {
+                set_error(st == RUMI_ERR_UNSUPPORTED ? k_unsupported_msg
+                                                     : r.error().c_str());
+            }
+            return st;
         }
         return RUMI_OK;
     });
@@ -400,8 +411,12 @@ rumi_read_stack(const char* const* paths,
             y_off, y_size, x_off, x_size,
             *plan, static_cast<std::byte*>(dst), num_threads);
         if (!r) {
-            if (g_last_error.empty()) set_error(r.error());
-            return RUMI_ERR_IO;
+            const rumi_status st = rumi::take_read_status();
+            if (g_last_error.empty()) {
+                set_error(st == RUMI_ERR_UNSUPPORTED ? k_unsupported_msg
+                                                     : r.error().c_str());
+            }
+            return st;
         }
         return RUMI_OK;
     });
@@ -430,7 +445,7 @@ rumi_geokeys(const char* srs, int pixel_is_point,
         }
 
         // Copy each payload into a caller-owned buffer. Assign the out-params
-        // only after all three succeed, so a failure leaves them untouched.
+        // only after succeed, so a failure leaves them untouched.
         unsigned char* bufs[3] = {nullptr, nullptr, nullptr};
         const std::vector<std::byte>* src[3] = {
             &result->directory, &result->double_params, &result->ascii_params};

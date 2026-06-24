@@ -164,12 +164,16 @@ public:
     explicit Executor(ThreadPool* pool) noexcept;
     [[nodiscard]] bool run(const Plan& plan) const;
 
+    // Status of the most recent run. RUMI_OK when run() returned true.
+    [[nodiscard]] rumi_status status() const noexcept;
+
     // First failing task's message after a run that returned false, else empty.
     [[nodiscard]] const std::string& error() const noexcept { return error_; }
 
 private:
     ThreadPool*         pool_;
     mutable std::string error_;
+    mutable rumi_status status_{RUMI_OK};
 };
 
 [[nodiscard]] RUMI_API TileSpec make_tile_spec(const Header& h) noexcept;
@@ -210,6 +214,11 @@ compile_layout(std::string_view pattern,
 
 
 // Stateless read
+
+// Refines the status of the most recent read_window or read_stack call on the
+// calling thread, then resets it. Lets the C ABI return a precise rumi_status
+// without changing the read_window error type. Defaults to RUMI_ERR_IO.
+[[nodiscard]] rumi_status take_read_status() noexcept;
 
 // Opens path via VSI, plans the window, runs it, closes. bands are 1-based.
 // dst must be aligned to bytes_per_sample.

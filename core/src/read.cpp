@@ -25,6 +25,10 @@ struct FileCloser {
 };
 using FilePtr = std::unique_ptr<VSILFILE, FileCloser>;
 
+// Set by read_window on the calling thread, read by the C ABI after the call
+// returns.
+thread_local rumi_status g_read_status = RUMI_ERR_IO;
+
 std::expected<void, std::string>
 validate_request(const Header& h, std::span<const int> bands,
                  int y_off, int y_size, int x_off, int x_size)
@@ -51,6 +55,14 @@ int clamp_threads(int n) noexcept
 }
 
 }  // namespace
+
+
+rumi_status take_read_status() noexcept
+{
+    const rumi_status s = g_read_status;
+    g_read_status = RUMI_ERR_IO;
+    return s;
+}
 
 
 // File reader
@@ -170,6 +182,7 @@ read_window(const char* path, const Header& h,
             const LayoutPlan& layout, std::byte* dst,
             int num_threads)
 {
+    g_read_status = RUMI_ERR_IO;
     if (!path) return err("path is null");
     if (auto ok = validate_request(h, bands, y_off, y_size, x_off, x_size); !ok) {
         return ok;
@@ -196,8 +209,10 @@ read_window(const char* path, const Header& h,
 
     Executor exec(pool);
     if (!exec.run(plan)) {
+        g_read_status = exec.status();
         return err(exec.error().empty() ? std::string("read failed") : exec.error());
     }
+    g_read_status = RUMI_OK;
     return {};
 }
 
@@ -211,6 +226,7 @@ read_stack(std::span<const char* const> paths,
            const LayoutPlan& layout, std::byte* dst,
            int num_threads)
 {
+    g_read_status = RUMI_ERR_IO;
     if (paths.empty() || paths.size() != headers.size()) {
         return err("paths and headers must be non-empty and the same length");
     }

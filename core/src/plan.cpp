@@ -1,6 +1,8 @@
 #include "rumi/rumi.hpp"
 #include "rumi/thread_pool.hpp"
 
+#include "register_experimental.h"
+
 #include "cpl_error.h"
 #include "cpl_vsi_virtual.h"
 
@@ -9,6 +11,7 @@
 #include "openzl/zl_version.h"       // ZL_MAX_FORMAT_VERSION
 
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include <vector>
@@ -23,7 +26,14 @@ struct WorkerState {
     std::vector<std::byte> compressed;
     std::vector<std::byte> scratch;
 
-    WorkerState() = default;
+    WorkerState() {
+        // a fresh dctx only fails registration on allocation, drop it so
+        // execute_task reports a clean context error
+        if (dctx && ZL_isError(rumi_register_experimental_decoders(dctx))) {
+            ZL_DCtx_free(dctx);
+            dctx = nullptr;
+        }
+    }
     ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }
 
     WorkerState(const WorkerState&)            = delete;
@@ -68,13 +78,28 @@ void copy_rect(const TileTask& t, const TileSpec& spec,
     }
 }
 
-bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
+// Detects the engine's missing custom codec message and pulls out the CTid.
+bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
+{
+    if (!ctx) return false;
+    static const char marker[] = "Custom decoder transform ";
+    const char* p = std::strstr(ctx, marker);
+    if (!p) return false;
+    p += sizeof(marker) - 1;
+    char* end = nullptr;
+    const unsigned long id = std::strtoul(p, &end, 10);
+    if (end == p) return false;
+    *ctid = id;
+    return true;
+}
+
+rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
 {
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
         CPLError(CE_Failure, CPLE_OutOfMemory,
                  "rumi: could not allocate OpenZL decompression context");
-        return false;
+        return RUMI_ERR_OOM;
     }
 
     if (ws.compressed.size() < t.compressed_size) {
@@ -83,7 +108,7 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
         } catch (const std::bad_alloc&) {
             CPLError(CE_Failure, CPLE_OutOfMemory,
                      "rumi: out of memory growing compressed scratch");
-            return false;
+            return RUMI_ERR_OOM;
         }
     }
 
@@ -96,7 +121,7 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
                  static_cast<GUIntBig>(t.offset),
                  static_cast<unsigned long long>(got),
                  static_cast<unsigned long long>(t.compressed_size));
-        return false;
+        return RUMI_ERR_IO;
     }
 
     // Full tile decodes straight into the output, otherwise into scratch for
@@ -110,7 +135,7 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
             } catch (const std::bad_alloc&) {
                 CPLError(CE_Failure, CPLE_OutOfMemory,
                          "rumi: out of memory growing tile scratch");
-                return false;
+                return RUMI_ERR_OOM;
             }
         }
         tile = ws.scratch.data();
@@ -124,10 +149,17 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
         ws.compressed.data(), t.compressed_size);
 
     if (ZL_isError(rep)) {
+        const char* ctx = ZL_DCtx_getErrorContextString(ws.dctx, rep);
+        unsigned long ctid = 0;
+        if (missing_custom_codec(ctx, &ctid)) {
+            CPLError(CE_Failure, CPLE_NotSupported,
+                     "rumi: file uses an experimental rumi codec (CTid %lu) "
+                     "not present in this reader, update rumi to read it", ctid);
+            return RUMI_ERR_UNSUPPORTED;
+        }
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "rumi: OpenZL decode failed: %s",
-                 ZL_DCtx_getErrorContextString(ws.dctx, rep));
-        return false;
+                 "rumi: OpenZL decode failed: %s", ctx);
+        return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
         info.fixedWidth != spec.bytes_per_sample ||
@@ -140,11 +172,11 @@ bool execute_task(const TileTask& t, const TileSpec& spec) noexcept
                  static_cast<unsigned long long>(info.decompressedByteSize),
                  static_cast<unsigned>(spec.bytes_per_sample),
                  static_cast<unsigned long long>(spec.tile_bytes));
-        return false;
+        return RUMI_ERR_DECODE;
     }
 
     if (!t.direct) copy_rect(t, spec, tile);
-    return true;
+    return RUMI_OK;
 }
 
 }  // namespace
@@ -160,28 +192,38 @@ Executor::Executor(ThreadPool* pool) noexcept : pool_(pool) {}
 
 bool Executor::run(const Plan& plan) const
 {
+    status_ = RUMI_OK;
+    error_.clear();
     if (plan.tasks.empty()) return true;
 
-    std::atomic<bool> ok{true};
+    std::atomic<int> st{RUMI_OK};
+
+    const auto run_one = [&st, &plan](const TileTask& t) {
+        if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
+        const rumi_status r = execute_task(t, plan.spec);
+        if (r != RUMI_OK) {
+            int expected = RUMI_OK;
+            st.compare_exchange_strong(expected, r, std::memory_order_relaxed);
+        }
+    };
 
     if (pool_ != nullptr && plan.tasks.size() > 1) {
         ThreadPool::Batch batch(*pool_);
         for (const TileTask& t : plan.tasks) {
-            batch.submit([&t, &plan, &ok]() {
-                if (!ok.load(std::memory_order_relaxed)) return;
-                if (!execute_task(t, plan.spec)) {
-                    ok.store(false, std::memory_order_relaxed);
-                }
-            });
+            batch.submit([&run_one, &t]() { run_one(t); });
         }
         batch.wait();
     } else {
         for (const TileTask& t : plan.tasks) {
-            if (!execute_task(t, plan.spec)) { ok.store(false); break; }
+            run_one(t);
+            if (st.load(std::memory_order_relaxed) != RUMI_OK) break;
         }
     }
 
-    return ok.load();
+    status_ = static_cast<rumi_status>(st.load(std::memory_order_relaxed));
+    return status_ == RUMI_OK;
 }
+
+rumi_status Executor::status() const noexcept { return status_; }
 
 }  // namespace rumi

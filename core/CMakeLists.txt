@@ -31,6 +31,13 @@ endif()
 set(CMAKE_CXX_STANDARD              23)
 set(CMAKE_CXX_STANDARD_REQUIRED     ON)
 set(CMAKE_CXX_EXTENSIONS            OFF)
+
+# The codec bindings, kernels and the registration shim are C and rely on
+# compound literals in designated initializers, which is C11.
+set(CMAKE_C_STANDARD                11)
+set(CMAKE_C_STANDARD_REQUIRED       ON)
+set(CMAKE_C_EXTENSIONS              OFF)
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Hide everything by default. The C++ surface is re-exported with RUMI_API and
@@ -67,7 +74,8 @@ else()
     set(RUMI_OPENZL_TARGET openzl)               # the OpenZL:: alias only exists on install
 endif()
 
-# predictor.cpp is gone, OpenZL owns all modeling internally.
+# Experimental rumi codecs. register_experimental.c wires the decoders into
+# OpenZL, kernels.c re-exports the kernels under rumi_ names for cffi.
 set(RUMI_SOURCES
     src/parser.cpp
     src/builder.cpp
@@ -77,6 +85,18 @@ set(RUMI_SOURCES
     src/pattern.cpp
     src/image.cpp
     src/capi.cpp
+
+    src/register_experimental.c
+    src/kernels.c
+    src/delta_w/decode_delta_w_binding.c
+    src/delta_w/decode_delta_w_kernel.c
+    src/delta_w/encode_delta_w_kernel.c
+    src/delta_n/decode_delta_n_binding.c
+    src/delta_n/decode_delta_n_kernel.c
+    src/delta_n/encode_delta_n_kernel.c
+    src/planar/decode_planar_binding.c
+    src/planar/decode_planar_kernel.c
+    src/planar/encode_planar_kernel.c
 )
 
 # Compile and link settings shared by every target.
@@ -85,13 +105,19 @@ target_include_directories(rumi_config INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+# The registration shim, kernel wrapper and codec bindings include each other
+# by folder relative path (e.g. "delta_w/graph_delta_w.h"), so src is on the
+# include path.
+target_include_directories(rumi_config INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
 target_link_libraries(rumi_config INTERFACE
     GDAL::GDAL
     ${RUMI_OPENZL_TARGET}
 )
 target_compile_options(rumi_config INTERFACE
-    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
+    $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>>
+    $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->>
 )
 
 # A sanitizer applies to every target through this interface: lib and plugin.
