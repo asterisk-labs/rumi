@@ -87,6 +87,19 @@ rumi_geokeys(const char* srs, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
              unsigned char** out_dbl,   size_t* out_dbl_size,
              unsigned char** out_ascii, size_t* out_ascii_size);
+
+void rumi_delta_w_encode(void* dst, const void* src,
+                         size_t width, size_t nb_elts, size_t elt_width);
+void rumi_delta_w_decode(void* dst, const void* src,
+                         size_t width, size_t nb_elts, size_t elt_width);
+void rumi_delta_n_encode(void* dst, const void* src,
+                         size_t width, size_t nb_elts, size_t elt_width);
+void rumi_delta_n_decode(void* dst, const void* src,
+                         size_t width, size_t nb_elts, size_t elt_width);
+void rumi_planar_encode(void* dst, const void* src,
+                        size_t width, size_t nb_elts, size_t elt_width);
+void rumi_planar_decode(void* dst, const void* src,
+                        size_t width, size_t nb_elts, size_t elt_width);
 """
 
 

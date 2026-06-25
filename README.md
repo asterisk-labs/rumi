@@ -12,9 +12,9 @@
 
 A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. Deep learning reads millions of chips per epoch, and with loose layouts a reader has to work out each file before it can touch the pixels.
 
-rumi solves that with one layout. A rumi file is always **BigTIFF, tiled, band separate, and tile interleaved**. Every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. There are no predictors, no overviews, and nothing left to guess about. The full rules live in the [specification](SPEC.md).
+rumi solves that by supporting only one layout. A rumi file is always **BigTIFF, tiled, band separate, and tile interleaved**. Every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. There are no overviews and nothing left to guess about. The full rules live in the [specification](SPEC.md).
 
-Because the layout is fixed, almost everything about a rumi file is predictable. The rest is a small header, and a million of those fit in memory, so a whole dataset stays indexed and reads go straight to the pixels.
+Because the layout is fixed, almost everything about a rumi file is predictable. The metadata that is left fits in a tiny self-contained space, so a million files stay indexed in memory and reads go straight to the pixels.
 
 <p align="center">
   <img src="img/rumi-index.svg" alt="rumi index" width="720"/>
@@ -39,7 +39,7 @@ g = zl.nodes.ConvertNumToSerialLE()(c, g)
 g = zl.nodes.DeltaInt()(c, g)
 c.select_starting_graph(g)
 
-# write: tile the array, compress each chunk, assemble
+# tile the array, compress each chunk, assemble
 chunks, layout = rumi.tile(arr, tile=512)
 cctx = zl.CCtx()
 cctx.ref_compressor(c)
@@ -77,6 +77,30 @@ rumi.write("scene.tif", frames, layout)
 ```
 
 `write` takes the compressed frames in tile order plus the `layout` and assembles the rumi file. The OpenZL decoder is universal, so a reader needs nothing about which graph you used.
+
+
+## Codecs
+
+On top of the OpenZL built-ins, rumi ships a few custom codecs you drop straight into your graph. They chain like any node and run inside the OpenZL frame, not the container. The lossless ones live under `rumi.experimental`, the near lossless ones under `rumi.lossy`.
+
+| codec | namespace | what it does |
+|---|---|---|
+| `PlanarInt` | `rumi.experimental` | predicts each pixel from W plus N minus NW |
+| `DeltaWInt` | `rumi.experimental` | horizontal delta |
+| `DeltaNInt` | `rumi.experimental` | vertical delta |
+| `quant_block` | `rumi.lossy` | near lossless, every pixel within `max_error` of the original |
+
+The experimental predictors decorrelate a tile before the entropy stage and stay scannable on read.
+
+```python
+c = zl.Compressor()
+g = zl.graphs.Entropy()
+g = zl.nodes.Zigzag()(c, g)
+g = rumi.experimental.PlanarInt(width=512)(c, g)
+c.select_starting_graph(g)
+```
+
+A frame built with a lossy codec is no longer bit exact. It keeps the `rumi.lossy.` prefix as a warning, and only a reader that holds the codec, like rumi, reconstructs it.
 
 ## Index
 

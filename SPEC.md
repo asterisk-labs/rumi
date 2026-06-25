@@ -1,9 +1,8 @@
 # rumi
 
 - Specification 0.1.0
-- Binary format
 - Status Draft
-- Date 2026-06-15
+- Date 2026-06-25
 - License GPLv3
 
 rumi is a profile for GeoTIFF files paired with a compact binary header that lets a reader locate every tile without parsing the TIFF IFD. Tile payloads are compressed with OpenZL.
@@ -79,7 +78,33 @@ For a single-sample image the three orderings coincide.
 
 Each tile payload is one self-contained OpenZL frame written at OpenZL frame format version `<OPENZL_FORMAT_VERSION>`. A writer MUST pin this version, not the latest available, so any reader built for it can decode every tile.
 
-A writer presents each tile to OpenZL as a typed numeric stream of the element type given by `sample_format` and `bits_per_sample`. OpenZL performs its own modelling and entropy coding and embeds the decode recipe in the frame. The OpenZL decoder reconstructs the tile from the frame alone. rumi stores no predictor and no codec metadata, because the frame is self-describing. This is why `Predictor` is fixed at `1`.
+A writer presents each tile to OpenZL as a typed numeric stream of the element type given by `sample_format` and `bits_per_sample`. OpenZL performs its own modelling and entropy coding and embeds the decode recipe in the frame. The OpenZL decoder reconstructs the tile from the frame, given the codecs the frame references. rumi stores no predictor and no codec metadata, because the frame carries its own decode recipe, including any custom codec parameters. This is why `Predictor` is fixed at `1`. Which codecs a frame may use, and the contract for lossless and lossy codecs, is defined in Codecs.
+
+## Codecs
+
+A tile frame is built from codecs. Two kinds exist.
+
+Built-in OpenZL codecs need no registration. A frame that uses only built-in codecs decodes with any OpenZL reader.
+
+rumi custom codecs do not ship with OpenZL. rumi registers them at runtime. They occupy a reserved custom transform id range, `0x72D700` to `0x72D7FF`. A frame that uses a rumi custom codec carries that codec's CTid, and the OpenZL decoder dispatches on the CTid alone. A reader MUST have the referenced custom codec registered to decode such a frame. 
+
+rumi custom codecs fall in two namespaces, split by reconstruction contract and by sub-range so a reader can tell them apart from the CTid alone.
+
+- `rumi.experimental.*`, range `0x72D700` to `0x72D77F`, are lossless. They satisfy `decode(encode(x)) = x`. A frame that uses only built-in and experimental codecs reconstructs the tile exactly.
+- `rumi.lossy.*`, range `0x72D780` to `0x72D7FF`, are near lossless. They do not satisfy `decode(encode(x)) = x`. A frame that uses a lossy codec is not bit-exact, and the reconstruction error is bounded by the codec's parameters carried in the frame. A reader identifies a lossy frame from the head codec CTid without decoding the payload.
+
+Custom codec parameters, such as a tile width or a quantization step, travel in the OpenZL codec header inside the frame. rumi therefore stores no codec metadata in the blob, and the binary format is unchanged by the use of custom codecs.
+
+The currently assigned CTids are listed below.
+
+| CTid | codec | namespace | reconstruction |
+|---|---|---|---|
+| 0x72D701 | delta_w | rumi.experimental | exact |
+| 0x72D702 | delta_n | rumi.experimental | exact |
+| 0x72D703 | planar | rumi.experimental | exact |
+| 0x72D780 | quant_block | rumi.lossy | bounded per pixel error |
+
+A reader that targets only built-in OpenZL is a valid rumi reader for files that use built-in codecs only. Decoding files that use rumi custom codecs requires a reader that registers them.
 
 ## Header blob
 
@@ -127,7 +152,7 @@ Identifies the blob as a rumi header. The value is `0x333C333C`, the little-endi
 
 ### version
 
-The binary format version. The current value is `1`. A reader that implements only binary format 1 MUST reject any other version.
+The binary format version. The current value is `1`. A reader that implements only binary format 1 MUST reject any other version. Custom codecs do not change this version, because they add no field to the blob.
 
 ### image_width and image_length
 
