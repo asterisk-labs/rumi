@@ -2,6 +2,7 @@
 #include "rumi/thread_pool.hpp"
 
 #include "register_experimental.h"
+#include "register_lossy.h"
 
 #include "cpl_error.h"
 #include "cpl_vsi_virtual.h"
@@ -28,8 +29,11 @@ struct WorkerState {
 
     WorkerState() {
         // a fresh dctx only fails registration on allocation, drop it so
-        // execute_task reports a clean context error
-        if (dctx && ZL_isError(rumi_register_experimental_decoders(dctx))) {
+        // execute_task reports a clean context error. Both the experimental and
+        // the lossy decoders are registered, a frame can use either.
+        if (dctx &&
+            (ZL_isError(rumi_register_experimental_decoders(dctx)) ||
+             ZL_isError(rumi_register_lossy_decoders(dctx)))) {
             ZL_DCtx_free(dctx);
             dctx = nullptr;
         }

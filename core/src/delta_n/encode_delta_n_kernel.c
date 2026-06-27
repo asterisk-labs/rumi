@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-#define DELTAN_FWD(T)                                                        \
+#define DELTA_N_FWD(T)                                                       \
     do {                                                                     \
         T* d       = (T*)dst;                                                \
         const T* s = (const T*)src;                                          \
@@ -21,7 +21,7 @@
             d[c] = s[c];                                                     \
     } while (0)
 
-void DELTAN_encode(
+void delta_n_encode(
         void* dst,
         const void* src,
         size_t width,
@@ -32,12 +32,12 @@ void DELTAN_encode(
         return;
     const size_t w = (width == 0 || width > nbElts) ? nbElts : width;
     switch (eltWidth) {
-        case 1: DELTAN_FWD(uint8_t); break;
-        case 2: DELTAN_FWD(uint16_t); break;
-        case 4: DELTAN_FWD(uint32_t); break;
-        case 8: DELTAN_FWD(uint64_t); break;
+        case 1: DELTA_N_FWD(uint8_t); break;
+        case 2: DELTA_N_FWD(uint16_t); break;
+        case 4: DELTA_N_FWD(uint32_t); break;
+        case 8: DELTA_N_FWD(uint64_t); break;
         default: break;
     }
 }
 
-#undef DELTAN_FWD
+#undef DELTA_N_FWD

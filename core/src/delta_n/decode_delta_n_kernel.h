@@ -7,7 +7,7 @@
 // @nbElts total, @eltWidth bytes per sample. The first row is absolute, every
 // later row is the row above plus the residual. No scan, a plain vector add
 // across the row, all columns independent. @dst may alias @src.
-void DELTAN_decode(
+void delta_n_decode(
         void* dst,
         const void* src,
         size_t width,

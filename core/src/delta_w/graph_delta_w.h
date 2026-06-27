@@ -7,14 +7,14 @@
 #include "openzl/zl_data.h" // ZL_Type_*, ZL_STREAMTYPELIST
 
 // Unique codec id, in the rumi experimental range 0x72D7xx
-#define DELTAW_CTID 0x72D701
+#define DELTA_W_CTID 0x72D701
 
 // Local int param carrying the tile row width, set by the rumi graph builder
-#define DELTAW_PARAM_WIDTH 1
+#define DELTA_W_PARAM_WIDTH 1
 
-#define DELTAW_GRAPH                                          \
+#define DELTA_W_GRAPH                                         \
     {                                                         \
-        .CTid           = DELTAW_CTID,                        \
+        .CTid           = DELTA_W_CTID,                       \
         .inStreamType   = ZL_Type_numeric,                   \
         .outStreamTypes = ZL_STREAMTYPELIST(ZL_Type_numeric) \
     }

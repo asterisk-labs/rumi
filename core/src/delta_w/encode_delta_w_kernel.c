@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-#define DELTAW_FWD(T)                                                        \
+#define DELTA_W_FWD(T)                                                       \
     do {                                                                     \
         T* d       = (T*)dst;                                                \
         const T* s = (const T*)src;                                          \
@@ -16,7 +16,7 @@
         }                                                                    \
     } while (0)
 
-void DELTAW_encode(
+void delta_w_encode(
         void* dst,
         const void* src,
         size_t width,
@@ -27,12 +27,12 @@ void DELTAW_encode(
         return;
     const size_t w = (width == 0 || width > nbElts) ? nbElts : width;
     switch (eltWidth) {
-        case 1: DELTAW_FWD(uint8_t); break;
-        case 2: DELTAW_FWD(uint16_t); break;
-        case 4: DELTAW_FWD(uint32_t); break;
-        case 8: DELTAW_FWD(uint64_t); break;
+        case 1: DELTA_W_FWD(uint8_t); break;
+        case 2: DELTA_W_FWD(uint16_t); break;
+        case 4: DELTA_W_FWD(uint32_t); break;
+        case 8: DELTA_W_FWD(uint64_t); break;
         default: break;
     }
 }
 
-#undef DELTAW_FWD
+#undef DELTA_W_FWD

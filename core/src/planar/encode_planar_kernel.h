@@ -7,7 +7,7 @@
 // W + N - NW with edge neighbors taken as zero, so row zero becomes the
 // horizontal predictor and column zero becomes the vertical one. @dst must
 // not alias @src.
-void PLANAR_encode(
+void planar_encode(
         void* dst,
         const void* src,
         size_t width,

@@ -100,6 +100,10 @@ void rumi_planar_encode(void* dst, const void* src,
                         size_t width, size_t nb_elts, size_t elt_width);
 void rumi_planar_decode(void* dst, const void* src,
                         size_t width, size_t nb_elts, size_t elt_width);
+void rumi_quant_linear_encode(void* dst, const void* src,
+                              double scale, int dtype, size_t nb_elts);
+void rumi_quant_linear_decode(void* dst, const void* src,
+                              double scale, int dtype, size_t nb_elts);
 """
 
 

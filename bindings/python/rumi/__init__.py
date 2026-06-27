@@ -16,7 +16,9 @@ __all__ = [
     "index_file", "parse", "read", "tile", "write",
 ]
 
+
+# experimental and lossy pull in openzl, so they load on first access only.
 def __getattr__(name):
-    if name == "experimental":
-        return importlib.import_module(f"{__name__}.experimental")
+    if name in ("experimental", "lossy"):
+        return importlib.import_module(f"{__name__}.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

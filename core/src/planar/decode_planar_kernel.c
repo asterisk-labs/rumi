@@ -187,7 +187,7 @@ PLANAR_PRE(uint64_t, pre64)
         }                                                                    \
     } while (0)
 
-void PLANAR_decode(
+void planar_decode(
         void* dst,
         const void* src,
         size_t width,

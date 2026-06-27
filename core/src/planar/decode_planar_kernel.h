@@ -8,7 +8,7 @@
 // degrades to the horizontal predictor. Each later row folds N and NW into the
 // residual with one vector pass, then a prefix sum resolves the W chain.
 // @dst may alias @src.
-void PLANAR_decode(
+void planar_decode(
         void* dst,
         const void* src,
         size_t width,

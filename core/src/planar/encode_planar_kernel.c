@@ -21,7 +21,7 @@
         }                                                                    \
     } while (0)
 
-void PLANAR_encode(
+void planar_encode(
         void* dst,
         const void* src,
         size_t width,

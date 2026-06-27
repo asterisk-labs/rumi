@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define DELTAN_DEC(T)                                                        \
+#define DELTA_N_DEC(T)                                                       \
     do {                                                                     \
         T* d       = (T*)dst;                                                \
         const T* s = (const T*)src;                                          \
@@ -21,7 +21,7 @@
         }                                                                    \
     } while (0)
 
-void DELTAN_decode(
+void delta_n_decode(
         void* dst,
         const void* src,
         size_t width,
@@ -32,12 +32,12 @@ void DELTAN_decode(
         return;
     const size_t w = (width == 0 || width > nbElts) ? nbElts : width;
     switch (eltWidth) {
-        case 1: DELTAN_DEC(uint8_t); break;
-        case 2: DELTAN_DEC(uint16_t); break;
-        case 4: DELTAN_DEC(uint32_t); break;
-        case 8: DELTAN_DEC(uint64_t); break;
+        case 1: DELTA_N_DEC(uint8_t); break;
+        case 2: DELTA_N_DEC(uint16_t); break;
+        case 4: DELTA_N_DEC(uint32_t); break;
+        case 8: DELTA_N_DEC(uint64_t); break;
         default: break;
     }
 }
 
-#undef DELTAN_DEC
+#undef DELTA_N_DEC

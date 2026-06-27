@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <string.h>
 
-ZL_Report RUMI_planar_decode(ZL_Decoder* dictx, const ZL_Input* ins[])
+ZL_Report DI_rumi_planar(ZL_Decoder* dictx, const ZL_Input* ins[])
 {
     assert(ins != NULL);
     const ZL_Input* in = ins[0];
@@ -32,7 +32,7 @@ ZL_Report RUMI_planar_decode(ZL_Decoder* dictx, const ZL_Input* ins[])
     if (out == NULL)
         return ZL_returnError(ZL_ErrorCode_allocation);
 
-    PLANAR_decode(ZL_Output_ptr(out), ZL_Input_ptr(in), width, nbElts, eltWidth);
+    planar_decode(ZL_Output_ptr(out), ZL_Input_ptr(in), width, nbElts, eltWidth);
 
     if (ZL_isError(ZL_Output_commit(out, nbElts)))
         return ZL_returnError(ZL_ErrorCode_GENERIC);

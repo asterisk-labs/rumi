@@ -40,6 +40,9 @@ set(CMAKE_C_EXTENSIONS              OFF)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# compile_commands.json for clangd and friends, so the warnings show in editor.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Hide everything by default. The C++ surface is re-exported with RUMI_API and
 # the extern "C" entry points with GDAL's CPL_DLL. Hiding C symbols too keeps
 # the vendored OpenZL and its bundled zstd out of the plugin's dynamic symbol
@@ -74,8 +77,11 @@ else()
     set(RUMI_OPENZL_TARGET openzl)               # the OpenZL:: alias only exists on install
 endif()
 
-# Experimental rumi codecs. register_experimental.c wires the decoders into
-# OpenZL, kernels.c re-exports the kernels under rumi_ names for cffi.
+# rumi custom codecs. register_experimental.c and register_lossy.c wire the
+# decoders into OpenZL, kernels.c re-exports the kernels under rumi_ names for
+# cffi. Only kernels and decode bindings build here. The encode_*_binding.c are
+# the OpenZL C encode path and stay out, rumi encodes from Python. The
+# encode_*_kernel.c do build, cffi calls them through the kernels.c forwarders.
 set(RUMI_SOURCES
     src/parser.cpp
     src/builder.cpp
@@ -87,6 +93,7 @@ set(RUMI_SOURCES
     src/capi.cpp
 
     src/register_experimental.c
+    src/register_lossy.c
     src/kernels.c
     src/delta_w/decode_delta_w_binding.c
     src/delta_w/decode_delta_w_kernel.c
@@ -97,9 +104,14 @@ set(RUMI_SOURCES
     src/planar/decode_planar_binding.c
     src/planar/decode_planar_kernel.c
     src/planar/encode_planar_kernel.c
+    src/quant_linear/decode_quant_linear_binding.c
+    src/quant_linear/decode_quant_linear_kernel.c
+    src/quant_linear/encode_quant_linear_kernel.c
 )
 
-# Compile and link settings shared by every target.
+# Compile and link settings shared by every target. rumi_config is internal,
+# linked PRIVATE, never installed, so the build defines here do not leak to
+# consumers of the installed library.
 add_library(rumi_config INTERFACE)
 target_include_directories(rumi_config INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -115,9 +127,18 @@ target_link_libraries(rumi_config INTERFACE
     GDAL::GDAL
     ${RUMI_OPENZL_TARGET}
 )
+target_compile_definitions(rumi_config INTERFACE
+    RUMI_BUILD
+    RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
+)
+# Warnings on rumi's own C and C++. OpenZL builds with its own flags through
+# add_subdirectory, so this does not touch it. The C kernels do raw buffer work,
+# they want the same scrutiny as the C++.
 target_compile_options(rumi_config INTERFACE
-    $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>>
-    $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->>
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+    $<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+    $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4 /permissive->
+    $<$<COMPILE_LANG_AND_ID:C,MSVC>:/W4>
 )
 
 # A sanitizer applies to every target through this interface: lib and plugin.
@@ -134,18 +155,17 @@ endif()
 if(RUMI_BUILD_PLUGIN)
     add_library(gdal_RUMI MODULE ${RUMI_SOURCES})
     target_link_libraries(gdal_RUMI PRIVATE rumi_config)
-    target_compile_definitions(gdal_RUMI PRIVATE
-        RUMI_BUILD
-        RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
-    )
     set_target_properties(gdal_RUMI PROPERTIES
         PREFIX      ""
         OUTPUT_NAME "gdal_RUMI"
     )
 
+    # GDAL's compiled-in plugin path is <prefix>/lib/gdalplugins on every
+    # platform. A MODULE .dll is a RUNTIME artifact on Windows, so it also goes
+    # to lib/gdalplugins, not bin, or GDAL would not find it.
     install(TARGETS gdal_RUMI
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/gdalplugins
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/gdalplugins
+        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/gdalplugins
     )
 endif()
 
@@ -155,10 +175,6 @@ if(RUMI_BUILD_SHARED_LIB)
     add_library(rumi SHARED ${RUMI_SOURCES})
     add_library(rumi::rumi ALIAS rumi)
     target_link_libraries(rumi PUBLIC rumi_config)
-    target_compile_definitions(rumi PRIVATE
-        RUMI_BUILD
-        RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
-    )
     set_target_properties(rumi PROPERTIES
         VERSION   ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}

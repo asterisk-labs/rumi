@@ -5,7 +5,7 @@
 
 // Forward vertical predictor, offline path. The first row stays absolute,
 // every later row stores the difference against the row above. @dst may alias.
-void DELTAN_encode(
+void delta_n_encode(
         void* dst,
         const void* src,
         size_t width,
