@@ -201,12 +201,11 @@ std::vector<int> resolve_n_index(const int* n_index, size_t n_n, size_t total)
     return all;
 }
 
-// Standard message when a read fails because the reader lacks an experimental
-// codec. Used on the threaded path, where the worker's CPLError does not reach
-// the caller's handler, so g_last_error is empty.
+// Standard message when a read fails because the reader lacks a custom codec.
+// Used on the threaded path, where the worker's CPLError does not reach the
+// caller's handler, so g_last_error is empty.
 const char* k_unsupported_msg =
-    "file uses an experimental rumi codec this reader does not have, "
-    "update rumi to read it";
+    "file uses a custom OpenZL codec this reader has not registered";
 
 }  // namespace
 

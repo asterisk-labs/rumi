@@ -1,3 +1,3 @@
-[submodule "extern/openzl"]
-	path = extern/openzl
-	url = https://github.com/facebook/openzl.git
+[submodule "extern/geozl"]
+	path = extern/geozl
+	url = https://github.com/asterisk-labs/geozl

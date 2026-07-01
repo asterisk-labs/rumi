@@ -1,8 +1,7 @@
 #include "rumi/rumi.hpp"
 #include "rumi/thread_pool.hpp"
 
-#include "register_experimental.h"
-#include "register_lossy.h"
+#include "geozl/geozl.h"
 
 #include "cpl_error.h"
 #include "cpl_vsi_virtual.h"
@@ -28,12 +27,9 @@ struct WorkerState {
     std::vector<std::byte> scratch;
 
     WorkerState() {
-        // a fresh dctx only fails registration on allocation, drop it so
-        // execute_task reports a clean context error. Both the experimental and
-        // the lossy decoders are registered, a frame can use either.
-        if (dctx &&
-            (ZL_isError(rumi_register_experimental_decoders(dctx)) ||
-             ZL_isError(rumi_register_lossy_decoders(dctx)))) {
+        // A fresh dctx only fails registration on allocation. Drop it so
+        // execute_task reports a clean context error.
+        if (dctx && ZL_isError(geozl_register_decoders(dctx))) {
             ZL_DCtx_free(dctx);
             dctx = nullptr;
         }
@@ -157,8 +153,8 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         unsigned long ctid = 0;
         if (missing_custom_codec(ctx, &ctid)) {
             CPLError(CE_Failure, CPLE_NotSupported,
-                     "rumi: file uses an experimental rumi codec (CTid %lu) "
-                     "not present in this reader, update rumi to read it", ctid);
+                     "rumi: file uses a custom OpenZL codec (CTid %lu) this "
+                     "reader has not registered", ctid);
             return RUMI_ERR_UNSUPPORTED;
         }
         CPLError(CE_Failure, CPLE_AppDefined,

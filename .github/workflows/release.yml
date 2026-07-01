@@ -50,9 +50,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true            # brings extern/openzl, not its nested deps
-      - name: Init OpenZL deps (zstd, lz4 only, no xgboost)
-        run: git -C extern/openzl submodule update --init deps/zstd deps/lz4
+          submodules: true            # brings extern/geozl, not its nested submodules
+      - name: Init geozl and OpenZL deps (zstd, lz4 only, no xgboost)
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build
@@ -83,8 +85,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Init OpenZL deps (zstd, lz4 only, no xgboost)
-        run: git -C extern/openzl submodule update --init deps/zstd deps/lz4
+      - name: Init geozl and OpenZL deps (zstd, lz4 only, no xgboost)
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build
@@ -107,8 +111,8 @@ jobs:
           path: staged/
           if-no-files-found: error
 
-  # OpenZL needs real C11 (designated initializers), which MSVC cl trips on
-  # with C2099. clang-cl has full C11 and keeps the MSVC ABI, so it still links
+  # OpenZL and geozl need real C11 (designated initializers), which MSVC cl trips
+  # on with C2099. clang-cl has full C11 and keeps the MSVC ABI, so it still links
   # cleanly against conda's MSVC-built libgdal. No conda cxx-compiler here, that
   # one is MinGW and would break the ABI.
   build-lib-windows:
@@ -119,8 +123,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Init OpenZL deps (zstd, lz4 only, no xgboost)
-        run: git -C extern/openzl submodule update --init deps/zstd deps/lz4
+      - name: Init geozl and OpenZL deps (zstd, lz4 only, no xgboost)
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
       - name: Put clang-cl on PATH
         shell: bash
         run: echo "C:/Program Files/LLVM/bin" >> "$GITHUB_PATH"

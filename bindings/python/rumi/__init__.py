@@ -1,4 +1,3 @@
-import importlib
 from importlib.metadata import version
 
 from ._ffi import lib
@@ -15,10 +14,3 @@ __all__ = [
     "Layout", "OPENZL_VERSION", "Spec", "__version__",
     "index_file", "parse", "read", "tile", "write",
 ]
-
-
-# experimental and lossy pull in openzl, so they load on first access only.
-def __getattr__(name):
-    if name in ("experimental", "lossy"):
-        return importlib.import_module(f"{__name__}.{name}")
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

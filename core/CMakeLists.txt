@@ -13,12 +13,12 @@ project(rumi
 
 option(RUMI_BUILD_PLUGIN      "Build the GDAL auto-loadable plugin"               ON)
 option(RUMI_BUILD_SHARED_LIB  "Build standalone librumi for direct link"          OFF)
-option(RUMI_USE_SYSTEM_OPENZL "Link an installed OpenZL instead of the submodule" OFF)
 
-# Path to the vendored OpenZL. The VERSION file sits one level up, so the
-# submodule at the repo root is one level up from this file too.
-set(RUMI_OPENZL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/openzl"
-    CACHE PATH "Path to the OpenZL submodule source")
+# geozl owns OpenZL and brings it in transitively, so rumi vendors geozl only.
+# The VERSION file sits one level up, so the submodule at the repo root is one
+# level up from this file too.
+set(RUMI_GEOZL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/geozl"
+    CACHE PATH "Path to the geozl submodule source")
 
 # e.g. -DRUMI_SANITIZE=thread, or address,undefined. Empty = off. Use a
 # throwaway build dir for this, it's a sanitizer-only configuration.
@@ -32,8 +32,8 @@ set(CMAKE_CXX_STANDARD              23)
 set(CMAKE_CXX_STANDARD_REQUIRED     ON)
 set(CMAKE_CXX_EXTENSIONS            OFF)
 
-# The codec bindings, kernels and the registration shim are C and rely on
-# compound literals in designated initializers, which is C11.
+# C stays enabled for the geozl sub-build, which is C and carries OpenZL. rumi
+# itself is C++ only.
 set(CMAKE_C_STANDARD                11)
 set(CMAKE_C_STANDARD_REQUIRED       ON)
 set(CMAKE_C_EXTENSIONS              OFF)
@@ -44,9 +44,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Hide everything by default. The C++ surface is re-exported with RUMI_API and
-# the extern "C" entry points with GDAL's CPL_DLL. Hiding C symbols too keeps
-# the vendored OpenZL and its bundled zstd out of the plugin's dynamic symbol
-# table, which matters because GDAL also links a zstd.
+# the extern "C" entry points with GDAL's CPL_DLL. Hiding keeps the vendored
+# OpenZL and its bundled zstd out of the plugin's dynamic symbol table, which
+# matters because GDAL also links a zstd.
 set(CMAKE_CXX_VISIBILITY_PRESET     hidden)
 set(CMAKE_C_VISIBILITY_PRESET       hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
@@ -55,33 +55,16 @@ include(GNUInstallDirs)
 
 find_package(GDAL 3.12 CONFIG REQUIRED)
 
-# OpenZL provides the tile codec (compression 60000). Vendored as a submodule
-# and built static so it folds into rumi with no extra runtime dependency,
-# carrying its own zstd and lz4. rumi links no separate compression library.
-if(RUMI_USE_SYSTEM_OPENZL)
-    find_package(openzl CONFIG REQUIRED)        # OpenZL::openzl
-    set(RUMI_OPENZL_TARGET OpenZL::openzl)
-else()
-    set(OPENZL_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_BENCHMARKS     OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_CLI            OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_EXAMPLES       OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_TOOLS          OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_PYTHON_EXT     OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_CUSTOM_PARSERS OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_CPP            OFF CACHE BOOL "" FORCE)  # only the C decoder is needed
-    set(OPENZL_ALLOW_INTROSPECTION  OFF CACHE BOOL "" FORCE)  # off for production
-    set(OPENZL_INSTALL              OFF CACHE BOOL "" FORCE)
-    set(OPENZL_BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)  # static even when rumi is shared
-    add_subdirectory(${RUMI_OPENZL_DIR} ${CMAKE_CURRENT_BINARY_DIR}/openzl EXCLUDE_FROM_ALL)
-    set(RUMI_OPENZL_TARGET openzl)               # the OpenZL:: alias only exists on install
-endif()
+# geozl is the OpenZL frame codec (compression 60000) plus rumi's spatial
+# decoders. Vendored static so it folds into rumi with no extra runtime
+# dependency, and GEOZL_STATIC keeps its entry points from being re-exported.
+# geozl exposes OpenZL PUBLIC, so rumi links one OpenZL, the same one geozl
+# registers its decoders against.
+set(BUILD_SHARED_LIBS OFF)
+set(GEOZL_BUILD_KERNELS OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
+add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
+target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
 
-# rumi custom codecs. register_experimental.c and register_lossy.c wire the
-# decoders into OpenZL, kernels.c re-exports the kernels under rumi_ names for
-# cffi. Only kernels and decode bindings build here. The encode_*_binding.c are
-# the OpenZL C encode path and stay out, rumi encodes from Python. The
-# encode_*_kernel.c do build, cffi calls them through the kernels.c forwarders.
 set(RUMI_SOURCES
     src/parser.cpp
     src/builder.cpp
@@ -91,22 +74,6 @@ set(RUMI_SOURCES
     src/pattern.cpp
     src/image.cpp
     src/capi.cpp
-
-    src/register_experimental.c
-    src/register_lossy.c
-    src/kernels.c
-    src/delta_w/decode_delta_w_binding.c
-    src/delta_w/decode_delta_w_kernel.c
-    src/delta_w/encode_delta_w_kernel.c
-    src/delta_n/decode_delta_n_binding.c
-    src/delta_n/decode_delta_n_kernel.c
-    src/delta_n/encode_delta_n_kernel.c
-    src/planar/decode_planar_binding.c
-    src/planar/decode_planar_kernel.c
-    src/planar/encode_planar_kernel.c
-    src/quant_linear/decode_quant_linear_binding.c
-    src/quant_linear/decode_quant_linear_kernel.c
-    src/quant_linear/encode_quant_linear_kernel.c
 )
 
 # Compile and link settings shared by every target. rumi_config is internal,
@@ -117,28 +84,19 @@ target_include_directories(rumi_config INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-# The registration shim, kernel wrapper and codec bindings include each other
-# by folder relative path (e.g. "delta_w/graph_delta_w.h"), so src is on the
-# include path.
-target_include_directories(rumi_config INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-)
 target_link_libraries(rumi_config INTERFACE
     GDAL::GDAL
-    ${RUMI_OPENZL_TARGET}
+    geozl::geozl
 )
 target_compile_definitions(rumi_config INTERFACE
     RUMI_BUILD
     RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
 )
-# Warnings on rumi's own C and C++. OpenZL builds with its own flags through
-# add_subdirectory, so this does not touch it. The C kernels do raw buffer work,
-# they want the same scrutiny as the C++.
+# Warnings on rumi's own C++. geozl and OpenZL build with their own flags through
+# add_subdirectory, so this does not touch them.
 target_compile_options(rumi_config INTERFACE
     $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
-    $<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
     $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4 /permissive->
-    $<$<COMPILE_LANG_AND_ID:C,MSVC>:/W4>
 )
 
 # A sanitizer applies to every target through this interface: lib and plugin.
@@ -197,7 +155,8 @@ endif()
 message(STATUS "")
 message(STATUS "rumi ${RUMI_VERSION_FULL}")
 message(STATUS "  GDAL:           ${GDAL_VERSION}")
-message(STATUS "  OpenZL:         ${RUMI_OPENZL_TARGET}")
+message(STATUS "  geozl:          ${RUMI_GEOZL_DIR}")
+message(STATUS "  OpenZL:         via geozl")
 message(STATUS "  Plugin:         ${RUMI_BUILD_PLUGIN}")
 message(STATUS "  Standalone lib: ${RUMI_BUILD_SHARED_LIB}")
 message(STATUS "  Sanitize:       ${RUMI_SANITIZE}")

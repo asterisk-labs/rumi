@@ -22,19 +22,11 @@ Because the layout is fixed, almost everything about a rumi file is predictable.
 
 ## Status
 
-rumi is **experimental**. The on-disk format, the header blob, and the custom codecs can change between versions with no migration path. Do not use it for archival data you cannot regenerate.
+rumi is **experimental**. The on-disk format and the header blob can change between versions with no migration path. Do not use it for archival data you cannot regenerate.
 
 > [!WARNING]
 > **TIFF compression tag 60000 is experimental, not a registered code.**
 > rumi marks OpenZL-compressed tiles with TIFF `Compression` tag `60000`. This is not a registered TIFF compression code, it is a private-range value rumi uses by convention. A standard TIFF or GeoTIFF reader cannot decode a rumi file, it sees an unknown compression. The value may change if OpenZL is assigned an official tag or if it collides with another private use. A rumi file is only readable by a reader that knows `60000` means OpenZL.
-
-> [!CAUTION]
-> **The rumi custom codecs are not part of OpenZL.**
-> The codecs `delta_w`, `delta_n`, `planar`, `quant_linear`, and `quant_log` take custom transform ids in the `0x72D700`-`0x72D7FF` range and are registered by rumi at runtime. They are maintained by rumi, for rumi, and there is no guarantee they will ever land in OpenZL upstream.
->
-> A published CTid is permanent. Once a codec id is assigned its decode format is frozen, and rumi keeps the decoder for it even after it stops using the codec to encode, so a file written today stays readable by future rumi. New behaviour gets a new CTid, it never mutates an existing one. What is not guaranteed is the reverse, an old rumi cannot read a frame that uses a CTid added after it.
->
-> OpenZL's own backward-compatibility guarantee covers its built-in codecs, not these, so the durability of a rumi custom codec rests on rumi, not OpenZL. A tile that uses a rumi custom codec only decodes with a reader that has that codec registered, never with a vanilla OpenZL decoder. A file that uses only built-in OpenZL codecs is the most portable, one that uses the custom codecs depends on a rumi reader.
 
 ## Install
 
@@ -93,30 +85,6 @@ rumi.write("scene.tif", frames, layout)
 ```
 
 `write` takes the compressed frames in tile order plus the `layout` and assembles the rumi file. The OpenZL decoder is universal, so a reader needs nothing about which graph you used.
-
-## Codecs
-
-On top of the OpenZL built-ins, rumi ships a few custom codecs you drop straight into your graph. They chain like any node and run inside the OpenZL frame, not the container. The lossless ones live under `rumi.experimental`, the near lossless ones under `rumi.lossy`.
-
-| codec | namespace | what it does |
-|---|---|---|
-| `planar` | `rumi.experimental` | predicts each pixel from W plus N minus NW |
-| `delta_w` | `rumi.experimental` | horizontal delta |
-| `delta_n` | `rumi.experimental` | vertical delta |
-| `quant_linear` | `rumi.lossy` | near lossless, absolute error, every pixel within `max_error` |
-| `quant_log` | `rumi.lossy` | near lossless, relative error, a fixed fraction of each value |
-
-The experimental predictors decorrelate a tile before the entropy stage and stay scannable on read.
-
-```python
-c = zl.Compressor()
-g = zl.graphs.Entropy()
-g = zl.nodes.Zigzag()(c, g)
-g = rumi.experimental.planar(width=512)(c, g)
-c.select_starting_graph(g)
-```
-
-A frame built with a lossy codec is no longer bit exact. It keeps the `rumi.lossy.` prefix as a warning, and only a reader that holds the codec, like rumi, reconstructs it. A lossy frame carries exactly one lossy codec at the head, and the reconstruction error is bounded by the codec parameters carried in the frame. See the [specification](SPEC.md) for the lossy data contract and the absolute and relative error modes.
 
 ## Index
 
