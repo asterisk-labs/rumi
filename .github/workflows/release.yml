@@ -71,6 +71,9 @@ jobs:
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
+      - name: Stage proj.db (matches the GDAL this build links)
+        shell: bash -el {0}
+        run: cp -a "$CONDA_PREFIX/share/proj" staged/proj
       - uses: actions/upload-artifact@v4
         with:
           name: librumi-${{ matrix.name }}
@@ -105,6 +108,9 @@ jobs:
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
+      - name: Stage proj.db (matches the GDAL this build links)
+        shell: bash -el {0}
+        run: cp -a "$CONDA_PREFIX/share/proj" staged/proj
       - uses: actions/upload-artifact@v4
         with:
           name: librumi-macos-arm64
@@ -146,6 +152,9 @@ jobs:
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
+      - name: Stage proj.db (matches the GDAL this build links)
+        shell: bash -el {0}
+        run: cp -a "$CONDA_PREFIX/Library/share/proj" staged/proj
       - name: Assert C ABI is exported
         shell: bash -el {0}
         run: |
@@ -269,6 +278,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
           python -c "import rumi; print('rumi', rumi.__version__)"
+          python -c "import rumi; from rumi._ffi import lib, ffi; o=[(ffi.new('unsigned char**'),ffi.new('size_t*')) for _ in range(3)]; rc=lib.rumi_geokeys(b'EPSG:32630',0,o[0][0],o[0][1],o[1][0],o[1][1],o[2][0],o[2][1]); err=lib.rumi_last_error(); assert rc==0,(ffi.string(err).decode() if err!=ffi.NULL else 'geokeys EPSG:32630 failed'); print('geokeys EPSG:32630 OK')"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -328,6 +338,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
           python -c "import rumi; print('rumi', rumi.__version__)"
+          python -c "import rumi; from rumi._ffi import lib, ffi; o=[(ffi.new('unsigned char**'),ffi.new('size_t*')) for _ in range(3)]; rc=lib.rumi_geokeys(b'EPSG:32630',0,o[0][0],o[0][1],o[1][0],o[1][1],o[2][0],o[2][1]); err=lib.rumi_last_error(); assert rc==0,(ffi.string(err).decode() if err!=ffi.NULL else 'geokeys EPSG:32630 failed'); print('geokeys EPSG:32630 OK')"
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-macos-arm64
@@ -389,6 +400,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
           python -c "import rumi; print('rumi', rumi.__version__)"
+          python -c "import rumi; from rumi._ffi import lib, ffi; o=[(ffi.new('unsigned char**'),ffi.new('size_t*')) for _ in range(3)]; rc=lib.rumi_geokeys(b'EPSG:32630',0,o[0][0],o[0][1],o[1][0],o[1][1],o[2][0],o[2][1]); err=lib.rumi_last_error(); assert rc==0,(ffi.string(err).decode() if err!=ffi.NULL else 'geokeys EPSG:32630 failed'); print('geokeys EPSG:32630 OK')"
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-windows-x86_64

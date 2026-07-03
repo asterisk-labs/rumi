@@ -63,6 +63,13 @@ RUMI_API void rumi_clear_error(void);
 RUMI_API void rumi_free(void* ptr);
 
 
+// Data paths.
+
+// Point this library's own GDAL/PROJ at data directories so the wheel can find
+// its bundled proj.db. Either may be NULL to leave it unchanged.
+RUMI_API void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
+
+
 // Indexing.
 
 // On success *out_blob is *out_size bytes owned by the caller, released

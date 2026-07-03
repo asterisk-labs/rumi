@@ -332,6 +332,10 @@ struct GeoKeys {
 [[nodiscard]] RUMI_API std::expected<GeoKeys, std::string>
 build_geokeys(std::string_view srs, bool pixel_is_point) noexcept;
 
+// Point our own GDAL/PROJ at data dirs so the wheel finds its bundled proj.db.
+// Either may be NULL. Scoped to our GDAL, a host one is untouched.
+RUMI_API void set_proj_data(const char* proj_dir, const char* gdal_dir) noexcept;
+
 RUMI_API void register_driver();
 
 }  // namespace rumi

@@ -97,6 +97,12 @@ extern "C" void rumi_free(void* ptr)
     std::free(ptr);
 }
 
+extern "C" void
+rumi_set_data_paths(const char* proj_dir, const char* gdal_dir)
+{
+    rumi::set_proj_data(proj_dir, gdal_dir);
+}
+
 
 // Indexing.
 

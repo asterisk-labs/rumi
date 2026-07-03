@@ -2,6 +2,7 @@
 
 #include "gdal_priv.h"
 #include "ogr_spatialref.h"
+#include "cpl_conv.h"
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 
@@ -122,6 +123,19 @@ try {
 }
 catch (const std::exception& e) {
     return std::unexpected(std::string("build_geokeys: ") + e.what());
+}
+
+void set_proj_data(const char* proj_dir, const char* gdal_dir) noexcept
+{
+    // Vendored PROJ has no proj.db off-conda. Point our own GDAL at the bundled
+    // one. Scoped to our GDAL, so a host rasterio in the process is untouched.
+    if (proj_dir && *proj_dir) {
+        const char* paths[] = {proj_dir, nullptr};
+        OSRSetPROJSearchPaths(paths);
+    }
+    if (gdal_dir && *gdal_dir) {
+        CPLSetConfigOption("GDAL_DATA", gdal_dir);
+    }
 }
 
 }  // namespace rumi

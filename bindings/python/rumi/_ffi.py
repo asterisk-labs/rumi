@@ -49,6 +49,8 @@ const char* rumi_last_error(void);
 void        rumi_clear_error(void);
 void        rumi_free(void* ptr);
 
+void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
+
 rumi_status
 rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size);
 
@@ -123,6 +125,23 @@ def _ensure_ca_bundle():
         os.environ.setdefault("SSL_CERT_FILE", bundle)
 
 
+def _ensure_proj_data(lib):
+    # Vendored GDAL/PROJ can't find a proj.db off-conda (Colab, venvs), so EPSG
+    # lookups fail. Point our own GDAL at the copy bundled beside it.
+    try:
+        setter = lib.rumi_set_data_paths
+    except AttributeError:
+        return
+
+    lib_dir = Path(__file__).parent / "_lib"
+    proj_dir = lib_dir / "proj"
+    gdal_dir = lib_dir / "gdal"
+    proj_arg = str(proj_dir).encode("utf-8") if proj_dir.is_dir() else ffi.NULL
+    gdal_arg = str(gdal_dir).encode("utf-8") if gdal_dir.is_dir() else ffi.NULL
+    if proj_arg is not ffi.NULL or gdal_arg is not ffi.NULL:
+        setter(proj_arg, gdal_arg)
+
+
 def _bundled_lib():
     lib_dir = Path(__file__).parent / "_lib"
     for pattern in _LIB_GLOBS:
@@ -150,6 +169,7 @@ def _load_lib():
 
 _ensure_ca_bundle()
 lib = _load_lib()
+_ensure_proj_data(lib)
 
 
 _STATUS_TO_EXC = {

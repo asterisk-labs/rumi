@@ -8,7 +8,7 @@ name            = "rumi-eo"
 dynamic         = ["version"]
 description     = "A GeoTIFF profile for AI training data."
 readme          = "README.md"
-license         = { text = "MIT" }
+license         = { text = "GPL-3.0-only" }
 requires-python = ">=3.11"
 
 authors = [
@@ -25,7 +25,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
@@ -59,6 +59,7 @@ artifacts = [
     "rumi/_lib/*.so.*",
     "rumi/_lib/*.dylib",
     "rumi/_lib/*.dll",
+    "rumi/_lib/proj/**",
 ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
@@ -76,6 +77,7 @@ exclude = [
     "rumi/_lib/*.so.*",
     "rumi/_lib/*.dylib",
     "rumi/_lib/*.dll",
+    "rumi/_lib/proj/**",
 ]
 
 
