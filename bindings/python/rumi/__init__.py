@@ -3,7 +3,7 @@ from importlib.metadata import version
 from ._ffi import lib
 from ._read import index_file, parse, read
 from ._spec import Spec
-from ._write import Layout, tile, write
+from ._write import Layout, header_bytes, tile, write
 
 __version__ = version("rumi-eo")
 
@@ -12,5 +12,5 @@ OPENZL_VERSION = lib.rumi_openzl_format_version()
 
 __all__ = [
     "Layout", "OPENZL_VERSION", "Spec", "__version__",
-    "index_file", "parse", "read", "tile", "write",
+    "header_bytes", "index_file", "parse", "read", "tile", "write",
 ]

@@ -133,8 +133,55 @@ def _geo_entries(transform, crs, pixel_is_point):
     return out
 
 
+def _base_entries(layout: Layout):
+    B = layout.samples_per_pixel
+    sf, bps = layout.sample_format, layout.bits_per_sample
+    n = layout.tiles_across * layout.tiles_down * B
+    return [
+        _entry(256, _LONG,  [layout.image_width]),
+        _entry(257, _LONG,  [layout.image_length]),
+        _entry(258, _SHORT, [bps] * B),
+        _entry(259, _SHORT, [_COMPRESSION_OPENZL]),
+        _entry(262, _SHORT, [_PHOTOMETRIC_MINISBLACK]),
+        _entry(277, _SHORT, [B]),
+        _entry(284, _SHORT, [_PLANARCONFIG_SEPARATE]),
+        _entry(317, _SHORT, [_PREDICTOR_NONE]),
+        _entry(322, _SHORT, [layout.tile_width]),
+        _entry(323, _SHORT, [layout.tile_length]),
+        (_TILE_OFFSETS, _LONG8, n, None),
+        _entry(325, _LONG,  [0] * n),
+        _entry(339, _SHORT, [sf] * B),
+    ]
+
+
+def _natural_header(entries):
+    cursor = 16 + (8 + 20 * len(entries) + 8)
+    for _tag, type_, count, _packed in entries:
+        size = _TYPE_SIZE[type_] * count
+        if size > 8:
+            cursor += size + (size & 1)
+    return cursor
+
+
+def _resolve_base(natural, header_size):
+    if header_size == "auto":
+        return natural
+    if isinstance(header_size, int) and header_size > 0:
+        return -(-natural // header_size) * header_size   # round up to a multiple
+    raise TypeError("header_size must be 'auto' or a positive int")
+
+
+def header_bytes(layout: Layout, *, transform=None, crs=None,
+                 pixel_is_point=False, header_size="auto") -> int:
+    """base_tiles_offset for these args, without writing. With a CRS it builds
+    the geo tags once to measure them, same as write()."""
+    entries = _base_entries(layout) + _geo_entries(transform, crs, pixel_is_point)
+    return _resolve_base(_natural_header(entries), header_size)
+
+
 def write(path, frames: Iterable[bytes], layout: Layout, *,
-          transform=None, crs=None, pixel_is_point=False) -> None:
+          transform=None, crs=None, pixel_is_point=False,
+          header_size="auto") -> None:
     frames = [memoryview(f) for f in frames]
     if len(frames) != layout.n_tiles:
         raise ValueError(f"expected {layout.n_tiles} frames, got {len(frames)}")
@@ -179,7 +226,10 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
         if size > 8:
             ext_offset[tag] = cursor
             cursor += size + (size & 1)
-    base_tiles_offset = cursor
+
+    # header_size can push base_tiles_offset past a zero gap before the tiles.
+    natural = cursor
+    base_tiles_offset = _resolve_base(natural, header_size)
 
     off = base_tiles_offset
     tile_offsets = []
@@ -208,6 +258,8 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
     buf += struct.pack(_LE + "Q", 0)  # one IFD, no next
     buf += ext
 
+    if len(buf) < base_tiles_offset:
+        buf += b"\x00" * (base_tiles_offset - len(buf))
     assert len(buf) == base_tiles_offset
     with open(path, "wb") as fh:
         fh.write(buf)
