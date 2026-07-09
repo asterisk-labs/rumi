@@ -232,6 +232,7 @@ void fill_header(const rumi::Header& h, rumi_header* out)
     out->samples_per_pixel = h.samples_per_pixel;
     out->bits_per_sample   = h.bits_per_sample;
     out->sample_format     = h.sample_format;
+    out->dtype             = h.dtype;
     out->tiles_across      = h.tiles_across;
     out->tiles_down        = h.tiles_down;
     out->base_tiles_offset = h.base_tiles_offset;

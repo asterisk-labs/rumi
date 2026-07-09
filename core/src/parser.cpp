@@ -27,47 +27,96 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
-// Float16 / CFloat16 require GDAL >= 3.11 (RFC 100).
-GDALDataType infer_gdal_type(std::uint8_t bits_per_sample,
-                             std::uint8_t sample_format) noexcept
+// The only validity gate for a sample type. bits carries the summed component
+// widths for the complex formats. RUMI_DT_UNKNOWN means rumi does not take it.
+rumi_dtype sample_to_dtype(std::uint8_t sample_format,
+                           std::uint8_t bits) noexcept
 {
     switch (sample_format) {
         case 1:
-            switch (bits_per_sample) {
-                case 8:  return GDT_Byte;
-                case 16: return GDT_UInt16;
-                case 32: return GDT_UInt32;
-                case 64: return GDT_UInt64;
+            switch (bits) {
+                case 8:  return RUMI_DT_UINT8;
+                case 16: return RUMI_DT_UINT16;
+                case 32: return RUMI_DT_UINT32;
+                case 64: return RUMI_DT_UINT64;
             }
             break;
         case 2:
-            switch (bits_per_sample) {
-                case 8:  return GDT_Int8;
-                case 16: return GDT_Int16;
-                case 32: return GDT_Int32;
-                case 64: return GDT_Int64;
+            switch (bits) {
+                case 8:  return RUMI_DT_INT8;
+                case 16: return RUMI_DT_INT16;
+                case 32: return RUMI_DT_INT32;
+                case 64: return RUMI_DT_INT64;
             }
             break;
         case 3:
-            switch (bits_per_sample) {
-                case 16: return GDT_Float16;
-                case 32: return GDT_Float32;
-                case 64: return GDT_Float64;
+            switch (bits) {
+                case 16: return RUMI_DT_FLOAT16;
+                case 32: return RUMI_DT_FLOAT32;
+                case 64: return RUMI_DT_FLOAT64;
             }
             break;
-        case 5:  // bits_per_sample = real + imag widths
-            switch (bits_per_sample) {
-                case 32: return GDT_CInt16;
-                case 64: return GDT_CInt32;
+        case 5:
+            switch (bits) {
+                case 32: return RUMI_DT_CINT16;
+                case 64: return RUMI_DT_CINT32;
             }
             break;
-        case 6:  // bits_per_sample = real + imag widths
-            switch (bits_per_sample) {
-                case 32:  return GDT_CFloat16;
-                case 64:  return GDT_CFloat32;
-                case 128: return GDT_CFloat64;
+        case 6:
+            switch (bits) {
+                case 32:  return RUMI_DT_CFLOAT16;
+                case 64:  return RUMI_DT_CFLOAT32;
+                case 128: return RUMI_DT_CFLOAT64;
             }
             break;
+    }
+    return RUMI_DT_UNKNOWN;
+}
+
+std::size_t dtype_size(rumi_dtype dt) noexcept
+{
+    switch (dt) {
+        case RUMI_DT_UINT8:  case RUMI_DT_INT8:
+        case RUMI_DT_FLOAT8_E4M3: case RUMI_DT_FLOAT8_E5M2:  return 1;
+        case RUMI_DT_UINT16: case RUMI_DT_INT16:
+        case RUMI_DT_FLOAT16: case RUMI_DT_BFLOAT16:         return 2;
+        case RUMI_DT_UINT32: case RUMI_DT_INT32:
+        case RUMI_DT_FLOAT32: case RUMI_DT_CINT16:
+        case RUMI_DT_CFLOAT16:                               return 4;
+        case RUMI_DT_UINT64: case RUMI_DT_INT64:
+        case RUMI_DT_FLOAT64: case RUMI_DT_CINT32:
+        case RUMI_DT_CFLOAT32:                               return 8;
+        case RUMI_DT_CFLOAT64:                               return 16;
+        case RUMI_DT_UNKNOWN:                                return 0;
+    }
+    return 0;
+}
+
+// Float16, CFloat16, bfloat16 and the float8 types have no GDAL enum here, so
+// they project to GDT_Unknown and stay native-API only.
+GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept
+{
+    switch (dt) {
+        case RUMI_DT_UINT8:   return GDT_Byte;
+        case RUMI_DT_INT8:    return GDT_Int8;
+        case RUMI_DT_UINT16:  return GDT_UInt16;
+        case RUMI_DT_INT16:   return GDT_Int16;
+        case RUMI_DT_UINT32:  return GDT_UInt32;
+        case RUMI_DT_INT32:   return GDT_Int32;
+        case RUMI_DT_UINT64:  return GDT_UInt64;
+        case RUMI_DT_INT64:   return GDT_Int64;
+        case RUMI_DT_FLOAT32: return GDT_Float32;
+        case RUMI_DT_FLOAT64: return GDT_Float64;
+        case RUMI_DT_CINT16:  return GDT_CInt16;
+        case RUMI_DT_CINT32:  return GDT_CInt32;
+        case RUMI_DT_CFLOAT32: return GDT_CFloat32;
+        case RUMI_DT_CFLOAT64: return GDT_CFloat64;
+        case RUMI_DT_FLOAT16:
+        case RUMI_DT_CFLOAT16:
+        case RUMI_DT_BFLOAT16:
+        case RUMI_DT_FLOAT8_E4M3:
+        case RUMI_DT_FLOAT8_E5M2:
+        case RUMI_DT_UNKNOWN:  return GDT_Unknown;
     }
     return GDT_Unknown;
 }
@@ -96,8 +145,8 @@ parse_blob(std::span<const std::byte> blob)
         return std::unexpected(ParseError::invalid_sample_format);
     }
 
-    const GDALDataType gdt = infer_gdal_type(bh.bits_per_sample, bh.sample_format);
-    if (gdt == GDT_Unknown) {
+    const rumi_dtype dt = sample_to_dtype(bh.sample_format, bh.bits_per_sample);
+    if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
     }
 
@@ -121,8 +170,9 @@ parse_blob(std::span<const std::byte> blob)
     h.bits_per_sample   = bh.bits_per_sample;
     h.sample_format     = bh.sample_format;
     h.base_tiles_offset = bh.base_tiles_offset;
-    h.gdal_type         = gdt;
-    h.bytes_per_sample  = bh.bits_per_sample / 8u;
+    h.dtype             = dt;
+    h.gdal_type         = dtype_to_gdal(dt);
+    h.bytes_per_sample  = dtype_size(dt);
 
     h.tiles_across = (bh.image_width  + bh.tile_width  - 1) / bh.tile_width;
     h.tiles_down   = (bh.image_length + bh.tile_length - 1) / bh.tile_length;

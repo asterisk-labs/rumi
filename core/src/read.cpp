@@ -247,7 +247,7 @@ read_stack(std::span<const char* const> paths,
         if (h.samples_per_pixel != ref.samples_per_pixel) {
             return err("image " + std::to_string(i + 1) + ": band count mismatch");
         }
-        if (h.gdal_type != ref.gdal_type) {
+        if (h.dtype != ref.dtype) {
             return err("image " + std::to_string(i + 1) + ": dtype mismatch");
         }
     }

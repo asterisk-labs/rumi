@@ -26,7 +26,7 @@ extern "C" {
 
 // Version.
 
-#define RUMI_API_VERSION 1
+#define RUMI_API_VERSION 2
 
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
@@ -82,8 +82,36 @@ rumi_index_file(const char*     path,
 
 // Header.
 
-// dtype is reported as the spec's (sample_format, bits_per_sample) pair,
-// not the GDAL enum, so the ABI does not move when GDAL adds a type.
+// Logical element type. rumi's own dtype is the source of truth for how a
+// sample is interpreted. The GDAL type is a best-effort projection used only
+// by the driver. Codes are stable and append only.
+typedef enum {
+    RUMI_DT_UNKNOWN     = 0,
+    RUMI_DT_UINT8       = 1,
+    RUMI_DT_INT8        = 2,
+    RUMI_DT_UINT16      = 3,
+    RUMI_DT_INT16       = 4,
+    RUMI_DT_UINT32      = 5,
+    RUMI_DT_INT32       = 6,
+    RUMI_DT_UINT64      = 7,
+    RUMI_DT_INT64       = 8,
+    RUMI_DT_FLOAT16     = 9,
+    RUMI_DT_FLOAT32     = 10,
+    RUMI_DT_FLOAT64     = 11,
+    RUMI_DT_CINT16      = 12,
+    RUMI_DT_CINT32      = 13,
+    RUMI_DT_CFLOAT16    = 14,
+    RUMI_DT_CFLOAT32    = 15,
+    RUMI_DT_CFLOAT64    = 16,
+    // Reserved for future ML and EO types, not yet representable on disk.
+    RUMI_DT_FLOAT8_E4M3 = 17,
+    RUMI_DT_FLOAT8_E5M2 = 18,
+    RUMI_DT_BFLOAT16    = 19
+} rumi_dtype;
+
+// dtype is the canonical type, rumi's own, independent of GDAL. The
+// (sample_format, bits_per_sample) pair is kept for reference. No GDAL enum
+// crosses the ABI, so it does not move when GDAL adds a type.
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
@@ -95,6 +123,7 @@ typedef struct {
     uint32_t tiles_across;
     uint32_t tiles_down;
     uint64_t base_tiles_offset;
+    rumi_dtype dtype;
 } rumi_header;
 
 

@@ -170,10 +170,17 @@ build_blob_from_file(const char* path) noexcept
     };
 
     // A full integer array tag, widened to uint64.
-    auto array = [&](std::uint16_t tag)
+    auto array = [&](std::uint16_t tag, std::uint64_t expected)
         -> std::expected<std::vector<std::uint64_t>, std::string> {
         const Entry* e = find(tag);
         if (!e) return err("required tag %u is missing", tag);
+        // count comes from the file. Check it against the count we already know
+        // before allocating, or a malformed tag could ask for a huge buffer.
+        if (e->count != expected) {
+            return err("tag %u has %llu entries, expected %llu", tag,
+                       static_cast<unsigned long long>(e->count),
+                       static_cast<unsigned long long>(expected));
+        }
         const std::size_t ts = type_size(e->type);
         if (ts == 0 || ts > 8) return err("tag %u has an unreadable type", tag);
         if (e->count > std::numeric_limits<std::uint64_t>::max() / ts) {
@@ -242,23 +249,21 @@ build_blob_from_file(const char* path) noexcept
     }
 
     // SampleFormat defaults to 1. All bands share one depth and one format.
-    auto bits_e = array(258); if (!bits_e) return std::unexpected(bits_e.error());
+    auto bits_e = array(258, spp); if (!bits_e) return std::unexpected(bits_e.error());
     const auto& bits = *bits_e;
-    if (bits.size() != spp) return err("BitsPerSample count does not match band count");
     for (std::uint64_t v : bits) if (v != bits[0]) return err("mixed BitsPerSample is not supported");
 
     std::uint64_t sf = 1;
     if (find(339) != nullptr) {
-        auto sf_e = array(339); if (!sf_e) return std::unexpected(sf_e.error());
+        auto sf_e = array(339, spp); if (!sf_e) return std::unexpected(sf_e.error());
         const auto& sfa = *sf_e;
-        if (sfa.size() != spp) return err("SampleFormat count does not match band count");
         for (std::uint64_t v : sfa) if (v != sfa[0]) return err("mixed SampleFormat is not supported");
         sf = sfa[0];
     }
 
     const std::uint8_t bps = static_cast<std::uint8_t>(bits[0]);
     const std::uint8_t sff = static_cast<std::uint8_t>(sf);
-    if (bits[0] > 128 || sf > 6 || infer_gdal_type(bps, sff) == GDT_Unknown) {
+    if (bits[0] > 128 || sf > 6 || sample_to_dtype(sff, bps) == RUMI_DT_UNKNOWN) {
         return err("unsupported (sample_format=%llu, bits_per_sample=%llu) pair",
                    static_cast<unsigned long long>(sf),
                    static_cast<unsigned long long>(bits[0]));
@@ -274,13 +279,10 @@ build_blob_from_file(const char* path) noexcept
                    static_cast<unsigned long long>(n_tiles));
     }
 
-    auto offs_e = array(324); if (!offs_e) return std::unexpected(offs_e.error());
-    auto cnts_e = array(325); if (!cnts_e) return std::unexpected(cnts_e.error());
+    auto offs_e = array(324, n_tiles); if (!offs_e) return std::unexpected(offs_e.error());
+    auto cnts_e = array(325, n_tiles); if (!cnts_e) return std::unexpected(cnts_e.error());
     const auto& offs = *offs_e;
     const auto& cnts = *cnts_e;
-    if (offs.size() != n_tiles || cnts.size() != n_tiles) {
-        return err("TileOffsets/TileByteCounts length does not match the tile grid");
-    }
 
     // TIFF is plane-major, rumi samples-innermost. Remap and walk; a
     // contiguous run proves tile-interleaved.

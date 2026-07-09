@@ -230,6 +230,15 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
+    // A type with no GDAL projection (float16, float8) is native-API only, the
+    // driver cannot hand GDAL an Unknown band.
+    if (parsed->gdal_type == GDT_Unknown) {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "RUMI: sample type is not exposable through the GDAL driver, "
+                 "use the native read API");
+        return nullptr;
+    }
+
     // Reject unreasonable band counts before the SetBand loop allocates.
     if (!GDALCheckBandCount(parsed->samples_per_pixel, FALSE)) {
         CPLError(CE_Failure, CPLE_AppDefined,

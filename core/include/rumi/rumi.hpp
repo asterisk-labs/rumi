@@ -82,6 +82,7 @@ struct Header {
     std::size_t   bytes_per_sample{};
     std::size_t   max_tile_size{};
     GDALDataType  gdal_type{GDT_Unknown};
+    rumi_dtype    dtype{RUMI_DT_UNKNOWN};
 
     std::vector<std::uint32_t> tile_byte_counts;
     std::vector<std::uint64_t> tile_offsets;
@@ -101,9 +102,17 @@ struct Header {
 [[nodiscard]] RUMI_API std::expected<Header, ParseError>
 parse_blob(std::span<const std::byte> blob);
 
-[[nodiscard]] RUMI_API GDALDataType
-infer_gdal_type(std::uint8_t bits_per_sample,
-                std::uint8_t sample_format) noexcept;
+// The canonical (sample_format, bits) to rumi_dtype map, RUMI_DT_UNKNOWN when
+// the pair is not one rumi supports. This is the validity gate, not GDAL.
+[[nodiscard]] RUMI_API rumi_dtype
+sample_to_dtype(std::uint8_t sample_format,
+                std::uint8_t bits_per_sample) noexcept;
+
+[[nodiscard]] RUMI_API std::size_t dtype_size(rumi_dtype dt) noexcept;
+
+// Best-effort projection to a GDAL type for the driver, GDT_Unknown for a type
+// this GDAL build cannot express.
+[[nodiscard]] RUMI_API GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept;
 
 
 // File reader
