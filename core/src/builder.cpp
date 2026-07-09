@@ -14,7 +14,7 @@
 namespace rumi {
 namespace {
 
-// printf-checked error builder; the format attribute validates call sites.
+// printf-checked error builder.
 [[gnu::format(printf, 1, 2)]]
 std::unexpected<std::string> err(const char* fmt, ...)
 {
@@ -37,8 +37,7 @@ bool read_at(VSILFILE* fp, std::uint64_t off, void* dst, std::size_t n) noexcept
     return VSIFReadL(dst, 1, n, fp) == n;
 }
 
-// One BigTIFF IFD entry. value is the inline payload when it fits in 8 bytes,
-// otherwise a file offset.
+// One BigTIFF IFD entry. value is inline when it fits 8 bytes, else an offset.
 struct Entry {
     std::uint16_t tag;
     std::uint16_t type;
@@ -242,8 +241,7 @@ build_blob_from_file(const char* path) noexcept
                    static_cast<unsigned long long>(*pred_e));
     }
 
-    // SampleFormat defaults to 1 when absent. All bands must share one
-    // bits_per_sample and one sample_format.
+    // SampleFormat defaults to 1. All bands share one depth and one format.
     auto bits_e = array(258); if (!bits_e) return std::unexpected(bits_e.error());
     const auto& bits = *bits_e;
     if (bits.size() != spp) return err("BitsPerSample count does not match band count");
@@ -284,8 +282,8 @@ build_blob_from_file(const char* path) noexcept
         return err("TileOffsets/TileByteCounts length does not match the tile grid");
     }
 
-    // The TIFF table is plane-major; rumi is samples-innermost. Remap, then walk
-    // in rumi order. A contiguous run proves tile-interleaved.
+    // TIFF is plane-major, rumi samples-innermost. Remap and walk; a
+    // contiguous run proves tile-interleaved.
     std::vector<std::uint32_t> counts(static_cast<std::size_t>(n_tiles));
     std::uint64_t base    = 0;
     std::uint64_t running = 0;

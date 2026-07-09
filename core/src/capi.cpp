@@ -15,8 +15,7 @@
 
 // Error plumbing.
 
-// Thread-local last error. A scoped handler on each entry point also captures
-// CPLError messages from the C++ core.
+// Thread-local last error. A scoped handler also captures CPLError from the core.
 
 namespace {
 
@@ -44,8 +43,7 @@ struct CplScope {
 template <typename F>
 rumi_status capi_call(F&& body) noexcept
 {
-    // Clear so a stale message can't mask this call's error in the
-    // g_last_error.empty() checks below.
+    // Clear so a stale message can't mask this call's error below.
     g_last_error.clear();
     CplScope scope;
     try {
@@ -184,7 +182,7 @@ bool checked_read_size(std::initializer_list<size_t> extents,
     return true;
 }
 
-// Expands a NULL/0 bands argument into all bands in file order, 1-based.
+// NULL/0 bands means all bands in file order, 1-based.
 std::vector<int> resolve_bands(const int* bands, size_t n_bands, uint16_t spp)
 {
     if (bands && n_bands > 0) {
@@ -207,9 +205,8 @@ std::vector<int> resolve_n_index(const int* n_index, size_t n_n, size_t total)
     return all;
 }
 
-// Standard message when a read fails because the reader lacks a custom codec.
-// Used on the threaded path, where the worker's CPLError does not reach the
-// caller's handler, so g_last_error is empty.
+// Message for the threaded path, where the worker's CPLError never reaches
+// the caller's handler and g_last_error is left empty.
 const char* k_unsupported_msg =
     "file uses a custom OpenZL codec this reader has not registered";
 
@@ -449,8 +446,8 @@ rumi_geokeys(const char* srs, int pixel_is_point,
             return RUMI_ERR_INVALID;
         }
 
-        // Copy each payload into a caller-owned buffer. Assign the out-params
-        // only after succeed, so a failure leaves them untouched.
+        // Assign the out-params only once every copy succeeds, so a failure
+        // leaves them untouched.
         unsigned char* bufs[3] = {nullptr, nullptr, nullptr};
         const std::vector<std::byte>* src[3] = {
             &result->directory, &result->double_params, &result->ascii_params};

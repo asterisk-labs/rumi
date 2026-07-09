@@ -129,6 +129,8 @@ Band::Band(Image* image, int band_index) noexcept : image_(image)
     nBlockYSize = image->header().tile_length;
 }
 
+// GDAL reserves these three for GDALProxyRasterBand. We override anyway to add
+// coarse per-band locking, since the dataset above self-declares thread-safe.
 GDALRasterBlock* Band::GetLockedBlockRef(int x_block, int y_block,
                                          int just_initialize)
 {
@@ -193,7 +195,7 @@ int Image::Identify(GDALOpenInfo* open_info)
     if (CSLFetchNameValue(open_info->papszOpenOptions, OPEN_OPTION_HEADER) != nullptr) {
         return TRUE;
     }
-    return -1;
+    return FALSE;
 }
 
 GDALDataset* Image::Open(GDALOpenInfo* open_info)
@@ -228,8 +230,7 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
-    // Reject band counts GDAL deems unreasonable before the SetBand loop
-    // turns them into a huge allocation.
+    // Reject unreasonable band counts before the SetBand loop allocates.
     if (!GDALCheckBandCount(parsed->samples_per_pixel, FALSE)) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "RUMI: unreasonable band count %u",
@@ -258,8 +259,8 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     }
     img->SetDescription(open_info->pszFilename);
 
-    // The pool is process-global and sized on first use, so the first dataset
-    // to enable threading fixes the worker count for the whole process.
+    // Process-global pool, sized on first use. Out-of-tree we can't reach
+    // GDAL's own, and it outlives dlclose, a known plugin hazard we accept.
     int n_threads = 1;
     if (const char* nt = CSLFetchNameValue(open_info->papszOpenOptions,
                                            OPEN_OPTION_THREADS)) {
@@ -277,6 +278,9 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         img->pool_ = &global_thread_pool(static_cast<unsigned>(n_threads));
     }
 
+    // We self-declare thread-safe to keep GDAL's stock wrapper away, it reopens
+    // per thread and that defeats the shared PRead handle. We own the contract
+    // instead, see the Band block methods.
     img->nOpenFlags = GDAL_OF_RASTER | GDAL_OF_THREAD_SAFE;
 
     return img.release();
@@ -300,8 +304,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         return CE_Failure;
     }
 
-    // Pitch arithmetic casts spacing to size_t, so non-positive spacing would
-    // corrupt memory rather than fail.
+    // Pitch arithmetic casts spacing to size_t, so reject non-positive spacing.
     if (pixel_space <= 0 || line_space <= 0 ||
         (band_count > 1 && band_space <= 0)) {
         CPLError(CE_Failure, CPLE_IllegalArg,
@@ -309,8 +312,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         return CE_Failure;
     }
 
-    // ImageCube reads reach us directly, bypassing GDAL's public validation,
-    // so revalidate here.
+    // Direct reads bypass GDAL's public validation, so revalidate here.
     if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
         static_cast<std::int64_t>(x_off) + x_size > nRasterXSize ||
         static_cast<std::int64_t>(y_off) + y_size > nRasterYSize) {
@@ -331,8 +333,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
     INIT_RASTERIO_EXTRA_ARG(default_arg);
     if (!extra_arg) extra_arg = &default_arg;
 
-    // read_native handles any spacing; only resampling or a dtype change needs
-    // the staging path.
+    // read_native handles any spacing, only resample or dtype change stages.
     const bool fast_path =
         x_size == buf_x_size && y_size == buf_y_size &&
         buf_type == header_.gdal_type;
@@ -358,7 +359,6 @@ void register_driver()
     auto driver = std::make_unique<GDALDriver>();
     driver->SetDescription("RUMI");
     driver->SetMetadataItem(GDAL_DMD_LONGNAME, "rumi fast read path");
-    driver->SetMetadataItem(GDAL_DMD_EXTENSIONS, "tif tiff");
     driver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     driver->SetMetadataItem(GDAL_DMD_OPENOPTIONLIST,
         "<OpenOptionList>"

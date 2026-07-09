@@ -38,8 +38,7 @@ compile_layout(std::string_view pattern,
 
     const std::array<std::int64_t, 4> size{ n, b, y, x };
 
-    // Parse into output groups. Parentheses merge axes into one output axis;
-    // one level only, no splits.
+    // Parse into output groups. Parentheses merge axes, one level, no splits.
     std::vector<std::vector<int>> groups;
     std::vector<int>              cur;
     bool                          in_paren = false;
@@ -70,14 +69,12 @@ compile_layout(std::string_view pattern,
     if (in_paren)      return err("unbalanced '('");
     if (groups.empty()) return err("empty pattern");
 
-    // Axes are {b, y, x} or {n, b, y, x}. Without n the pattern is a single
-    // image, valid only when n == 1.
+    // Without n the pattern is a single image, valid only when n == 1.
     const bool has_n = seen[0];
     if (!seen[1] || !seen[2] || !seen[3]) return err("pattern must contain b, y, x");
     if (!has_n && n > 1)                  return err("n > 1 needs n in the pattern");
 
-    // Flatten to output order, then strides right to left. Guarding run bounds
-    // every stride and shape.
+    // Flatten to output order, strides right to left, guarding overflow.
     std::vector<int> flat;
     for (const auto& g : groups)
         for (int a : g) flat.push_back(a);

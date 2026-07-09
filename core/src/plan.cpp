@@ -19,16 +19,14 @@
 namespace rumi {
 namespace {
 
-// Per-thread decode context and scratch, reused across tiles. Buffers grow to
-// the largest tile and never shrink.
+// Per-thread decode context and scratch, reused across tiles. Grows only.
 struct WorkerState {
     ZL_DCtx*               dctx = ZL_DCtx_create();
     std::vector<std::byte> compressed;
     std::vector<std::byte> scratch;
 
     WorkerState() {
-        // A fresh dctx only fails registration on allocation. Drop it so
-        // execute_task reports a clean context error.
+        // Registration only fails on allocation. Drop it and report cleanly.
         if (dctx && ZL_isError(geozl_register_decoders(dctx))) {
             ZL_DCtx_free(dctx);
             dctx = nullptr;
@@ -46,8 +44,8 @@ WorkerState& worker_state() noexcept
     return ws;
 }
 
-// A pixel stride equal to one sample is a contiguous row; a larger stride has
-// another axis inner, so place pixels one by one.
+// A one-sample pixel stride is a contiguous row, a larger one has another
+// axis inner, so copy pixel by pixel.
 void copy_rect(const TileTask& t, const TileSpec& spec,
                const std::byte* tile) noexcept
 {
@@ -124,9 +122,8 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         return RUMI_ERR_IO;
     }
 
-    // Full tile decodes straight into the output, otherwise into scratch for
-    // copy_rect. The numeric decode needs element-width alignment, which holds
-    // for the output buffer and always for scratch.
+    // Full tile decodes into the output, a partial one into scratch for
+    // copy_rect. Numeric decode needs element-width alignment, which both hold.
     std::byte* tile = t.direct;
     if (!tile) {
         if (ws.scratch.size() < spec.tile_bytes) {
@@ -141,8 +138,7 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         tile = ws.scratch.data();
     }
 
-    // One OpenZL frame per tile, one numeric output. The typed decode reports
-    // the element type and width, checked against the header below.
+    // One frame per tile, one numeric output. Type and width are checked below.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
         ws.dctx, &info, tile, spec.tile_bytes,
