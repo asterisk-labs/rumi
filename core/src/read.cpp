@@ -67,6 +67,21 @@ rumi_status take_read_status() noexcept
 }
 
 
+std::expected<void, std::string>
+check_data_fits(const Header& h, VSILFILE* fp)
+{
+    if (VSIFSeekL(fp, 0, SEEK_END) != 0) return err("could not size the file");
+    const vsi_l_offset size = VSIFTellL(fp);
+    VSIFSeekL(fp, 0, SEEK_SET);
+    const std::uint64_t need = h.data_end();
+    if (need > size) {
+        return err("tile data needs " + std::to_string(need)
+                   + " bytes, file has " + std::to_string(size));
+    }
+    return {};
+}
+
+
 // File reader
 
 FileReader::FileReader(VSILFILE* fp) noexcept
@@ -193,6 +208,11 @@ read_window(const char* path, const Header& h,
     FilePtr file(VSIFOpenL(path, "rb"));
     if (!file) return err(std::string("could not open: ") + path);
 
+    if (auto ok = check_data_fits(h, file.get()); !ok) {
+        g_read_status = RUMI_ERR_FORMAT;
+        return ok;
+    }
+
     // Lives for the whole run, every task points at it.
     FileReader reader(file.get());
 
@@ -289,6 +309,10 @@ read_stack(std::span<const char* const> paths,
         const std::size_t i = static_cast<std::size_t>(n_index[k] - 1);
         FilePtr file(VSIFOpenL(paths[i], "rb"));
         if (!file) return err(std::string("could not open: ") + paths[i]);
+        if (auto ok = check_data_fits(*headers[i], file.get()); !ok) {
+            g_read_status = RUMI_ERR_FORMAT;
+            return err("image " + std::to_string(n_index[k]) + ": " + ok.error());
+        }
         FileReader& reader = readers.emplace_back(file.get());
         files.push_back(std::move(file));
 

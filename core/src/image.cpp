@@ -232,6 +232,12 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
+    if (auto ok = check_data_fits(*parsed, fp); !ok) {
+        VSIFCloseL(fp);
+        CPLError(CE_Failure, CPLE_AppDefined, "RUMI: %s", ok.error().c_str());
+        return nullptr;
+    }
+
     auto file = std::shared_ptr<VSILFILE>(fp, [](VSILFILE* f) { VSIFCloseL(f); });
 
     auto img = std::make_unique<Image>();

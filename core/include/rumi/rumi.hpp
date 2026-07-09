@@ -91,6 +91,13 @@ struct Header {
         return tile_offsets[i];
     }
 
+    // Byte just past the last tile. The file must be at least this large.
+    [[nodiscard]] std::uint64_t data_end() const noexcept {
+        return tile_offsets.empty()
+             ? base_tiles_offset
+             : tile_offsets.back() + tile_byte_counts.back();
+    }
+
     [[nodiscard]] std::uint32_t tile_index(std::uint32_t row,
                                            std::uint32_t col,
                                            std::uint32_t band) const noexcept {
@@ -228,6 +235,11 @@ compile_layout(std::string_view pattern,
 // calling thread, then resets it. Lets the C ABI return a precise rumi_status
 // without changing the read_window error type. Defaults to RUMI_ERR_IO.
 [[nodiscard]] rumi_status take_read_status() noexcept;
+
+// Rejects a header whose tiles run past the end of fp, a truncated file or a
+// blob with inflated byte counts, before any tile buffer is allocated.
+[[nodiscard]] RUMI_API std::expected<void, std::string>
+check_data_fits(const Header& h, VSILFILE* fp);
 
 // Opens path via VSI, plans the window, runs it, closes. bands are 1-based.
 // dst must be aligned to bytes_per_sample.
