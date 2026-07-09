@@ -426,6 +426,160 @@ rumi_read_stack(const char* const* paths,
 }
 
 
+static rumi_status
+finish_dlpack(std::byte* buffer,
+              const std::expected<void, std::string>& r,
+              const rumi::Header& h, const rumi::LayoutPlan& plan,
+              DLManagedTensorVersioned** out)
+{
+    if (!r) {
+        std::free(buffer);
+        const rumi_status st = rumi::take_read_status();
+        if (g_last_error.empty()) {
+            set_error(st == RUMI_ERR_UNSUPPORTED ? k_unsupported_msg
+                                                 : r.error().c_str());
+        }
+        return st;
+    }
+    DLManagedTensorVersioned* t = rumi::build_dlpack(
+        buffer, h.dtype, plan.shape.data(),
+        static_cast<int>(plan.shape.size()));
+    if (!t) {
+        std::free(buffer);
+        set_error("dtype has no DLPack representation");
+        return RUMI_ERR_UNSUPPORTED;
+    }
+    *out = t;
+    return RUMI_OK;
+}
+
+extern "C" rumi_status
+rumi_read_dlpack(const char* path, const rumi_spec* spec,
+                 const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 const char* pattern, int num_threads,
+                 DLManagedTensorVersioned** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!path || !spec || !out) {
+            set_error("rumi_read_dlpack: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        if ((bands == nullptr) != (n_bands == 0)) {
+            set_error("bands and n_bands must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
+
+        const auto& h      = spec->h;
+        const auto  picked = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        const char* pat    = pattern ? pattern : "b y x";
+
+        auto plan = rumi::compile_layout(
+            pat, 1, static_cast<int64_t>(picked.size()),
+            static_cast<int64_t>(y_size), static_cast<int64_t>(x_size));
+        if (!plan) {
+            set_error(plan.error());
+            return RUMI_ERR_INVALID;
+        }
+
+        size_t need = 0;
+        if (!checked_read_size({picked.size(),
+                                static_cast<size_t>(y_size),
+                                static_cast<size_t>(x_size)},
+                               h.bytes_per_sample, &need)) {
+            set_error("requested read size overflows size_t");
+            return RUMI_ERR_INVALID;
+        }
+
+        auto* buffer = static_cast<std::byte*>(std::malloc(need ? need : 1));
+        if (!buffer) {
+            set_error("could not allocate the read buffer");
+            return RUMI_ERR_OOM;
+        }
+
+        auto r = rumi::read_window(path, h, std::span<const int>(picked),
+                                   y_off, y_size, x_off, x_size,
+                                   *plan, buffer, num_threads);
+        return finish_dlpack(buffer, r, h, *plan, out);
+    });
+}
+
+extern "C" rumi_status
+rumi_read_stack_dlpack(const char* const* paths,
+                       const rumi_spec* const* specs, size_t n_images,
+                       const int* n_index, size_t n_n,
+                       const int* bands, size_t n_bands,
+                       int y_off, int y_size, int x_off, int x_size,
+                       const char* pattern, int num_threads,
+                       DLManagedTensorVersioned** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!paths || !specs || n_images == 0 || !out) {
+            set_error("rumi_read_stack_dlpack: null or empty argument");
+            return RUMI_ERR_INVALID;
+        }
+        if ((n_index == nullptr) != (n_n == 0)) {
+            set_error("n_index and n_n must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
+        if ((bands == nullptr) != (n_bands == 0)) {
+            set_error("bands and n_bands must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
+        for (size_t i = 0; i < n_images; ++i) {
+            if (!paths[i] || !specs[i]) {
+                set_error("rumi_read_stack_dlpack: null entry at index "
+                          + std::to_string(i));
+                return RUMI_ERR_INVALID;
+            }
+        }
+
+        const auto& h        = specs[0]->h;
+        const auto  picked_n = resolve_n_index(n_index, n_n, n_images);
+        const auto  picked_b = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        const char* pat      = pattern
+            ? pattern : (picked_n.size() > 1 ? "n b y x" : "b y x");
+
+        auto plan = rumi::compile_layout(
+            pat, static_cast<int64_t>(picked_n.size()),
+            static_cast<int64_t>(picked_b.size()),
+            static_cast<int64_t>(y_size), static_cast<int64_t>(x_size));
+        if (!plan) {
+            set_error(plan.error());
+            return RUMI_ERR_INVALID;
+        }
+
+        size_t need = 0;
+        if (!checked_read_size({picked_n.size(), picked_b.size(),
+                                static_cast<size_t>(y_size),
+                                static_cast<size_t>(x_size)},
+                               h.bytes_per_sample, &need)) {
+            set_error("requested read size overflows size_t");
+            return RUMI_ERR_INVALID;
+        }
+
+        std::vector<const rumi::Header*> headers;
+        headers.reserve(n_images);
+        for (size_t i = 0; i < n_images; ++i) headers.push_back(&specs[i]->h);
+
+        auto* buffer = static_cast<std::byte*>(std::malloc(need ? need : 1));
+        if (!buffer) {
+            set_error("could not allocate the read buffer");
+            return RUMI_ERR_OOM;
+        }
+
+        auto r = rumi::read_stack(
+            std::span<const char* const>(paths, n_images),
+            std::span<const rumi::Header* const>(headers.data(), n_images),
+            std::span<const int>(picked_n),
+            std::span<const int>(picked_b),
+            y_off, y_size, x_off, x_size,
+            *plan, buffer, num_threads);
+        return finish_dlpack(buffer, r, h, *plan, out);
+    });
+}
+
+
 // Geo keys.
 
 extern "C" rumi_status

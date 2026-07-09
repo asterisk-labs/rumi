@@ -74,6 +74,7 @@ set(RUMI_SOURCES
     src/pattern.cpp
     src/image.cpp
     src/capi.cpp
+    src/dlpack.cpp
 )
 
 # Compile and link settings shared by every target. rumi_config is internal,
