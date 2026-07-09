@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <mutex>
 #include <new>
 #include <optional>
 #include <span>
@@ -127,27 +126,6 @@ Band::Band(Image* image, int band_index) noexcept : image_(image)
     eDataType   = image->header().gdal_type;
     nBlockXSize = image->header().tile_width;
     nBlockYSize = image->header().tile_length;
-}
-
-// GDAL reserves these three for GDALProxyRasterBand. We override anyway to add
-// coarse per-band locking, since the dataset above self-declares thread-safe.
-GDALRasterBlock* Band::GetLockedBlockRef(int x_block, int y_block,
-                                         int just_initialize)
-{
-    std::lock_guard guard(block_cache_mutex_);
-    return GDALRasterBand::GetLockedBlockRef(x_block, y_block, just_initialize);
-}
-
-GDALRasterBlock* Band::TryGetLockedBlockRef(int x_block, int y_block)
-{
-    std::lock_guard guard(block_cache_mutex_);
-    return GDALRasterBand::TryGetLockedBlockRef(x_block, y_block);
-}
-
-CPLErr Band::FlushBlock(int x_block, int y_block, int write_dirty)
-{
-    std::lock_guard guard(block_cache_mutex_);
-    return GDALRasterBand::FlushBlock(x_block, y_block, write_dirty);
 }
 
 CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
@@ -286,11 +264,6 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     if (n_threads > 1) {
         img->pool_ = &global_thread_pool(static_cast<unsigned>(n_threads));
     }
-
-    // We self-declare thread-safe to keep GDAL's stock wrapper away, it reopens
-    // per thread and that defeats the shared PRead handle. We own the contract
-    // instead, see the Band block methods.
-    img->nOpenFlags = GDAL_OF_RASTER | GDAL_OF_THREAD_SAFE;
 
     return img.release();
 }

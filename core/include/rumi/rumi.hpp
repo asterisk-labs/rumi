@@ -272,17 +272,8 @@ public:
                      GSpacing pixel_space, GSpacing line_space,
                      GDALRasterIOExtraArg* extra_arg) override;
 
-    // The default block cache is not internally locked, so serialize the
-    // entry points that GDAL_OF_THREAD_SAFE may reach from several threads.
-    GDALRasterBlock* GetLockedBlockRef(int x_block, int y_block,
-                                       int just_initialize = FALSE) override;
-    GDALRasterBlock* TryGetLockedBlockRef(int x_block, int y_block) override;
-    CPLErr FlushBlock(int x_block, int y_block,
-                      int write_dirty = TRUE) override;
-
 private:
-    Image*               image_{nullptr};
-    std::recursive_mutex block_cache_mutex_;
+    Image* image_{nullptr};
 };
 
 class RUMI_API Image : public GDALDataset {
