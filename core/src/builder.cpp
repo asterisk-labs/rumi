@@ -233,8 +233,9 @@ build_blob_from_file(const char* path) noexcept
 
     // Profile gates.
     auto comp_e = scalar(259, 0); if (!comp_e) return std::unexpected(comp_e.error());
-    if (*comp_e != 60000) {
-        return err("rumi requires Compression 60000 (OpenZL); file has %llu",
+    if (*comp_e != OPENZL_COMPRESSION) {
+        return err("rumi requires Compression %u (OpenZL); file has %llu",
+                   static_cast<unsigned>(OPENZL_COMPRESSION),
                    static_cast<unsigned long long>(*comp_e));
     }
     auto planar_e = scalar(284, 1); if (!planar_e) return std::unexpected(planar_e.error());
