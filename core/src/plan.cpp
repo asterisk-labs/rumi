@@ -152,9 +152,11 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         const char* ctx = ZL_DCtx_getErrorContextString(ws.dctx, rep);
         unsigned long ctid = 0;
         if (missing_custom_codec(ctx, &ctid)) {
+            const char* what = geozl_owns_ctid(ctid)
+                ? "a geozl codec this build lacks, update geozl"
+                : "an unknown OpenZL custom codec";
             CPLError(CE_Failure, CPLE_NotSupported,
-                     "rumi: file uses a custom OpenZL codec (CTid %lu) this "
-                     "reader has not registered%s", ctid, img);
+                     "rumi: file uses %s (CTid %lu)%s", what, ctid, img);
             return RUMI_ERR_UNSUPPORTED;
         }
         CPLError(CE_Failure, CPLE_AppDefined,
