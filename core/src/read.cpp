@@ -322,6 +322,7 @@ read_stack(std::span<const char* const> paths,
                               static_cast<GSpacing>(layout.sx) * bps,
                               static_cast<GSpacing>(layout.sy) * bps,
                               static_cast<GSpacing>(layout.sb) * bps);
+        for (TileTask& t : sub.tasks) t.image = static_cast<std::uint32_t>(n_index[k]);
         plan.tasks.insert(plan.tasks.end(),
                           std::make_move_iterator(sub.tasks.begin()),
                           std::make_move_iterator(sub.tasks.end()));

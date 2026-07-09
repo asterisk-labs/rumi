@@ -61,7 +61,7 @@ find_package(GDAL 3.8 CONFIG REQUIRED)
 # geozl exposes OpenZL PUBLIC, so rumi links one OpenZL, the same one geozl
 # registers its decoders against.
 set(BUILD_SHARED_LIBS OFF)
-set(GEOZL_BUILD_KERNELS OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
+set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
 add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
 target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
 

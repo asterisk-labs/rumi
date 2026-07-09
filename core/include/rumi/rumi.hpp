@@ -171,6 +171,7 @@ struct TileTask {
     std::uint32_t h;
     std::size_t   dst_pitch;
     std::size_t   dst_pixel_stride;
+    std::uint32_t image;  // 1-based n in a stack read, 0 for a single image
 };
 
 struct Plan {

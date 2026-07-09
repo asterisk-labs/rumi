@@ -11,6 +11,7 @@
 #include "openzl/zl_version.h"       // ZL_MAX_FORMAT_VERSION
 
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -93,6 +94,9 @@ bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
 
 rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
 {
+    char img[24] = "";
+    if (t.image) std::snprintf(img, sizeof img, " (image %u)", t.image);
+
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
         CPLError(CE_Failure, CPLE_OutOfMemory,
@@ -115,10 +119,10 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         t.offset, t.compressed_size, ws.compressed.data());
     if (got != t.compressed_size) {
         CPLError(CE_Failure, CPLE_FileIO,
-                 "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu",
+                 "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu%s",
                  static_cast<GUIntBig>(t.offset),
                  static_cast<unsigned long long>(got),
-                 static_cast<unsigned long long>(t.compressed_size));
+                 static_cast<unsigned long long>(t.compressed_size), img);
         return RUMI_ERR_IO;
     }
 
@@ -150,11 +154,11 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         if (missing_custom_codec(ctx, &ctid)) {
             CPLError(CE_Failure, CPLE_NotSupported,
                      "rumi: file uses a custom OpenZL codec (CTid %lu) this "
-                     "reader has not registered", ctid);
+                     "reader has not registered%s", ctid, img);
             return RUMI_ERR_UNSUPPORTED;
         }
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "rumi: OpenZL decode failed: %s", ctx);
+                 "rumi: OpenZL decode failed: %s%s", ctx, img);
         return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
@@ -162,12 +166,12 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         info.decompressedByteSize != spec.tile_bytes) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "rumi: unexpected tile output (type %u, width %u, size %llu; "
-                 "expected numeric width %u, size %llu)",
+                 "expected numeric width %u, size %llu)%s",
                  static_cast<unsigned>(info.type),
                  static_cast<unsigned>(info.fixedWidth),
                  static_cast<unsigned long long>(info.decompressedByteSize),
                  static_cast<unsigned>(spec.bytes_per_sample),
-                 static_cast<unsigned long long>(spec.tile_bytes));
+                 static_cast<unsigned long long>(spec.tile_bytes), img);
         return RUMI_ERR_DECODE;
     }
 
