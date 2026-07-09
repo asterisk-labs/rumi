@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <expected>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -260,18 +262,54 @@ read_stack(std::span<const char* const> paths,
         }
     }
 
-    const std::size_t n_stride =
-        static_cast<std::size_t>(layout.sn) * ref.bytes_per_sample;
+    // The grid is shared, so a window valid for the reference is valid for all.
+    if (auto ok = validate_request(ref, bands, y_off, y_size, x_off, x_size);
+        !ok) {
+        return ok;
+    }
+
+    ThreadPool* pool = nullptr;
+    if (clamp_threads(num_threads) > 1) {
+        pool = &global_thread_pool(
+            static_cast<unsigned>(clamp_threads(num_threads)));
+    }
+
+    const std::size_t bps      = ref.bytes_per_sample;
+    const std::size_t n_stride = static_cast<std::size_t>(layout.sn) * bps;
+
+    // One reader per file, kept alive for the run. deque so the pointers hold.
+    std::vector<FilePtr>   files;
+    std::deque<FileReader> readers;
+    files.reserve(n_index.size());
+
+    Plan plan;
+    plan.spec = make_tile_spec(ref);
 
     for (std::size_t k = 0; k < n_index.size(); ++k) {
         const std::size_t i = static_cast<std::size_t>(n_index[k] - 1);
-        if (auto ok = read_window(paths[i], *headers[i], bands,
-                                  y_off, y_size, x_off, x_size,
-                                  layout, dst + k * n_stride, num_threads);
-            !ok) {
-            return err("image " + std::to_string(n_index[k]) + ": " + ok.error());
-        }
+        FilePtr file(VSIFOpenL(paths[i], "rb"));
+        if (!file) return err(std::string("could not open: ") + paths[i]);
+        FileReader& reader = readers.emplace_back(file.get());
+        files.push_back(std::move(file));
+
+        Plan sub = build_plan(*headers[i], &reader,
+                              x_off, y_off, x_size, y_size,
+                              dst + k * n_stride, bands,
+                              static_cast<GSpacing>(layout.sx) * bps,
+                              static_cast<GSpacing>(layout.sy) * bps,
+                              static_cast<GSpacing>(layout.sb) * bps);
+        plan.tasks.insert(plan.tasks.end(),
+                          std::make_move_iterator(sub.tasks.begin()),
+                          std::make_move_iterator(sub.tasks.end()));
     }
+
+    Executor exec(pool);
+    if (!exec.run(plan)) {
+        g_read_status = exec.status();
+        return err(exec.error().empty() ? std::string("read failed")
+                                        : exec.error());
+    }
+    g_read_status = RUMI_OK;
     return {};
 }
 
