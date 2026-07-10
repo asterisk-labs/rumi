@@ -112,6 +112,11 @@ struct Header {
 [[nodiscard]] RUMI_API std::expected<Header, ParseError>
 parse_blob(std::span<const std::byte> blob);
 
+// The dtype table, generated from rumi_dtypes.def, and its length. The single
+// place the type set is enumerated. Every function below is a view over it.
+[[nodiscard]] RUMI_API const rumi_dtype_info*
+dtype_table(std::size_t* count) noexcept;
+
 // The canonical (sample_format, bits) to rumi_dtype map, RUMI_DT_UNKNOWN when
 // the pair is not one rumi supports. This is the validity gate, not GDAL.
 [[nodiscard]] RUMI_API rumi_dtype
@@ -123,6 +128,11 @@ sample_to_dtype(std::uint8_t sample_format,
 // Best-effort projection to a GDAL type for the driver, GDT_Unknown for a type
 // this GDAL build cannot express.
 [[nodiscard]] RUMI_API GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept;
+
+// geozl quant_linear wire code (QL_U8..QL_F64 as 0..10) for the lossy encoder,
+// RUMI_QL_NONE when quant_linear cannot carry the type. Passed straight to
+// geozl_node_quant_linear, so rumi never includes the geozl codec header.
+[[nodiscard]] RUMI_API int dtype_to_ql(rumi_dtype dt) noexcept;
 
 
 // File reader

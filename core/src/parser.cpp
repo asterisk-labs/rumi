@@ -27,125 +27,63 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
-// The only validity gate for a sample type. bits carries the summed component
-// widths for the complex formats. RUMI_DT_UNKNOWN means rumi does not take it.
+// The dtype set, expanded once from rumi_dtypes.def. GDAL is a separate switch
+// below, not a column here, so this ABI-facing struct pulls in no GDAL header.
+static const rumi_dtype_info k_dtype_table[] = {
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+    { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
+      static_cast<std::uint8_t>(dlbits), name },
+#include "rumi/rumi_dtypes.def"
+#undef RUMI_DTYPE
+};
+
+const rumi_dtype_info* dtype_table(std::size_t* count) noexcept
+{
+    if (count) *count = sizeof(k_dtype_table) / sizeof(k_dtype_table[0]);
+    return k_dtype_table;
+}
+
+// (sample_format, bits) is unique per row, so the first match is the type.
 rumi_dtype sample_to_dtype(std::uint8_t sample_format,
                            std::uint8_t bits) noexcept
 {
-    switch (sample_format) {
-        case 1:
-            switch (bits) {
-                case 1:  return RUMI_DT_BINARY;
-                case 2:  return RUMI_DT_UINT2;
-                case 4:  return RUMI_DT_UINT4;
-                case 8:  return RUMI_DT_UINT8;
-                case 16: return RUMI_DT_UINT16;
-                case 32: return RUMI_DT_UINT32;
-                case 64: return RUMI_DT_UINT64;
-            }
-            break;
-        case 2:
-            switch (bits) {
-                case 2:  return RUMI_DT_INT2;
-                case 4:  return RUMI_DT_INT4;
-                case 8:  return RUMI_DT_INT8;
-                case 16: return RUMI_DT_INT16;
-                case 32: return RUMI_DT_INT32;
-                case 64: return RUMI_DT_INT64;
-            }
-            break;
-        case 3:
-            switch (bits) {
-                case 16: return RUMI_DT_FLOAT16;
-                case 32: return RUMI_DT_FLOAT32;
-                case 64: return RUMI_DT_FLOAT64;
-            }
-            break;
-        case 5:
-            switch (bits) {
-                case 32: return RUMI_DT_CINT16;
-                case 64: return RUMI_DT_CINT32;
-            }
-            break;
-        case 6:
-            switch (bits) {
-                case 32:  return RUMI_DT_CFLOAT16;
-                case 64:  return RUMI_DT_CFLOAT32;
-                case 128: return RUMI_DT_CFLOAT64;
-            }
-            break;
-        // rumi-private, TIFF has no format for these ML types
-        case 100: if (bits == 8)  return RUMI_DT_FLOAT8_E4M3FN; break;
-        case 101: if (bits == 8)  return RUMI_DT_FLOAT8_E5M2;   break;
-        case 102: if (bits == 16) return RUMI_DT_BFLOAT16;      break;
-        case 103: if (bits == 8)  return RUMI_DT_FLOAT8_E8M0;   break;
-        case 104: if (bits == 6)  return RUMI_DT_FLOAT6_E2M3;   break;
-        case 105: if (bits == 6)  return RUMI_DT_FLOAT6_E3M2;   break;
-        case 106: if (bits == 4)  return RUMI_DT_FLOAT4_E2M1;   break;
+    std::size_t n = 0;
+    const rumi_dtype_info* t = dtype_table(&n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (t[i].sample_format == sample_format && t[i].bits == bits) {
+            return static_cast<rumi_dtype>(t[i].code);
+        }
     }
     return RUMI_DT_UNKNOWN;
 }
 
+// Whole-byte types give bits / 8, sub-byte is not a whole byte and gives 0.
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
-    switch (dt) {
-        case RUMI_DT_UINT8:  case RUMI_DT_INT8:
-        case RUMI_DT_FLOAT8_E4M3FN: case RUMI_DT_FLOAT8_E5M2:
-        case RUMI_DT_FLOAT8_E8M0:                            return 1;
-        case RUMI_DT_UINT16: case RUMI_DT_INT16:
-        case RUMI_DT_FLOAT16: case RUMI_DT_BFLOAT16:         return 2;
-        case RUMI_DT_UINT32: case RUMI_DT_INT32:
-        case RUMI_DT_FLOAT32: case RUMI_DT_CINT16:
-        case RUMI_DT_CFLOAT16:                               return 4;
-        case RUMI_DT_UINT64: case RUMI_DT_INT64:
-        case RUMI_DT_FLOAT64: case RUMI_DT_CINT32:
-        case RUMI_DT_CFLOAT32:                               return 8;
-        case RUMI_DT_CFLOAT64:                               return 16;
-        // sub-byte, not a whole number of bytes
-        case RUMI_DT_UINT4: case RUMI_DT_INT4:
-        case RUMI_DT_UINT2: case RUMI_DT_INT2:
-        case RUMI_DT_BINARY:
-        case RUMI_DT_FLOAT6_E2M3: case RUMI_DT_FLOAT6_E3M2:
-        case RUMI_DT_FLOAT4_E2M1:
-        case RUMI_DT_UNKNOWN:                                return 0;
+    std::size_t n = 0;
+    const rumi_dtype_info* t = dtype_table(&n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (t[i].code == static_cast<std::uint8_t>(dt)) {
+            return t[i].bits >= 8 ? t[i].bits / 8u : 0u;
+        }
     }
     return 0;
 }
 
-// Float16, CFloat16, bfloat16 and the float8 types have no GDAL enum here, so
-// they project to GDT_Unknown and stay native-API only.
+// Same table's GDAL column. G_NONE is GDT_Unknown, the types with no GDAL enum
+// (float16, the float8s), which stay native-API only.
 GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept
 {
+#define G_NONE GDT_Unknown
     switch (dt) {
-        case RUMI_DT_UINT8:   return GDT_Byte;
-        case RUMI_DT_INT8:    return GDT_Int8;
-        case RUMI_DT_UINT16:  return GDT_UInt16;
-        case RUMI_DT_INT16:   return GDT_Int16;
-        case RUMI_DT_UINT32:  return GDT_UInt32;
-        case RUMI_DT_INT32:   return GDT_Int32;
-        case RUMI_DT_UINT64:  return GDT_UInt64;
-        case RUMI_DT_INT64:   return GDT_Int64;
-        case RUMI_DT_FLOAT32: return GDT_Float32;
-        case RUMI_DT_FLOAT64: return GDT_Float64;
-        case RUMI_DT_CINT16:  return GDT_CInt16;
-        case RUMI_DT_CINT32:  return GDT_CInt32;
-        case RUMI_DT_CFLOAT32: return GDT_CFloat32;
-        case RUMI_DT_CFLOAT64: return GDT_CFloat64;
-        case RUMI_DT_FLOAT16:
-        case RUMI_DT_CFLOAT16:
-        case RUMI_DT_BFLOAT16:
-        case RUMI_DT_FLOAT8_E4M3FN:
-        case RUMI_DT_FLOAT8_E5M2:
-        case RUMI_DT_FLOAT8_E8M0:
-        case RUMI_DT_FLOAT6_E2M3:
-        case RUMI_DT_FLOAT6_E3M2:
-        case RUMI_DT_FLOAT4_E2M1:
-        case RUMI_DT_UINT4: case RUMI_DT_INT4:
-        case RUMI_DT_UINT2: case RUMI_DT_INT2:
-        case RUMI_DT_BINARY:
-        case RUMI_DT_UNKNOWN:  return GDT_Unknown;
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+        case RUMI_DT_##sym: return gdal;
+#include "rumi/rumi_dtypes.def"
+#undef RUMI_DTYPE
+        case RUMI_DT_UNKNOWN: break;
     }
     return GDT_Unknown;
+#undef G_NONE
 }
 
 std::expected<Header, ParseError>

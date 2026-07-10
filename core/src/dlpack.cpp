@@ -23,39 +23,20 @@ constexpr DLDataType dt(unsigned code, unsigned bits) noexcept
                       static_cast<std::uint8_t>(bits), 1};
 }
 
-// zero bits marks unsupported types; complex widths include both parts
+// The dl_code and dl_bits already live on each table row, the complex integers
+// carry RUMI_DL_NONE. Zero bits marks a type with no DLPack form, the caller's
+// unsupported path. The table stores the DLPack code straight, so no second
+// mapping to keep in step.
 DLDataType dtype_to_dlpack(rumi_dtype d) noexcept
 {
-    switch (d) {
-        case RUMI_DT_UINT8:       return dt(kDLUInt, 8);
-        case RUMI_DT_INT8:        return dt(kDLInt, 8);
-        case RUMI_DT_UINT16:      return dt(kDLUInt, 16);
-        case RUMI_DT_INT16:       return dt(kDLInt, 16);
-        case RUMI_DT_UINT32:      return dt(kDLUInt, 32);
-        case RUMI_DT_INT32:       return dt(kDLInt, 32);
-        case RUMI_DT_UINT64:      return dt(kDLUInt, 64);
-        case RUMI_DT_INT64:       return dt(kDLInt, 64);
-        case RUMI_DT_FLOAT16:     return dt(kDLFloat, 16);
-        case RUMI_DT_FLOAT32:     return dt(kDLFloat, 32);
-        case RUMI_DT_FLOAT64:     return dt(kDLFloat, 64);
-        case RUMI_DT_CFLOAT16:    return dt(kDLComplex, 32);
-        case RUMI_DT_CFLOAT32:    return dt(kDLComplex, 64);
-        case RUMI_DT_CFLOAT64:    return dt(kDLComplex, 128);
-        case RUMI_DT_BFLOAT16:      return dt(kDLBfloat, 16);
-        case RUMI_DT_FLOAT8_E4M3FN: return dt(kDLFloat8_e4m3fn, 8);
-        case RUMI_DT_FLOAT8_E5M2:   return dt(kDLFloat8_e5m2, 8);
-        case RUMI_DT_FLOAT8_E8M0:   return dt(kDLFloat8_e8m0fnu, 8);
-        case RUMI_DT_FLOAT6_E2M3:   return dt(kDLFloat6_e2m3fn, 6);
-        case RUMI_DT_FLOAT6_E3M2:   return dt(kDLFloat6_e3m2fn, 6);
-        case RUMI_DT_FLOAT4_E2M1:   return dt(kDLFloat4_e2m1fn, 4);
-        case RUMI_DT_UINT4:         return dt(kDLUInt, 4);
-        case RUMI_DT_INT4:          return dt(kDLInt, 4);
-        case RUMI_DT_UINT2:         return dt(kDLUInt, 2);
-        case RUMI_DT_INT2:          return dt(kDLInt, 2);
-        case RUMI_DT_BINARY:        return dt(kDLUInt, 1);
-        case RUMI_DT_CINT16:
-        case RUMI_DT_CINT32:
-        case RUMI_DT_UNKNOWN:     return dt(0, 0);
+    std::size_t n = 0;
+    const rumi_dtype_info* t = dtype_table(&n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (t[i].code == static_cast<std::uint8_t>(d)) {
+            return t[i].dl_code == RUMI_DL_NONE
+                 ? dt(0, 0)
+                 : dt(t[i].dl_code, t[i].dl_bits);
+        }
     }
     return dt(0, 0);
 }

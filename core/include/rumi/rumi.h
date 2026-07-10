@@ -84,41 +84,37 @@ rumi_index_file(const char*     path,
 
 // Header.
 
-// Logical element type. rumi's own dtype is the source of truth for how a
-// sample is interpreted. The GDAL type is a best-effort projection used only
-// by the driver. Codes are stable and append only.
+// Sentinel in the DLCODE column of rumi_dtypes.def for a type with no DLPack
+// form (the complex integers). Never a real DLPack code.
+#define RUMI_DL_NONE 255
+
+// The dtype set is defined once in rumi_dtypes.def. The enum, the descriptor
+// table below, and the GDAL projection are all generated from it, so a new
+// type is one row and nothing here drifts. RUMI_DT_UNKNOWN = 0 has no row.
 typedef enum {
-    RUMI_DT_UNKNOWN     = 0,
-    RUMI_DT_UINT8       = 1,
-    RUMI_DT_INT8        = 2,
-    RUMI_DT_UINT16      = 3,
-    RUMI_DT_INT16       = 4,
-    RUMI_DT_UINT32      = 5,
-    RUMI_DT_INT32       = 6,
-    RUMI_DT_UINT64      = 7,
-    RUMI_DT_INT64       = 8,
-    RUMI_DT_FLOAT16     = 9,
-    RUMI_DT_FLOAT32     = 10,
-    RUMI_DT_FLOAT64     = 11,
-    RUMI_DT_CINT16      = 12,
-    RUMI_DT_CINT32      = 13,
-    RUMI_DT_CFLOAT16    = 14,
-    RUMI_DT_CFLOAT32    = 15,
-    RUMI_DT_CFLOAT64    = 16,
-    // Reserved for future ML and EO types, not yet representable on disk.
-    RUMI_DT_FLOAT8_E4M3FN = 17,
-    RUMI_DT_FLOAT8_E5M2   = 18,
-    RUMI_DT_BFLOAT16      = 19,
-    RUMI_DT_UINT4         = 20,
-    RUMI_DT_INT4          = 21,
-    RUMI_DT_UINT2         = 22,
-    RUMI_DT_INT2          = 23,
-    RUMI_DT_BINARY        = 24,
-    RUMI_DT_FLOAT8_E8M0   = 25,
-    RUMI_DT_FLOAT6_E2M3   = 26,
-    RUMI_DT_FLOAT6_E3M2   = 27,
-    RUMI_DT_FLOAT4_E2M1   = 28
+    RUMI_DT_UNKNOWN = 0,
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+    RUMI_DT_##sym = code,
+#include "rumi_dtypes.def"
+#undef RUMI_DTYPE
 } rumi_dtype;
+
+// One row of the dtype table, the ABI-stable view a binding walks to learn
+// every type instead of hard-coding the set. dl_code is RUMI_DL_NONE when the
+// type has no DLPack form. The GDAL type is deliberately not here, no GDAL enum
+// crosses the ABI so it cannot move when GDAL adds a type.
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    const char* name;
+} rumi_dtype_info;
+
+// Hands back the static dtype table and its length. Process-lifetime, not owned
+// by the caller. Bindings build their own numpy/name maps by walking it.
+RUMI_API size_t rumi_dtype_table(const rumi_dtype_info** out);
 
 // dtype is the canonical type, rumi's own, independent of GDAL. The
 // (sample_format, bits_per_sample) pair is kept for reference. No GDAL enum

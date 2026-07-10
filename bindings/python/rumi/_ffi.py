@@ -17,28 +17,16 @@ typedef enum {
     RUMI_ERR_INTERNAL    = 99
 } rumi_status;
 
-typedef enum {
-    RUMI_DT_UNKNOWN     = 0,
-    RUMI_DT_UINT8       = 1,
-    RUMI_DT_INT8        = 2,
-    RUMI_DT_UINT16      = 3,
-    RUMI_DT_INT16       = 4,
-    RUMI_DT_UINT32      = 5,
-    RUMI_DT_INT32       = 6,
-    RUMI_DT_UINT64      = 7,
-    RUMI_DT_INT64       = 8,
-    RUMI_DT_FLOAT16     = 9,
-    RUMI_DT_FLOAT32     = 10,
-    RUMI_DT_FLOAT64     = 11,
-    RUMI_DT_CINT16      = 12,
-    RUMI_DT_CINT32      = 13,
-    RUMI_DT_CFLOAT16    = 14,
-    RUMI_DT_CFLOAT32    = 15,
-    RUMI_DT_CFLOAT64    = 16,
-    RUMI_DT_FLOAT8_E4M3 = 17,
-    RUMI_DT_FLOAT8_E5M2 = 18,
-    RUMI_DT_BFLOAT16    = 19
-} rumi_dtype;
+typedef int rumi_dtype;
+
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    const char* name;
+} rumi_dtype_info;
 
 typedef struct {
     uint32_t image_width;
@@ -72,6 +60,8 @@ int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void        rumi_clear_error(void);
 void        rumi_free(void* ptr);
+
+size_t rumi_dtype_table(const rumi_dtype_info** out);
 
 void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
 

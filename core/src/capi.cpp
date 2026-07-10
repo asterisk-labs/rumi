@@ -80,6 +80,14 @@ extern "C" int rumi_openzl_format_version(void)
     return rumi::openzl_format_version();
 }
 
+extern "C" size_t rumi_dtype_table(const rumi_dtype_info** out)
+{
+    std::size_t n = 0;
+    const rumi_dtype_info* t = rumi::dtype_table(&n);
+    if (out) *out = t;
+    return n;
+}
+
 extern "C" const char* rumi_last_error(void)
 {
     return g_last_error.empty() ? nullptr : g_last_error.c_str();
