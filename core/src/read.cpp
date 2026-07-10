@@ -204,6 +204,11 @@ read_window(const char* path, const Header& h,
     if (auto ok = validate_request(h, bands, y_off, y_size, x_off, x_size); !ok) {
         return ok;
     }
+    if (h.bits_per_sample < 8 &&
+        !(y_off == 0 && y_size == static_cast<int>(h.image_length) &&
+          x_off == 0 && x_size == static_cast<int>(h.image_width))) {
+        return err("sub-byte types support only a full-image read for now");
+    }
 
     FilePtr file(VSIFOpenL(path, "rb"));
     if (!file) return err(std::string("could not open: ") + path);
@@ -286,6 +291,11 @@ read_stack(std::span<const char* const> paths,
     if (auto ok = validate_request(ref, bands, y_off, y_size, x_off, x_size);
         !ok) {
         return ok;
+    }
+    if (ref.bits_per_sample < 8 &&
+        !(y_off == 0 && y_size == static_cast<int>(ref.image_length) &&
+          x_off == 0 && x_size == static_cast<int>(ref.image_width))) {
+        return err("sub-byte types support only a full-image read for now");
     }
 
     ThreadPool* pool = nullptr;

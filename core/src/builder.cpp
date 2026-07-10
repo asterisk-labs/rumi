@@ -264,7 +264,7 @@ build_blob_from_file(const char* path) noexcept
 
     const std::uint8_t bps = static_cast<std::uint8_t>(bits[0]);
     const std::uint8_t sff = static_cast<std::uint8_t>(sf);
-    if (bits[0] > 128 || sf > 6 || sample_to_dtype(sff, bps) == RUMI_DT_UNKNOWN) {
+    if (bits[0] > 128 || sample_to_dtype(sff, bps) == RUMI_DT_UNKNOWN) {
         return err("unsupported (sample_format=%llu, bits_per_sample=%llu) pair",
                    static_cast<unsigned long long>(sf),
                    static_cast<unsigned long long>(bits[0]));

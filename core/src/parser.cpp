@@ -35,6 +35,9 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
     switch (sample_format) {
         case 1:
             switch (bits) {
+                case 1:  return RUMI_DT_BINARY;
+                case 2:  return RUMI_DT_UINT2;
+                case 4:  return RUMI_DT_UINT4;
                 case 8:  return RUMI_DT_UINT8;
                 case 16: return RUMI_DT_UINT16;
                 case 32: return RUMI_DT_UINT32;
@@ -43,6 +46,8 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
             break;
         case 2:
             switch (bits) {
+                case 2:  return RUMI_DT_INT2;
+                case 4:  return RUMI_DT_INT4;
                 case 8:  return RUMI_DT_INT8;
                 case 16: return RUMI_DT_INT16;
                 case 32: return RUMI_DT_INT32;
@@ -69,6 +74,14 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
                 case 128: return RUMI_DT_CFLOAT64;
             }
             break;
+        // rumi-private, TIFF has no format for these ML types
+        case 100: if (bits == 8)  return RUMI_DT_FLOAT8_E4M3FN; break;
+        case 101: if (bits == 8)  return RUMI_DT_FLOAT8_E5M2;   break;
+        case 102: if (bits == 16) return RUMI_DT_BFLOAT16;      break;
+        case 103: if (bits == 8)  return RUMI_DT_FLOAT8_E8M0;   break;
+        case 104: if (bits == 6)  return RUMI_DT_FLOAT6_E2M3;   break;
+        case 105: if (bits == 6)  return RUMI_DT_FLOAT6_E3M2;   break;
+        case 106: if (bits == 4)  return RUMI_DT_FLOAT4_E2M1;   break;
     }
     return RUMI_DT_UNKNOWN;
 }
@@ -77,7 +90,8 @@ std::size_t dtype_size(rumi_dtype dt) noexcept
 {
     switch (dt) {
         case RUMI_DT_UINT8:  case RUMI_DT_INT8:
-        case RUMI_DT_FLOAT8_E4M3: case RUMI_DT_FLOAT8_E5M2:  return 1;
+        case RUMI_DT_FLOAT8_E4M3FN: case RUMI_DT_FLOAT8_E5M2:
+        case RUMI_DT_FLOAT8_E8M0:                            return 1;
         case RUMI_DT_UINT16: case RUMI_DT_INT16:
         case RUMI_DT_FLOAT16: case RUMI_DT_BFLOAT16:         return 2;
         case RUMI_DT_UINT32: case RUMI_DT_INT32:
@@ -87,6 +101,12 @@ std::size_t dtype_size(rumi_dtype dt) noexcept
         case RUMI_DT_FLOAT64: case RUMI_DT_CINT32:
         case RUMI_DT_CFLOAT32:                               return 8;
         case RUMI_DT_CFLOAT64:                               return 16;
+        // sub-byte, not a whole number of bytes
+        case RUMI_DT_UINT4: case RUMI_DT_INT4:
+        case RUMI_DT_UINT2: case RUMI_DT_INT2:
+        case RUMI_DT_BINARY:
+        case RUMI_DT_FLOAT6_E2M3: case RUMI_DT_FLOAT6_E3M2:
+        case RUMI_DT_FLOAT4_E2M1:
         case RUMI_DT_UNKNOWN:                                return 0;
     }
     return 0;
@@ -114,8 +134,15 @@ GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept
         case RUMI_DT_FLOAT16:
         case RUMI_DT_CFLOAT16:
         case RUMI_DT_BFLOAT16:
-        case RUMI_DT_FLOAT8_E4M3:
+        case RUMI_DT_FLOAT8_E4M3FN:
         case RUMI_DT_FLOAT8_E5M2:
+        case RUMI_DT_FLOAT8_E8M0:
+        case RUMI_DT_FLOAT6_E2M3:
+        case RUMI_DT_FLOAT6_E3M2:
+        case RUMI_DT_FLOAT4_E2M1:
+        case RUMI_DT_UINT4: case RUMI_DT_INT4:
+        case RUMI_DT_UINT2: case RUMI_DT_INT2:
+        case RUMI_DT_BINARY:
         case RUMI_DT_UNKNOWN:  return GDT_Unknown;
     }
     return GDT_Unknown;
@@ -134,17 +161,13 @@ parse_blob(std::span<const std::byte> blob)
     if (bh.magic   != MAGIC)   return std::unexpected(ParseError::bad_magic);
     if (bh.version != VERSION) return std::unexpected(ParseError::unsupported_version);
 
-    if (bh.bits_per_sample != 8  && bh.bits_per_sample != 16 &&
+    if (bh.bits_per_sample != 1  && bh.bits_per_sample != 2  &&
+        bh.bits_per_sample != 4  && bh.bits_per_sample != 6  &&
+        bh.bits_per_sample != 8  && bh.bits_per_sample != 16 &&
         bh.bits_per_sample != 32 && bh.bits_per_sample != 64 &&
         bh.bits_per_sample != 128) {
         return std::unexpected(ParseError::invalid_bits_per_sample);
     }
-    if (bh.sample_format != 1 && bh.sample_format != 2 &&
-        bh.sample_format != 3 && bh.sample_format != 5 &&
-        bh.sample_format != 6) {
-        return std::unexpected(ParseError::invalid_sample_format);
-    }
-
     const rumi_dtype dt = sample_to_dtype(bh.sample_format, bh.bits_per_sample);
     if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
@@ -172,7 +195,9 @@ parse_blob(std::span<const std::byte> blob)
     h.base_tiles_offset = bh.base_tiles_offset;
     h.dtype             = dt;
     h.gdal_type         = dtype_to_gdal(dt);
-    h.bytes_per_sample  = dtype_size(dt);
+    // Codec element width, bytes for whole-byte types and 1 for packed sub-byte.
+    h.bytes_per_sample  = (bh.bits_per_sample >= 8)
+                        ? (bh.bits_per_sample / 8u) : 1u;
 
     h.tiles_across = (bh.image_width  + bh.tile_width  - 1) / bh.tile_width;
     h.tiles_down   = (bh.image_length + bh.tile_length - 1) / bh.tile_length;
@@ -185,9 +210,13 @@ parse_blob(std::span<const std::byte> blob)
     }
     h.tile_count = static_cast<std::uint32_t>(tile_count_u64);
 
-    const auto tile_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width)
-                              * static_cast<std::uint64_t>(bh.tile_length)
-                              * static_cast<std::uint64_t>(h.bytes_per_sample);
+    const auto tile_bits_u64 = static_cast<std::uint64_t>(bh.tile_width)
+                             * static_cast<std::uint64_t>(bh.tile_length)
+                             * static_cast<std::uint64_t>(bh.bits_per_sample);
+    if (tile_bits_u64 % 8u != 0u) {
+        return std::unexpected(ParseError::invalid_bits_per_sample);
+    }
+    const auto tile_bytes_u64 = tile_bits_u64 / 8u;
     if (tile_bytes_u64 > std::numeric_limits<std::size_t>::max()) {
         return std::unexpected(ParseError::tile_size_overflow);
     }

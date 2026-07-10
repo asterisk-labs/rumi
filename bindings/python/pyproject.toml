@@ -38,6 +38,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+ml = [
+    "ml_dtypes",
+]
 test = [
     "pytest>=7",
 ]

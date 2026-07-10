@@ -17,6 +17,29 @@ typedef enum {
     RUMI_ERR_INTERNAL    = 99
 } rumi_status;
 
+typedef enum {
+    RUMI_DT_UNKNOWN     = 0,
+    RUMI_DT_UINT8       = 1,
+    RUMI_DT_INT8        = 2,
+    RUMI_DT_UINT16      = 3,
+    RUMI_DT_INT16       = 4,
+    RUMI_DT_UINT32      = 5,
+    RUMI_DT_INT32       = 6,
+    RUMI_DT_UINT64      = 7,
+    RUMI_DT_INT64       = 8,
+    RUMI_DT_FLOAT16     = 9,
+    RUMI_DT_FLOAT32     = 10,
+    RUMI_DT_FLOAT64     = 11,
+    RUMI_DT_CINT16      = 12,
+    RUMI_DT_CINT32      = 13,
+    RUMI_DT_CFLOAT16    = 14,
+    RUMI_DT_CFLOAT32    = 15,
+    RUMI_DT_CFLOAT64    = 16,
+    RUMI_DT_FLOAT8_E4M3 = 17,
+    RUMI_DT_FLOAT8_E5M2 = 18,
+    RUMI_DT_BFLOAT16    = 19
+} rumi_dtype;
+
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
@@ -28,6 +51,7 @@ typedef struct {
     uint32_t tiles_across;
     uint32_t tiles_down;
     uint64_t base_tiles_offset;
+    rumi_dtype dtype;
 } rumi_header;
 
 typedef struct {
@@ -84,6 +108,26 @@ rumi_read_stack(const char* const* paths,
                 const char* pattern, int num_threads,
                 void* dst, size_t dst_size);
 
+typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
+
+rumi_status
+rumi_read_dlpack(const char* path, const rumi_spec* spec,
+                 const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 const char* pattern, int num_threads,
+                 DLManagedTensorVersioned** out);
+
+rumi_status
+rumi_read_stack_dlpack(const char* const* paths,
+                       const rumi_spec* const* specs, size_t n_images,
+                       const int* n_index, size_t n_n,
+                       const int* bands, size_t n_bands,
+                       int y_off, int y_size, int x_off, int x_size,
+                       const char* pattern, int num_threads,
+                       DLManagedTensorVersioned** out);
+
+void rumi_dlpack_free(DLManagedTensorVersioned* t);
+
 rumi_status
 rumi_geokeys(const char* srs, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
@@ -99,8 +143,8 @@ _LIB_GLOBS = ("*.so", "*.so.*", "*.dylib", "*.dll")
 
 
 def _ensure_ca_bundle():
-    # Bundled libcurl/openssl come from conda and look for CA certs at a conda
-    # path absent off-conda (Colab, venvs), breaking HTTPS /vsicurl/ reads.
+    # conda libcurl/openssl use CA paths absent off-conda,
+    # breaking HTTPS /vsicurl/ reads
     if any(os.environ.get(v) for v in (
         "CURL_CA_BUNDLE", "GDAL_CURL_CA_BUNDLE", "SSL_CERT_FILE",
         "GDAL_HTTP_UNSAFESSL",
@@ -126,8 +170,7 @@ def _ensure_ca_bundle():
 
 
 def _ensure_proj_data(lib):
-    # Vendored GDAL/PROJ can't find a proj.db off-conda (Colab, venvs), so EPSG
-    # lookups fail. Point our own GDAL at the copy bundled beside it.
+    # vendored GDAL/PROJ cannot find proj.db off-conda
     try:
         setter = lib.rumi_set_data_paths
     except AttributeError:
@@ -151,7 +194,6 @@ def _bundled_lib():
 
 
 def _load_lib():
-    # RUMI_LIB beats everything :D, then the bundled wheel copy, then the OS path.
     env_path = os.environ.get("RUMI_LIB")
     candidate = env_path or _bundled_lib() or ctypes.util.find_library("rumi")
     if candidate is None:

@@ -1,11 +1,11 @@
 import numpy as np
 
 from . import _repr
-from ._dtype import np_dtype
+from ._dtype import name as dtype_name, numpy_dtype
 from ._ffi import _check, ffi, lib
 
 
-class Spec:
+class RumiHeader:
     """Parsed header blob. Pure memory, no file handle, reusable across reads."""
 
     def __init__(self, blob: bytes | bytearray | memoryview) -> None:
@@ -21,7 +21,6 @@ class Spec:
         header = ffi.new("rumi_header*")
         _check(lib.rumi_spec_header(self._handle, header))
         self._header = header
-        self._dtype = np_dtype(header.sample_format, header.bits_per_sample)
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -30,7 +29,7 @@ class Spec:
 
     @property
     def dtype(self) -> type[np.generic]:
-        return self._dtype
+        return numpy_dtype(self._header.dtype)
 
     def _facts(self) -> dict:
         try:
@@ -38,7 +37,7 @@ class Spec:
             return {
                 "ok": True,
                 "b": h.samples_per_pixel, "y": h.image_length, "x": h.image_width,
-                "dtype": self._dtype.__name__,
+                "dtype": dtype_name(h.dtype),
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
                 "tiles": h.tiles_across * h.tiles_down * h.samples_per_pixel,

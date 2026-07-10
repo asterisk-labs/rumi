@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ._dtype import sample_encoding
+from ._ffi import _check, ffi, lib
 
 
 @dataclass(frozen=True)
@@ -56,17 +57,14 @@ def tile(arr: np.ndarray, tile: int = 512) -> tuple[np.ndarray, Layout]:
     if pad_y or pad_x:
         arr = np.pad(arr, ((0, 0), (0, pad_y), (0, pad_x)))
 
-    # split Y into (down, T) and X into (across, T), then put samples innermost
     g = arr.reshape(B, down, T, across, T).transpose(1, 3, 0, 2, 4)
     chunks = g.reshape(down * across * B, T, T)
 
     return chunks, Layout(X, Y, T, T, B, arr.dtype)
 
 
-# BigTIFF assembler. The layout is fixed so every offset is known before a byte
-# is written: header, then the single IFD and its out-of-line arrays, then the
-# tile payloads in tile order with nothing between them. Every entry carries its
-# packed payload, so the CRS tags that come from C embed verbatim.
+# fixed layout keeps offsets known before writing; packed payloads preserve
+# CRS tags returned by C verbatim
 
 _LE = "<"
 _SHORT, _LONG, _LONG8, _DOUBLE, _ASCII = 3, 4, 16, 12, 2
@@ -90,8 +88,6 @@ def _entry(tag, type_, values):
 
 
 def _crs_geokeys(crs, pixel_is_point):
-    from ._ffi import _check, ffi, lib
-
     s = (f"EPSG:{crs}" if isinstance(crs, int) else str(crs)).encode("utf-8")
     out = [(ffi.new("unsigned char**"), ffi.new("size_t*")) for _ in range(3)]
     _check(lib.rumi_geokeys(
@@ -114,7 +110,7 @@ def _geo_entries(transform, crs, pixel_is_point):
 
     a, b, c, d, e, f = (float(v) for v in tuple(transform)[:6])
     out = []
-    # north up, no rotation: pixel scale + tiepoint, exactly what GDAL emits.
+    # GDAL's north-up pixel scale and tiepoint form
     if b == 0.0 and d == 0.0:
         out.append(_entry(33550, _DOUBLE, [a, -e, 0.0]))
         out.append(_entry(33922, _DOUBLE, [0.0, 0.0, 0.0, c, f, 0.0]))
@@ -167,7 +163,7 @@ def _resolve_base(natural, header_size):
     if header_size == "auto":
         return natural
     if isinstance(header_size, int) and header_size > 0:
-        return -(-natural // header_size) * header_size   # round up to a multiple
+        return -(-natural // header_size) * header_size
     raise TypeError("header_size must be 'auto' or a positive int")
 
 
@@ -192,13 +188,12 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
     B = layout.samples_per_pixel
     sf, bps = layout.sample_format, layout.bits_per_sample
 
-    # rumi lays the tile bytes out tile-interleaved (samples innermost).
+    # rumi tile order is tile-interleaved, with samples innermost
     tpp = layout.tiles_across * layout.tiles_down
     pm_order = [pos * B + b for b in range(B) for pos in range(tpp)]
     counts_pm = [counts[i] for i in pm_order]
 
-    # (tag, type, count, packed) in ascending tag order. TileOffsets packs once
-    # the data offset is known. Geo tags, if any, append above 339.
+    # tag order is ascending; TileOffsets is packed once its base is known
     entries = [
         _entry(256, _LONG,  [layout.image_width]),
         _entry(257, _LONG,  [layout.image_length]),
@@ -227,7 +222,6 @@ def write(path, frames: Iterable[bytes], layout: Layout, *,
             ext_offset[tag] = cursor
             cursor += size + (size & 1)
 
-    # header_size can push base_tiles_offset past a zero gap before the tiles.
     natural = cursor
     base_tiles_offset = _resolve_base(natural, header_size)
 

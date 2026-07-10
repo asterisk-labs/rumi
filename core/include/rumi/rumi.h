@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "dlpack/dlpack.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -104,9 +106,18 @@ typedef enum {
     RUMI_DT_CFLOAT32    = 15,
     RUMI_DT_CFLOAT64    = 16,
     // Reserved for future ML and EO types, not yet representable on disk.
-    RUMI_DT_FLOAT8_E4M3 = 17,
-    RUMI_DT_FLOAT8_E5M2 = 18,
-    RUMI_DT_BFLOAT16    = 19
+    RUMI_DT_FLOAT8_E4M3FN = 17,
+    RUMI_DT_FLOAT8_E5M2   = 18,
+    RUMI_DT_BFLOAT16      = 19,
+    RUMI_DT_UINT4         = 20,
+    RUMI_DT_INT4          = 21,
+    RUMI_DT_UINT2         = 22,
+    RUMI_DT_INT2          = 23,
+    RUMI_DT_BINARY        = 24,
+    RUMI_DT_FLOAT8_E8M0   = 25,
+    RUMI_DT_FLOAT6_E2M3   = 26,
+    RUMI_DT_FLOAT6_E3M2   = 27,
+    RUMI_DT_FLOAT4_E2M1   = 28
 } rumi_dtype;
 
 // dtype is the canonical type, rumi's own, independent of GDAL. The
@@ -197,6 +208,35 @@ rumi_read_stack(const char* const*      paths,
                 const char*             pattern,
                 int                     num_threads,
                 void*                   dst,   size_t dst_size);
+
+// DLPack form. Reads like rumi_read but rumi owns the result, handed back as a
+// DLManagedTensorVersioned the caller wraps in a capsule. On success *out holds
+// it, released through its own deleter. A dtype with no DLPack code, the complex
+// integers, gives RUMI_ERR_UNSUPPORTED.
+RUMI_API rumi_status
+rumi_read_dlpack(const char*      path,
+                 const rumi_spec* spec,
+                 const int*       bands, size_t n_bands,
+                 int              y_off, int y_size,
+                 int              x_off, int x_size,
+                 const char*      pattern,
+                 int              num_threads,
+                 DLManagedTensorVersioned** out);
+
+RUMI_API rumi_status
+rumi_read_stack_dlpack(const char* const*      paths,
+                       const rumi_spec* const* specs,  size_t n_images,
+                       const int*              n_index, size_t n_n,
+                       const int*              bands,   size_t n_bands,
+                       int                     y_off, int y_size,
+                       int                     x_off, int x_size,
+                       const char*             pattern,
+                       int                     num_threads,
+                       DLManagedTensorVersioned** out);
+
+// Frees a tensor from rumi_read_dlpack. Same function the tensor carries as its
+// deleter, so a consumer and an unconsumed capsule free through one path.
+RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
 
 // Geo keys.

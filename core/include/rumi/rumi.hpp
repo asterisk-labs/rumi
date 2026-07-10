@@ -334,6 +334,12 @@ private:
 [[nodiscard]] RUMI_API std::expected<std::vector<std::byte>, std::string>
 build_blob_from_file(const char* path) noexcept;
 
+// Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned, malloc'd data
+// that the tensor deleter frees. nullptr when the dtype has no DLPack code.
+[[nodiscard]] RUMI_API DLManagedTensorVersioned*
+build_dlpack(void* data, rumi_dtype dtype,
+             const std::int64_t* shape, int ndim) noexcept;
+
 // The three GeoTIFF CRS tag payloads, raw little-endian, ready to embed.
 // double_params and ascii_params are empty when the CRS needs neither.
 struct GeoKeys {
