@@ -41,7 +41,7 @@ class Layout:
         return self.tiles_across * self.tiles_down * self.samples_per_pixel
 
 
-def tile(arr: np.ndarray, tile: int = 512) -> tuple[np.ndarray, Layout]:
+def tile(arr: np.ndarray, tile: int = 512) -> tuple[list[np.ndarray], Layout]:
     if arr.ndim != 3:
         raise ValueError(f"expected (B, Y, X), got shape {arr.shape}")
     if tile < 16 or tile % 16:
@@ -53,13 +53,16 @@ def tile(arr: np.ndarray, tile: int = 512) -> tuple[np.ndarray, Layout]:
     across = -(-X // T)
     down = -(-Y // T)
 
-    pad_y, pad_x = down * T - Y, across * T - X
-    if pad_y or pad_x:
-        arr = np.pad(arr, ((0, 0), (0, pad_y), (0, pad_x)))
-
-    g = arr.reshape(B, down, T, across, T).transpose(1, 3, 0, 2, 4)
-    chunks = g.reshape(down * across * B, T, T)
-
+    # Edge tiles are cut to where the image reaches, so a chunk is only as big
+    # as it really is. Order is (row, col, band), the order write() lays out.
+    # ascontiguousarray gives each chunk a tight buffer to compress.
+    chunks = [
+        np.ascontiguousarray(arr[b, ty * T:min(ty * T + T, Y),
+                                    tx * T:min(tx * T + T, X)])
+        for ty in range(down)
+        for tx in range(across)
+        for b in range(B)
+    ]
     return chunks, Layout(X, Y, T, T, B, arr.dtype)
 
 

@@ -46,12 +46,12 @@ WorkerState& worker_state() noexcept
 }
 
 // A one-sample pixel stride is a contiguous row, a larger one has another
-// axis inner, so copy pixel by pixel.
+// axis inner, so copy pixel by pixel. src_pitch is the tile's real width.
 void copy_rect(const TileTask& t, const TileSpec& spec,
                const std::byte* tile) noexcept
 {
     const std::size_t bps       = spec.bytes_per_sample;
-    const std::size_t src_pitch = static_cast<std::size_t>(spec.tile_width) * bps;
+    const std::size_t src_pitch = static_cast<std::size_t>(t.tile_w) * bps;
 
     if (t.dst_pixel_stride == bps) {
         const std::size_t row_bytes = static_cast<std::size_t>(t.w) * bps;
@@ -142,10 +142,11 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         tile = ws.scratch.data();
     }
 
-    // One frame per tile, one numeric output. Type and width are checked below.
+    // One frame per tile, one numeric output. Type, width and size are checked
+    // below against this tile's real size.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
-        ws.dctx, &info, tile, spec.tile_bytes,
+        ws.dctx, &info, tile, t.tile_bytes,
         ws.compressed.data(), t.compressed_size);
 
     if (ZL_isError(rep)) {
@@ -165,7 +166,7 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
     }
     if (info.type != ZL_Type_numeric ||
         info.fixedWidth != spec.bytes_per_sample ||
-        info.decompressedByteSize != spec.tile_bytes) {
+        info.decompressedByteSize != t.tile_bytes) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "rumi: unexpected tile output (type %u, width %u, size %llu; "
                  "expected numeric width %u, size %llu)%s",
@@ -173,7 +174,7 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
                  static_cast<unsigned>(info.fixedWidth),
                  static_cast<unsigned long long>(info.decompressedByteSize),
                  static_cast<unsigned>(spec.bytes_per_sample),
-                 static_cast<unsigned long long>(spec.tile_bytes), img);
+                 static_cast<unsigned long long>(t.tile_bytes), img);
         return RUMI_ERR_DECODE;
     }
 

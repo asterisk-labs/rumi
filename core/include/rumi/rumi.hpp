@@ -129,11 +129,6 @@ sample_to_dtype(std::uint8_t sample_format,
 // this GDAL build cannot express.
 [[nodiscard]] RUMI_API GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept;
 
-// geozl quant_linear wire code (QL_U8..QL_F64 as 0..10) for the lossy encoder,
-// RUMI_QL_NONE when quant_linear cannot carry the type. Passed straight to
-// geozl_node_quant_linear, so rumi never includes the geozl codec header.
-[[nodiscard]] RUMI_API int dtype_to_ql(rumi_dtype dt) noexcept;
-
 
 // File reader
 
@@ -162,17 +157,21 @@ struct TileSpec {
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint8_t  bytes_per_sample;
-    std::size_t   tile_bytes;
+    std::size_t   tile_bytes;  // full tile size, the scratch bound; a tile's
+                               // real size is in TileTask::tile_bytes
 };
 
 // One tile, single band. When direct is set the tile decompresses straight into
 // the output; otherwise it lands in scratch and the w x h rect is copied to dst
 // with dst_pitch per row and dst_pixel_stride per pixel. All positions are in
-// the result buffer, never the disk layout.
+// the result buffer, never the disk layout. tile_w and tile_bytes are this
+// tile's real width and decoded size, smaller than a full tile at the edges.
 struct TileTask {
     FileReader*   reader;
     std::uint64_t offset;
     std::uint32_t compressed_size;
+    std::uint32_t tile_w;
+    std::size_t   tile_bytes;
     std::byte*    direct;
     std::byte*    dst;
     std::uint32_t src_x;

@@ -120,6 +120,8 @@ Plan build_plan(const Header& h, FileReader* reader,
 {
     const int tw  = h.tile_width;
     const int tl  = h.tile_length;
+    const int img_w = static_cast<int>(h.image_width);
+    const int img_h = static_cast<int>(h.image_length);
     const std::size_t bps = h.bytes_per_sample;
     const int band_count = static_cast<int>(bands.size());
 
@@ -130,9 +132,9 @@ Plan build_plan(const Header& h, FileReader* reader,
     const int ty_max = static_cast<int>(
         (static_cast<std::int64_t>(y_off) + y_size + tl - 1) / tl);
 
-    const bool contiguous_output =
-        pixel_space == static_cast<GSpacing>(bps) &&
-        line_space  == static_cast<GSpacing>(tw) * static_cast<GSpacing>(bps);
+    // Direct decode needs a one-sample pixel stride; the matching row pitch is
+    // checked per tile, since edge tiles are narrower.
+    const bool one_sample_stride = pixel_space == static_cast<GSpacing>(bps);
 
     Plan plan;
     plan.spec = make_tile_spec(h);
@@ -143,18 +145,25 @@ Plan build_plan(const Header& h, FileReader* reader,
         for (int tx = tx_min; tx < tx_max; ++tx) {
             const int tile_px = tx * tw;
             const int tile_py = ty * tl;
+            // An edge tile only reaches as far as the image.
+            const int ex_w = std::min(tw, img_w - tile_px);
+            const int ex_h = std::min(tl, img_h - tile_py);
+
             const int ix0 = std::max(tile_px, x_off);
             const int iy0 = std::max(tile_py, y_off);
-            const int ix1 = std::min({tile_px + tw, x_off + x_size,
-                                      static_cast<int>(h.image_width)});
-            const int iy1 = std::min({tile_py + tl, y_off + y_size,
-                                      static_cast<int>(h.image_length)});
+            const int ix1 = std::min(tile_px + ex_w, x_off + x_size);
+            const int iy1 = std::min(tile_py + ex_h, y_off + y_size);
             if (ix1 <= ix0 || iy1 <= iy0) continue;
 
             const bool full_tile =
                 ix0 == tile_px && iy0 == tile_py &&
-                ix1 == tile_px + tw && iy1 == tile_py + tl;
-            const bool direct = full_tile && contiguous_output;
+                ix1 == tile_px + ex_w && iy1 == tile_py + ex_h;
+            const bool direct = full_tile && one_sample_stride &&
+                line_space == static_cast<GSpacing>(ex_w)
+                            * static_cast<GSpacing>(bps);
+
+            const std::size_t tile_bytes = static_cast<std::size_t>(ex_w)
+                                         * static_cast<std::size_t>(ex_h) * bps;
 
             for (int i = 0; i < band_count; ++i) {
                 const auto band = static_cast<std::uint32_t>(bands[i] - 1);
@@ -172,6 +181,8 @@ Plan build_plan(const Header& h, FileReader* reader,
                 task.reader          = reader;
                 task.offset          = h.tile_offset(idx);
                 task.compressed_size = h.tile_byte_counts[idx];
+                task.tile_w          = static_cast<std::uint32_t>(ex_w);
+                task.tile_bytes      = tile_bytes;
                 if (direct) {
                     task.direct = dst;
                 } else {

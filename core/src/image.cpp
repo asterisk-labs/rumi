@@ -136,6 +136,12 @@ CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
         static_cast<std::uint32_t>(x_block),
         static_cast<std::uint32_t>(nBand - 1));
 
+    const int tw = h.tile_width;
+    const int tl = h.tile_length;
+    const int ex_w = std::min(tw, static_cast<int>(h.image_width)  - x_block * tw);
+    const int ex_h = std::min(tl, static_cast<int>(h.image_length) - y_block * tl);
+    const std::size_t bps = h.bytes_per_sample;
+
     Plan plan;
     plan.spec = make_tile_spec(h);
 
@@ -143,7 +149,23 @@ CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
     task.reader          = image_->reader();
     task.offset          = h.tile_offset(idx);
     task.compressed_size = h.tile_byte_counts[idx];
-    task.direct          = static_cast<std::byte*>(buffer);
+    task.tile_w          = static_cast<std::uint32_t>(ex_w);
+    task.tile_bytes      = static_cast<std::size_t>(ex_w)
+                         * static_cast<std::size_t>(ex_h) * bps;
+
+    // A full tile fills the block, decode straight in. A smaller edge tile goes
+    // to scratch, placed at the block's top-left; GDAL ignores the rest.
+    if (ex_w == tw && ex_h == tl) {
+        task.direct = static_cast<std::byte*>(buffer);
+    } else {
+        task.dst              = static_cast<std::byte*>(buffer);
+        task.src_x            = 0;
+        task.src_y            = 0;
+        task.w                = static_cast<std::uint32_t>(ex_w);
+        task.h                = static_cast<std::uint32_t>(ex_h);
+        task.dst_pitch        = static_cast<std::size_t>(tw) * bps;
+        task.dst_pixel_stride = bps;
+    }
     plan.tasks.push_back(task);
 
     Executor exec(image_->pool());
