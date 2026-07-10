@@ -1,6 +1,5 @@
 from ._assemble import assemble, tile
-from ._ffi import lib
-from ._read import index_file, parse
+from ._ffi import _blob_from_file, lib
 
 _OPENZL_VERSION = lib.rumi_openzl_format_version()
 _CHECKSUM_DISABLE = 2   # OpenZL ternary param, quant_linear requires it off
@@ -66,10 +65,22 @@ def _sweep(zl, geozl, chunk, width, names, builders, max_error, dtype):
             for name in names}
 
 
-def write(path, arr, *, method="2d-full", chunk_size=512, max_error=None):
+def write(path, arr, *, method="2d-full", chunk_size=512, max_error=None,
+          transform=None, crs=None, pixel_is_point=False, header_size="auto"):
     """Tile arr, compress each tile with the method's predictors keeping the
-    smallest frame, and assemble the rumi file. max_error activates lossy
-    quant_linear ahead of the predictor. Returns (path, header)."""
+    smallest frame, and assemble the rumi file. Returns (path, header_blob), the
+    blob being the bytes you cache in a catalog or Parquet and hand back to read.
+
+    chunk_size    tile edge in pixels, a multiple of 16.
+    max_error     if set, lossy quant_linear ahead of the predictor, an absolute
+                  error bound in DN; None keeps the write lossless.
+    transform     GDAL-style affine geotransform (6 coeffs); pairs with crs.
+    crs           EPSG int or projection string; pairs with transform.
+    pixel_is_point  anchor the pixel at its center (PixelIsPoint) rather than
+                  its top-left corner (PixelIsArea, the default).
+    header_size   round the tile-data offset up to this multiple for alignment,
+                  or "auto" to pack tight. Not the same as chunk_size.
+    """
     import geozl
     import openzl.ext as zl
 
@@ -84,8 +95,9 @@ def write(path, arr, *, method="2d-full", chunk_size=512, max_error=None):
                    max_error, arr.dtype).values(), key=len)
         for ch in chunks
     ]
-    assemble(path, frames, layout)
-    return path, parse(index_file(path))
+    assemble(path, frames, layout, transform=transform, crs=crs,
+             pixel_is_point=pixel_is_point, header_size=header_size)
+    return path, _blob_from_file(path)
 
 
 def probe(arr, *, method="2d-full", chunk_size=512, max_error=None):

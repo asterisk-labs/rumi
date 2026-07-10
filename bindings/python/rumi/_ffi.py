@@ -131,6 +131,8 @@ ffi.cdef(_CDEF)
 
 _LIB_GLOBS = ("*.so", "*.so.*", "*.dylib", "*.dll")
 
+PathLike = str | bytes | os.PathLike
+
 
 def _ensure_ca_bundle():
     # conda libcurl/openssl use CA paths absent off-conda,
@@ -223,3 +225,18 @@ def _check(rc):
     msg = (ffi.string(err).decode("utf-8", errors="replace")
            if err != ffi.NULL else "(no error message)")
     raise _STATUS_TO_EXC.get(rc, RuntimeError)(msg)
+
+
+def _enc(path: PathLike) -> bytes:
+    return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
+
+
+def _blob_from_file(path: PathLike) -> bytes:
+    # the header blob C hands back, freed once copied into a Python bytes
+    blob_out = ffi.new("unsigned char**")
+    size_out = ffi.new("size_t*")
+    _check(lib.rumi_index_file(_enc(path), blob_out, size_out))
+    try:
+        return bytes(ffi.buffer(blob_out[0], size_out[0]))
+    finally:
+        lib.rumi_free(blob_out[0])

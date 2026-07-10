@@ -3,29 +3,10 @@ import os
 from collections.abc import Sequence
 
 from ._dtype import name as dtype_name
-from ._ffi import _check, ffi, lib
+from ._ffi import PathLike, _blob_from_file, _check, _enc, ffi, lib
 from ._header import RumiHeader
 
 Axis = tuple[int, int] | list[int] | None
-PathLike = str | bytes | os.PathLike
-
-
-def _enc(path: PathLike) -> bytes:
-    return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
-
-
-def index_file(path: PathLike) -> bytes:
-    blob_out = ffi.new("unsigned char**")
-    size_out = ffi.new("size_t*")
-    _check(lib.rumi_index_file(_enc(path), blob_out, size_out))
-    try:
-        return bytes(ffi.buffer(blob_out[0], size_out[0]))
-    finally:
-        lib.rumi_free(blob_out[0])
-
-
-def parse(blob: bytes | bytearray | memoryview) -> RumiHeader:
-    return RumiHeader(blob)
 
 
 _pyapi = ctypes.pythonapi
@@ -112,6 +93,17 @@ class RumiArray:
 
     def __repr__(self) -> str:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
+
+
+# framework=None hands back the zero-copy RumiArray; a name materializes it
+def _to_framework(arr: RumiArray, framework: str | None):
+    if framework is None:
+        return arr
+    fn = {"numpy": arr.numpy, "torch": arr.torch, "jax": arr.jax,
+          "tensorflow": arr.tensorflow, "tf": arr.tensorflow}.get(framework)
+    if fn is None:
+        raise ValueError(f"unknown framework {framework!r}")
+    return fn()
 
 
 # convert to 1-based for the C API. None means all and passes through as NULL/0.
@@ -226,17 +218,25 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[RumiHeader],
     return RumiArray(out[0], shape, specs[0]._header.dtype)
 
 
-# Polymorphic and stateless. A single path/spec reads one image, lists read a
-# stack, opens, reads, closes, nothing kept alive between calls.
-def read(paths: PathLike | Sequence[PathLike],
-         specs: RumiHeader | Sequence[RumiHeader],
-         pattern: str | None = None, *,
+def read(path: PathLike | Sequence[PathLike],
+         header: bytes | Sequence[bytes] | None = None, *,
+         framework: str | None = "numpy", pattern: str | None = None,
          n: Axis = None, b: Axis = None,
          y: tuple[int, int] | None = None,
          x: tuple[int, int] | None = None,
-         num_threads: int = 1) -> RumiArray:
-    if isinstance(paths, (str, bytes, os.PathLike)):
+         num_threads: int = 1):
+    """Read a rumi image, or a stack of them. A single path reads one image, a
+    list reads a stack. header is the blob, cached from a catalog or Parquet;
+    when omitted it is read from each file. framework picks the return type
+    ("numpy", "torch", "jax", "tensorflow"), or None for the zero-copy
+    RumiArray. Stateless, opens and closes each call."""
+    if isinstance(path, (str, bytes, os.PathLike)):
         if n is not None:
-            raise ValueError("n applies to a stack; pass lists of paths/specs")
-        return _read_one(paths, specs, pattern, b, y, x, num_threads)
-    return _read_stack(paths, specs, pattern, n, b, y, x, num_threads)
+            raise ValueError("n applies to a stack; pass lists of paths")
+        blob = header if header is not None else _blob_from_file(path)
+        arr = _read_one(path, RumiHeader(blob), pattern, b, y, x, num_threads)
+        return _to_framework(arr, framework)
+    blobs = header if header is not None else [_blob_from_file(p) for p in path]
+    specs = [RumiHeader(bl) for bl in blobs]
+    arr = _read_stack(path, specs, pattern, n, b, y, x, num_threads)
+    return _to_framework(arr, framework)
