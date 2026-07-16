@@ -269,11 +269,11 @@ jobs:
           cp /tmp/packed/*.whl wheelhouse/
           ls -1 wheelhouse/
       - name: Install and smoke-test (GDAL-free)
-        shell: bash -el {0}
+        shell: bash
         env:
           LD_LIBRARY_PATH: ""
         run: |
-          python -m venv /tmp/clean
+          /opt/python/cp312-cp312/bin/python -m venv /tmp/clean
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
