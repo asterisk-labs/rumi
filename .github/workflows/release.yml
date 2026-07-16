@@ -2,8 +2,7 @@ name: Release
 
 on:
   push:
-    #branches: [release]   # dry run
-    tags: ['v*']          # publish
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -211,6 +210,9 @@ jobs:
           python -m pip install build hatchling cffi wheel
           python -m build --wheel --outdir ../../wheelhouse-raw
       - name: Normalise wheel tags
+        # cffi ABI mode: rumi ships no compiled extension, it dlopens librumi at
+        # runtime, so the wheel is py3-none-<platform>, not bound to a CPython ABI.
+        # The platform tag is set later, off the real glibc floor of the binaries.
         shell: bash -el {0}
         run: python -m wheel tags --python-tag py3 --abi-tag none --remove wheelhouse-raw/*.whl
       - name: Repair wheel + vendor C++ runtime
@@ -269,11 +271,16 @@ jobs:
           cp /tmp/packed/*.whl wheelhouse/
           ls -1 wheelhouse/
       - name: Install and smoke-test (GDAL-free)
-        shell: bash -el {0}
+        # The wheel carries its own C++ runtime under a private soname
+        # (libstdc++-rumi). conda's bash -el would load a second libstdc++ into the
+        # process and PROJ segfaults on the first CRS parse. The bare manylinux
+        # python keeps conda out, so the wheel stands alone the way a user install
+        # would.
+        shell: bash
         env:
           LD_LIBRARY_PATH: ""
         run: |
-          python -m venv /tmp/clean
+          /opt/python/cp312-cp312/bin/python -m venv /tmp/clean
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
@@ -327,9 +334,10 @@ jobs:
           mkdir -p wheelhouse
           delocate-wheel -w wheelhouse -v wheelhouse-raw/*.whl
       - name: Install and smoke-test (GDAL-free)
+        # Clear the DYLD fallbacks so the only GDAL the test can reach is the one
+        # delocate vendored into the wheel, not conda's from the repair step.
         shell: bash
         env:
-          LD_LIBRARY_PATH: ""
           DYLD_LIBRARY_PATH: ""
           DYLD_FALLBACK_LIBRARY_PATH: ""
         run: |
@@ -393,6 +401,8 @@ jobs:
             -w wheelhouse wheelhouse-raw/*.whl
           ls -1 wheelhouse/
       - name: Install and smoke-test (GDAL-free)
+        # A clean venv with no conda on PATH. The GDAL DLLs delvewheel vendored sit
+        # next to rumi.dll in the package, which is where Windows resolves them.
         shell: bash
         run: |
           python -m venv /tmp/clean
@@ -409,6 +419,8 @@ jobs:
 
   check-wheels:
     name: Check wheel platform tags
+    # Block the release if a platform's wheel is missing, or if a manylinux wheel
+    # floors above glibc 2.28, which would leave older hosts unable to install it.
     needs: [build-wheel-linux, build-wheel-macos, build-wheel-windows]
     runs-on: ubuntu-latest
     steps:
@@ -471,6 +483,8 @@ jobs:
 
   gh-release:
     name: GitHub Release
+    # Ships the raw librumi C libraries per platform, for consumers that link rumi
+    # directly. The Python wheels and sdist go to PyPI in publish-pypi, not here.
     needs: [validate, build-lib-linux, build-lib-macos, build-lib-windows, build-wheel-linux, build-wheel-macos, build-wheel-windows, build-sdist]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
