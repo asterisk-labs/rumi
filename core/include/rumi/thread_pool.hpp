@@ -14,8 +14,8 @@ namespace rumi {
 // Fixed-size pool, one process-global instance shared by every Image. It
 // replaces GDAL's own pool, which sits behind headers an out-of-tree build
 // can't reach. Work goes in batches and wait() blocks only on its own batch,
-// so concurrent reads don't stall each other. Reads are planned and run on
-//  the calling thread.
+// so concurrent reads don't stall each other. Reads are planned and run
+// on the calling thread.
 class ThreadPool {
 public:
     explicit ThreadPool(unsigned threads);

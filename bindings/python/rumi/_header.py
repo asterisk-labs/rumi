@@ -1,12 +1,14 @@
 import numpy as np
 
 from . import _repr
-from ._dtype import np_dtype
-from ._ffi import _check, ffi, lib
+from ._dtype import name as dtype_name, numpy_dtype
+from ._ffi import PathLike, _blob_from_file, _check, ffi, lib
 
 
-class Spec:
-    """Parsed header blob. Pure memory, no file handle, reusable across reads."""
+class RumiHeader:
+    """Inspection view over a header blob. Wraps the C rumi_spec the blob parses
+    into, plus the header struct read off it. Build from bytes in hand, or from
+    a file with from_path. read() does not need this, it takes the blob."""
 
     def __init__(self, blob: bytes | bytearray | memoryview) -> None:
         if not isinstance(blob, (bytes, bytearray, memoryview)):
@@ -21,7 +23,11 @@ class Spec:
         header = ffi.new("rumi_header*")
         _check(lib.rumi_spec_header(self._handle, header))
         self._header = header
-        self._dtype = np_dtype(header.sample_format, header.bits_per_sample)
+
+    @classmethod
+    def from_path(cls, path: PathLike) -> "RumiHeader":
+        """Read the header off disk and build. Tile data is not touched."""
+        return cls(_blob_from_file(path))
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -30,15 +36,34 @@ class Spec:
 
     @property
     def dtype(self) -> type[np.generic]:
-        return self._dtype
+        return numpy_dtype(self._header.dtype)
+
+    def to_dict(self) -> dict:
+        """Header fields as a plain, JSON-serializable dict, for a catalog or a
+        Parquet column set. Pass straight to json.dumps if you want a string."""
+        h = self._header
+        return {
+            "shape": list(self.shape),
+            "bands": int(h.samples_per_pixel),
+            "height": int(h.image_length),
+            "width": int(h.image_width),
+            "dtype": dtype_name(h.dtype),
+            "tile": [int(h.tile_width), int(h.tile_length)],
+            "tiles_across": int(h.tiles_across),
+            "tiles_down": int(h.tiles_down),
+            "tiles": int(h.tiles_across * h.tiles_down * h.samples_per_pixel),
+            "base_tiles_offset": int(h.base_tiles_offset),
+            "codec": "OpenZL",
+        }
 
     def _facts(self) -> dict:
+        # short keys the repr layer expects; ok=False lets it degrade gracefully
         try:
             h = self._header
             return {
                 "ok": True,
                 "b": h.samples_per_pixel, "y": h.image_length, "x": h.image_width,
-                "dtype": self._dtype.__name__,
+                "dtype": dtype_name(h.dtype),
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
                 "tiles": h.tiles_across * h.tiles_down * h.samples_per_pixel,

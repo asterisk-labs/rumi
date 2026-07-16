@@ -27,49 +27,63 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
-// Float16 / CFloat16 require GDAL >= 3.11 (RFC 100).
-GDALDataType infer_gdal_type(std::uint8_t bits_per_sample,
-                             std::uint8_t sample_format) noexcept
+// The dtype set, expanded once from rumi_dtypes.def. GDAL is a separate switch
+// below, not a column here, so this ABI-facing struct pulls in no GDAL header.
+static const rumi_dtype_info k_dtype_table[] = {
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+    { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
+      static_cast<std::uint8_t>(dlbits), name },
+#include "rumi/rumi_dtypes.def"
+#undef RUMI_DTYPE
+};
+
+const rumi_dtype_info* dtype_table(std::size_t* count) noexcept
 {
-    switch (sample_format) {
-        case 1:
-            switch (bits_per_sample) {
-                case 8:  return GDT_Byte;
-                case 16: return GDT_UInt16;
-                case 32: return GDT_UInt32;
-                case 64: return GDT_UInt64;
-            }
-            break;
-        case 2:
-            switch (bits_per_sample) {
-                case 8:  return GDT_Int8;
-                case 16: return GDT_Int16;
-                case 32: return GDT_Int32;
-                case 64: return GDT_Int64;
-            }
-            break;
-        case 3:
-            switch (bits_per_sample) {
-                case 16: return GDT_Float16;
-                case 32: return GDT_Float32;
-                case 64: return GDT_Float64;
-            }
-            break;
-        case 5:  // bits_per_sample = real + imag widths
-            switch (bits_per_sample) {
-                case 32: return GDT_CInt16;
-                case 64: return GDT_CInt32;
-            }
-            break;
-        case 6:  // bits_per_sample = real + imag widths
-            switch (bits_per_sample) {
-                case 32:  return GDT_CFloat16;
-                case 64:  return GDT_CFloat32;
-                case 128: return GDT_CFloat64;
-            }
-            break;
+    if (count) *count = sizeof(k_dtype_table) / sizeof(k_dtype_table[0]);
+    return k_dtype_table;
+}
+
+// (sample_format, bits) is unique per row, so the first match is the type.
+rumi_dtype sample_to_dtype(std::uint8_t sample_format,
+                           std::uint8_t bits) noexcept
+{
+    std::size_t n = 0;
+    const rumi_dtype_info* t = dtype_table(&n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (t[i].sample_format == sample_format && t[i].bits == bits) {
+            return static_cast<rumi_dtype>(t[i].code);
+        }
+    }
+    return RUMI_DT_UNKNOWN;
+}
+
+// Whole-byte types give bits / 8, sub-byte is not a whole byte and gives 0.
+std::size_t dtype_size(rumi_dtype dt) noexcept
+{
+    std::size_t n = 0;
+    const rumi_dtype_info* t = dtype_table(&n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (t[i].code == static_cast<std::uint8_t>(dt)) {
+            return t[i].bits >= 8 ? t[i].bits / 8u : 0u;
+        }
+    }
+    return 0;
+}
+
+// Same table's GDAL column. G_NONE is GDT_Unknown, the types with no GDAL enum
+// (float16, the float8s), which stay native-API only.
+GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept
+{
+#define G_NONE GDT_Unknown
+    switch (dt) {
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+        case RUMI_DT_##sym: return gdal;
+#include "rumi/rumi_dtypes.def"
+#undef RUMI_DTYPE
+        case RUMI_DT_UNKNOWN: break;
     }
     return GDT_Unknown;
+#undef G_NONE
 }
 
 std::expected<Header, ParseError>
@@ -85,19 +99,15 @@ parse_blob(std::span<const std::byte> blob)
     if (bh.magic   != MAGIC)   return std::unexpected(ParseError::bad_magic);
     if (bh.version != VERSION) return std::unexpected(ParseError::unsupported_version);
 
-    if (bh.bits_per_sample != 8  && bh.bits_per_sample != 16 &&
+    if (bh.bits_per_sample != 1  && bh.bits_per_sample != 2  &&
+        bh.bits_per_sample != 4  && bh.bits_per_sample != 6  &&
+        bh.bits_per_sample != 8  && bh.bits_per_sample != 16 &&
         bh.bits_per_sample != 32 && bh.bits_per_sample != 64 &&
         bh.bits_per_sample != 128) {
         return std::unexpected(ParseError::invalid_bits_per_sample);
     }
-    if (bh.sample_format != 1 && bh.sample_format != 2 &&
-        bh.sample_format != 3 && bh.sample_format != 5 &&
-        bh.sample_format != 6) {
-        return std::unexpected(ParseError::invalid_sample_format);
-    }
-
-    const GDALDataType gdt = infer_gdal_type(bh.bits_per_sample, bh.sample_format);
-    if (gdt == GDT_Unknown) {
+    const rumi_dtype dt = sample_to_dtype(bh.sample_format, bh.bits_per_sample);
+    if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
     }
 
@@ -106,8 +116,7 @@ parse_blob(std::span<const std::byte> blob)
         bh.samples_per_pixel == 0) {
         return std::unexpected(ParseError::invalid_dimensions);
     }
-    // These become int raster sizes in GDAL; a value above INT_MAX would cast
-    // negative, so reject it.
+    // These become int raster sizes, reject > INT_MAX so the cast stays positive.
     if (bh.image_width  > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         bh.image_length > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
         return std::unexpected(ParseError::invalid_dimensions);
@@ -122,8 +131,11 @@ parse_blob(std::span<const std::byte> blob)
     h.bits_per_sample   = bh.bits_per_sample;
     h.sample_format     = bh.sample_format;
     h.base_tiles_offset = bh.base_tiles_offset;
-    h.gdal_type         = gdt;
-    h.bytes_per_sample  = bh.bits_per_sample / 8u;
+    h.dtype             = dt;
+    h.gdal_type         = dtype_to_gdal(dt);
+    // Codec element width, bytes for whole-byte types and 1 for packed sub-byte.
+    h.bytes_per_sample  = (bh.bits_per_sample >= 8)
+                        ? (bh.bits_per_sample / 8u) : 1u;
 
     h.tiles_across = (bh.image_width  + bh.tile_width  - 1) / bh.tile_width;
     h.tiles_down   = (bh.image_length + bh.tile_length - 1) / bh.tile_length;
@@ -136,9 +148,13 @@ parse_blob(std::span<const std::byte> blob)
     }
     h.tile_count = static_cast<std::uint32_t>(tile_count_u64);
 
-    const auto tile_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width)
-                              * static_cast<std::uint64_t>(bh.tile_length)
-                              * static_cast<std::uint64_t>(h.bytes_per_sample);
+    const auto tile_bits_u64 = static_cast<std::uint64_t>(bh.tile_width)
+                             * static_cast<std::uint64_t>(bh.tile_length)
+                             * static_cast<std::uint64_t>(bh.bits_per_sample);
+    if (tile_bits_u64 % 8u != 0u) {
+        return std::unexpected(ParseError::invalid_bits_per_sample);
+    }
+    const auto tile_bytes_u64 = tile_bits_u64 / 8u;
     if (tile_bytes_u64 > std::numeric_limits<std::size_t>::max()) {
         return std::unexpected(ParseError::tile_size_overflow);
     }
@@ -155,8 +171,7 @@ parse_blob(std::span<const std::byte> blob)
                 blob.data() + HEADER_SIZE,
                 static_cast<std::size_t>(h.tile_count) * sizeof(std::uint32_t));
 
-    // Prefix sum over the contiguous run. With counts >= 1, the only failure
-    // left is u64 overflow on the running offset.
+    // Prefix sum over the contiguous run. counts >= 1, so only u64 overflow fails.
     h.tile_offsets.resize(h.tile_count);
     std::uint64_t offset = bh.base_tiles_offset;
     for (std::uint32_t i = 0; i < h.tile_count; ++i) {

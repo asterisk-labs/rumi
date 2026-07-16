@@ -47,8 +47,8 @@ A GeoTIFF is rumi compliant when all of the following hold.
 - the single IFD is positioned before the tile data
 - `Compression` is `60000` (OpenZL)
 - `Predictor` is `1`. rumi uses no TIFF predictor. All modelling lives inside the OpenZL frame
-- `bits_per_sample` is `8`, `16`, `32`, `64`, or `128`
-- `SampleFormat` is `1`, `2`, `3`, `5`, or `6`
+- `bits_per_sample` is `1`, `2`, `4`, `6`, `8`, `16`, `32`, `64`, or `128`
+- `SampleFormat` is `1`, `2`, `3`, `5`, `6`, or a rumi-private value in `100`..`106`
 - the `(sample_format, bits_per_sample)` pair is one listed in the sample encoding table
 - each tile payload is one self-contained OpenZL frame at OpenZL frame format version `<OPENZL_FORMAT_VERSION>`
 - `TileOffsets` and `TileByteCounts` are present
@@ -148,20 +148,25 @@ The band count B. This matches the TIFF tag `SamplesPerPixel`. The value MUST be
 
 ### bits_per_sample
 
-The width in bits of one stored sample slot. For non-complex formats (`1`, `2`, `3`) this is the per-sample bit width. For complex formats (`5`, `6`) this is the sum of the real and imaginary component widths. Valid values are `8`, `16`, `32`, `64`, and `128`. A reader MUST reject any other value, and any `(sample_format, bits_per_sample)` pair not listed in the sample encoding table.
+The width in bits of one stored sample slot. For non-complex formats this is the per-sample bit width. For complex formats (`5`, `6`) this is the sum of the real and imaginary component widths. Valid values are `1`, `2`, `4`, `6`, `8`, `16`, `32`, `64`, and `128`. The sub-byte widths (`1`, `2`, `4`, `6`) belong to the packed integer, sub-byte float and binary types. A reader MUST reject any other value, and any `(sample_format, bits_per_sample)` pair not listed in the sample encoding table.
 
 ### sample_format
 
-The sample type. `1` is unsigned integer. `2` is signed integer. `3` is IEEE floating point. `5` is complex signed integer. `6` is complex IEEE floating point.
+The sample type. `1` is unsigned integer. `2` is signed integer. `3` is IEEE floating point. `5` is complex signed integer. `6` is complex IEEE floating point. The values `100` through `106` are rumi-private formats for ML and EO types that standard TIFF has no `SampleFormat` for, they are never written by a plain TIFF encoder and only rumi produces them.
 
-The valid sample encodings are listed below.
+The valid sample encodings are listed below. This table and every projection of it, the enum, the byte size, the DLPack code and the GDAL type, are generated from a single source, `core/include/rumi/rumi_dtypes.def`.
 
 | sample_format | bits_per_sample | encoding |
 |---|---|---|
+| 1 | 1 | 1-bit binary |
+| 1 | 2 | unsigned 2-bit integer |
+| 1 | 4 | unsigned 4-bit integer |
 | 1 | 8 | unsigned 8-bit integer |
 | 1 | 16 | unsigned 16-bit integer |
 | 1 | 32 | unsigned 32-bit integer |
 | 1 | 64 | unsigned 64-bit integer |
+| 2 | 2 | signed 2-bit integer |
+| 2 | 4 | signed 4-bit integer |
 | 2 | 8 | signed 8-bit integer |
 | 2 | 16 | signed 16-bit integer |
 | 2 | 32 | signed 32-bit integer |
@@ -174,6 +179,13 @@ The valid sample encodings are listed below.
 | 6 | 32 | complex IEEE floating point, 16-bit real and 16-bit imaginary |
 | 6 | 64 | complex IEEE floating point, 32-bit real and 32-bit imaginary |
 | 6 | 128 | complex IEEE floating point, 64-bit real and 64-bit imaginary |
+| 100 | 8 | float8 E4M3FN |
+| 101 | 8 | float8 E5M2 |
+| 102 | 16 | bfloat16 |
+| 103 | 8 | float8 E8M0 |
+| 104 | 6 | float6 E2M3 |
+| 105 | 6 | float6 E3M2 |
+| 106 | 4 | float4 E2M1 |
 
 A reader MUST reject any pair not listed above. This pair is also the element type a writer hands to OpenZL for the tile stream. For complex formats the writer hands OpenZL the component type, not the complex pair, as defined in Complex tiles.
 

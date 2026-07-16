@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <mutex>
 #include <new>
 #include <optional>
 #include <span>
@@ -129,25 +128,6 @@ Band::Band(Image* image, int band_index) noexcept : image_(image)
     nBlockYSize = image->header().tile_length;
 }
 
-GDALRasterBlock* Band::GetLockedBlockRef(int x_block, int y_block,
-                                         int just_initialize)
-{
-    std::lock_guard guard(block_cache_mutex_);
-    return GDALRasterBand::GetLockedBlockRef(x_block, y_block, just_initialize);
-}
-
-GDALRasterBlock* Band::TryGetLockedBlockRef(int x_block, int y_block)
-{
-    std::lock_guard guard(block_cache_mutex_);
-    return GDALRasterBand::TryGetLockedBlockRef(x_block, y_block);
-}
-
-CPLErr Band::FlushBlock(int x_block, int y_block, int write_dirty)
-{
-    std::lock_guard guard(block_cache_mutex_);
-    return GDALRasterBand::FlushBlock(x_block, y_block, write_dirty);
-}
-
 CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
 {
     const Header& h = image_->header();
@@ -156,6 +136,12 @@ CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
         static_cast<std::uint32_t>(x_block),
         static_cast<std::uint32_t>(nBand - 1));
 
+    const int tw = h.tile_width;
+    const int tl = h.tile_length;
+    const int ex_w = std::min(tw, static_cast<int>(h.image_width)  - x_block * tw);
+    const int ex_h = std::min(tl, static_cast<int>(h.image_length) - y_block * tl);
+    const std::size_t bps = h.bytes_per_sample;
+
     Plan plan;
     plan.spec = make_tile_spec(h);
 
@@ -163,7 +149,23 @@ CPLErr Band::IReadBlock(int x_block, int y_block, void* buffer)
     task.reader          = image_->reader();
     task.offset          = h.tile_offset(idx);
     task.compressed_size = h.tile_byte_counts[idx];
-    task.direct          = static_cast<std::byte*>(buffer);
+    task.tile_w          = static_cast<std::uint32_t>(ex_w);
+    task.tile_bytes      = static_cast<std::size_t>(ex_w)
+                         * static_cast<std::size_t>(ex_h) * bps;
+
+    // A full tile fills the block, decode straight in. A smaller edge tile goes
+    // to scratch, placed at the block's top-left; GDAL ignores the rest.
+    if (ex_w == tw && ex_h == tl) {
+        task.direct = static_cast<std::byte*>(buffer);
+    } else {
+        task.dst              = static_cast<std::byte*>(buffer);
+        task.src_x            = 0;
+        task.src_y            = 0;
+        task.w                = static_cast<std::uint32_t>(ex_w);
+        task.h                = static_cast<std::uint32_t>(ex_h);
+        task.dst_pitch        = static_cast<std::size_t>(tw) * bps;
+        task.dst_pixel_stride = bps;
+    }
     plan.tasks.push_back(task);
 
     Executor exec(image_->pool());
@@ -193,7 +195,7 @@ int Image::Identify(GDALOpenInfo* open_info)
     if (CSLFetchNameValue(open_info->papszOpenOptions, OPEN_OPTION_HEADER) != nullptr) {
         return TRUE;
     }
-    return -1;
+    return FALSE;
 }
 
 GDALDataset* Image::Open(GDALOpenInfo* open_info)
@@ -228,8 +230,16 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
         return nullptr;
     }
 
-    // Reject band counts GDAL deems unreasonable before the SetBand loop
-    // turns them into a huge allocation.
+    // A type with no GDAL projection (float16, float8) is native-API only, the
+    // driver cannot hand GDAL an Unknown band.
+    if (parsed->gdal_type == GDT_Unknown) {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "RUMI: sample type is not exposable through the GDAL driver, "
+                 "use the native read API");
+        return nullptr;
+    }
+
+    // Reject unreasonable band counts before the SetBand loop allocates.
     if (!GDALCheckBandCount(parsed->samples_per_pixel, FALSE)) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "RUMI: unreasonable band count %u",
@@ -241,6 +251,12 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     if (!fp) {
         CPLError(CE_Failure, CPLE_OpenFailed,
                  "Cannot open file: %s", open_info->pszFilename);
+        return nullptr;
+    }
+
+    if (auto ok = check_data_fits(*parsed, fp); !ok) {
+        VSIFCloseL(fp);
+        CPLError(CE_Failure, CPLE_AppDefined, "RUMI: %s", ok.error().c_str());
         return nullptr;
     }
 
@@ -258,8 +274,8 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     }
     img->SetDescription(open_info->pszFilename);
 
-    // The pool is process-global and sized on first use, so the first dataset
-    // to enable threading fixes the worker count for the whole process.
+    // Process-global pool, sized on first use. Out-of-tree we can't reach
+    // GDAL's own, and it outlives dlclose, a known plugin hazard we accept.
     int n_threads = 1;
     if (const char* nt = CSLFetchNameValue(open_info->papszOpenOptions,
                                            OPEN_OPTION_THREADS)) {
@@ -276,8 +292,6 @@ GDALDataset* Image::Open(GDALOpenInfo* open_info)
     if (n_threads > 1) {
         img->pool_ = &global_thread_pool(static_cast<unsigned>(n_threads));
     }
-
-    img->nOpenFlags = GDAL_OF_RASTER | GDAL_OF_THREAD_SAFE;
 
     return img.release();
 }
@@ -300,8 +314,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         return CE_Failure;
     }
 
-    // Pitch arithmetic casts spacing to size_t, so non-positive spacing would
-    // corrupt memory rather than fail.
+    // Pitch arithmetic casts spacing to size_t, so reject non-positive spacing.
     if (pixel_space <= 0 || line_space <= 0 ||
         (band_count > 1 && band_space <= 0)) {
         CPLError(CE_Failure, CPLE_IllegalArg,
@@ -309,8 +322,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
         return CE_Failure;
     }
 
-    // ImageCube reads reach us directly, bypassing GDAL's public validation,
-    // so revalidate here.
+    // Direct reads bypass GDAL's public validation, so revalidate here.
     if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
         static_cast<std::int64_t>(x_off) + x_size > nRasterXSize ||
         static_cast<std::int64_t>(y_off) + y_size > nRasterYSize) {
@@ -331,8 +343,7 @@ CPLErr Image::IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
     INIT_RASTERIO_EXTRA_ARG(default_arg);
     if (!extra_arg) extra_arg = &default_arg;
 
-    // read_native handles any spacing; only resampling or a dtype change needs
-    // the staging path.
+    // read_native handles any spacing, only resample or dtype change stages.
     const bool fast_path =
         x_size == buf_x_size && y_size == buf_y_size &&
         buf_type == header_.gdal_type;
@@ -358,7 +369,6 @@ void register_driver()
     auto driver = std::make_unique<GDALDriver>();
     driver->SetDescription("RUMI");
     driver->SetMetadataItem(GDAL_DMD_LONGNAME, "rumi fast read path");
-    driver->SetMetadataItem(GDAL_DMD_EXTENSIONS, "tif tiff");
     driver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     driver->SetMetadataItem(GDAL_DMD_OPENOPTIONLIST,
         "<OpenOptionList>"

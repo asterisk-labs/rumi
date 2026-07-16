@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "dlpack/dlpack.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,7 +28,7 @@ extern "C" {
 
 // Version.
 
-#define RUMI_API_VERSION 1
+#define RUMI_API_VERSION 2
 
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
@@ -63,6 +65,13 @@ RUMI_API void rumi_clear_error(void);
 RUMI_API void rumi_free(void* ptr);
 
 
+// Data paths.
+
+// Point this library's own GDAL/PROJ at data directories so the wheel can find
+// its bundled proj.db. Either may be NULL to leave it unchanged.
+RUMI_API void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
+
+
 // Indexing.
 
 // On success *out_blob is *out_size bytes owned by the caller, released
@@ -75,8 +84,41 @@ rumi_index_file(const char*     path,
 
 // Header.
 
-// dtype is reported as the spec's (sample_format, bits_per_sample) pair,
-// not the GDAL enum, so the ABI does not move when GDAL adds a type.
+// Sentinel in the DLCODE column of rumi_dtypes.def for a type with no DLPack
+// form (the complex integers). Never a real DLPack code.
+#define RUMI_DL_NONE 255
+
+// The dtype set is defined once in rumi_dtypes.def. The enum, the descriptor
+// table below, and the GDAL projection are all generated from it, so a new
+// type is one row and nothing here drifts. RUMI_DT_UNKNOWN = 0 has no row.
+typedef enum {
+    RUMI_DT_UNKNOWN = 0,
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+    RUMI_DT_##sym = code,
+#include "rumi_dtypes.def"
+#undef RUMI_DTYPE
+} rumi_dtype;
+
+// One row of the dtype table, the ABI-stable view a binding walks to learn
+// every type instead of hard-coding the set. dl_code is RUMI_DL_NONE when the
+// type has no DLPack form. The GDAL type is deliberately not here, no GDAL enum
+// crosses the ABI so it cannot move when GDAL adds a type.
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    const char* name;
+} rumi_dtype_info;
+
+// Hands back the static dtype table and its length. Process-lifetime, not owned
+// by the caller. Bindings build their own numpy/name maps by walking it.
+RUMI_API size_t rumi_dtype_table(const rumi_dtype_info** out);
+
+// dtype is the canonical type, rumi's own, independent of GDAL. The
+// (sample_format, bits_per_sample) pair is kept for reference. No GDAL enum
+// crosses the ABI, so it does not move when GDAL adds a type.
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
@@ -88,6 +130,7 @@ typedef struct {
     uint32_t tiles_across;
     uint32_t tiles_down;
     uint64_t base_tiles_offset;
+    rumi_dtype dtype;
 } rumi_header;
 
 
@@ -161,6 +204,35 @@ rumi_read_stack(const char* const*      paths,
                 const char*             pattern,
                 int                     num_threads,
                 void*                   dst,   size_t dst_size);
+
+// DLPack form. Reads like rumi_read but rumi owns the result, handed back as a
+// DLManagedTensorVersioned the caller wraps in a capsule. On success *out holds
+// it, released through its own deleter. A dtype with no DLPack code, the complex
+// integers, gives RUMI_ERR_UNSUPPORTED.
+RUMI_API rumi_status
+rumi_read_dlpack(const char*      path,
+                 const rumi_spec* spec,
+                 const int*       bands, size_t n_bands,
+                 int              y_off, int y_size,
+                 int              x_off, int x_size,
+                 const char*      pattern,
+                 int              num_threads,
+                 DLManagedTensorVersioned** out);
+
+RUMI_API rumi_status
+rumi_read_stack_dlpack(const char* const*      paths,
+                       const rumi_spec* const* specs,  size_t n_images,
+                       const int*              n_index, size_t n_n,
+                       const int*              bands,   size_t n_bands,
+                       int                     y_off, int y_size,
+                       int                     x_off, int x_size,
+                       const char*             pattern,
+                       int                     num_threads,
+                       DLManagedTensorVersioned** out);
+
+// Frees a tensor from rumi_read_dlpack. Same function the tensor carries as its
+// deleter, so a consumer and an unconsumed capsule free through one path.
+RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
 
 // Geo keys.

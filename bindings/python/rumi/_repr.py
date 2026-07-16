@@ -82,10 +82,10 @@ def _wrap(inner):
 
 def text(f):
     if not f["ok"]:
-        return "<rumi.Spec (unreadable)>"
+        return "<rumi.RumiHeader (unreadable)>"
     tw, tl = f["tile"]
     return "\n".join([
-        f"<rumi.Spec ({f['b']}, {f['y']}, {f['x']})>",
+        f"<rumi.RumiHeader ({f['b']}, {f['y']}, {f['x']})>",
         f"  dtype      : {f['dtype']}",
         f"  tile       : {tw} x {tl}",
         f"  tiles      : {f['tiles']}",
@@ -96,7 +96,7 @@ def text(f):
 
 def html_(f):
     if not f["ok"]:
-        return _wrap('<div class="hdr"><span class="cls">rumi.Spec</span> '
+        return _wrap('<div class="hdr"><span class="cls">rumi.RumiHeader</span> '
                      '<span class="dim">(unreadable)</span></div>')
     tw, tl = f["tile"]
     e = html.escape
@@ -107,7 +107,7 @@ def html_(f):
         f'<tr><td class="k">tiles/band</td><td>{f["across"] * f["down"]:,}</td></tr>'
         f'<tr><td class="k">codec</td><td>{e(f["codec"])}</td></tr>'
     )
-    meta = (f'<div><div class="hdr"><span class="cls">rumi.Spec</span> '
+    meta = (f'<div><div class="hdr"><span class="cls">rumi.RumiHeader</span> '
             f'<span class="dim">({f["b"]}, {f["y"]}, {f["x"]})</span></div>'
             f'<table>{rows}</table></div>')
     return _wrap(f'<div class="box">{meta}'

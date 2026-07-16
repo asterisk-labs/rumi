@@ -11,6 +11,7 @@
 #include "openzl/zl_version.h"       // ZL_MAX_FORMAT_VERSION
 
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -19,16 +20,14 @@
 namespace rumi {
 namespace {
 
-// Per-thread decode context and scratch, reused across tiles. Buffers grow to
-// the largest tile and never shrink.
+// Per-thread decode context and scratch, reused across tiles. Grows only.
 struct WorkerState {
     ZL_DCtx*               dctx = ZL_DCtx_create();
     std::vector<std::byte> compressed;
     std::vector<std::byte> scratch;
 
     WorkerState() {
-        // A fresh dctx only fails registration on allocation. Drop it so
-        // execute_task reports a clean context error.
+        // Registration only fails on allocation. Drop it and report cleanly.
         if (dctx && ZL_isError(geozl_register_decoders(dctx))) {
             ZL_DCtx_free(dctx);
             dctx = nullptr;
@@ -46,13 +45,13 @@ WorkerState& worker_state() noexcept
     return ws;
 }
 
-// A pixel stride equal to one sample is a contiguous row; a larger stride has
-// another axis inner, so place pixels one by one.
+// A one-sample pixel stride is a contiguous row, a larger one has another
+// axis inner, so copy pixel by pixel. src_pitch is the tile's real width.
 void copy_rect(const TileTask& t, const TileSpec& spec,
                const std::byte* tile) noexcept
 {
     const std::size_t bps       = spec.bytes_per_sample;
-    const std::size_t src_pitch = static_cast<std::size_t>(spec.tile_width) * bps;
+    const std::size_t src_pitch = static_cast<std::size_t>(t.tile_w) * bps;
 
     if (t.dst_pixel_stride == bps) {
         const std::size_t row_bytes = static_cast<std::size_t>(t.w) * bps;
@@ -95,6 +94,9 @@ bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
 
 rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
 {
+    char img[24] = "";
+    if (t.image) std::snprintf(img, sizeof img, " (image %u)", t.image);
+
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
         CPLError(CE_Failure, CPLE_OutOfMemory,
@@ -117,16 +119,15 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         t.offset, t.compressed_size, ws.compressed.data());
     if (got != t.compressed_size) {
         CPLError(CE_Failure, CPLE_FileIO,
-                 "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu",
+                 "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu%s",
                  static_cast<GUIntBig>(t.offset),
                  static_cast<unsigned long long>(got),
-                 static_cast<unsigned long long>(t.compressed_size));
+                 static_cast<unsigned long long>(t.compressed_size), img);
         return RUMI_ERR_IO;
     }
 
-    // Full tile decodes straight into the output, otherwise into scratch for
-    // copy_rect. The numeric decode needs element-width alignment, which holds
-    // for the output buffer and always for scratch.
+    // Full tile decodes into the output, a partial one into scratch for
+    // copy_rect. Numeric decode needs element-width alignment, which both hold.
     std::byte* tile = t.direct;
     if (!tile) {
         if (ws.scratch.size() < spec.tile_bytes) {
@@ -141,37 +142,39 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         tile = ws.scratch.data();
     }
 
-    // One OpenZL frame per tile, one numeric output. The typed decode reports
-    // the element type and width, checked against the header below.
+    // One frame per tile, one numeric output. Type, width and size are checked
+    // below against this tile's real size.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
-        ws.dctx, &info, tile, spec.tile_bytes,
+        ws.dctx, &info, tile, t.tile_bytes,
         ws.compressed.data(), t.compressed_size);
 
     if (ZL_isError(rep)) {
         const char* ctx = ZL_DCtx_getErrorContextString(ws.dctx, rep);
         unsigned long ctid = 0;
         if (missing_custom_codec(ctx, &ctid)) {
+            const char* what = geozl_owns_ctid(ctid)
+                ? "a geozl codec this build lacks, update geozl"
+                : "an unknown OpenZL custom codec";
             CPLError(CE_Failure, CPLE_NotSupported,
-                     "rumi: file uses a custom OpenZL codec (CTid %lu) this "
-                     "reader has not registered", ctid);
+                     "rumi: file uses %s (CTid %lu)%s", what, ctid, img);
             return RUMI_ERR_UNSUPPORTED;
         }
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "rumi: OpenZL decode failed: %s", ctx);
+                 "rumi: OpenZL decode failed: %s%s", ctx, img);
         return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
         info.fixedWidth != spec.bytes_per_sample ||
-        info.decompressedByteSize != spec.tile_bytes) {
+        info.decompressedByteSize != t.tile_bytes) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "rumi: unexpected tile output (type %u, width %u, size %llu; "
-                 "expected numeric width %u, size %llu)",
+                 "expected numeric width %u, size %llu)%s",
                  static_cast<unsigned>(info.type),
                  static_cast<unsigned>(info.fixedWidth),
                  static_cast<unsigned long long>(info.decompressedByteSize),
                  static_cast<unsigned>(spec.bytes_per_sample),
-                 static_cast<unsigned long long>(spec.tile_bytes));
+                 static_cast<unsigned long long>(t.tile_bytes), img);
         return RUMI_ERR_DECODE;
     }
 

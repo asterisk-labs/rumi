@@ -1,0 +1,34 @@
+/* Single source of truth for rumi's element types, one row per type. The enum,
+ * the (sample_format, bits) pair, the byte size, the DLPack code and the GDAL
+ * type are generated from here, so add a type by adding a row. CODE is the wire
+ * value, append only. RUMI_DT_UNKNOWN = 0 has no row, it ships with the enum. */
+
+/*         CODE ENUM           NAME            SF   BITS  DLCODE            DLBITS  GDAL         */
+RUMI_DTYPE(  1, UINT8,         "uint8",          1,    8, kDLUInt,             8,  GDT_Byte     )
+RUMI_DTYPE(  2, INT8,          "int8",           2,    8, kDLInt,              8,  GDT_Int8     )
+RUMI_DTYPE(  3, UINT16,        "uint16",         1,   16, kDLUInt,            16,  GDT_UInt16   )
+RUMI_DTYPE(  4, INT16,         "int16",          2,   16, kDLInt,             16,  GDT_Int16    )
+RUMI_DTYPE(  5, UINT32,        "uint32",         1,   32, kDLUInt,            32,  GDT_UInt32   )
+RUMI_DTYPE(  6, INT32,         "int32",          2,   32, kDLInt,             32,  GDT_Int32    )
+RUMI_DTYPE(  7, UINT64,        "uint64",         1,   64, kDLUInt,            64,  GDT_UInt64   )
+RUMI_DTYPE(  8, INT64,         "int64",          2,   64, kDLInt,             64,  GDT_Int64    )
+RUMI_DTYPE(  9, FLOAT16,       "float16",        3,   16, kDLFloat,           16,  G_NONE       )
+RUMI_DTYPE( 10, FLOAT32,       "float32",        3,   32, kDLFloat,           32,  GDT_Float32  )
+RUMI_DTYPE( 11, FLOAT64,       "float64",        3,   64, kDLFloat,           64,  GDT_Float64  )
+RUMI_DTYPE( 12, CINT16,        "cint16",         5,   32, RUMI_DL_NONE,        0,  GDT_CInt16   )
+RUMI_DTYPE( 13, CINT32,        "cint32",         5,   64, RUMI_DL_NONE,        0,  GDT_CInt32   )
+RUMI_DTYPE( 14, CFLOAT16,      "cfloat16",       6,   32, kDLComplex,         32,  G_NONE       )
+RUMI_DTYPE( 15, CFLOAT32,      "cfloat32",       6,   64, kDLComplex,         64,  GDT_CFloat32 )
+RUMI_DTYPE( 16, CFLOAT64,      "cfloat64",       6,  128, kDLComplex,        128,  GDT_CFloat64 )
+RUMI_DTYPE( 17, FLOAT8_E4M3FN, "float8_e4m3fn",100,    8, kDLFloat8_e4m3fn,    8,  G_NONE       )
+RUMI_DTYPE( 18, FLOAT8_E5M2,   "float8_e5m2",  101,    8, kDLFloat8_e5m2,      8,  G_NONE       )
+RUMI_DTYPE( 19, BFLOAT16,      "bfloat16",     102,   16, kDLBfloat,          16,  G_NONE       )
+RUMI_DTYPE( 20, UINT4,         "uint4",          1,    4, kDLUInt,             4,  G_NONE       )
+RUMI_DTYPE( 21, INT4,          "int4",           2,    4, kDLInt,              4,  G_NONE       )
+RUMI_DTYPE( 22, UINT2,         "uint2",          1,    2, kDLUInt,             2,  G_NONE       )
+RUMI_DTYPE( 23, INT2,          "int2",           2,    2, kDLInt,              2,  G_NONE       )
+RUMI_DTYPE( 24, BINARY,        "binary",         1,    1, kDLUInt,             1,  G_NONE       )
+RUMI_DTYPE( 25, FLOAT8_E8M0,   "float8_e8m0",  103,    8, kDLFloat8_e8m0fnu,   8,  G_NONE       )
+RUMI_DTYPE( 26, FLOAT6_E2M3,   "float6_e2m3",  104,    6, kDLFloat6_e2m3fn,    6,  G_NONE       )
+RUMI_DTYPE( 27, FLOAT6_E3M2,   "float6_e3m2",  105,    6, kDLFloat6_e3m2fn,    6,  G_NONE       )
+RUMI_DTYPE( 28, FLOAT4_E2M1,   "float4_e2m1",  106,    4, kDLFloat4_e2m1fn,    4,  G_NONE       )

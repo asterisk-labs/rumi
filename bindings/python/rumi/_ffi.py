@@ -17,6 +17,17 @@ typedef enum {
     RUMI_ERR_INTERNAL    = 99
 } rumi_status;
 
+typedef int rumi_dtype;
+
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    const char* name;
+} rumi_dtype_info;
+
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
@@ -28,6 +39,7 @@ typedef struct {
     uint32_t tiles_across;
     uint32_t tiles_down;
     uint64_t base_tiles_offset;
+    rumi_dtype dtype;
 } rumi_header;
 
 typedef struct {
@@ -48,6 +60,10 @@ int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void        rumi_clear_error(void);
 void        rumi_free(void* ptr);
+
+size_t rumi_dtype_table(const rumi_dtype_info** out);
+
+void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
 
 rumi_status
 rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size);
@@ -82,6 +98,26 @@ rumi_read_stack(const char* const* paths,
                 const char* pattern, int num_threads,
                 void* dst, size_t dst_size);
 
+typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
+
+rumi_status
+rumi_read_dlpack(const char* path, const rumi_spec* spec,
+                 const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 const char* pattern, int num_threads,
+                 DLManagedTensorVersioned** out);
+
+rumi_status
+rumi_read_stack_dlpack(const char* const* paths,
+                       const rumi_spec* const* specs, size_t n_images,
+                       const int* n_index, size_t n_n,
+                       const int* bands, size_t n_bands,
+                       int y_off, int y_size, int x_off, int x_size,
+                       const char* pattern, int num_threads,
+                       DLManagedTensorVersioned** out);
+
+void rumi_dlpack_free(DLManagedTensorVersioned* t);
+
 rumi_status
 rumi_geokeys(const char* srs, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
@@ -95,10 +131,12 @@ ffi.cdef(_CDEF)
 
 _LIB_GLOBS = ("*.so", "*.so.*", "*.dylib", "*.dll")
 
+PathLike = str | bytes | os.PathLike
+
 
 def _ensure_ca_bundle():
-    # Bundled libcurl/openssl come from conda and look for CA certs at a conda
-    # path absent off-conda (Colab, venvs), breaking HTTPS /vsicurl/ reads.
+    # conda libcurl/openssl use CA paths absent off-conda,
+    # breaking HTTPS /vsicurl/ reads
     if any(os.environ.get(v) for v in (
         "CURL_CA_BUNDLE", "GDAL_CURL_CA_BUNDLE", "SSL_CERT_FILE",
         "GDAL_HTTP_UNSAFESSL",
@@ -123,6 +161,22 @@ def _ensure_ca_bundle():
         os.environ.setdefault("SSL_CERT_FILE", bundle)
 
 
+def _ensure_proj_data(lib):
+    # vendored GDAL/PROJ cannot find proj.db off-conda
+    try:
+        setter = lib.rumi_set_data_paths
+    except AttributeError:
+        return
+
+    lib_dir = Path(__file__).parent / "_lib"
+    proj_dir = lib_dir / "proj"
+    gdal_dir = lib_dir / "gdal"
+    proj_arg = str(proj_dir).encode("utf-8") if proj_dir.is_dir() else ffi.NULL
+    gdal_arg = str(gdal_dir).encode("utf-8") if gdal_dir.is_dir() else ffi.NULL
+    if proj_arg is not ffi.NULL or gdal_arg is not ffi.NULL:
+        setter(proj_arg, gdal_arg)
+
+
 def _bundled_lib():
     lib_dir = Path(__file__).parent / "_lib"
     for pattern in _LIB_GLOBS:
@@ -132,7 +186,6 @@ def _bundled_lib():
 
 
 def _load_lib():
-    # RUMI_LIB beats everything :D, then the bundled wheel copy, then the OS path.
     env_path = os.environ.get("RUMI_LIB")
     candidate = env_path or _bundled_lib() or ctypes.util.find_library("rumi")
     if candidate is None:
@@ -150,6 +203,7 @@ def _load_lib():
 
 _ensure_ca_bundle()
 lib = _load_lib()
+_ensure_proj_data(lib)
 
 
 _STATUS_TO_EXC = {
@@ -171,3 +225,18 @@ def _check(rc):
     msg = (ffi.string(err).decode("utf-8", errors="replace")
            if err != ffi.NULL else "(no error message)")
     raise _STATUS_TO_EXC.get(rc, RuntimeError)(msg)
+
+
+def _enc(path: PathLike) -> bytes:
+    return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
+
+
+def _blob_from_file(path: PathLike) -> bytes:
+    # the header blob C hands back, freed once copied into a Python bytes
+    blob_out = ffi.new("unsigned char**")
+    size_out = ffi.new("size_t*")
+    _check(lib.rumi_index_file(_enc(path), blob_out, size_out))
+    try:
+        return bytes(ffi.buffer(blob_out[0], size_out[0]))
+    finally:
+        lib.rumi_free(blob_out[0])

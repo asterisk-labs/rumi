@@ -25,6 +25,9 @@ inline constexpr std::uint32_t MAGIC       = 0x333C333C;  // "<3<3"
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 26;
 
+// TIFF Compression tag rumi writes and requires. Coordinated with OpenZL.
+inline constexpr std::uint16_t OPENZL_COMPRESSION = 60000;
+
 // The OpenZL frame format version.
 [[nodiscard]] RUMI_API int openzl_format_version() noexcept;
 
@@ -82,12 +85,20 @@ struct Header {
     std::size_t   bytes_per_sample{};
     std::size_t   max_tile_size{};
     GDALDataType  gdal_type{GDT_Unknown};
+    rumi_dtype    dtype{RUMI_DT_UNKNOWN};
 
     std::vector<std::uint32_t> tile_byte_counts;
     std::vector<std::uint64_t> tile_offsets;
 
     [[nodiscard]] std::uint64_t tile_offset(std::uint32_t i) const noexcept {
         return tile_offsets[i];
+    }
+
+    // Byte just past the last tile. The file must be at least this large.
+    [[nodiscard]] std::uint64_t data_end() const noexcept {
+        return tile_offsets.empty()
+             ? base_tiles_offset
+             : tile_offsets.back() + tile_byte_counts.back();
     }
 
     [[nodiscard]] std::uint32_t tile_index(std::uint32_t row,
@@ -101,9 +112,22 @@ struct Header {
 [[nodiscard]] RUMI_API std::expected<Header, ParseError>
 parse_blob(std::span<const std::byte> blob);
 
-[[nodiscard]] RUMI_API GDALDataType
-infer_gdal_type(std::uint8_t bits_per_sample,
-                std::uint8_t sample_format) noexcept;
+// The dtype table, generated from rumi_dtypes.def, and its length. The single
+// place the type set is enumerated. Every function below is a view over it.
+[[nodiscard]] RUMI_API const rumi_dtype_info*
+dtype_table(std::size_t* count) noexcept;
+
+// The canonical (sample_format, bits) to rumi_dtype map, RUMI_DT_UNKNOWN when
+// the pair is not one rumi supports. This is the validity gate, not GDAL.
+[[nodiscard]] RUMI_API rumi_dtype
+sample_to_dtype(std::uint8_t sample_format,
+                std::uint8_t bits_per_sample) noexcept;
+
+[[nodiscard]] RUMI_API std::size_t dtype_size(rumi_dtype dt) noexcept;
+
+// Best-effort projection to a GDAL type for the driver, GDT_Unknown for a type
+// this GDAL build cannot express.
+[[nodiscard]] RUMI_API GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept;
 
 
 // File reader
@@ -133,17 +157,21 @@ struct TileSpec {
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint8_t  bytes_per_sample;
-    std::size_t   tile_bytes;
+    std::size_t   tile_bytes;  // full tile size, the scratch bound; a tile's
+                               // real size is in TileTask::tile_bytes
 };
 
 // One tile, single band. When direct is set the tile decompresses straight into
 // the output; otherwise it lands in scratch and the w x h rect is copied to dst
 // with dst_pitch per row and dst_pixel_stride per pixel. All positions are in
-// the result buffer, never the disk layout.
+// the result buffer, never the disk layout. tile_w and tile_bytes are this
+// tile's real width and decoded size, smaller than a full tile at the edges.
 struct TileTask {
     FileReader*   reader;
     std::uint64_t offset;
     std::uint32_t compressed_size;
+    std::uint32_t tile_w;
+    std::size_t   tile_bytes;
     std::byte*    direct;
     std::byte*    dst;
     std::uint32_t src_x;
@@ -152,6 +180,7 @@ struct TileTask {
     std::uint32_t h;
     std::size_t   dst_pitch;
     std::size_t   dst_pixel_stride;
+    std::uint32_t image;  // 1-based n in a stack read, 0 for a single image
 };
 
 struct Plan {
@@ -220,6 +249,11 @@ compile_layout(std::string_view pattern,
 // without changing the read_window error type. Defaults to RUMI_ERR_IO.
 [[nodiscard]] rumi_status take_read_status() noexcept;
 
+// Rejects a header whose tiles run past the end of fp, a truncated file or a
+// blob with inflated byte counts, before any tile buffer is allocated.
+[[nodiscard]] RUMI_API std::expected<void, std::string>
+check_data_fits(const Header& h, VSILFILE* fp);
+
 // Opens path via VSI, plans the window, runs it, closes. bands are 1-based.
 // dst must be aligned to bytes_per_sample.
 // num_threads > 1 uses the process-global pool (sized on first use).
@@ -263,17 +297,8 @@ public:
                      GSpacing pixel_space, GSpacing line_space,
                      GDALRasterIOExtraArg* extra_arg) override;
 
-    // The default block cache is not internally locked, so serialize the
-    // entry points that GDAL_OF_THREAD_SAFE may reach from several threads.
-    GDALRasterBlock* GetLockedBlockRef(int x_block, int y_block,
-                                       int just_initialize = FALSE) override;
-    GDALRasterBlock* TryGetLockedBlockRef(int x_block, int y_block) override;
-    CPLErr FlushBlock(int x_block, int y_block,
-                      int write_dirty = TRUE) override;
-
 private:
-    Image*               image_{nullptr};
-    std::recursive_mutex block_cache_mutex_;
+    Image* image_{nullptr};
 };
 
 class RUMI_API Image : public GDALDataset {
@@ -318,6 +343,12 @@ private:
 [[nodiscard]] RUMI_API std::expected<std::vector<std::byte>, std::string>
 build_blob_from_file(const char* path) noexcept;
 
+// Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned, malloc'd data
+// that the tensor deleter frees. nullptr when the dtype has no DLPack code.
+[[nodiscard]] RUMI_API DLManagedTensorVersioned*
+build_dlpack(void* data, rumi_dtype dtype,
+             const std::int64_t* shape, int ndim) noexcept;
+
 // The three GeoTIFF CRS tag payloads, raw little-endian, ready to embed.
 // double_params and ascii_params are empty when the CRS needs neither.
 struct GeoKeys {
@@ -331,6 +362,10 @@ struct GeoKeys {
 // failures come back as a string.
 [[nodiscard]] RUMI_API std::expected<GeoKeys, std::string>
 build_geokeys(std::string_view srs, bool pixel_is_point) noexcept;
+
+// Point our own GDAL/PROJ at data dirs so the wheel finds its bundled proj.db.
+// Either may be NULL. Scoped to our GDAL, a host one is untouched.
+RUMI_API void set_proj_data(const char* proj_dir, const char* gdal_dir) noexcept;
 
 RUMI_API void register_driver();
 

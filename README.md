@@ -37,81 +37,53 @@ pip install rumi-eo
 ## Quick start
 
 ```python
+import numpy as np
 import rumi
-import openzl.ext as zl
 
-# build any OpenZL compressor, here delta then the generic backend
-c = zl.Compressor()
-g = zl.graphs.Compress()
-g = zl.nodes.ConvertNumToSerialLE()(c, g)
-g = zl.nodes.DeltaInt()(c, g)
-c.select_starting_graph(g)
+arr = np.random.randint(0, 4096, (4, 2048, 2048), dtype=np.uint16)  # (B, Y, X)
 
-# tile the array, compress each chunk, assemble
-chunks, layout = rumi.tile(arr, tile=512)
-cctx = zl.CCtx()
-cctx.ref_compressor(c)
-cctx.set_parameter(zl.CParam.FormatVersion, rumi.OPENZL_VERSION)
-frames = [cctx.compress([zl.Input(zl.Type.Numeric, ch)]) for ch in chunks]
-rumi.write("scene.tif", frames, layout)
+# write: rumi tiles, sweeps predictors per tile, keeps the smallest, assembles.
+# returns the path and the header blob, the bytes you cache in a catalog.
+path, header = rumi.write("scene.tif", arr)
 
-# read: index the file into a blob, parse it with no I/O, then read with an einops layout
-blob = rumi.index_file("scene.tif")
-header = rumi.parse(blob)
-arr = rumi.read("scene.tif", header, "b y x")     # (B, Y, X)
+# read: hand back a numpy array, nothing else needed
+arr = rumi.read("scene.tif")                          # (B, Y, X)
+
+# window a read, and reuse the cached blob to skip re-reading the header
+arr = rumi.read("scene.tif", header, b=[0, 3], y=(0, 512), x=(0, 512))
 ```
 
 ## Write
 
-Writing is three steps, and the compression in the middle is entirely yours. rumi tiles, you compress, rumi assembles.
-
 ```python
-chunks, layout = rumi.tile(arr, tile=512)
+path, header = rumi.write("scene.tif", arr, method="2d-full",
+                          chunk_size=512, max_error=None,
+                          transform=None, crs=None)
 ```
 
-`tile` cuts a `(B, Y, X)` array into chunks in tile order, samples innermost, padding edge tiles to the full tile size. It returns the chunks as `(N, T, T)` and a `layout` carrying the grid and dtype. The order is fixed, so a chunk never lands in the wrong place.
+`write` takes a `(B, Y, X)` array, cuts it into `chunk_size` tiles, and for each tile runs the method's predictors and keeps the smallest frame. It returns `(path, header)`, where `header` is a bytes blob you cache next to the path in your catalog, a Parquet column works well, and hand back to `read`.
+
+- **`method`** picks the predictor set swept per tile. `"2d-full"` tries every predictor for the best ratio; `"2d-simd"` tries a smaller SIMD-friendly set for a faster write; `"2d-<name>"` forces a single predictor.
+- **`chunk_size`** is the tile edge in pixels, a multiple of 16.
+- **`max_error`** turns on near-lossless: an absolute error bound in DN, quantized ahead of the predictor. `None` is lossless.
+- **`transform`** and **`crs`** carry georeferencing, given together. `transform` is a GDAL-style affine, `crs` an EPSG code or projection string.
 
 ```python
-cctx = zl.CCtx()
-cctx.ref_compressor(c)
-cctx.set_parameter(zl.CParam.FormatVersion, rumi.OPENZL_VERSION)
-frames = [cctx.compress([zl.Input(zl.Type.Numeric, ch)]) for ch in chunks]
+transform = (300000.0, 10.0, 0.0, 4000000.0, 0.0, -10.0)  # origin x, px w, 0, origin y, 0, -px h
+path, header = rumi.write("scene.tif", arr, transform=transform, crs=32630)
 ```
-
-You compress each chunk with your own OpenZL compressor `c`. Because this runs per chunk, the graph can vary chunk by chunk, a light one for flat tiles and a heavier one for dense ones, all inside your loop. rumi never sees it.
-
-```python
-rumi.write("scene.tif", frames, layout)
-```
-
-`write` takes the compressed frames in tile order plus the `layout` and assembles the rumi file. The OpenZL decoder is universal, so a reader needs nothing about which graph you used.
-
-## Index
-
-```python
-blob = rumi.index_file("scene.tif")
-```
-
-Run this once per file to get its blob. It reads the file, pulls the tile table, and returns the blob. Store it next to the path in your catalog, a Parquet column works well.
-
-## Parse
-
-```python
-header = rumi.parse(blob)
-header.shape, header.dtype
-```
-
-`parse` rebuilds the tile layout from the blob with no I/O and hands back a `Header`. `header.shape` and `header.dtype` give you the size and type.
 
 ## Read
 
 ```python
-arr = rumi.read("scene.tif", header, "b y x", b=(0,3), y=(0,512), x=(0,512))  # (3,512,512)
-arr = rumi.read("scene.tif", header, "y x b", b=[3,2,1])                      # HWC, bands reordered
-arr = rumi.read("scene.tif", header, num_threads=4)                           # whole image, parallel decode
+arr = rumi.read("scene.tif")                                     # whole image, (B, Y, X) numpy
+arr = rumi.read("scene.tif", header)                             # reuse a cached header blob
+arr = rumi.read("scene.tif", framework="torch")                  # torch tensor instead
+arr = rumi.read("scene.tif", b=[3, 2, 1], y=(0, 512), x=(0, 512))
+arr = rumi.read("scene.tif", num_threads=4)                      # parallel decode
 ```
 
-Returns a numpy array. The argument after `header` is the output layout, default `"b y x"`. Each axis you name can take a same-named argument.
+Returns the image in the framework you pick. The second argument is the header blob; leave it out and rumi reads the header from the file, pass the cached blob to skip that. Each axis can be windowed.
 
 - a tuple `(start, stop)` is a slice, the cheap case since it keeps tiles in disk order. `y` and `x` only take a slice or all.
 - a list `[i, j, k]` picks those 0-based positions in that order. Fine for `b` (and `n` on a stack), more flexible but it can scatter the read.
@@ -119,18 +91,15 @@ Returns a numpy array. The argument after `header` is the output layout, default
 
 Prefer slices. rumi keeps all bands of a tile together, so a band slice reads them in order without stepping over the ones you skip. It is still one read per tile, so the win is locality and readahead, not a single seek.
 
-`num_threads` sets decode parallelism. The pool is process global and sized on first use, so the first threaded read fixes the count for the whole process. Default is single threaded.
+**`framework`** selects the return type: `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `None` for a zero-copy `RumiArray` you convert over DLPack. **`num_threads`** sets decode parallelism. The pool is process global and sized on first use, so the first threaded read fixes the count for the whole process. Default is single threaded.
 
 ## Stack
 
 ```python
-headers = [rumi.parse(b) for b in blobs]
-arr = rumi.read(paths, headers, "n b y x", n=(0,12), b=(0,4))   # (12,4,Y,X)
-arr = rumi.read(paths, headers, "(n b) y x", b=(0,4))           # fuse layers and bands into channels
-arr = rumi.read(paths, headers, "n (y x) b", b=(0,4))           # tokens per layer
+arr = rumi.read(paths, headers, n=(0, 12), b=(0, 4))   # (12, 4, Y, X)
 ```
 
-Pass lists of paths and headers and `read` adds an `n` axis over the assets. Reorder it, fuse it into channels with `(n b)`, or unfold space into tokens. The assets must match in size and encoding or it raises, no ragged cubes. This stacking is in memory at read time. For an N cube that lives on disk as one object, see the companion `rumikuna` format.
+Pass lists of paths (and optionally their cached header blobs) and `read` adds an `n` axis over the assets. Window `n` like any other axis. The assets must match in size and encoding or it raises, no ragged cubes. This stacking is in memory at read time. For an N cube that lives on disk as one object, see the companion `zumi` format.
 
 ## Data model
 
@@ -147,9 +116,9 @@ Pass lists of paths and headers and `read` adds an `n` axis over the assets. Reo
 | ImageCollection | set of Images | Images that do not share a grid |
 | CubeCollection | set of Cubes | Cubes that do not share a grid |
 
-One rumi file is one Image. An `ImageCollection` is just a set of rumi files, so it needs no format of its own. The `Cube` comes from the companion `rumikuna` format, and a `CubeCollection` is just a set of rumikunas.
+One rumi file is one Image. An `ImageCollection` is just a set of rumi files, so it needs no format of its own. The `Cube` comes from the companion `zumi` format, and a `CubeCollection` is just a set of zumis.
 
-The names come from stone. rumi is a single stone, one Image. rumikuna is the wall raised from them, the Cube.
+The names come from stone. rumi is a single stone, one Image. zumi is the wall raised from them, the Cube.
 
 ## License
 

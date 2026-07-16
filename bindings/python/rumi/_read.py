@@ -1,21 +1,112 @@
+import ctypes
 import os
 from collections.abc import Sequence
 
-import numpy as np
+from ._dtype import name as dtype_name
+from ._ffi import PathLike, _blob_from_file, _check, _enc, ffi, lib
+from ._header import RumiHeader
 
-from ._ffi import _check, ffi, lib
-from ._spec import Spec
-
-# (start, stop) slice, explicit 0-based indices, or None for all.
 Axis = tuple[int, int] | list[int] | None
-PathLike = str | bytes | os.PathLike
 
 
-def _enc(path: PathLike) -> bytes:
-    return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
+_pyapi = ctypes.pythonapi
+_PyCapsule_New = _pyapi.PyCapsule_New
+_PyCapsule_New.restype = ctypes.py_object
+_PyCapsule_New.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+_PyCapsule_IsValid = _pyapi.PyCapsule_IsValid
+_PyCapsule_IsValid.restype = ctypes.c_int
+_PyCapsule_IsValid.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+_PyCapsule_GetPointer = _pyapi.PyCapsule_GetPointer
+_PyCapsule_GetPointer.restype = ctypes.c_void_p
+_PyCapsule_GetPointer.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
+_CAPSULE_NAME = b"dltensor_versioned"
+
+_Destructor = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
 
-# convert to 1-based for the C API. None means all and gets passed through as NULL/0.
+def _capsule_destructor(capsule):
+    # a still-valid name means no consumer took the tensor, so rumi frees
+    try:
+        cap = ctypes.c_void_p(capsule)
+        if _PyCapsule_IsValid(cap, _CAPSULE_NAME):
+            ptr = _PyCapsule_GetPointer(cap, _CAPSULE_NAME)
+            lib.rumi_dlpack_free(ffi.cast("DLManagedTensorVersioned*", ptr))
+    except Exception:
+        pass
+
+
+_c_destructor = _Destructor(_capsule_destructor)
+
+
+class RumiArray:
+    """Zero-copy result of a read. Hand it to a framework through DLPack,
+    torch.from_dlpack(a), np.from_dlpack(a), jax.dlpack.from_dlpack(a)."""
+
+    def __init__(self, tensor, shape, dtype_code):
+        self._tensor = tensor
+        self._shape = shape
+        self._dtype_code = dtype_code
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self._shape
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        return (1, 0)
+
+    def __dlpack__(self, *, stream=None, max_version=None,
+                   dl_device=None, copy=None):
+        if self._tensor is None:
+            raise RuntimeError("this RumiArray was already exported")
+        addr = int(ffi.cast("uintptr_t", self._tensor))
+        capsule = _PyCapsule_New(
+            ctypes.c_void_p(addr), _CAPSULE_NAME, _c_destructor)
+        self._tensor = None
+        return capsule
+
+    def numpy(self):
+        import numpy as np
+        return np.from_dlpack(self)
+
+    def torch(self):
+        import torch
+        return torch.from_dlpack(self)
+
+    def jax(self):
+        import jax.numpy as jnp
+        return jnp.from_dlpack(self)
+
+    def tensorflow(self):
+        from tensorflow.experimental import dlpack as tf_dlpack
+        return tf_dlpack.from_dlpack(self.__dlpack__())
+
+    def __del__(self):
+        tensor = self._tensor
+        if tensor is None:
+            return
+        self._tensor = None
+        try:
+            lib.rumi_dlpack_free(tensor)
+        except Exception:
+            pass
+
+    def __repr__(self) -> str:
+        return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
+
+
+# framework=None hands back the zero-copy RumiArray; a name materializes it
+def _to_framework(arr: RumiArray, framework: str | None):
+    if framework is None:
+        return arr
+    fn = {"numpy": arr.numpy, "torch": arr.torch, "jax": arr.jax,
+          "tensorflow": arr.tensorflow, "tf": arr.tensorflow}.get(framework)
+    if fn is None:
+        raise ValueError(f"unknown framework {framework!r}")
+    return fn()
+
+
+# convert to 1-based for the C API. None means all and passes through as NULL/0.
 def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     if sel is None:
         return None
@@ -53,23 +144,9 @@ def _to_c(lst: list[int] | None):
     return ffi.new("int[]", lst), len(lst)
 
 
-def index_file(path: PathLike) -> bytes:
-    blob_out = ffi.new("unsigned char**")
-    size_out = ffi.new("size_t*")
-    _check(lib.rumi_index_file(_enc(path), blob_out, size_out))
-    try:
-        return bytes(ffi.buffer(blob_out[0], size_out[0]))
-    finally:
-        lib.rumi_free(blob_out[0])
-
-
-def parse(blob: bytes | bytearray | memoryview) -> Spec:
-    return Spec(blob)
-
-
-def _read_one(path: PathLike, spec: Spec, pattern: str | None,
+def _read_one(path: PathLike, spec: RumiHeader, pattern: str | None,
               b: Axis, y: tuple[int, int] | None, x: tuple[int, int] | None,
-              num_threads: int) -> np.ndarray:
+              num_threads: int) -> RumiArray:
     h = spec._header
     bands = _resolve_axis(b, "b", h.samples_per_pixel)
     y_off, y_size = _resolve_window(y, "y", h.image_length)
@@ -84,22 +161,21 @@ def _read_one(path: PathLike, spec: Spec, pattern: str | None,
         pattern.encode("ascii"), 1, n_bands, y_size, x_size, layout
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
-    arr = np.empty(shape, dtype=spec._dtype)
 
     bands_c, n_bands_c = _to_c(bands)
-    _check(lib.rumi_read(
+    out = ffi.new("DLManagedTensorVersioned**")
+    _check(lib.rumi_read_dlpack(
         _enc(path), spec._handle, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,
-        pattern.encode("ascii"), num_threads,
-        ffi.cast("void*", arr.ctypes.data), arr.nbytes,
+        pattern.encode("ascii"), num_threads, out,
     ))
-    return arr
+    return RumiArray(out[0], shape, spec._header.dtype)
 
 
-def _read_stack(paths: Sequence[PathLike], specs: Sequence[Spec],
+def _read_stack(paths: Sequence[PathLike], specs: Sequence[RumiHeader],
                 pattern: str | None, n: Axis, b: Axis,
                 y: tuple[int, int] | None, x: tuple[int, int] | None,
-                num_threads: int) -> np.ndarray:
+                num_threads: int) -> RumiArray:
     paths = list(paths)
     specs = list(specs)
     if len(paths) != len(specs):
@@ -125,7 +201,6 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[Spec],
         pattern.encode("ascii"), n_count, n_bands, y_size, x_size, layout
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
-    arr = np.empty(shape, dtype=specs[0]._dtype)
 
     paths_c = [ffi.new("char[]", _enc(p)) for p in paths]
     paths_arr = ffi.new("char*[]", paths_c)
@@ -133,27 +208,35 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[Spec],
 
     n_c, n_count_c = _to_c(n_sel)
     bands_c, n_bands_c = _to_c(bands)
-    _check(lib.rumi_read_stack(
+    out = ffi.new("DLManagedTensorVersioned**")
+    _check(lib.rumi_read_stack_dlpack(
         paths_arr, specs_arr, len(specs),
         n_c, n_count_c, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,
-        pattern.encode("ascii"), num_threads,
-        ffi.cast("void*", arr.ctypes.data), arr.nbytes,
+        pattern.encode("ascii"), num_threads, out,
     ))
-    return arr
+    return RumiArray(out[0], shape, specs[0]._header.dtype)
 
 
-# Polymorphic and stateless. A single path/spec reads one image, lists read a
-# stack. Opens, reads, closes, with nothing kept alive between calls.
-def read(paths: PathLike | Sequence[PathLike],
-         specs: Spec | Sequence[Spec],
-         pattern: str | None = None, *,
+def read(path: PathLike | Sequence[PathLike],
+         header: bytes | Sequence[bytes] | None = None, *,
+         framework: str | None = "numpy", pattern: str | None = None,
          n: Axis = None, b: Axis = None,
          y: tuple[int, int] | None = None,
          x: tuple[int, int] | None = None,
-         num_threads: int = 1) -> np.ndarray:
-    if isinstance(paths, (str, bytes, os.PathLike)):
+         num_threads: int = 1):
+    """Read a rumi image, or a stack of them. A single path reads one image, a
+    list reads a stack. header is the blob, cached from a catalog or Parquet;
+    when omitted it is read from each file. framework picks the return type
+    ("numpy", "torch", "jax", "tensorflow"), or None for the zero-copy
+    RumiArray. Stateless, opens and closes each call."""
+    if isinstance(path, (str, bytes, os.PathLike)):
         if n is not None:
-            raise ValueError("n applies to a stack; pass lists of paths/specs")
-        return _read_one(paths, specs, pattern, b, y, x, num_threads)
-    return _read_stack(paths, specs, pattern, n, b, y, x, num_threads)
+            raise ValueError("n applies to a stack; pass lists of paths")
+        blob = header if header is not None else _blob_from_file(path)
+        arr = _read_one(path, RumiHeader(blob), pattern, b, y, x, num_threads)
+        return _to_framework(arr, framework)
+    blobs = header if header is not None else [_blob_from_file(p) for p in path]
+    specs = [RumiHeader(bl) for bl in blobs]
+    arr = _read_stack(path, specs, pattern, n, b, y, x, num_threads)
+    return _to_framework(arr, framework)

@@ -1,3 +1,3 @@
 [submodule "extern/geozl"]
 	path = extern/geozl
-	url = https://github.com/asterisk-labs/geozl
+	url = https://github.com/asterisk-labs/geozl.git

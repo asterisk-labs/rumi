@@ -53,7 +53,7 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 include(GNUInstallDirs)
 
-find_package(GDAL 3.12 CONFIG REQUIRED)
+find_package(GDAL 3.8 CONFIG REQUIRED)
 
 # geozl is the OpenZL frame codec (compression 60000) plus rumi's spatial
 # decoders. Vendored static so it folds into rumi with no extra runtime
@@ -61,7 +61,7 @@ find_package(GDAL 3.12 CONFIG REQUIRED)
 # geozl exposes OpenZL PUBLIC, so rumi links one OpenZL, the same one geozl
 # registers its decoders against.
 set(BUILD_SHARED_LIBS OFF)
-set(GEOZL_BUILD_KERNELS OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
+set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
 add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
 target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
 
@@ -74,6 +74,7 @@ set(RUMI_SOURCES
     src/pattern.cpp
     src/image.cpp
     src/capi.cpp
+    src/dlpack.cpp
 )
 
 # Compile and link settings shared by every target. rumi_config is internal,
