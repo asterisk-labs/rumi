@@ -41,6 +41,9 @@ classifiers = [
 ml = [
     "ml_dtypes",
 ]
+write = [
+    "geozl>=0.7.1",
+]
 test = [
     "pytest>=7",
 ]

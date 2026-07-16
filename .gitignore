@@ -83,3 +83,5 @@ demo_2d_simd.tif
 demo_2d_simd_lossy.tif
 
 demo_2d_full_lossy_qgis.tif
+
+*.xml
