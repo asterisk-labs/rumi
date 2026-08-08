@@ -1,70 +1,8 @@
 import struct
 from collections.abc import Iterable
-from dataclasses import dataclass
-
-import numpy as np
 
 from ._dtype import sample_encoding
 from ._ffi import _check, ffi, lib
-
-
-@dataclass(frozen=True)
-class Layout:
-    """Grid and dtype of a tiled image. The header blob minus the bits the
-    writer fills in, base_tiles_offset and the per-tile byte counts."""
-
-    image_width: int
-    image_length: int
-    tile_width: int
-    tile_length: int
-    samples_per_pixel: int
-    dtype: np.dtype
-
-    @property
-    def sample_format(self) -> int:
-        return sample_encoding(self.dtype)[0]
-
-    @property
-    def bits_per_sample(self) -> int:
-        return sample_encoding(self.dtype)[1]
-
-    @property
-    def tiles_across(self) -> int:
-        return -(-self.image_width // self.tile_width)
-
-    @property
-    def tiles_down(self) -> int:
-        return -(-self.image_length // self.tile_length)
-
-    @property
-    def n_tiles(self) -> int:
-        return self.tiles_across * self.tiles_down * self.samples_per_pixel
-
-
-def tile(arr: np.ndarray, tile: int = 512) -> tuple[list[np.ndarray], Layout]:
-    if arr.ndim != 3:
-        raise ValueError(f"expected (B, Y, X), got shape {arr.shape}")
-    if tile < 16 or tile % 16:
-        raise ValueError(f"tile must be a positive multiple of 16, got {tile}")
-    sample_encoding(arr.dtype)  # reject unsupported dtype early
-
-    B, Y, X = arr.shape
-    T = tile
-    across = -(-X // T)
-    down = -(-Y // T)
-
-    # Edge tiles are cut to where the image reaches, so a chunk is only as big
-    # as it really is. Order is (row, col, band), the order assemble() lays out.
-    # ascontiguousarray gives each chunk a tight buffer to compress.
-    chunks = [
-        np.ascontiguousarray(arr[b, ty * T:min(ty * T + T, Y),
-                                    tx * T:min(tx * T + T, X)])
-        for ty in range(down)
-        for tx in range(across)
-        for b in range(B)
-    ]
-    return chunks, Layout(X, Y, T, T, B, arr.dtype)
-
 
 # fixed layout keeps offsets known before writing; packed payloads preserve
 # CRS tags returned by C verbatim
@@ -132,21 +70,21 @@ def _geo_entries(transform, crs, pixel_is_point):
     return out
 
 
-def _base_entries(layout: Layout):
-    B = layout.samples_per_pixel
-    sf, bps = layout.sample_format, layout.bits_per_sample
-    n = layout.tiles_across * layout.tiles_down * B
+def _base_entries(tf):
+    B = tf.bands
+    sf, bps = sample_encoding(tf.dtype)
+    n = tf.tiles_across * tf.tiles_down * B
     return [
-        _entry(256, _LONG,  [layout.image_width]),
-        _entry(257, _LONG,  [layout.image_length]),
+        _entry(256, _LONG,  [tf.image_width]),
+        _entry(257, _LONG,  [tf.image_length]),
         _entry(258, _SHORT, [bps] * B),
         _entry(259, _SHORT, [_COMPRESSION_OPENZL]),
         _entry(262, _SHORT, [_PHOTOMETRIC_MINISBLACK]),
         _entry(277, _SHORT, [B]),
         _entry(284, _SHORT, [_PLANARCONFIG_SEPARATE]),
         _entry(317, _SHORT, [_PREDICTOR_NONE]),
-        _entry(322, _SHORT, [layout.tile_width]),
-        _entry(323, _SHORT, [layout.tile_length]),
+        _entry(322, _SHORT, [tf.tile_size]),
+        _entry(323, _SHORT, [tf.tile_size]),
         (_TILE_OFFSETS, _LONG8, n, None),
         _entry(325, _LONG,  [0] * n),
         _entry(339, _SHORT, [sf] * B),
@@ -170,44 +108,47 @@ def _resolve_base(natural, header_size):
     raise TypeError("header_size must be 'auto' or a positive int")
 
 
-def header_bytes(layout: Layout, *, transform=None, crs=None,
+def header_bytes(tf, *, transform=None, crs=None,
                  pixel_is_point=False, header_size="auto") -> int:
     """base_tiles_offset for these args, without writing. With a CRS it builds
     the geo tags once to measure them, same as assemble()."""
-    entries = _base_entries(layout) + _geo_entries(transform, crs, pixel_is_point)
+    entries = _base_entries(tf) + _geo_entries(transform, crs, pixel_is_point)
     return _resolve_base(_natural_header(entries), header_size)
 
 
-def assemble(path, frames: Iterable[bytes], layout: Layout, *,
+def assemble(path, frames: Iterable[bytes], tf, *,
           transform=None, crs=None, pixel_is_point=False,
           header_size="auto") -> None:
+    """Write the file. tf is a TileFrame, and the five fields it carries are
+    the header; the frames come in its own order, which is the wire order."""
     frames = [memoryview(f) for f in frames]
-    if len(frames) != layout.n_tiles:
-        raise ValueError(f"expected {layout.n_tiles} frames, got {len(frames)}")
+    n_tiles = tf.tiles_across * tf.tiles_down * tf.bands
+    if len(frames) != n_tiles:
+        raise ValueError(f"expected {n_tiles} frames, got {len(frames)}")
     counts = [f.nbytes for f in frames]
     if any(c == 0 for c in counts):
         raise ValueError("empty tile payload, rumi forbids sparse tiles")
 
-    B = layout.samples_per_pixel
-    sf, bps = layout.sample_format, layout.bits_per_sample
+    B = tf.bands
+    sf, bps = sample_encoding(tf.dtype)
 
     # rumi tile order is tile-interleaved, with samples innermost
-    tpp = layout.tiles_across * layout.tiles_down
+    tpp = tf.tiles_across * tf.tiles_down
     pm_order = [pos * B + b for b in range(B) for pos in range(tpp)]
     counts_pm = [counts[i] for i in pm_order]
 
     # tag order is ascending; TileOffsets is packed once its base is known
     entries = [
-        _entry(256, _LONG,  [layout.image_width]),
-        _entry(257, _LONG,  [layout.image_length]),
+        _entry(256, _LONG,  [tf.image_width]),
+        _entry(257, _LONG,  [tf.image_length]),
         _entry(258, _SHORT, [bps] * B),
         _entry(259, _SHORT, [_COMPRESSION_OPENZL]),
         _entry(262, _SHORT, [_PHOTOMETRIC_MINISBLACK]),
         _entry(277, _SHORT, [B]),
         _entry(284, _SHORT, [_PLANARCONFIG_SEPARATE]),
         _entry(317, _SHORT, [_PREDICTOR_NONE]),
-        _entry(322, _SHORT, [layout.tile_width]),
-        _entry(323, _SHORT, [layout.tile_length]),
+        _entry(322, _SHORT, [tf.tile_size]),
+        _entry(323, _SHORT, [tf.tile_size]),
         (_TILE_OFFSETS, _LONG8, len(frames), None),
         _entry(325, _LONG,  counts_pm),
         _entry(339, _SHORT, [sf] * B),

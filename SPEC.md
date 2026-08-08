@@ -138,9 +138,11 @@ The raster size in pixels. These match the TIFF tags `ImageWidth` and `ImageLeng
 
 ### tile_width and tile_length
 
-The tile size in pixels. These match the TIFF tags `TileWidth` and `TileLength`. Each value MUST be at least `1`. A tile dimension MAY exceed the corresponding image dimension. TIFF requires tile dimensions to be multiples of 16, so an image smaller than its tile size is stored as a single padded tile, and that file is compliant.
+The tile size in pixels. These match the TIFF tags `TileWidth` and `TileLength`. Each value MUST be at least `1`. A tile dimension MAY exceed the corresponding image dimension. TIFF requires tile dimensions to be multiples of 16, so an image smaller than its tile size is stored as a single tile cut to the image.
 
-Tiles are uniform. Edge tiles are padded to the full tile size. The tile grid is always `ceil(image_width / tile_width)` by `ceil(image_length / tile_length)`, so a tile larger than the image yields a 1x1 grid per sample.
+Edge tiles are cut to where the image reaches, never padded, so a tile in the last column or the last row is smaller than `tile_width` by `tile_length`. Its size follows from the grid position and the image size, and a reader MUST derive it that way rather than trust a decoded length. The tile grid is always `ceil(image_width / tile_width)` by `ceil(image_length / tile_length)`, so a tile larger than the image yields a 1x1 grid per sample.
+
+TIFF requires edge tiles to be padded, so a rumi file is not a valid TIFF. It was never readable as one anyway, since compression `60000` is not a TIFF codec.
 
 ### samples_per_pixel
 
