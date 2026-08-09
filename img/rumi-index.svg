@@ -1,105 +1,73 @@
-<svg width="720" viewBox="0 0 720 392" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <title id="t">What a reader stores to locate every tile, and the two rumi steps</title>
-  <desc id="d">A generic GeoTIFF stores the full TIFF IFD plus two arrays, TileOffsets and TileByteCounts. A rumi index stores a fixed 26 byte header, one base offset and a single TileByteCounts array. index_file builds the compact index from the file. parse expands it back, rebuilding every tile offset by prefix sum with no I/O.</desc>
-  <style>
-    .title{font-size:16px;font-weight:600;fill:#E6EDF3}
-    .sub{font-size:12px;fill:#8B949E}
-    .col{font-size:12px;font-weight:600;fill:#8B949E}
-    .bt{font-size:13px;font-weight:600;fill:#C9D1D9}
-    .bs{font-size:11px;fill:#8B949E}
-    .gt{font-size:13px;font-weight:600;fill:#A9FFA6}
-    .gs{font-size:11px;fill:#7FA88B}
-    .val{font-size:12px;fill:#C9D1D9;font-family:'SF Mono',Menlo,Consolas,monospace}
-    .gval{font-size:12px;fill:#A9FFA6;font-family:'SF Mono',Menlo,Consolas,monospace}
-    .dots{font-size:14px;fill:#6E7681}
-    .note{font-size:11px;fill:#8B949E}
-    .form{font-size:11px;fill:#A9FFA6;font-family:'SF Mono',Menlo,Consolas,monospace}
-    .pt{font-size:12px;font-weight:600;fill:#E6EDF3}
-    .ptg{font-size:12px;font-weight:600;fill:#A9FFA6}
-    .ps{font-size:11px;fill:#8B949E;font-family:'SF Mono',Menlo,Consolas,monospace}
-    .psg{font-size:11px;fill:#7FA88B;font-family:'SF Mono',Menlo,Consolas,monospace}
-    .fn{font-size:11px;fill:#A9FFA6;font-family:'SF Mono',Menlo,Consolas,monospace}
-    .cell{fill:#161B22;stroke:#30363D;stroke-width:1}
-    .band{fill:#161B22;stroke:#30363D;stroke-width:1}
-    .gband{fill:#0E2A1A;stroke:#2EA043;stroke-width:1}
-    .arr{stroke:#8B949E;stroke-width:1.5;fill:none}
-  </style>
-  <defs>
-    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M2 1L8 5L2 9" fill="none" stroke="#8B949E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </marker>
-  </defs>
+<svg width="980" viewBox="-20 0 980 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+<title id="t">One array in, one .tif out. A plain GeoTIFF has thousands of valid forms, rumi has one</title>
+<desc id="d">The same array goes into both paths and a .tif comes out of both. Written as a plain GeoTIFF it fans through seven compression choices, three interleave choices and five further switches into roughly two thousand valid files. Written as rumi every switch is fixed, so one path leads to one file.</desc>
+<style>
+  .sans{font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+  .mono{font-family:ui-monospace,'SFMono-Regular','JetBrains Mono',Menlo,Consolas,monospace}
+  .ink{fill:#16181D} .muted{fill:#9AA0A6} .dot{fill:#16181D}
+  .wire{stroke:#8493A8;fill:none} .arr{color:#6B7280} .brace{stroke:#9AA0A6;fill:none}
+  .haze path{stroke:#C6CFDC;fill:none;stroke-width:.55;animation:shimmer 2.6s ease-in-out infinite}
+  .vio{fill:#4A2BE8} .yel{fill:#F7CC0C}
+  .tvio{fill:#4A2BE8} .tyel{fill:#C99A06} .torg{fill:#FE6B37}
+  .fileg{stroke:#8493A8;stroke-width:1.4;fill:none;stroke-linejoin:round}
+  .filev{stroke:#4A2BE8;stroke-width:1.8;fill:none;stroke-linejoin:round}
+  .lab{font-size:13px;letter-spacing:.4px}
+  .lab3{font-size:11px;letter-spacing:.4px}
+  .rowlab{font-size:13px} .fix{font-size:12px} .key{font-weight:700} .ext{font-size:13px}
+  .num{font-size:32px;font-weight:700}
+  .spark{stroke:#8B6BFF;stroke-width:3;fill:none;stroke-linecap:round;
+    stroke-dasharray:56 626;animation:travel 2.6s linear infinite}
+  @keyframes shimmer{0%,100%{stroke-opacity:.22}50%{stroke-opacity:.85}}
+  @keyframes travel{from{stroke-dashoffset:56}to{stroke-dashoffset:-570}}
+  @media (prefers-color-scheme:dark){
+    .ink{fill:#E6EDF3} .muted{fill:#8B949E} .dot{fill:#E6EDF3}
+    .wire,.fileg{stroke:#59677D} .arr{color:#8B949E} .haze path{stroke:#4A5568} .tyel{fill:#F7CC0C}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .haze path{animation:none;stroke-opacity:.5} .spark{display:none}
+  }
+</style>
 
-  <line x1="360" y1="46" x2="360" y2="296" stroke="#21262D" stroke-width="1"/>
+<text class="mono lab muted"  x="240" y="23" text-anchor="middle">COMPRESS</text>
+<text class="mono lab tvio"  x="240" y="42" text-anchor="middle">&#215;7</text>
+<text class="mono lab muted"  x="385" y="23" text-anchor="middle">INTERLEAVE</text>
+<text class="mono lab tyel"  x="385" y="42" text-anchor="middle">&#215;3</text>
+<text class="mono lab3 muted" x="600" y="23" text-anchor="middle">PREDICTOR &#183; BIGTIFF</text>
+<text class="mono lab3 muted" x="600" y="42" text-anchor="middle">OVERVIEWS &#183; SPARSE</text>
 
-  <text class="title" x="36" y="52">Generic GeoTIFF</text>
-  <text class="sub" x="36" y="72">parse the whole IFD, then read two arrays</text>
-  <rect class="band" x="36" y="88" width="300" height="44" rx="10"/>
-  <text class="bt" x="52" y="110">TIFF IFD</text>
-  <text class="bs" x="52" y="126">width, length, tile size, compression, …</text>
+<path class="brace" stroke-width="1" d="M112 230H96V470H112"/>
+<g class="arr" transform="translate(5.4 347.0) scale(1.4)"><g fill="currentColor"><path d="M0.0 18.8L8.0 18.8L8.0 26.8L0.0 26.8Z"/><path d="M9.4 18.8L17.4 18.8L17.4 26.8L9.4 26.8Z"/><path d="M18.8 18.8L26.8 18.8L26.8 26.8L18.8 26.8Z"/><path d="M0.0 9.4L8.0 9.4L8.0 17.4L0.0 17.4Z"/><path d="M9.4 9.4L17.4 9.4L17.4 17.4L9.4 17.4Z"/><path d="M18.8 9.4L26.8 9.4L26.8 17.4L18.8 17.4Z"/><path d="M0.0 0.0L8.0 0.0L8.0 8.0L0.0 8.0Z"/><path d="M9.4 0.0L17.4 0.0L17.4 8.0L9.4 8.0Z"/><path d="M18.8 0.0L26.8 0.0L26.8 8.0L18.8 8.0Z"/><path d="M1.4 -1.4L9.4 -1.4L14.1 -6.1L6.1 -6.1Z"/><path d="M10.8 -1.4L18.8 -1.4L23.5 -6.1L15.5 -6.1Z"/><path d="M20.2 -1.4L28.2 -1.4L32.9 -6.1L24.9 -6.1Z"/><path d="M6.9 -6.9L14.9 -6.9L19.6 -11.6L11.6 -11.6Z"/><path d="M16.3 -6.9L24.3 -6.9L29.0 -11.6L21.0 -11.6Z"/><path d="M25.7 -6.9L33.7 -6.9L38.4 -11.6L30.4 -11.6Z"/><path d="M12.4 -12.4L20.4 -12.4L25.1 -17.1L17.1 -17.1Z"/><path d="M21.8 -12.4L29.8 -12.4L34.5 -17.1L26.5 -17.1Z"/><path d="M31.2 -12.4L39.2 -12.4L43.9 -17.1L35.9 -17.1Z"/><path d="M28.2 17.4L32.9 12.7L32.9 20.7L28.2 25.4Z"/><path d="M28.2 8.0L32.9 3.3L32.9 11.3L28.2 16.0Z"/><path d="M28.2 -1.4L32.9 -6.1L32.9 1.9L28.2 6.6Z"/><path d="M33.7 11.9L38.4 7.2L38.4 15.2L33.7 19.9Z"/><path d="M33.7 2.5L38.4 -2.2L38.4 5.8L33.7 10.5Z"/><path d="M33.7 -6.9L38.4 -11.6L38.4 -3.6L33.7 1.1Z"/><path d="M39.2 6.4L43.9 1.7L43.9 9.7L39.2 14.4Z"/><path d="M39.2 -3.0L43.9 -7.7L43.9 0.3L39.2 5.0Z"/><path d="M39.2 -12.4L43.9 -17.1L43.9 -9.1L39.2 -4.4Z"/></g><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M0.0 -28.6H-8.0V32.8H0.0"/><path d="M49.4 -28.6H57.4V32.8H49.4"/></g></g>
 
-  <text class="col" x="100" y="152" text-anchor="middle">TileOffsets</text>
-  <text class="col" x="246" y="152" text-anchor="middle">TileByteCounts</text>
+<g class="haze"><path d="M385 121L690 63.0M385 121L690 67.0M385 121L690 71.0M385 121L690 75.0M385 121L690 79.0M385 121L690 83.0M385 121L690 87.0M385 121L690 91.0M385 121L690 95.0M385 121L690 99.0M385 121L690 103.0M385 121L690 107.0M385 121L690 111.0M385 121L690 115.0M385 121L690 119.0M385 121L690 123.0M385 121L690 127.0M385 121L690 131.0M385 121L690 135.0M385 121L690 139.0M385 121L690 143.0M385 121L690 147.0M385 121L690 151.0M385 121L690 155.0M385 121L690 159.0M385 121L690 163.0M385 121L690 167.0M385 121L690 171.0M385 121L690 175.0M385 121L690 179.0" style="animation-delay:-0.00s"/><path d="M385 134L690 76.0M385 134L690 80.0M385 134L690 84.0M385 134L690 88.0M385 134L690 92.0M385 134L690 96.0M385 134L690 100.0M385 134L690 104.0M385 134L690 108.0M385 134L690 112.0M385 134L690 116.0M385 134L690 120.0M385 134L690 124.0M385 134L690 128.0M385 134L690 132.0M385 134L690 136.0M385 134L690 140.0M385 134L690 144.0M385 134L690 148.0M385 134L690 152.0M385 134L690 156.0M385 134L690 160.0M385 134L690 164.0M385 134L690 168.0M385 134L690 172.0M385 134L690 176.0M385 134L690 180.0M385 134L690 184.0M385 134L690 188.0M385 134L690 192.0" style="animation-delay:-0.12s"/><path d="M385 147L690 89.0M385 147L690 93.0M385 147L690 97.0M385 147L690 101.0M385 147L690 105.0M385 147L690 109.0M385 147L690 113.0M385 147L690 117.0M385 147L690 121.0M385 147L690 125.0M385 147L690 129.0M385 147L690 133.0M385 147L690 137.0M385 147L690 141.0M385 147L690 145.0M385 147L690 149.0M385 147L690 153.0M385 147L690 157.0M385 147L690 161.0M385 147L690 165.0M385 147L690 169.0M385 147L690 173.0M385 147L690 177.0M385 147L690 181.0M385 147L690 185.0M385 147L690 189.0M385 147L690 193.0M385 147L690 197.0M385 147L690 201.0M385 147L690 205.0" style="animation-delay:-0.25s"/><path d="M385 153L690 95.0M385 153L690 99.0M385 153L690 103.0M385 153L690 107.0M385 153L690 111.0M385 153L690 115.0M385 153L690 119.0M385 153L690 123.0M385 153L690 127.0M385 153L690 131.0M385 153L690 135.0M385 153L690 139.0M385 153L690 143.0M385 153L690 147.0M385 153L690 151.0M385 153L690 155.0M385 153L690 159.0M385 153L690 163.0M385 153L690 167.0M385 153L690 171.0M385 153L690 175.0M385 153L690 179.0M385 153L690 183.0M385 153L690 187.0M385 153L690 191.0M385 153L690 195.0M385 153L690 199.0M385 153L690 203.0M385 153L690 207.0M385 153L690 211.0" style="animation-delay:-0.37s"/><path d="M385 166L690 108.0M385 166L690 112.0M385 166L690 116.0M385 166L690 120.0M385 166L690 124.0M385 166L690 128.0M385 166L690 132.0M385 166L690 136.0M385 166L690 140.0M385 166L690 144.0M385 166L690 148.0M385 166L690 152.0M385 166L690 156.0M385 166L690 160.0M385 166L690 164.0M385 166L690 168.0M385 166L690 172.0M385 166L690 176.0M385 166L690 180.0M385 166L690 184.0M385 166L690 188.0M385 166L690 192.0M385 166L690 196.0M385 166L690 200.0M385 166L690 204.0M385 166L690 208.0M385 166L690 212.0M385 166L690 216.0M385 166L690 220.0M385 166L690 224.0" style="animation-delay:-0.50s"/><path d="M385 179L690 121.0M385 179L690 125.0M385 179L690 129.0M385 179L690 133.0M385 179L690 137.0M385 179L690 141.0M385 179L690 145.0M385 179L690 149.0M385 179L690 153.0M385 179L690 157.0M385 179L690 161.0M385 179L690 165.0M385 179L690 169.0M385 179L690 173.0M385 179L690 177.0M385 179L690 181.0M385 179L690 185.0M385 179L690 189.0M385 179L690 193.0M385 179L690 197.0M385 179L690 201.0M385 179L690 205.0M385 179L690 209.0M385 179L690 213.0M385 179L690 217.0M385 179L690 221.0M385 179L690 225.0M385 179L690 229.0M385 179L690 233.0M385 179L690 237.0" style="animation-delay:-0.62s"/><path d="M385 185L690 127.0M385 185L690 131.0M385 185L690 135.0M385 185L690 139.0M385 185L690 143.0M385 185L690 147.0M385 185L690 151.0M385 185L690 155.0M385 185L690 159.0M385 185L690 163.0M385 185L690 167.0M385 185L690 171.0M385 185L690 175.0M385 185L690 179.0M385 185L690 183.0M385 185L690 187.0M385 185L690 191.0M385 185L690 195.0M385 185L690 199.0M385 185L690 203.0M385 185L690 207.0M385 185L690 211.0M385 185L690 215.0M385 185L690 219.0M385 185L690 223.0M385 185L690 227.0M385 185L690 231.0M385 185L690 235.0M385 185L690 239.0M385 185L690 243.0" style="animation-delay:-0.74s"/><path d="M385 198L690 140.0M385 198L690 144.0M385 198L690 148.0M385 198L690 152.0M385 198L690 156.0M385 198L690 160.0M385 198L690 164.0M385 198L690 168.0M385 198L690 172.0M385 198L690 176.0M385 198L690 180.0M385 198L690 184.0M385 198L690 188.0M385 198L690 192.0M385 198L690 196.0M385 198L690 200.0M385 198L690 204.0M385 198L690 208.0M385 198L690 212.0M385 198L690 216.0M385 198L690 220.0M385 198L690 224.0M385 198L690 228.0M385 198L690 232.0M385 198L690 236.0M385 198L690 240.0M385 198L690 244.0M385 198L690 248.0M385 198L690 252.0M385 198L690 256.0" style="animation-delay:-0.87s"/><path d="M385 211L690 153.0M385 211L690 157.0M385 211L690 161.0M385 211L690 165.0M385 211L690 169.0M385 211L690 173.0M385 211L690 177.0M385 211L690 181.0M385 211L690 185.0M385 211L690 189.0M385 211L690 193.0M385 211L690 197.0M385 211L690 201.0M385 211L690 205.0M385 211L690 209.0M385 211L690 213.0M385 211L690 217.0M385 211L690 221.0M385 211L690 225.0M385 211L690 229.0M385 211L690 233.0M385 211L690 237.0M385 211L690 241.0M385 211L690 245.0M385 211L690 249.0M385 211L690 253.0M385 211L690 257.0M385 211L690 261.0M385 211L690 265.0M385 211L690 269.0" style="animation-delay:-0.99s"/><path d="M385 217L690 159.0M385 217L690 163.0M385 217L690 167.0M385 217L690 171.0M385 217L690 175.0M385 217L690 179.0M385 217L690 183.0M385 217L690 187.0M385 217L690 191.0M385 217L690 195.0M385 217L690 199.0M385 217L690 203.0M385 217L690 207.0M385 217L690 211.0M385 217L690 215.0M385 217L690 219.0M385 217L690 223.0M385 217L690 227.0M385 217L690 231.0M385 217L690 235.0M385 217L690 239.0M385 217L690 243.0M385 217L690 247.0M385 217L690 251.0M385 217L690 255.0M385 217L690 259.0M385 217L690 263.0M385 217L690 267.0M385 217L690 271.0M385 217L690 275.0" style="animation-delay:-1.11s"/><path d="M385 230L690 172.0M385 230L690 176.0M385 230L690 180.0M385 230L690 184.0M385 230L690 188.0M385 230L690 192.0M385 230L690 196.0M385 230L690 200.0M385 230L690 204.0M385 230L690 208.0M385 230L690 212.0M385 230L690 216.0M385 230L690 220.0M385 230L690 224.0M385 230L690 228.0M385 230L690 232.0M385 230L690 236.0M385 230L690 240.0M385 230L690 244.0M385 230L690 248.0M385 230L690 252.0M385 230L690 256.0M385 230L690 260.0M385 230L690 264.0M385 230L690 268.0M385 230L690 272.0M385 230L690 276.0M385 230L690 280.0M385 230L690 284.0M385 230L690 288.0" style="animation-delay:-1.24s"/><path d="M385 243L690 185.0M385 243L690 189.0M385 243L690 193.0M385 243L690 197.0M385 243L690 201.0M385 243L690 205.0M385 243L690 209.0M385 243L690 213.0M385 243L690 217.0M385 243L690 221.0M385 243L690 225.0M385 243L690 229.0M385 243L690 233.0M385 243L690 237.0M385 243L690 241.0M385 243L690 245.0M385 243L690 249.0M385 243L690 253.0M385 243L690 257.0M385 243L690 261.0M385 243L690 265.0M385 243L690 269.0M385 243L690 273.0M385 243L690 277.0M385 243L690 281.0M385 243L690 285.0M385 243L690 289.0M385 243L690 293.0M385 243L690 297.0M385 243L690 301.0" style="animation-delay:-1.36s"/><path d="M385 249L690 191.0M385 249L690 195.0M385 249L690 199.0M385 249L690 203.0M385 249L690 207.0M385 249L690 211.0M385 249L690 215.0M385 249L690 219.0M385 249L690 223.0M385 249L690 227.0M385 249L690 231.0M385 249L690 235.0M385 249L690 239.0M385 249L690 243.0M385 249L690 247.0M385 249L690 251.0M385 249L690 255.0M385 249L690 259.0M385 249L690 263.0M385 249L690 267.0M385 249L690 271.0M385 249L690 275.0M385 249L690 279.0M385 249L690 283.0M385 249L690 287.0M385 249L690 291.0M385 249L690 295.0M385 249L690 299.0M385 249L690 303.0M385 249L690 307.0" style="animation-delay:-1.49s"/><path d="M385 262L690 204.0M385 262L690 208.0M385 262L690 212.0M385 262L690 216.0M385 262L690 220.0M385 262L690 224.0M385 262L690 228.0M385 262L690 232.0M385 262L690 236.0M385 262L690 240.0M385 262L690 244.0M385 262L690 248.0M385 262L690 252.0M385 262L690 256.0M385 262L690 260.0M385 262L690 264.0M385 262L690 268.0M385 262L690 272.0M385 262L690 276.0M385 262L690 280.0M385 262L690 284.0M385 262L690 288.0M385 262L690 292.0M385 262L690 296.0M385 262L690 300.0M385 262L690 304.0M385 262L690 308.0M385 262L690 312.0M385 262L690 316.0M385 262L690 320.0" style="animation-delay:-1.61s"/><path d="M385 275L690 217.0M385 275L690 221.0M385 275L690 225.0M385 275L690 229.0M385 275L690 233.0M385 275L690 237.0M385 275L690 241.0M385 275L690 245.0M385 275L690 249.0M385 275L690 253.0M385 275L690 257.0M385 275L690 261.0M385 275L690 265.0M385 275L690 269.0M385 275L690 273.0M385 275L690 277.0M385 275L690 281.0M385 275L690 285.0M385 275L690 289.0M385 275L690 293.0M385 275L690 297.0M385 275L690 301.0M385 275L690 305.0M385 275L690 309.0M385 275L690 313.0M385 275L690 317.0M385 275L690 321.0M385 275L690 325.0M385 275L690 329.0M385 275L690 333.0" style="animation-delay:-1.73s"/><path d="M385 281L690 223.0M385 281L690 227.0M385 281L690 231.0M385 281L690 235.0M385 281L690 239.0M385 281L690 243.0M385 281L690 247.0M385 281L690 251.0M385 281L690 255.0M385 281L690 259.0M385 281L690 263.0M385 281L690 267.0M385 281L690 271.0M385 281L690 275.0M385 281L690 279.0M385 281L690 283.0M385 281L690 287.0M385 281L690 291.0M385 281L690 295.0M385 281L690 299.0M385 281L690 303.0M385 281L690 307.0M385 281L690 311.0M385 281L690 315.0M385 281L690 319.0M385 281L690 323.0M385 281L690 327.0M385 281L690 331.0M385 281L690 335.0M385 281L690 339.0" style="animation-delay:-1.86s"/><path d="M385 294L690 236.0M385 294L690 240.0M385 294L690 244.0M385 294L690 248.0M385 294L690 252.0M385 294L690 256.0M385 294L690 260.0M385 294L690 264.0M385 294L690 268.0M385 294L690 272.0M385 294L690 276.0M385 294L690 280.0M385 294L690 284.0M385 294L690 288.0M385 294L690 292.0M385 294L690 296.0M385 294L690 300.0M385 294L690 304.0M385 294L690 308.0M385 294L690 312.0M385 294L690 316.0M385 294L690 320.0M385 294L690 324.0M385 294L690 328.0M385 294L690 332.0M385 294L690 336.0M385 294L690 340.0M385 294L690 344.0M385 294L690 348.0M385 294L690 352.0" style="animation-delay:-1.98s"/><path d="M385 307L690 249.0M385 307L690 253.0M385 307L690 257.0M385 307L690 261.0M385 307L690 265.0M385 307L690 269.0M385 307L690 273.0M385 307L690 277.0M385 307L690 281.0M385 307L690 285.0M385 307L690 289.0M385 307L690 293.0M385 307L690 297.0M385 307L690 301.0M385 307L690 305.0M385 307L690 309.0M385 307L690 313.0M385 307L690 317.0M385 307L690 321.0M385 307L690 325.0M385 307L690 329.0M385 307L690 333.0M385 307L690 337.0M385 307L690 341.0M385 307L690 345.0M385 307L690 349.0M385 307L690 353.0M385 307L690 357.0M385 307L690 361.0M385 307L690 365.0" style="animation-delay:-2.10s"/><path d="M385 313L690 255.0M385 313L690 259.0M385 313L690 263.0M385 313L690 267.0M385 313L690 271.0M385 313L690 275.0M385 313L690 279.0M385 313L690 283.0M385 313L690 287.0M385 313L690 291.0M385 313L690 295.0M385 313L690 299.0M385 313L690 303.0M385 313L690 307.0M385 313L690 311.0M385 313L690 315.0M385 313L690 319.0M385 313L690 323.0M385 313L690 327.0M385 313L690 331.0M385 313L690 335.0M385 313L690 339.0M385 313L690 343.0M385 313L690 347.0M385 313L690 351.0M385 313L690 355.0M385 313L690 359.0M385 313L690 363.0M385 313L690 367.0M385 313L690 371.0" style="animation-delay:-2.23s"/><path d="M385 326L690 268.0M385 326L690 272.0M385 326L690 276.0M385 326L690 280.0M385 326L690 284.0M385 326L690 288.0M385 326L690 292.0M385 326L690 296.0M385 326L690 300.0M385 326L690 304.0M385 326L690 308.0M385 326L690 312.0M385 326L690 316.0M385 326L690 320.0M385 326L690 324.0M385 326L690 328.0M385 326L690 332.0M385 326L690 336.0M385 326L690 340.0M385 326L690 344.0M385 326L690 348.0M385 326L690 352.0M385 326L690 356.0M385 326L690 360.0M385 326L690 364.0M385 326L690 368.0M385 326L690 372.0M385 326L690 376.0M385 326L690 380.0M385 326L690 384.0" style="animation-delay:-2.35s"/><path d="M385 339L690 281.0M385 339L690 285.0M385 339L690 289.0M385 339L690 293.0M385 339L690 297.0M385 339L690 301.0M385 339L690 305.0M385 339L690 309.0M385 339L690 313.0M385 339L690 317.0M385 339L690 321.0M385 339L690 325.0M385 339L690 329.0M385 339L690 333.0M385 339L690 337.0M385 339L690 341.0M385 339L690 345.0M385 339L690 349.0M385 339L690 353.0M385 339L690 357.0M385 339L690 361.0M385 339L690 365.0M385 339L690 369.0M385 339L690 373.0M385 339L690 377.0M385 339L690 381.0M385 339L690 385.0M385 339L690 389.0M385 339L690 393.0M385 339L690 397.0" style="animation-delay:-2.48s"/></g>
+<g class="wire" stroke-width="1"><path d="M240 134L385 121"/><path d="M240 134L385 134"/><path d="M240 134L385 147"/><path d="M240 166L385 153"/><path d="M240 166L385 166"/><path d="M240 166L385 179"/><path d="M240 198L385 185"/><path d="M240 198L385 198"/><path d="M240 198L385 211"/><path d="M240 230L385 217"/><path d="M240 230L385 230"/><path d="M240 230L385 243"/><path d="M240 262L385 249"/><path d="M240 262L385 262"/><path d="M240 262L385 275"/><path d="M240 294L385 281"/><path d="M240 294L385 294"/><path d="M240 294L385 307"/><path d="M240 326L385 313"/><path d="M240 326L385 326"/><path d="M240 326L385 339"/></g>
+<g class="wire" stroke-width="1.4"><path d="M120 230L240 134"/><path d="M120 230L240 166"/><path d="M120 230L240 198"/><path d="M120 230L240 230"/><path d="M120 230L240 262"/><path d="M120 230L240 294"/><path d="M120 230L240 326"/></g>
+<g class="vio"><circle cx="240" cy="134" r="7"/><circle cx="240" cy="166" r="7"/><circle cx="240" cy="198" r="7"/><circle cx="240" cy="230" r="7"/><circle cx="240" cy="262" r="7"/><circle cx="240" cy="294" r="7"/><circle cx="240" cy="326" r="7"/></g>
+<g class="yel"><circle cx="385" cy="121" r="5"/><circle cx="385" cy="134" r="5"/><circle cx="385" cy="147" r="5"/><circle cx="385" cy="153" r="5"/><circle cx="385" cy="166" r="5"/><circle cx="385" cy="179" r="5"/><circle cx="385" cy="185" r="5"/><circle cx="385" cy="198" r="5"/><circle cx="385" cy="211" r="5"/><circle cx="385" cy="217" r="5"/><circle cx="385" cy="230" r="5"/><circle cx="385" cy="243" r="5"/><circle cx="385" cy="249" r="5"/><circle cx="385" cy="262" r="5"/><circle cx="385" cy="275" r="5"/><circle cx="385" cy="281" r="5"/><circle cx="385" cy="294" r="5"/><circle cx="385" cy="307" r="5"/><circle cx="385" cy="313" r="5"/><circle cx="385" cy="326" r="5"/><circle cx="385" cy="339" r="5"/></g>
+<circle class="dot" cx="120" cy="230" r="5"/>
 
-  <rect class="cell" x="40" y="160" width="120" height="22" rx="5"/>
-  <rect class="cell" x="40" y="184" width="120" height="22" rx="5"/>
-  <rect class="cell" x="40" y="208" width="120" height="22" rx="5"/>
-  <rect class="cell" x="40" y="232" width="120" height="22" rx="5"/>
-  <text class="val" x="100" y="175" text-anchor="middle">4096</text>
-  <text class="val" x="100" y="199" text-anchor="middle">4168</text>
-  <text class="val" x="100" y="223" text-anchor="middle">4220</text>
-  <text class="val" x="100" y="247" text-anchor="middle">4308</text>
-  <text class="dots" x="100" y="266" text-anchor="middle">⋮</text>
 
-  <rect class="cell" x="186" y="160" width="120" height="22" rx="5"/>
-  <rect class="cell" x="186" y="184" width="120" height="22" rx="5"/>
-  <rect class="cell" x="186" y="208" width="120" height="22" rx="5"/>
-  <rect class="cell" x="186" y="232" width="120" height="22" rx="5"/>
-  <text class="val" x="246" y="175" text-anchor="middle">72</text>
-  <text class="val" x="246" y="199" text-anchor="middle">52</text>
-  <text class="val" x="246" y="223" text-anchor="middle">88</text>
-  <text class="val" x="246" y="247" text-anchor="middle">60</text>
-  <text class="dots" x="246" y="266" text-anchor="middle">⋮</text>
+<text class="mono lab tvio" x="240" y="444" text-anchor="middle">&#215;1</text>
+<text class="mono lab tvio" x="385" y="444" text-anchor="middle">&#215;1</text>
+<text class="mono lab tvio" x="600" y="444" text-anchor="middle">&#215;1</text>
+<path d="M120 470L690 470" stroke="#4A2BE8" stroke-width="3" fill="none"/>
+<path class="spark" d="M120 470L690 470"/>
+<circle class="vio" cx="240" cy="470" r="7"/>
+<circle class="yel" cx="385" cy="470" r="5"/>
+<circle class="dot" cx="120" cy="470" r="5"/>
 
-  <text class="title" x="384" y="52">rumi</text>
-  <text class="sub" x="384" y="72">26 byte header, no IFD, one array</text>
-  <rect class="gband" x="384" y="88" width="300" height="44" rx="10"/>
-  <text class="gt" x="400" y="110">rumi header</text>
-  <text class="gs" x="400" y="126">26 bytes, fixed layout</text>
 
-  <rect class="gband" x="384" y="140" width="300" height="28" rx="8"/>
-  <text class="gval" x="534" y="158" text-anchor="middle">base_tiles_offset = 4096</text>
+<line x1="730" y1="50" x2="730" y2="530" stroke="#C6CFDC" stroke-width="1"/>
 
-  <text class="col" x="444" y="190" text-anchor="middle">TileByteCounts</text>
-  <rect class="cell" x="384" y="198" width="120" height="22" rx="5"/>
-  <rect class="cell" x="384" y="222" width="120" height="22" rx="5"/>
-  <rect class="cell" x="384" y="246" width="120" height="22" rx="5"/>
-  <text class="val" x="444" y="213" text-anchor="middle">72</text>
-  <text class="val" x="444" y="237" text-anchor="middle">52</text>
-  <text class="val" x="444" y="261" text-anchor="middle">88</text>
-  <text class="dots" x="444" y="282" text-anchor="middle">⋮</text>
+<path class="fileg" d="M793.0 168.0H842.0L857.0 183.0V246.0A4 4 0 0 1 853.0 250.0H793.0A4 4 0 0 1 789.0 246.0V172.0A4 4 0 0 1 793.0 168.0Z" opacity="0.44"/><path class="fileg" d="M798.0 173.0H847.0L862.0 188.0V251.0A4 4 0 0 1 858.0 255.0H798.0A4 4 0 0 1 794.0 251.0V177.0A4 4 0 0 1 798.0 173.0Z" opacity="0.58"/><path class="fileg" d="M803.0 178.0H852.0L867.0 193.0V256.0A4 4 0 0 1 863.0 260.0H803.0A4 4 0 0 1 799.0 256.0V182.0A4 4 0 0 1 803.0 178.0Z" opacity="0.72"/><path class="fileg" d="M808.0 183.0H857.0L872.0 198.0V261.0A4 4 0 0 1 868.0 265.0H808.0A4 4 0 0 1 804.0 261.0V187.0A4 4 0 0 1 808.0 183.0Z"/><path class="fileg" d="M857.0 183.0V198.0H872.0"/>
+<text class="mono rowlab ink" x="838" y="160" text-anchor="middle">GeoTIFF</text>
+<text class="mono ext ink" x="834" y="232" text-anchor="middle">.tif</text>
+<text class="sans num torg" x="838" y="299.0" text-anchor="middle">&#8776;2,016</text>
 
-  <line class="arr" x1="506" y1="232" x2="524" y2="232" marker-end="url(#a)"/>
-  <text class="note" x="530" y="220">offsets are derived</text>
-  <text class="form" x="530" y="238">offset[i] = base + Σc[&lt;i]</text>
-  <text class="note" x="530" y="256">no offset array stored</text>
-
-  <line x1="36" y1="306" x2="684" y2="306" stroke="#21262D" stroke-width="1"/>
-
-  <rect class="band" x="64" y="322" width="116" height="44" rx="10"/>
-  <text class="val" x="122" y="348" text-anchor="middle">scene.tif</text>
-
-  <text class="fn" x="214" y="338" text-anchor="middle">index_file</text>
-  <line class="arr" x1="184" y1="344" x2="246" y2="344" marker-end="url(#a)"/>
-
-  <rect class="gband" x="252" y="322" width="168" height="44" rx="10"/>
-  <text class="ptg" x="336" y="341" text-anchor="middle">rumi blob</text>
-  <text class="psg" x="336" y="357" text-anchor="middle">26 B + counts[N]</text>
-
-  <text class="fn" x="447" y="338" text-anchor="middle">parse</text>
-  <line class="arr" x1="424" y1="344" x2="470" y2="344" marker-end="url(#a)"/>
-
-  <rect x="474" y="322" width="178" height="44" rx="10" fill="#161B22" stroke="#2EA043" stroke-width="1"/>
-  <text class="pt" x="563" y="341" text-anchor="middle">Header</text>
-  <text class="ps" x="563" y="357" text-anchor="middle">offsets rebuilt</text>
+<path class="filev" d="M808.0 423.0H857.0L872.0 438.0V501.0A4 4 0 0 1 868.0 505.0H808.0A4 4 0 0 1 804.0 501.0V427.0A4 4 0 0 1 808.0 423.0Z"/><path class="filev" d="M857.0 423.0V438.0H872.0"/>
+<text class="mono fix tvio" x="240" y="497" text-anchor="middle">OpenZL</text>
+<text class="mono fix key tvio" x="385" y="497" text-anchor="middle">tile-interleaved</text>
+<text class="mono fix tvio" x="600" y="497" text-anchor="middle">BigTIFF &#183; band-separate</text>
+<text class="mono rowlab tvio" x="838" y="400" text-anchor="middle">rumi</text>
+<text class="mono ext tvio" x="834" y="472" text-anchor="middle">.tif</text>
+<text class="sans num tvio" x="838" y="539.0" text-anchor="middle">1</text>
 </svg>

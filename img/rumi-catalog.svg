@@ -1,0 +1,72 @@
+<svg width="1000" viewBox="-20 0 1000 545" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+<title id="t">rumi.write returns the file and its header, and the headers become a table</title>
+<desc id="d">An array goes into rumi.write and two artifacts come out. The pixels become an ordinary .tif. The header is a 26 byte record holding the image size, tile size, band count, dtype and the offset where tiles begin, followed by the compressed size of every tile in wire order. One VSI path plus one header is one row, so a million files are a million rows in a parquet catalog.</desc>
+<style>
+  .sans{font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+  .mono{font-family:ui-monospace,'SFMono-Regular','JetBrains Mono',Menlo,Consolas,monospace}
+  .ink{fill:#16181D} .muted{fill:#9AA0A6} .arr{color:#6B7280}
+  .wire{stroke:#8493A8;fill:none} .hair{stroke:#C6CFDC;fill:none}
+  .tvio{fill:#4A2BE8} .tyel{fill:#8A6D06}
+  .boxv{fill:none;stroke:#4A2BE8;stroke-width:1.8}
+  .boxy{fill:none;stroke:#C99A06;stroke-width:1.4}
+  .fileg{stroke:#8493A8;stroke-width:1.4;fill:none;stroke-linejoin:round}
+  .chead{fill:#F7CC0C} .cell5{font-size:10px;fill:#5B6470}
+  .lab{font-size:12px} .sub{font-size:10px} .desc{font-size:9.5px;fill:#6B7280}
+  .col{font-size:10px;letter-spacing:.6px}
+  .big{font-size:20px;font-weight:700} .note{font-size:11px}
+  .spark{stroke:#8B6BFF;stroke-width:2.5;fill:none;stroke-linecap:round;
+    stroke-dasharray:30 260;animation:travel 2.6s linear infinite}
+  .rows>g{animation:breathe 2.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.4}45%{opacity:1}}
+  @keyframes travel{from{stroke-dashoffset:30}to{stroke-dashoffset:-230}}
+  @media (prefers-color-scheme:dark){
+    .ink{fill:#E6EDF3} .muted{fill:#8B949E} .arr{color:#8B949E}
+    .wire,.fileg{stroke:#59677D} .hair{stroke:#39414E} .tyel{fill:#F7CC0C}
+    .cell5{fill:#AAB4C0} .desc{fill:#8B949E}
+  }
+  @media (prefers-reduced-motion:reduce){.rows>g{animation:none;opacity:.9} .spark{display:none}}
+</style>
+<defs>
+  <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M1 1L7 4L1 7" fill="none" stroke="#8493A8" stroke-width="1.4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<g class="arr" transform="translate(18.1 147.8) scale(1.05)"><g fill="currentColor"><path d="M0.0 18.8L8.0 18.8L8.0 26.8L0.0 26.8Z"/><path d="M9.4 18.8L17.4 18.8L17.4 26.8L9.4 26.8Z"/><path d="M18.8 18.8L26.8 18.8L26.8 26.8L18.8 26.8Z"/><path d="M0.0 9.4L8.0 9.4L8.0 17.4L0.0 17.4Z"/><path d="M9.4 9.4L17.4 9.4L17.4 17.4L9.4 17.4Z"/><path d="M18.8 9.4L26.8 9.4L26.8 17.4L18.8 17.4Z"/><path d="M0.0 0.0L8.0 0.0L8.0 8.0L0.0 8.0Z"/><path d="M9.4 0.0L17.4 0.0L17.4 8.0L9.4 8.0Z"/><path d="M18.8 0.0L26.8 0.0L26.8 8.0L18.8 8.0Z"/><path d="M1.4 -1.4L9.4 -1.4L14.1 -6.1L6.1 -6.1Z"/><path d="M10.8 -1.4L18.8 -1.4L23.5 -6.1L15.5 -6.1Z"/><path d="M20.2 -1.4L28.2 -1.4L32.9 -6.1L24.9 -6.1Z"/><path d="M6.9 -6.9L14.9 -6.9L19.6 -11.6L11.6 -11.6Z"/><path d="M16.3 -6.9L24.3 -6.9L29.0 -11.6L21.0 -11.6Z"/><path d="M25.7 -6.9L33.7 -6.9L38.4 -11.6L30.4 -11.6Z"/><path d="M12.4 -12.4L20.4 -12.4L25.1 -17.1L17.1 -17.1Z"/><path d="M21.8 -12.4L29.8 -12.4L34.5 -17.1L26.5 -17.1Z"/><path d="M31.2 -12.4L39.2 -12.4L43.9 -17.1L35.9 -17.1Z"/><path d="M28.2 17.4L32.9 12.7L32.9 20.7L28.2 25.4Z"/><path d="M28.2 8.0L32.9 3.3L32.9 11.3L28.2 16.0Z"/><path d="M28.2 -1.4L32.9 -6.1L32.9 1.9L28.2 6.6Z"/><path d="M33.7 11.9L38.4 7.2L38.4 15.2L33.7 19.9Z"/><path d="M33.7 2.5L38.4 -2.2L38.4 5.8L33.7 10.5Z"/><path d="M33.7 -6.9L38.4 -11.6L38.4 -3.6L33.7 1.1Z"/><path d="M39.2 6.4L43.9 1.7L43.9 9.7L39.2 14.4Z"/><path d="M39.2 -3.0L43.9 -7.7L43.9 0.3L39.2 5.0Z"/><path d="M39.2 -12.4L43.9 -17.1L43.9 -9.1L39.2 -4.4Z"/></g><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M0.0 -28.6H-8.0V32.8H0.0"/><path d="M49.4 -28.6H57.4V32.8H49.4"/></g></g>
+<path class="wire" stroke-width="1.4" marker-end="url(#a)" d="M84 150H142"/>
+<rect class="boxv" x="150" y="132" width="120" height="36" rx="6"/>
+<text class="mono lab tvio" x="210" y="155" text-anchor="middle">rumi.write</text>
+<text class="mono sub muted" x="210" y="188" text-anchor="middle">one call, two outputs</text>
+
+<path class="wire" stroke-width="1.4" d="M270 150C310 150 316 92 350 92"/>
+<path class="wire" stroke-width="1.4" d="M270 150C310 150 316 210 344 210"/>
+<path class="spark" d="M270 150C310 150 316 92 350 92"/>
+<path class="spark" d="M270 150C310 150 316 210 344 210"/>
+
+<path class="fileg" d="M359 60H398L412 74V123A3 3 0 0 1 409 126H359A3 3 0 0 1 356 123V63A3 3 0 0 1 359 60Z"/><path class="fileg" d="M398 60V74H412"/>
+<text class="mono lab ink"  x="384" y="98"  text-anchor="middle">.tif</text>
+<text class="mono sub muted" x="388" y="142" text-anchor="middle">the pixels, 743 MB</text>
+
+<text class="mono lab tyel" x="350" y="177">rumi header</text>
+<rect class="boxy" x="350" y="184" width="330" height="56" rx="4"/>
+<path class="hair" stroke-width="1" d="M350 212H680"/>
+<text class="mono sub tyel"  x="362" y="203">26 B</text>
+<text class="sans desc"      x="424" y="203">image size, tile size, bands, dtype, first tile offset</text>
+<text class="mono sub tyel"  x="362" y="231">4 B &#215; N</text>
+<text class="sans desc"      x="424" y="231">the compressed size of every tile, in wire order</text>
+<text class="sans sub muted" x="350" y="258">23,258 B for a 12 band scene of 5,808 tiles</text>
+
+<text class="mono col muted" x="50"  y="296">vsi_path</text>
+<text class="mono col muted" x="470" y="296">points at</text>
+<text class="mono col tyel"  x="540" y="296">rumi_header</text>
+<path class="hair" stroke-width="1" d="M40 306H800"/>
+<g class="hair" stroke-width="1" opacity=".5"><path d="M40 336H800"/><path d="M40 366H800"/><path d="M40 396H800"/><path d="M40 426H800"/><path d="M40 456H800"/></g>
+<g class="rows"><g style="animation-delay:-0.00s"><text class="mono cell5" x="50" y="325">/vsis3/eo-archive/S2B_31TCJ_20240712.tif</text><path class="wire" stroke-width="1.2" marker-end="url(#a)" d="M440 321H468"/><path class="fileg" d="M479 309H492L498 315V330A3 3 0 0 1 495 333H479A3 3 0 0 1 476 330V312A3 3 0 0 1 479 309Z"/><path class="fileg" d="M492 309V315H498"/><rect class="chead" x="540" y="317" width="112" height="9" rx="2"/><text class="mono cell5" x="662" y="325">23,258 B</text></g><g style="animation-delay:-0.43s"><text class="mono cell5" x="50" y="355">/vsis3/eo-archive/S2A_31TCJ_20240717.tif</text><path class="wire" stroke-width="1.2" marker-end="url(#a)" d="M440 351H468"/><path class="fileg" d="M479 339H492L498 345V360A3 3 0 0 1 495 363H479A3 3 0 0 1 476 360V342A3 3 0 0 1 479 339Z"/><path class="fileg" d="M492 339V345H498"/><rect class="chead" x="540" y="347" width="112" height="9" rx="2"/><text class="mono cell5" x="662" y="355">23,258 B</text></g><g style="animation-delay:-0.87s"><text class="mono cell5" x="50" y="385">/vsis3/eo-archive/S2B_30SXH_20240712.tif</text><path class="wire" stroke-width="1.2" marker-end="url(#a)" d="M440 381H468"/><path class="fileg" d="M479 369H492L498 375V390A3 3 0 0 1 495 393H479A3 3 0 0 1 476 390V372A3 3 0 0 1 479 369Z"/><path class="fileg" d="M492 369V375H498"/><rect class="chead" x="540" y="377" width="112" height="9" rx="2"/><text class="mono cell5" x="662" y="385">23,258 B</text></g><g style="animation-delay:-1.30s"><text class="mono cell5" x="50" y="415">/vsis3/eo-archive/S2A_29TNF_20240719.tif</text><path class="wire" stroke-width="1.2" marker-end="url(#a)" d="M440 411H468"/><path class="fileg" d="M479 399H492L498 405V420A3 3 0 0 1 495 423H479A3 3 0 0 1 476 420V402A3 3 0 0 1 479 399Z"/><path class="fileg" d="M492 399V405H498"/><rect class="chead" x="540" y="407" width="112" height="9" rx="2"/><text class="mono cell5" x="662" y="415">23,258 B</text></g><g style="animation-delay:-1.73s"><text class="mono cell5" x="50" y="445">/vsis3/eo-archive/S2B_33UVP_20240721.tif</text><path class="wire" stroke-width="1.2" marker-end="url(#a)" d="M440 441H468"/><path class="fileg" d="M479 429H492L498 435V450A3 3 0 0 1 495 453H479A3 3 0 0 1 476 450V432A3 3 0 0 1 479 429Z"/><path class="fileg" d="M492 429V435H498"/><rect class="chead" x="540" y="437" width="112" height="9" rx="2"/><text class="mono cell5" x="662" y="445">23,258 B</text></g><g style="animation-delay:-2.17s"><text class="mono cell5" x="50" y="475">/vsis3/eo-archive/S2A_18TWL_20240722.tif</text><path class="wire" stroke-width="1.2" marker-end="url(#a)" d="M440 471H468"/><path class="fileg" d="M479 459H492L498 465V480A3 3 0 0 1 495 483H479A3 3 0 0 1 476 480V462A3 3 0 0 1 479 459Z"/><path class="fileg" d="M492 459V465H498"/><rect class="chead" x="540" y="467" width="112" height="9" rx="2"/><text class="mono cell5" x="662" y="475">23,258 B</text></g></g>
+<path class="hair" stroke-width="1" d="M40 486H800"/>
+<text class="sans note muted" x="40" y="508">+ 999,994 more rows</text>
+
+<path class="hair" stroke-width="1" d="M830 300V490"/>
+<text class="sans big ink"    x="850" y="384">1,000,000</text>
+<text class="sans note muted" x="850" y="406">files, one parquet</text>
+</svg>

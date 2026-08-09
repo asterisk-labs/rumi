@@ -10,9 +10,9 @@
 
 <p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
-A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. Deep learning reads millions of chips per epoch, and with loose layouts a reader has to work out each file before it can touch the pixels.
+A GeoTIFF can be written in countless ways, and that flexibility is half of why they get painful to read at scale. Striped or tiled, bands interleaved or planar, which codec, which predictor, offsets of 4 bytes or 8, how many IFDs. Each one is a question the reader answers before it can read anything, once per file, a million times.
 
-rumi solves that by supporting only one layout. A rumi file is always **BigTIFF, tiled, band separate, and tile interleaved**. Every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. There are no overviews and nothing left to guess about. The full rules live in the [specification](SPEC.md).
+rumi answers them the same way every time. A rumi GeoTIFF file is ALWAYS a **BigTIFF, tiled, band separate, and tile interleaved**, one IFD, no overviews, and every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. The full rules live in the [specification](SPEC.md).
 
 Because the layout is fixed, almost everything about a rumi file is predictable. The metadata that is left fits in a tiny self-contained space, so a million files stay indexed in memory and reads go straight to the pixels.
 
@@ -20,9 +20,12 @@ Because the layout is fixed, almost everything about a rumi file is predictable.
   <img src="img/rumi-index.svg" alt="rumi index" width="720"/>
 </p>
 
-## Status
+<p align="center">
+  <i>A GeoTIFF gives you thousands of valid ways to write the same array. rumi gives you just one way.</i>
+</p>
 
-rumi is **experimental**. The on-disk format and the header blob can change between versions with no migration path. Do not use it for archival data you cannot regenerate.
+
+## Status
 
 > [!WARNING]
 > **TIFF compression tag 60000 is experimental, not a registered code.**
@@ -38,68 +41,66 @@ pip install rumi-eo
 
 ```python
 import numpy as np
+import geozl
 import rumi
 
 arr = np.random.randint(0, 4096, (4, 2048, 2048), dtype=np.uint16)  # (B, Y, X)
 
-# write: rumi tiles, sweeps predictors per tile, keeps the smallest, assembles.
-# returns the path and the header blob, the bytes you cache in a catalog.
-path, header = rumi.write("scene.tif", arr)
+# 1. Cut the Image into a TileFrame
+tf = rumi.tile(arr, tile_size=512)
 
-# read: hand back a numpy array, nothing else needed
+# 2. You build the geozl graph, run the graph on the tile, and compress the tile.
+for t in tf:
+    g = geozl.graph(t.data, "planar>zigzag>transpose>entropy")
+    t.compressed = geozl.compress(t.data, graph=g)
+
+# 3. Write the TileFrame to a rumi file, and cache the rumi header for later reads
+path, header = rumi.write("scene.tif", tf)
+
+# Hand back a numpy array
 arr = rumi.read("scene.tif")                          # (B, Y, X)
 
-# window a read, and reuse the cached blob to skip re-reading the header
+# Window a read, and reuse the cached blob to skip re-reading the header
 arr = rumi.read("scene.tif", header, b=[0, 3], y=(0, 512), x=(0, 512))
 ```
 
-## Write
+## Catalog
+
+`rumi.write` returns two things, the file and its header. The file is an ordinary `.tif` that lives wherever your scenes already live. The header is a small binary record you keep yourself.
+
+<p align="center">
+  <img src="img/rumi-catalog.svg" alt="rumi.write returns a .tif and a header, and the headers become rows in a parquet catalog" width="720"/>
+</p>
+
+<p align="center">
+  <i>One VSI path plus one header is one row, so a collection of files is a table.</i>
+</p>
+
+**The header is a bypass.** A normal reader has to scan the file before it can touch a pixel. Open it, parse the IFD, load the offset arrays, then seek. With the header in hand there is nothing to discover. The reader computes the byte range and goes straight to the data. Reads become stateless, no open, no parse, nothing cached per file.
+
+**It is also far smaller.** A BigTIFF IFD spends 16 bytes per tile on `TileOffsets` and `TileByteCounts`, plus the tag block itself. rumi stores 4 bytes per tile and nothing else, because the layout is fixed and everything else is predictable.
+
+So it is a row. A VSI path in one column, the header bytes in the other. That pair is everything you need to open a scene, so a million scenes is a million rows and nothing else. The collection stops being a pile of files and becomes one object you can query, where reaching any tile in it costs a single seek.
 
 ```python
-path, header = rumi.write("scene.tif", arr, method="2d-full",
-                          chunk_size=512, max_error=None,
-                          transform=None, crs=None)
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+rows = []
+for scene, tf in scenes:
+    path, header = rumi.write(scene, tf)
+    rows.append({"vsi_path": path, "rumi_header": header})
+
+pq.write_table(pa.Table.from_pylist(rows), "catalog.parquet")
 ```
 
-`write` takes a `(B, Y, X)` array, cuts it into `chunk_size` tiles, and for each tile runs the method's predictors and keeps the smallest frame. It returns `(path, header)`, where `header` is a bytes blob you cache next to the path in your catalog, a Parquet column works well, and hand back to `read`.
-
-- **`method`** picks the predictor set swept per tile. `"2d-full"` tries every predictor for the best ratio; `"2d-simd"` tries a smaller SIMD-friendly set for a faster write; `"2d-<name>"` forces a single predictor.
-- **`chunk_size`** is the tile edge in pixels, a multiple of 16.
-- **`max_error`** turns on near-lossless: an absolute error bound in DN, quantized ahead of the predictor. `None` is lossless.
-- **`transform`** and **`crs`** carry georeferencing, given together. `transform` is a GDAL-style affine, `crs` an EPSG code or projection string.
+A read then takes the row and goes straight to the pixels.
 
 ```python
-transform = (300000.0, 10.0, 0.0, 4000000.0, 0.0, -10.0)  # origin x, px w, 0, origin y, 0, -px h
-path, header = rumi.write("scene.tif", arr, transform=transform, crs=32630)
+row = pq.read_table("catalog.parquet").to_pylist()[0]
+
+chip = rumi.read(row["vsi_path"], row["rumi_header"], y=(0, 512), x=(0, 512))
 ```
-
-## Read
-
-```python
-arr = rumi.read("scene.tif")                                     # whole image, (B, Y, X) numpy
-arr = rumi.read("scene.tif", header)                             # reuse a cached header blob
-arr = rumi.read("scene.tif", framework="torch")                  # torch tensor instead
-arr = rumi.read("scene.tif", b=[3, 2, 1], y=(0, 512), x=(0, 512))
-arr = rumi.read("scene.tif", num_threads=4)                      # parallel decode
-```
-
-Returns the image in the framework you pick. The second argument is the header blob; leave it out and rumi reads the header from the file, pass the cached blob to skip that. Each axis can be windowed.
-
-- a tuple `(start, stop)` is a slice, the cheap case since it keeps tiles in disk order. `y` and `x` only take a slice or all.
-- a list `[i, j, k]` picks those 0-based positions in that order. Fine for `b` (and `n` on a stack), more flexible but it can scatter the read.
-- leaving an axis out reads all of it.
-
-Prefer slices. rumi keeps all bands of a tile together, so a band slice reads them in order without stepping over the ones you skip. It is still one read per tile, so the win is locality and readahead, not a single seek.
-
-**`framework`** selects the return type: `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `None` for a zero-copy `RumiArray` you convert over DLPack. **`num_threads`** sets decode parallelism. The pool is process global and sized on first use, so the first threaded read fixes the count for the whole process. Default is single threaded.
-
-## Stack
-
-```python
-arr = rumi.read(paths, headers, n=(0, 12), b=(0, 4))   # (12, 4, Y, X)
-```
-
-Pass lists of paths (and optionally their cached header blobs) and `read` adds an `n` axis over the assets. Window `n` like any other axis. The assets must match in size and encoding or it raises, no ragged cubes. This stacking is in memory at read time. For an N cube that lives on disk as one object, see the companion `zumi` format.
 
 ## Data model
 

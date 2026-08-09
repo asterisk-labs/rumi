@@ -26,7 +26,7 @@ rumi realizes part of the AI4EO Data Model, which organizes raster as a hierarch
 
 Grid-aligned Images stack into a single 4D tensor, the Cube. Without a shared grid they stay a list, a Collection.
 
-rumi defines the bottom three levels, tile, cell, and Image. One rumi file is one Image. The rumikuna format defines Cube.
+rumi defines the bottom three levels, tile, cell, and Image. One rumi file is one Image. The zumi format defines Cube.
 
 ## Scope
 
