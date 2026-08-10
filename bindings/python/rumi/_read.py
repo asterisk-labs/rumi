@@ -3,8 +3,7 @@ import os
 from collections.abc import Sequence
 
 from ._dtype import name as dtype_name
-from ._ffi import PathLike, _blob_from_file, _check, _enc, ffi, lib
-from ._header import RumiHeader
+from ._ffi import PathLike, _check, _enc, _header_from_file, _Spec, ffi, lib
 
 Axis = tuple[int, int] | list[int] | None
 
@@ -144,10 +143,10 @@ def _to_c(lst: list[int] | None):
     return ffi.new("int[]", lst), len(lst)
 
 
-def _read_one(path: PathLike, spec: RumiHeader, pattern: str | None,
+def _read_one(path: PathLike, spec: _Spec, pattern: str | None,
               b: Axis, y: tuple[int, int] | None, x: tuple[int, int] | None,
               num_threads: int) -> RumiArray:
-    h = spec._header
+    h = spec.fields
     bands = _resolve_axis(b, "b", h.samples_per_pixel)
     y_off, y_size = _resolve_window(y, "y", h.image_length)
     x_off, x_size = _resolve_window(x, "x", h.image_width)
@@ -165,14 +164,14 @@ def _read_one(path: PathLike, spec: RumiHeader, pattern: str | None,
     bands_c, n_bands_c = _to_c(bands)
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_dlpack(
-        _enc(path), spec._handle, bands_c, n_bands_c,
+        _enc(path), spec.handle, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,
         pattern.encode("ascii"), num_threads, out,
     ))
-    return RumiArray(out[0], shape, spec._header.dtype)
+    return RumiArray(out[0], shape, spec.fields.dtype)
 
 
-def _read_stack(paths: Sequence[PathLike], specs: Sequence[RumiHeader],
+def _read_stack(paths: Sequence[PathLike], specs: Sequence[_Spec],
                 pattern: str | None, n: Axis, b: Axis,
                 y: tuple[int, int] | None, x: tuple[int, int] | None,
                 num_threads: int) -> RumiArray:
@@ -185,7 +184,7 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[RumiHeader],
     if not paths:
         raise ValueError("read requires at least one image")
 
-    h = specs[0]._header
+    h = specs[0].fields
     n_sel = _resolve_axis(n, "n", len(specs))
     bands = _resolve_axis(b, "b", h.samples_per_pixel)
     y_off, y_size = _resolve_window(y, "y", h.image_length)
@@ -204,7 +203,7 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[RumiHeader],
 
     paths_c = [ffi.new("char[]", _enc(p)) for p in paths]
     paths_arr = ffi.new("char*[]", paths_c)
-    specs_arr = ffi.new("rumi_spec*[]", [s._handle for s in specs])
+    specs_arr = ffi.new("rumi_spec*[]", [s.handle for s in specs])
 
     n_c, n_count_c = _to_c(n_sel)
     bands_c, n_bands_c = _to_c(bands)
@@ -215,7 +214,7 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[RumiHeader],
         y_off, y_size, x_off, x_size,
         pattern.encode("ascii"), num_threads, out,
     ))
-    return RumiArray(out[0], shape, specs[0]._header.dtype)
+    return RumiArray(out[0], shape, specs[0].fields.dtype)
 
 
 def read(path: PathLike | Sequence[PathLike],
@@ -226,17 +225,18 @@ def read(path: PathLike | Sequence[PathLike],
          x: tuple[int, int] | None = None,
          num_threads: int = 1):
     """Read a rumi image, or a stack of them. A single path reads one image, a
-    list reads a stack. header is the blob, cached from a catalog or Parquet;
-    when omitted it is read from each file. framework picks the return type
+    list reads a stack. header is the raw header bytes, cached from a catalog
+    or Parquet; when omitted they are read from each file. framework picks the
+    return type
     ("numpy", "torch", "jax", "tensorflow"), or None for the zero-copy
     RumiArray. Stateless, opens and closes each call."""
     if isinstance(path, (str, bytes, os.PathLike)):
         if n is not None:
             raise ValueError("n applies to a stack; pass lists of paths")
-        blob = header if header is not None else _blob_from_file(path)
-        arr = _read_one(path, RumiHeader(blob), pattern, b, y, x, num_threads)
+        raw = header if header is not None else _header_from_file(path)
+        arr = _read_one(path, _Spec(raw), pattern, b, y, x, num_threads)
         return _to_framework(arr, framework)
-    blobs = header if header is not None else [_blob_from_file(p) for p in path]
-    specs = [RumiHeader(bl) for bl in blobs]
+    raws = header if header is not None else [_header_from_file(p) for p in path]
+    specs = [_Spec(r) for r in raws]
     arr = _read_stack(path, specs, pattern, n, b, y, x, num_threads)
     return _to_framework(arr, framework)

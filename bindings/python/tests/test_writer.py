@@ -12,7 +12,7 @@ import pytest
 
 import rumi
 from rumi import TileFrame
-from rumi._assemble import assemble, header_bytes
+from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
 TYPE_SIZE = {ASCII: 1, SHORT: 2, LONG: 4, DOUBLE: 8, LONG8: 8}
@@ -69,7 +69,7 @@ def values(entry, fmt):
 def test_bigtiff_header(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     entries, next_ifd, blob = read_ifd(path)
     assert struct.unpack_from("<Q", blob, 8) == (16,)
     assert next_ifd == 0
@@ -78,7 +78,7 @@ def test_bigtiff_header(tmp_path):
 def test_tags_ascending(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     tags = list(read_ifd(path)[0])
     assert tags == sorted(tags)
 
@@ -86,7 +86,7 @@ def test_tags_ascending(tmp_path):
 def test_tag_set(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
     assert set(entries) == {256, 257, 258, 259, 262, 277, 284, 317, 322, 323,
@@ -111,7 +111,7 @@ def test_tag_set(tmp_path):
 def test_inline_and_external_values(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
     for tag, (type_, n, at, _payload) in entries.items():
@@ -129,7 +129,7 @@ def test_inline_and_external_values(tmp_path):
 def test_plane_major_order(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
     sizes = [len(f) for f in tf["compressed"]]
@@ -143,7 +143,7 @@ def test_plane_major_order(tmp_path):
 def test_payload_offsets(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     entries, _next, blob = read_ifd(path)
 
     base = header_bytes(tf)
@@ -162,7 +162,7 @@ def test_payload_offsets(tmp_path):
 def test_tile_write_order(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     blob = open(path, "rb").read()
     assert blob[header_bytes(tf):] == b"".join(tf["compressed"])
 
@@ -170,7 +170,7 @@ def test_tile_write_order(tmp_path):
 def test_header_size_alignment(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf, header_size=4096)
+    write_frames(path, tf["compressed"], tf, header_size=4096)
     entries, _next, blob = read_ifd(path)
 
     natural = header_bytes(tf)
@@ -186,7 +186,7 @@ def test_header_size_alignment(tmp_path):
 def test_north_up_transform(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     entries = read_ifd(path)[0]
 
     # coefficient 0 is the x resolution, coefficient 2 the x origin
@@ -198,7 +198,7 @@ def test_north_up_transform(tmp_path):
 def test_rotated_transform(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf, transform=ROTATED, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, transform=ROTATED, crs=UTM18S)
     entries = read_ifd(path)[0]
 
     assert 33550 not in entries and 33922 not in entries
@@ -211,7 +211,7 @@ def test_rotated_transform(tmp_path):
 def test_geokeys(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     entries = read_ifd(path)[0]
 
     keys = values(entries[34735], "H")
@@ -224,8 +224,8 @@ def test_geokeys(tmp_path):
 def test_pixel_is_point(tmp_path):
     tf = make_frame()
     area, point = tmp_path / "area.tif", tmp_path / "point.tif"
-    assemble(area, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
-    assemble(point, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S,
+    write_frames(area, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(point, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S,
              pixel_is_point=True)
     assert read_ifd(area)[0][34735] != read_ifd(point)[0][34735]
 
@@ -259,7 +259,7 @@ def test_edge_tiles(tmp_path):
 def test_sample_format(tmp_path, dtype):
     tf = make_frame(shape=(1, 20, 20), tile_size=16, dtype=dtype)
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
     expected = {np.uint8: 1, np.uint16: 1, np.int16: 2, np.int32: 2,
@@ -290,7 +290,7 @@ CASES = {
 def test_golden_bytes(tmp_path, case):
     tf = make_frame()
     path = tmp_path / "a.tif"
-    assemble(path, tf["compressed"], tf, **CASES[case])
+    write_frames(path, tf["compressed"], tf, **CASES[case])
     digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
     assert digest == GOLDEN[case]
 
@@ -298,7 +298,7 @@ def test_golden_bytes(tmp_path, case):
 def test_bad_frame_count(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="expected"):
-        assemble(tmp_path / "a.tif", tf["compressed"][:-1], tf)
+        write_frames(tmp_path / "a.tif", tf["compressed"][:-1], tf)
 
 
 def test_empty_payload(tmp_path):
@@ -306,22 +306,22 @@ def test_empty_payload(tmp_path):
     frames = list(tf["compressed"])
     frames[3] = b""
     with pytest.raises(ValueError, match="sparse"):
-        assemble(tmp_path / "a.tif", frames, tf)
+        write_frames(tmp_path / "a.tif", frames, tf)
 
 
 def test_transform_needs_crs(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="together"):
-        assemble(tmp_path / "a.tif", tf["compressed"], tf, transform=NORTH_UP)
+        write_frames(tmp_path / "a.tif", tf["compressed"], tf, transform=NORTH_UP)
     with pytest.raises(ValueError, match="together"):
-        assemble(tmp_path / "a.tif", tf["compressed"], tf, crs=UTM18S)
+        write_frames(tmp_path / "a.tif", tf["compressed"], tf, crs=UTM18S)
 
 
 def test_bad_header_size(tmp_path):
     tf = make_frame()
     for bad in (0, -16, 4096.0, "4096"):
         with pytest.raises(TypeError, match="header_size"):
-            assemble(tmp_path / "a.tif", tf["compressed"], tf, header_size=bad)
+            write_frames(tmp_path / "a.tif", tf["compressed"], tf, header_size=bad)
 
 
 def test_write_needs_all_tiles(tmp_path):

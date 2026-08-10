@@ -252,12 +252,34 @@ def _enc(path: PathLike) -> bytes:
     return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
 
 
-def _blob_from_file(path: PathLike) -> bytes:
-    # the header blob C hands back, freed once copied into a Python bytes
-    blob_out = ffi.new("unsigned char**")
-    size_out = ffi.new("size_t*")
-    _check(lib.rumi_index_file(_enc(path), blob_out, size_out))
+def _header_from_file(path: PathLike) -> bytes:
+    # the header C hands back, freed once copied into a Python bytes
+    out = ffi.new("unsigned char**")
+    size = ffi.new("size_t*")
+    _check(lib.rumi_index_file(_enc(path), out, size))
     try:
-        return bytes(ffi.buffer(blob_out[0], size_out[0]))
+        return bytes(ffi.buffer(out[0], size[0]))
     finally:
-        lib.rumi_free(blob_out[0])
+        lib.rumi_free(out[0])
+
+
+class _Spec:
+    """A header handed to C to parse. Holds the rumi_spec it becomes and the
+    struct that spec reports, which is every field a caller needs off it."""
+
+    __slots__ = ("handle", "fields")
+
+    def __init__(self, header: bytes | bytearray | memoryview) -> None:
+        if not isinstance(header, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                f"header must be bytes-like, got {type(header).__name__}")
+
+        buf = ffi.from_buffer("unsigned char[]", header)
+        out = ffi.new("rumi_spec**")
+        _check(lib.rumi_spec_parse(buf, len(header), out))
+        # ffi.gc frees the handle whenever it goes away, even mid-__init__.
+        self.handle = ffi.gc(out[0], lib.rumi_spec_destroy)
+
+        fields = ffi.new("rumi_header*")
+        _check(lib.rumi_spec_header(self.handle, fields))
+        self.fields = fields
