@@ -83,9 +83,9 @@ rumi_index_file(const char*     path,
 // form (the complex integers). Never a real DLPack code.
 #define RUMI_DL_NONE 255
 
-// The dtype set is defined once in rumi_dtypes.def. The enum, the descriptor
-// table below are all generated from it, so a new
-// type is one row and nothing here drifts. RUMI_DT_UNKNOWN = 0 has no row.
+// The dtype set is defined once in rumi_dtypes.def. The enum and the
+// descriptor table below are generated from it, so a new type is one row and
+// nothing here drifts. RUMI_DT_UNKNOWN = 0 has no row.
 typedef enum {
     RUMI_DT_UNKNOWN = 0,
 #define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \

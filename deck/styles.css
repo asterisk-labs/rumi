@@ -260,38 +260,24 @@ a {
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 64px 80px 84px;
-  background:
-    radial-gradient(circle at 50% 36%, rgba(162, 255, 162, 0.18), transparent 28%),
-    linear-gradient(180deg, #FAFAFC 0%, #F3F4F8 100%);
+  padding: 0;
+  background: #FFFFFF;
 }
 
-.cover-project .top-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 6px;
-  display: flex;
-  z-index: 6;
+.cover-project::before {
+  display: none;
 }
-
-.cover-project .top-bar span { flex: 1; }
-.cover-project .top-bar span:nth-child(1) { background: var(--gold); }
-.cover-project .top-bar span:nth-child(2) { background: var(--green); }
-.cover-project .top-bar span:nth-child(3) { background: var(--purple); }
 
 .cover-project .cover-content {
   width: 100%;
-  max-width: 700px;
+  height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
 }
 
 .cover-project .project-logo {
-  width: 420px;
+  width: 620px;
   max-width: 80%;
   display: flex;
   align-items: center;
@@ -300,55 +286,22 @@ a {
 
 .cover-project .project-logo img {
   width: 100%;
-  max-height: 150px;
+  height: auto;
+  max-height: 300px;
   object-fit: contain;
-}
-
-.cover-project h1 {
-  font-size: 3.15em;
-}
-
-.cover-project .subtitle {
-  font-size: 1.15em;
-  color: var(--muted);
-  max-width: 620px;
-}
-
-.cover-project .note {
-  font-size: 0.84em;
-  font-style: italic;
-  color: var(--muted);
-  margin-top: -2px;
 }
 
 .cover-project .powered-by {
   position: absolute;
   left: 50%;
-  bottom: 26px;
+  bottom: 32px;
   transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.78em;
-  color: var(--muted);
 }
 
 .cover-project .powered-by img {
-  height: 20px;
+  display: block;
+  height: 26px;
   width: auto;
-}
-
-.cover-project.lockup-only .cover-content {
-  gap: 14px;
-}
-
-.cover-project.lockup-only .project-logo {
-  width: 460px;
-  max-width: 82%;
-}
-
-.cover-project.lockup-only .project-logo img {
-  max-height: 170px;
 }
 
 .closing .fig-container {
@@ -367,85 +320,4 @@ a {
   width: auto;
   max-width: 54%;
   max-height: 26%;
-}
-
-/* ======================================================================
-   FINAL COVER OVERRIDE
-   Plain white cover. No cards. No dark background. No decorative panels.
-   Rest of the deck keeps the existing styling.
-   ====================================================================== */
-.cover-white-minimal {
-  background: #FFFFFF !important;
-  justify-content: center !important;
-  align-items: center !important;
-  text-align: center !important;
-  padding: 0 !important;
-  gap: 0 !important;
-}
-
-.cover-white-minimal::before {
-  display: none !important;
-}
-
-.cover-white-minimal .cover-content {
-  width: 100% !important;
-  height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  transform: none !important;
-}
-
-.cover-white-minimal .project-logo {
-  width: 620px !important;
-  max-width: 80% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-.cover-white-minimal .project-logo img {
-  display: block !important;
-  width: 100% !important;
-  height: auto !important;
-  max-height: 300px !important;
-  object-fit: contain !important;
-}
-
-.cover-white-minimal .powered-by {
-  position: absolute !important;
-  left: 50% !important;
-  bottom: 32px !important;
-  transform: translateX(-50%) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: transparent !important;
-  font-size: 0 !important;
-  white-space: nowrap !important;
-}
-
-.cover-white-minimal .powered-by img {
-  display: block !important;
-  height: 26px !important;
-  width: auto !important;
-}
-
-.cover-white-minimal h1,
-.cover-white-minimal .subtitle,
-.cover-white-minimal .note,
-.cover-white-minimal .top-bar,
-.cover-white-minimal .cover-kicker {
-  display: none !important;
 }

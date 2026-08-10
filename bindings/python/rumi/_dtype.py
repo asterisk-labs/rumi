@@ -34,9 +34,8 @@ try:
     import ml_dtypes
     for _key, _attr in _DL_TO_ML_NAME.items():
         _DL_TO_NP[_key] = getattr(ml_dtypes, _attr)
-    _HAVE_ML = True
 except ImportError:
-    _HAVE_ML = False
+    pass
 
 
 _NAMES: dict[int, str] = {0: "unknown"}

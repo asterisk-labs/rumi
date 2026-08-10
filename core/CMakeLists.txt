@@ -118,12 +118,15 @@ if(RUMI_BUILD_SHARED_LIB)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    install(FILES include/rumi.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    # The C ABI is the installed surface: rumi.h plus the .def it expands and
+    # the dlpack header it includes. rumi.hpp is internal and stays out.
+    install(FILES
+        include/rumi/rumi.h
+        include/rumi/rumi_dtypes.def
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rumi
     )
-    install(DIRECTORY include/rumi
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        FILES_MATCHING PATTERN "*.hpp"
+    install(FILES include/dlpack/dlpack.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dlpack
     )
 endif()
 

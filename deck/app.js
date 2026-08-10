@@ -10,14 +10,8 @@
   var slides = [];
   var cur = 0;
 
-  function triBar() {
-    return '<span></span><span></span><span></span>';
-  }
-
-  function dataImg(name, className, h) {
-    var cls = className ? ' class="' + className + '"' : '';
-    var style = h ? ' style="height:' + h + 'px"' : '';
-    return '<img data-src="' + name + '"' + cls + style + ' alt="">';
+  function dataImg(name) {
+    return '<img data-src="' + name + '" alt="">';
   }
 
   function buildCover() {
@@ -25,49 +19,20 @@
     var projectLogo = cfg.project_logo || 'rumi-lockup-tight.svg';
 
     var html =
-      '<section class="slide cover-project cover-white-minimal">' +
+      '<section class="slide cover-project">' +
         '<div class="cover-content">' +
           '<div class="project-logo">' + dataImg(projectLogo) + '</div>' +
         '</div>' +
-        '<div class="powered-by">' + dataImg(logo, '', 22) + '</div>' +
+        '<div class="powered-by">' + dataImg(logo) + '</div>' +
       '</section>';
 
     document.getElementById('cover-slot').innerHTML = html;
   }
 
-  function unique(arr) {
-    return arr.filter(function (x, i) {
-      return x && arr.indexOf(x) === i;
-    });
-  }
-
   function resolveImages() {
-    var preferred = cfg.assetBase || '../img/';
-    var bases = unique([
-      preferred,
-      '../img/',
-      './img/',
-      'img/',
-      '../',
-      './',
-      ''
-    ]);
-
+    var base = cfg.assetBase || '../img/';
     Array.prototype.forEach.call(document.querySelectorAll('img[data-src]'), function (el) {
-      var name = el.getAttribute('data-src');
-      var i = 0;
-
-      function tryNext() {
-        if (i >= bases.length) return;
-        el.onerror = tryNext;
-        el.src = bases[i++] + name;
-      }
-
-      el.onload = function () {
-        el.onerror = null;
-      };
-
-      tryNext();
+      el.src = base + el.getAttribute('data-src');
     });
   }
 
@@ -144,13 +109,4 @@
 
   goTo(0);
   resize();
-
-  if (window.renderMathInElement) {
-    renderMathInElement(document.body, {
-      delimiters: [
-        { left: '$$', right: '$$', display: true },
-        { left: '$', right: '$', display: false }
-      ]
-    });
-  }
 })();

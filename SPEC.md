@@ -50,7 +50,7 @@ A GeoTIFF is rumi compliant when all of the following hold.
 - `bits_per_sample` is `1`, `2`, `4`, `6`, `8`, `16`, `32`, `64`, or `128`
 - `SampleFormat` is `1`, `2`, `3`, `5`, `6`, or a rumi-private value in `100`..`106`
 - the `(sample_format, bits_per_sample)` pair is one listed in the sample encoding table
-- each tile payload is one self-contained OpenZL frame at OpenZL frame format version `<OPENZL_FORMAT_VERSION>`
+- each tile payload is one self-contained OpenZL frame, every frame in the file written at one pinned OpenZL frame format version
 - `TileOffsets` and `TileByteCounts` are present
 - `TileOffsets` and `TileByteCounts` have `tiles_across * tiles_down * samples_per_pixel` entries
 - no tile is sparse. Every tile payload is present and every `TileByteCounts` entry is greater than zero
@@ -76,7 +76,7 @@ For a single-sample image the three orderings coincide.
 
 ## Tile payloads
 
-Each tile payload is one self-contained OpenZL frame written at OpenZL frame format version `<OPENZL_FORMAT_VERSION>`. A writer MUST pin this version, not the latest available, so any reader built for it can decode every tile.
+Each tile payload is one self-contained OpenZL frame. A writer MUST pin one OpenZL frame format version and write every frame at it, not at the latest available, so any reader built for that version can decode every tile. `rumi_openzl_format_version()` reports the version a rumi build targets.
 
 A writer presents each tile to OpenZL as a typed numeric stream of the element type given by `sample_format` and `bits_per_sample`. OpenZL performs its own modelling and entropy coding and embeds the decode recipe in the frame. The OpenZL decoder reconstructs the tile from the frame, given the codecs the frame references. rumi stores no predictor and no codec metadata, because the frame carries its own decode recipe, including any custom codec parameters. This is why `Predictor` is fixed at `1`.
 

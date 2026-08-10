@@ -111,8 +111,7 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec,
 
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
-        say(msg,
-                 "rumi: could not allocate OpenZL decompression context");
+        say(msg, "rumi: could not allocate OpenZL decompression context");
         return RUMI_ERR_OOM;
     }
 
@@ -120,21 +119,20 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec,
         try {
             ws.compressed.resize(t.compressed_size);
         } catch (const std::bad_alloc&) {
-            say(msg,
-                     "rumi: out of memory growing compressed scratch");
+            say(msg, "rumi: out of memory growing compressed scratch");
             return RUMI_ERR_OOM;
         }
     }
 
-    // Frame bytes. Lockless under PRead, locked otherwise, decode runs after.
+    // Frame bytes, read positionally so every worker reads at once. The
+    // decode runs after.
     const std::size_t got = t.source->read(
         t.offset, t.compressed_size, ws.compressed.data());
     if (got != t.compressed_size) {
-        say(msg,
-                 "rumi: short read at %llu: %llu of %llu%s",
-                 static_cast<unsigned long long>(t.offset),
-                 static_cast<unsigned long long>(got),
-                 static_cast<unsigned long long>(t.compressed_size), img);
+        say(msg, "rumi: short read at %llu: %llu of %llu%s",
+            static_cast<unsigned long long>(t.offset),
+            static_cast<unsigned long long>(got),
+            static_cast<unsigned long long>(t.compressed_size), img);
         return RUMI_ERR_IO;
     }
 
@@ -146,8 +144,7 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec,
             try {
                 ws.scratch.resize(spec.tile_bytes);
             } catch (const std::bad_alloc&) {
-                say(msg,
-                         "rumi: out of memory growing tile scratch");
+                say(msg, "rumi: out of memory growing tile scratch");
                 return RUMI_ERR_OOM;
             }
         }
@@ -168,25 +165,22 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec,
             const char* what = geozl_owns_ctid(ctid)
                 ? "a geozl codec this build lacks, update geozl"
                 : "an unknown OpenZL custom codec";
-            say(msg,
-                     "rumi: file uses %s (CTid %lu)%s", what, ctid, img);
+            say(msg, "rumi: file uses %s (CTid %lu)%s", what, ctid, img);
             return RUMI_ERR_UNSUPPORTED;
         }
-        say(msg,
-                 "rumi: OpenZL decode failed: %s%s", ctx, img);
+        say(msg, "rumi: OpenZL decode failed: %s%s", ctx, img);
         return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
         info.fixedWidth != spec.bytes_per_sample ||
         info.decompressedByteSize != t.tile_bytes) {
-        say(msg,
-                 "rumi: unexpected tile output (type %u, width %u, size %llu; "
-                 "expected numeric width %u, size %llu)%s",
-                 static_cast<unsigned>(info.type),
-                 static_cast<unsigned>(info.fixedWidth),
-                 static_cast<unsigned long long>(info.decompressedByteSize),
-                 static_cast<unsigned>(spec.bytes_per_sample),
-                 static_cast<unsigned long long>(t.tile_bytes), img);
+        say(msg, "rumi: unexpected tile output (type %u, width %u, size %llu; "
+            "expected numeric width %u, size %llu)%s",
+            static_cast<unsigned>(info.type),
+            static_cast<unsigned>(info.fixedWidth),
+            static_cast<unsigned long long>(info.decompressedByteSize),
+            static_cast<unsigned>(spec.bytes_per_sample),
+            static_cast<unsigned long long>(t.tile_bytes), img);
         return RUMI_ERR_DECODE;
     }
 

@@ -58,7 +58,6 @@ int         rumi_api_version(void);
 const char* rumi_version_string(void);
 int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
-void        rumi_clear_error(void);
 void        rumi_free(void* ptr);
 
 size_t rumi_dtype_table(const rumi_dtype_info** out);
@@ -95,22 +94,6 @@ rumi_plan_ranges(const rumi_spec* spec, const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
                  rumi_range** out, size_t* out_count);
 
-rumi_status
-rumi_read(rumi_source* src, const rumi_spec* spec,
-          const int* bands, size_t n_bands,
-          int y_off, int y_size, int x_off, int x_size,
-          const char* pattern, int num_threads,
-          void* dst, size_t dst_size);
-
-rumi_status
-rumi_read_stack(rumi_source* const* sources,
-                const rumi_spec* const* specs, size_t n_images,
-                const int* n_index, size_t n_n,
-                const int* bands, size_t n_bands,
-                int y_off, int y_size, int x_off, int x_size,
-                const char* pattern, int num_threads,
-                void* dst, size_t dst_size);
-
 typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 
 rumi_status
@@ -136,12 +119,6 @@ typedef struct DLManagedTensor DLManagedTensor;
 DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 
 void rumi_dlpack_legacy_free(DLManagedTensor* t);
-
-rumi_status
-rumi_geokeys(uint32_t epsg, int pixel_is_point,
-             unsigned char** out_dir,   size_t* out_dir_size,
-             unsigned char** out_dbl,   size_t* out_dbl_size,
-             unsigned char** out_ascii, size_t* out_ascii_size);
 
 typedef struct {
     uint32_t      image_width;

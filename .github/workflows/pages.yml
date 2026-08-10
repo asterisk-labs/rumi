@@ -18,24 +18,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (no submodules)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false   # <-- evita el symlink roto de extern/openzl
+          submodules: false   # the deck needs nothing from the submodules
 
-      - name: Assemble site (solo el deck)
+      - name: Assemble site
         run: |
-          # Ajusta DECK_DIR si tu carpeta no se llama "deck"
-          DECK_DIR=deck
           mkdir -p _site
-          cp -r "$DECK_DIR"/. _site/deck/
+          cp -r deck/. _site/deck/
           cp -r img _site/img/
           ls -R _site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site   # <-- la clave: solo _site, NO "."
+          path: _site   # upload only the assembled site, never the repo root
 
   deploy:
     needs: build
