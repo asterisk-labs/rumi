@@ -2,7 +2,7 @@
 
 - Specification 0.1.0
 - Status Draft
-- Date 2026-06-27
+- Date 2026-08-09
 - License GPLv3
 
 rumi is a profile for GeoTIFF files paired with a compact binary header that lets a reader locate every tile without parsing the TIFF IFD. Tile payloads are compressed with OpenZL.
@@ -126,7 +126,7 @@ The header is 26 bytes.
 
 ### magic
 
-Identifies the blob as a rumi header. The value is `0x333C333C`, the little-endian reading of the ASCII bytes `<`, `3`, `<`, `3`. A reader MUST reject any blob with a different value.
+Identifies the blob as a rumi header. The value is `0x796D6173`. A reader MUST reject any blob with a different value.
 
 ### version
 
