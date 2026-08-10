@@ -91,3 +91,5 @@ demo_2d_full_lossy_qgis.tif
 *.rumi
 
 bench.tif
+
+*.tif

@@ -19,7 +19,8 @@ _PyCapsule_GetPointer = _pyapi.PyCapsule_GetPointer
 _PyCapsule_GetPointer.restype = ctypes.c_void_p
 _PyCapsule_GetPointer.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 
-_CAPSULE_NAME = b"dltensor_versioned"
+_VERSIONED_NAME = b"dltensor_versioned"
+_LEGACY_NAME = b"dltensor"
 
 _Destructor = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
@@ -28,9 +29,12 @@ def _capsule_destructor(capsule):
     # a still-valid name means no consumer took the tensor, so rumi frees
     try:
         cap = ctypes.c_void_p(capsule)
-        if _PyCapsule_IsValid(cap, _CAPSULE_NAME):
-            ptr = _PyCapsule_GetPointer(cap, _CAPSULE_NAME)
+        if _PyCapsule_IsValid(cap, _VERSIONED_NAME):
+            ptr = _PyCapsule_GetPointer(cap, _VERSIONED_NAME)
             lib.rumi_dlpack_free(ffi.cast("DLManagedTensorVersioned*", ptr))
+        elif _PyCapsule_IsValid(cap, _LEGACY_NAME):
+            ptr = _PyCapsule_GetPointer(cap, _LEGACY_NAME)
+            lib.rumi_dlpack_legacy_free(ffi.cast("DLManagedTensor*", ptr))
     except Exception:
         pass
 
@@ -58,9 +62,21 @@ class RumiArray:
                    dl_device=None, copy=None):
         if self._tensor is None:
             raise RuntimeError("this RumiArray was already exported")
-        addr = int(ffi.cast("uintptr_t", self._tensor))
-        capsule = _PyCapsule_New(
-            ctypes.c_void_p(addr), _CAPSULE_NAME, _c_destructor)
+        if dl_device is not None and tuple(dl_device) != (1, 0):
+            raise BufferError(f"rumi decodes on the CPU, not device {dl_device}")
+
+        # A consumer that names no version, or one before 1.0, gets the legacy
+        # capsule. Torch below 2.10 and tensorflow are in that group, and the
+        # versioned struct is a different shape, so the name alone is not it.
+        tensor, name = self._tensor, _VERSIONED_NAME
+        if max_version is None or tuple(max_version)[:1] < (1,):
+            tensor = lib.rumi_dlpack_legacy(tensor)
+            name = _LEGACY_NAME
+            if tensor == ffi.NULL:
+                raise MemoryError("could not wrap the tensor for DLPack 0.x")
+
+        addr = int(ffi.cast("uintptr_t", tensor))
+        capsule = _PyCapsule_New(ctypes.c_void_p(addr), name, _c_destructor)
         self._tensor = None
         return capsule
 
@@ -78,7 +94,7 @@ class RumiArray:
 
     def tensorflow(self):
         from tensorflow.experimental import dlpack as tf_dlpack
-        return tf_dlpack.from_dlpack(self.__dlpack__())
+        return tf_dlpack.from_dlpack(self.__dlpack__(max_version=(0, 8)))
 
     def __del__(self):
         tensor = self._tensor

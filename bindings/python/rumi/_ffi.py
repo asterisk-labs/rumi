@@ -118,6 +118,12 @@ rumi_read_stack_dlpack(const char* const* paths,
 
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
+typedef struct DLManagedTensor DLManagedTensor;
+
+DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
+
+void rumi_dlpack_legacy_free(DLManagedTensor* t);
+
 rumi_status
 rumi_geokeys(const char* srs, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,

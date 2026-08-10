@@ -4,11 +4,11 @@ from ._repr import _human, frame_html, frame_text
 
 _HEAD, _HEAD_TAIL = 5, 10  # rows either side of the gap, and when to cut
 _MAX_CELLS = 24            # past this the drawn face bins, one cell per block
-_COLS = ("tile", "cell", "band", "row", "col", "data", "compressed")
-_DIMS = ("band", "row", "col")
+_COLS = ("tile", "cell", "data", "compressed")
+_DIMS = ("band", "row", "col")  # indexable, but tile and cell already say them
 
 # What a column name may not be, since attach() puts one on Tile.
-_RESERVED = frozenset(_COLS) | {"index", "shape"}
+_RESERVED = frozenset(_COLS) | frozenset(_DIMS) | {"index", "shape"}
 
 
 class Tile:
@@ -232,7 +232,7 @@ class TileFrame:
                 return [f"{r}.{c}" for r, c in zip(self._row, self._col, strict=True)]
             col = {"band": self._band, "row": self._row, "col": self._col}
             if key not in col:
-                known = (*_COLS, *self._extra)
+                known = (*_COLS, *_DIMS, *self._extra)
                 raise KeyError(f"no column {key!r}, columns are {known}")
             return col[key].copy()
         # One tile at a time. A slice or a tuple would have to answer what a

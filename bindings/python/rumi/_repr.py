@@ -128,8 +128,8 @@ def _cells(r):
     """The column strings for one row tuple."""
     _, b, y, x, shape, size = r
     h, w = shape
-    return (f"{b}.{y}.{x}", f"{y}.{x}", str(b), str(y), str(x),
-            f"{w}\u00d7{h}", "\u00b7" if size < 0 else _human(size))
+    return (f"{b}.{y}.{x}", f"{y}.{x}", f"{w}\u00d7{h}",
+            "\u00b7" if size < 0 else _human(size))
 
 
 def _meta(f):

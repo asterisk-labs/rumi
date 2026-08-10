@@ -234,6 +234,14 @@ rumi_read_stack_dlpack(const char* const*      paths,
 // deleter, so a consumer and an unconsumed capsule free through one path.
 RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
+// Wraps a versioned tensor as the legacy DLManagedTensor, for a consumer that
+// asks for no version or one below 1.0. Takes ownership of t, whose deleter the
+// wrapper calls in its own. Release an unconsumed wrapper with
+// rumi_dlpack_legacy_free, never rumi_dlpack_free.
+RUMI_API DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
+
+RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
+
 
 // Writing.
 
