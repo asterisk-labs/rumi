@@ -588,6 +588,84 @@ rumi_read_stack_dlpack(const char* const* paths,
 }
 
 
+// Writing.
+
+extern "C" rumi_status
+rumi_write(const char*                 path,
+           const rumi_write_desc*      desc,
+           const unsigned char* const* frames,
+           const size_t*               sizes,
+           size_t                      frame_count,
+           unsigned char**             out_blob,
+           size_t*                     out_size)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!path || !desc || !frames || !sizes || !out_blob || !out_size) {
+            set_error("rumi_write: null argument");
+            return RUMI_ERR_INVALID;
+        }
+
+        rumi::WriteDesc d{};
+        d.image_width       = desc->image_width;
+        d.image_length      = desc->image_length;
+        d.tile_size         = desc->tile_size;
+        d.samples_per_pixel = desc->samples_per_pixel;
+        d.dtype             = desc->dtype;
+        d.transform         = desc->transform;
+        d.srs               = desc->srs ? desc->srs : "";
+        d.pixel_is_point    = desc->pixel_is_point != 0;
+        d.header_size       = desc->header_size;
+
+        auto result = rumi::write_file(path, d, frames, sizes, frame_count);
+        if (!result) {
+            set_error(result.error());
+            return RUMI_ERR_INVALID;
+        }
+
+        auto& blob = *result;
+        auto* buf  = static_cast<unsigned char*>(std::malloc(blob.size()));
+        if (!buf) {
+            set_error("allocation failed");
+            return RUMI_ERR_OOM;
+        }
+        std::memcpy(buf, blob.data(), blob.size());
+        *out_blob = buf;
+        *out_size = blob.size();
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!desc || !out) {
+            set_error("rumi_write_base_offset: null argument");
+            return RUMI_ERR_INVALID;
+        }
+
+        rumi::WriteDesc d{};
+        d.image_width       = desc->image_width;
+        d.image_length      = desc->image_length;
+        d.tile_size         = desc->tile_size;
+        d.samples_per_pixel = desc->samples_per_pixel;
+        d.dtype             = desc->dtype;
+        d.transform         = desc->transform;
+        d.srs               = desc->srs ? desc->srs : "";
+        d.pixel_is_point    = desc->pixel_is_point != 0;
+        d.header_size       = desc->header_size;
+
+        auto base = rumi::base_offset(d);
+        if (!base) {
+            set_error(base.error());
+            return RUMI_ERR_INVALID;
+        }
+        *out = *base;
+        return RUMI_OK;
+    });
+}
+
+
 // Geo keys.
 
 extern "C" rumi_status

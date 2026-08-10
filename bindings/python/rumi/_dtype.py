@@ -42,6 +42,7 @@ except ImportError:
 _NAMES: dict[int, str] = {0: "unknown"}
 _TO_NUMPY: dict[int, type] = {}
 _TO_ENCODING: dict[type, tuple[int, int]] = {}
+_TO_CODE: dict[type, int] = {}
 _NEEDS_ML: set[int] = set()
 
 
@@ -61,6 +62,7 @@ def _load_table() -> None:
         if np_type is not None:
             _TO_NUMPY[code] = np_type
             _TO_ENCODING[np_type] = (int(r.sample_format), int(r.bits))
+            _TO_CODE[np_type] = code
         elif key in _DL_TO_ML_NAME:
             _NEEDS_ML.add(code)
 
@@ -80,6 +82,10 @@ def numpy_dtype(rumi_dtype: int) -> type:
 
 def sample_encoding(dtype) -> tuple[int, int]:
     return _TO_ENCODING[np.dtype(dtype).type]
+
+
+def dtype_code(dtype) -> int:
+    return _TO_CODE[np.dtype(dtype).type]
 
 
 def name(rumi_dtype: int) -> str:

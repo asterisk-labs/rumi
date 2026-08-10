@@ -60,7 +60,7 @@ RUMI_API void rumi_clear_error(void);
 
 // Memory.
 
-// Releases buffers the library allocated. Only rumi_index_file and
+// Releases buffers the library allocated. Only rumi_index_file, rumi_write and
 // rumi_geokeys allocate, everything else is caller-owned.
 RUMI_API void rumi_free(void* ptr);
 
@@ -233,6 +233,43 @@ rumi_read_stack_dlpack(const char* const*      paths,
 // Frees a tensor from rumi_read_dlpack. Same function the tensor carries as its
 // deleter, so a consumer and an unconsumed capsule free through one path.
 RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
+
+
+// Writing.
+
+// One image to write. transform is six affine coefficients in the order
+// (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), NULL when
+// the image carries no georeferencing, in which case srs is NULL too. srs is
+// anything OSRSetFromUserInput accepts. header_size rounds the tile base up to
+// a multiple of itself, 0 packs tight.
+typedef struct {
+    uint32_t      image_width;
+    uint32_t      image_length;
+    uint16_t      tile_size;
+    uint16_t      samples_per_pixel;
+    rumi_dtype    dtype;
+    const double* transform;
+    const char*   srs;
+    int           pixel_is_point;
+    uint32_t      header_size;
+} rumi_write_desc;
+
+// Writes the file and hands back its header blob, *out_size bytes owned by the
+// caller and released with rumi_free. frames holds frame_count compressed tiles
+// in row, column, sample order with sample innermost, sizes one length each.
+// On failure the file is removed and the out-pointers are left untouched.
+RUMI_API rumi_status
+rumi_write(const char*                 path,
+           const rumi_write_desc*      desc,
+           const unsigned char* const* frames,
+           const size_t*               sizes,
+           size_t                      frame_count,
+           unsigned char**             out_blob,
+           size_t*                     out_size);
+
+// Where the tile data would start for this description, without writing.
+RUMI_API rumi_status
+rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 
 
 // Geo keys.

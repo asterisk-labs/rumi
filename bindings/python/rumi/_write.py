@@ -1,5 +1,4 @@
 from ._assemble import assemble
-from ._ffi import _blob_from_file
 
 
 def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
@@ -12,7 +11,8 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
     tf              a TileFrame with every tile compressed. rumi does not
                     compress, that is the caller's loop and the caller's choice
                     of graph.
-    transform       GDAL-style affine geotransform (6 coeffs); pairs with crs.
+    transform       affine coefficients (x_res, row_rot, x_origin, col_rot,
+                    y_res, y_origin); pairs with crs.
     crs             EPSG int or projection string; pairs with transform.
     pixel_is_point  anchor the pixel at its center (PixelIsPoint) rather than
                     its top-left corner (PixelIsArea, the default).
@@ -26,6 +26,6 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
             f"{len(missing)} of {len(frames)} tiles have no frame, first is "
             f"{missing[0]}; compress every tile before writing")
 
-    assemble(path, frames, tf, transform=transform, crs=crs,
-             pixel_is_point=pixel_is_point, header_size=header_size)
-    return path, _blob_from_file(path)
+    blob = assemble(path, frames, tf, transform=transform, crs=crs,
+                    pixel_is_point=pixel_is_point, header_size=header_size)
+    return path, blob

@@ -363,6 +363,38 @@ struct GeoKeys {
 [[nodiscard]] RUMI_API std::expected<GeoKeys, std::string>
 build_geokeys(std::string_view srs, bool pixel_is_point) noexcept;
 
+
+// Writer
+
+// One image to write. transform is six affine coefficients in the order
+// (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), null when
+// the image carries no georeferencing, in which case srs is empty too.
+// header_size rounds the tile base up to a multiple of itself, 0 packs tight.
+struct WriteDesc {
+    std::uint32_t    image_width{};
+    std::uint32_t    image_length{};
+    std::uint16_t    tile_size{};
+    std::uint16_t    samples_per_pixel{};
+    rumi_dtype       dtype{RUMI_DT_UNKNOWN};
+    const double*    transform{};
+    std::string_view srs{};
+    bool             pixel_is_point{};
+    std::uint32_t    header_size{};
+};
+
+// Writes the BigTIFF and returns the sidecar blob for it. frames are the
+// compressed tiles in frame order, row then column then sample, sample
+// innermost, which is also the order they land in the file.
+[[nodiscard]] RUMI_API std::expected<std::vector<std::byte>, std::string>
+write_file(const char* path, const WriteDesc& desc,
+           const unsigned char* const* frames, const std::size_t* sizes,
+           std::size_t frame_count) noexcept;
+
+// Where the tile data would start for this description, without writing. Builds
+// the geo tags to measure them, same as write_file.
+[[nodiscard]] RUMI_API std::expected<std::uint64_t, std::string>
+base_offset(const WriteDesc& desc) noexcept;
+
 // Point our own GDAL/PROJ at data dirs so the wheel finds its bundled proj.db.
 // Either may be NULL. Scoped to our GDAL, a host one is untouched.
 RUMI_API void set_proj_data(const char* proj_dir, const char* gdal_dir) noexcept;

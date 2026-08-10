@@ -69,6 +69,7 @@ set(RUMI_SOURCES
     src/parser.cpp
     src/builder.cpp
     src/geokeys.cpp
+    src/write.cpp
     src/plan.cpp
     src/read.cpp
     src/pattern.cpp

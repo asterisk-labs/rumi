@@ -123,6 +123,27 @@ rumi_geokeys(const char* srs, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
              unsigned char** out_dbl,   size_t* out_dbl_size,
              unsigned char** out_ascii, size_t* out_ascii_size);
+
+typedef struct {
+    uint32_t      image_width;
+    uint32_t      image_length;
+    uint16_t      tile_size;
+    uint16_t      samples_per_pixel;
+    rumi_dtype    dtype;
+    const double* transform;
+    const char*   srs;
+    int           pixel_is_point;
+    uint32_t      header_size;
+} rumi_write_desc;
+
+rumi_status
+rumi_write(const char* path, const rumi_write_desc* desc,
+           const unsigned char* const* frames, const size_t* sizes,
+           size_t frame_count,
+           unsigned char** out_blob, size_t* out_size);
+
+rumi_status
+rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 """
 
 
