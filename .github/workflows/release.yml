@@ -160,8 +160,12 @@ jobs:
           set -euo pipefail
           dll=$(ls staged/*rumi*.dll | head -1)
           echo "exports in $dll"
-          if ! dumpbin //exports "$dll" | grep -qi rumi_openzl_format_version; then
-            echo "::error::rumi.dll exports no rumi_* symbols, check RUMI_API dllexport and RUMI_BUILD"
+          missing=""
+          for sym in rumi_openzl_format_version rumi_write rumi_dlpack_legacy; do
+            dumpbin //exports "$dll" | grep -qi "$sym" || missing="$missing $sym"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::rumi.dll is missing$missing, check RUMI_API dllexport and RUMI_BUILD"
             dumpbin //exports "$dll" | head -60
             exit 1
           fi
@@ -270,12 +274,13 @@ jobs:
           mkdir -p wheelhouse
           cp /tmp/packed/*.whl wheelhouse/
           ls -1 wheelhouse/
-      - name: Install and smoke-test (GDAL-free)
+      - name: Install, smoke-test and run the suite (GDAL-free)
         # The wheel carries its own C++ runtime under a private soname
         # (libstdc++-rumi). conda's bash -el would load a second libstdc++ into the
         # process and PROJ segfaults on the first CRS parse. The bare manylinux
         # python keeps conda out, so the wheel stands alone the way a user install
-        # would.
+        # would. smoke.py writes a georeferenced file, which is what proves the
+        # bundled proj.db resolves a CRS; the suite then runs against the wheel.
         shell: bash
         env:
           LD_LIBRARY_PATH: ""
@@ -284,8 +289,9 @@ jobs:
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -c "import rumi; print('rumi', rumi.__version__)"
-          python -c "import rumi; from rumi._ffi import lib, ffi; o=[(ffi.new('unsigned char**'),ffi.new('size_t*')) for _ in range(3)]; rc=lib.rumi_geokeys(b'EPSG:32630',0,o[0][0],o[0][1],o[1][0],o[1][1],o[2][0],o[2][1]); err=lib.rumi_last_error(); assert rc==0,(ffi.string(err).decode() if err!=ffi.NULL else 'geokeys EPSG:32630 failed'); print('geokeys EPSG:32630 OK')"
+          python -m pip install pytest
+          python bindings/python/tests/smoke.py
+          python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -333,7 +339,7 @@ jobs:
           export DYLD_FALLBACK_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           mkdir -p wheelhouse
           delocate-wheel -w wheelhouse -v wheelhouse-raw/*.whl
-      - name: Install and smoke-test (GDAL-free)
+      - name: Install, smoke-test and run the suite (GDAL-free)
         # Clear the DYLD fallbacks so the only GDAL the test can reach is the one
         # delocate vendored into the wheel, not conda's from the repair step.
         shell: bash
@@ -345,8 +351,9 @@ jobs:
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -c "import rumi; print('rumi', rumi.__version__)"
-          python -c "import rumi; from rumi._ffi import lib, ffi; o=[(ffi.new('unsigned char**'),ffi.new('size_t*')) for _ in range(3)]; rc=lib.rumi_geokeys(b'EPSG:32630',0,o[0][0],o[0][1],o[1][0],o[1][1],o[2][0],o[2][1]); err=lib.rumi_last_error(); assert rc==0,(ffi.string(err).decode() if err!=ffi.NULL else 'geokeys EPSG:32630 failed'); print('geokeys EPSG:32630 OK')"
+          python -m pip install pytest
+          python bindings/python/tests/smoke.py
+          python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-macos-arm64
@@ -400,7 +407,7 @@ jobs:
             --add-path "$libbin" \
             -w wheelhouse wheelhouse-raw/*.whl
           ls -1 wheelhouse/
-      - name: Install and smoke-test (GDAL-free)
+      - name: Install, smoke-test and run the suite (GDAL-free)
         # A clean venv with no conda on PATH. The GDAL DLLs delvewheel vendored sit
         # next to rumi.dll in the package, which is where Windows resolves them.
         shell: bash
@@ -409,8 +416,9 @@ jobs:
           source /tmp/clean/Scripts/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -c "import rumi; print('rumi', rumi.__version__)"
-          python -c "import rumi; from rumi._ffi import lib, ffi; o=[(ffi.new('unsigned char**'),ffi.new('size_t*')) for _ in range(3)]; rc=lib.rumi_geokeys(b'EPSG:32630',0,o[0][0],o[0][1],o[1][0],o[1][1],o[2][0],o[2][1]); err=lib.rumi_last_error(); assert rc==0,(ffi.string(err).decode() if err!=ffi.NULL else 'geokeys EPSG:32630 failed'); print('geokeys EPSG:32630 OK')"
+          python -m pip install pytest
+          python bindings/python/tests/smoke.py
+          python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-windows-x86_64

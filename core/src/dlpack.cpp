@@ -16,7 +16,7 @@ extern "C" void rumi_dlpack_free(DLManagedTensorVersioned* self)
 
 // The wrapper holds the versioned tensor in manager_ctx, so shape and strides
 // stay pointed at memory that outlives it.
-static void legacy_free(DLManagedTensor* self)
+extern "C" void rumi_dlpack_legacy_free(DLManagedTensor* self)
 {
     if (!self) return;
     auto* inner = static_cast<DLManagedTensorVersioned*>(self->manager_ctx);
@@ -32,13 +32,8 @@ extern "C" DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t)
     if (!self) return nullptr;
     self->dl_tensor  = t->dl_tensor;
     self->manager_ctx = t;
-    self->deleter     = legacy_free;
+    self->deleter     = rumi_dlpack_legacy_free;
     return self;
-}
-
-extern "C" void rumi_dlpack_legacy_free(DLManagedTensor* self)
-{
-    legacy_free(self);
 }
 
 namespace rumi {

@@ -28,7 +28,7 @@ extern "C" {
 
 // Version.
 
-#define RUMI_API_VERSION 2
+#define RUMI_API_VERSION 1
 
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
