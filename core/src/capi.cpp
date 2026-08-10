@@ -1,8 +1,7 @@
 #include "rumi/rumi.hpp"
 
-#include "cpl_error.h"
-
 #include <cstdlib>
+#include <memory>
 #include <cstring>
 #include <exception>
 #include <initializer_list>
@@ -15,37 +14,24 @@
 
 // Error plumbing.
 
-// Thread-local last error. A scoped handler also captures CPLError from the core.
+// Thread-local last error, set by every entry point that fails.
 
 namespace {
 
 thread_local std::string g_last_error;
 
+// Move-assign, not assign(): the in-place form pulls a symbol from a newer
+// libstdc++ and raises the platform tag of the wheel.
 void set_error(std::string_view msg) noexcept
 {
-    try { g_last_error.assign(msg); } catch (...) { g_last_error.clear(); }
+    try { g_last_error = std::string(msg); } catch (...) { g_last_error.clear(); }
 }
-
-void CPL_STDCALL capture_cpl(CPLErr severity, CPLErrorNum, const char* msg)
-{
-    if ((severity == CE_Failure || severity == CE_Fatal) && msg) {
-        set_error(msg);
-    }
-}
-
-struct CplScope {
-    CplScope() noexcept  { CPLPushErrorHandler(&capture_cpl); }
-    ~CplScope() noexcept { CPLPopErrorHandler(); }
-    CplScope(const CplScope&)            = delete;
-    CplScope& operator=(const CplScope&) = delete;
-};
 
 template <typename F>
 rumi_status capi_call(F&& body) noexcept
 {
     // Clear so a stale message can't mask this call's error below.
     g_last_error.clear();
-    CplScope scope;
     try {
         return body();
     } catch (const std::bad_alloc&) {
@@ -102,13 +88,6 @@ extern "C" void rumi_free(void* ptr)
 {
     std::free(ptr);
 }
-
-extern "C" void
-rumi_set_data_paths(const char* proj_dir, const char* gdal_dir)
-{
-    rumi::set_proj_data(proj_dir, gdal_dir);
-}
-
 
 // Indexing.
 
@@ -213,12 +192,56 @@ std::vector<int> resolve_n_index(const int* n_index, size_t n_n, size_t total)
     return all;
 }
 
-// Message for the threaded path, where the worker's CPLError never reaches
-// the caller's handler and g_last_error is left empty.
+// Message for the threaded path, where a worker's message can be lost and
+// g_last_error is left empty.
 const char* k_unsupported_msg =
     "file uses a custom OpenZL codec this reader has not registered";
 
 }  // namespace
+
+
+// Sources.
+
+struct rumi_source {
+    std::unique_ptr<rumi::Source> impl;
+    explicit rumi_source(std::unique_ptr<rumi::Source> p) noexcept
+        : impl(std::move(p)) {}
+};
+
+extern "C" rumi_status rumi_source_file(const char* path, rumi_source** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!path || !out) {
+            set_error("rumi_source_file: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto src = rumi::FileSource::open(path);
+        if (!src) {
+            set_error(src.error());
+            return RUMI_ERR_IO;
+        }
+        *out = new rumi_source(std::move(*src));
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_source_memory(const void* data, size_t size, rumi_source** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!data || !out) {
+            set_error("rumi_source_memory: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        *out = new rumi_source(std::make_unique<rumi::MemorySource>(data, size));
+        return RUMI_OK;
+    });
+}
+
+extern "C" void rumi_source_free(rumi_source* src)
+{
+    delete src;
+}
 
 
 // Spec.
@@ -227,6 +250,37 @@ struct rumi_spec {
     rumi::Header h;
     explicit rumi_spec(rumi::Header&& hh) noexcept : h(std::move(hh)) {}
 };
+
+extern "C" rumi_status
+rumi_plan_ranges(const rumi_spec* spec,
+                 const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 rumi_range** out, size_t* out_count)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!spec || !out || !out_count) {
+            set_error("rumi_plan_ranges: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        const auto& h = spec->h;
+        const auto picked = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        auto ranges = rumi::plan_ranges(h, std::span<const int>(picked),
+                                        y_off, y_size, x_off, x_size);
+
+        const size_t n = ranges.size();
+        auto* buf = static_cast<rumi_range*>(
+            std::malloc(n ? n * sizeof(rumi_range) : 1));
+        if (!buf) {
+            set_error("allocation failed");
+            return RUMI_ERR_OOM;
+        }
+        for (size_t i = 0; i < n; ++i)
+            buf[i] = rumi_range{ranges[i].offset, ranges[i].length};
+        *out = buf;
+        *out_count = n;
+        return RUMI_OK;
+    });
+}
 
 namespace {
 
@@ -290,14 +344,14 @@ rumi_spec_header(const rumi_spec* spec, rumi_header* out)
 // Stateless read.
 
 extern "C" rumi_status
-rumi_read(const char* path, const rumi_spec* spec,
+rumi_read(rumi_source* src, const rumi_spec* spec,
           const int* bands, size_t n_bands,
           int y_off, int y_size, int x_off, int x_size,
           const char* pattern, int num_threads,
           void* dst, size_t dst_size)
 {
     return capi_call([&]() -> rumi_status {
-        if (!path || !spec || !dst) {
+        if (!src || !spec || !dst) {
             set_error("rumi_read: null argument");
             return RUMI_ERR_INVALID;
         }
@@ -333,7 +387,7 @@ rumi_read(const char* path, const rumi_spec* spec,
             return RUMI_ERR_INVALID;
         }
 
-        auto r = rumi::read_window(path, h,
+        auto r = rumi::read_window(*src->impl, h,
                                    std::span<const int>(picked),
                                    y_off, y_size, x_off, x_size,
                                    *plan, static_cast<std::byte*>(dst),
@@ -351,7 +405,7 @@ rumi_read(const char* path, const rumi_spec* spec,
 }
 
 extern "C" rumi_status
-rumi_read_stack(const char* const* paths,
+rumi_read_stack(rumi_source* const* sources,
                 const rumi_spec* const* specs, size_t n_images,
                 const int* n_index, size_t n_n,
                 const int* bands, size_t n_bands,
@@ -360,7 +414,7 @@ rumi_read_stack(const char* const* paths,
                 void* dst, size_t dst_size)
 {
     return capi_call([&]() -> rumi_status {
-        if (!paths || !specs || n_images == 0 || !dst) {
+        if (!sources || !specs || n_images == 0 || !dst) {
             set_error("rumi_read_stack: null or empty argument");
             return RUMI_ERR_INVALID;
         }
@@ -373,9 +427,11 @@ rumi_read_stack(const char* const* paths,
             return RUMI_ERR_INVALID;
         }
         for (size_t i = 0; i < n_images; ++i) {
-            if (!paths[i] || !specs[i]) {
-                set_error("rumi_read_stack: null entry at index "
-                          + std::to_string(i));
+            if (!sources[i] || !specs[i]) {
+                char msg[80];
+                std::snprintf(msg, sizeof(msg),
+                              "rumi_read_stack: null entry at index %zu", i);
+                set_error(msg);
                 return RUMI_ERR_INVALID;
             }
         }
@@ -411,11 +467,16 @@ rumi_read_stack(const char* const* paths,
         }
 
         std::vector<const rumi::Header*> headers;
+        std::vector<rumi::Source*>       srcs;
         headers.reserve(n_images);
-        for (size_t i = 0; i < n_images; ++i) headers.push_back(&specs[i]->h);
+        srcs.reserve(n_images);
+        for (size_t i = 0; i < n_images; ++i) {
+            headers.push_back(&specs[i]->h);
+            srcs.push_back(sources[i]->impl.get());
+        }
 
         auto r = rumi::read_stack(
-            std::span<const char* const>(paths, n_images),
+            std::span<rumi::Source* const>(srcs.data(), n_images),
             std::span<const rumi::Header* const>(headers.data(), n_images),
             std::span<const int>(picked_n),
             std::span<const int>(picked_b),
@@ -462,14 +523,14 @@ finish_dlpack(std::byte* buffer,
 }
 
 extern "C" rumi_status
-rumi_read_dlpack(const char* path, const rumi_spec* spec,
+rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                  const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
                  const char* pattern, int num_threads,
                  DLManagedTensorVersioned** out)
 {
     return capi_call([&]() -> rumi_status {
-        if (!path || !spec || !out) {
+        if (!src || !spec || !out) {
             set_error("rumi_read_dlpack: null argument");
             return RUMI_ERR_INVALID;
         }
@@ -505,7 +566,7 @@ rumi_read_dlpack(const char* path, const rumi_spec* spec,
             return RUMI_ERR_OOM;
         }
 
-        auto r = rumi::read_window(path, h, std::span<const int>(picked),
+        auto r = rumi::read_window(*src->impl, h, std::span<const int>(picked),
                                    y_off, y_size, x_off, x_size,
                                    *plan, buffer, num_threads);
         return finish_dlpack(buffer, r, h, *plan, out);
@@ -513,7 +574,7 @@ rumi_read_dlpack(const char* path, const rumi_spec* spec,
 }
 
 extern "C" rumi_status
-rumi_read_stack_dlpack(const char* const* paths,
+rumi_read_stack_dlpack(rumi_source* const* sources,
                        const rumi_spec* const* specs, size_t n_images,
                        const int* n_index, size_t n_n,
                        const int* bands, size_t n_bands,
@@ -522,7 +583,7 @@ rumi_read_stack_dlpack(const char* const* paths,
                        DLManagedTensorVersioned** out)
 {
     return capi_call([&]() -> rumi_status {
-        if (!paths || !specs || n_images == 0 || !out) {
+        if (!sources || !specs || n_images == 0 || !out) {
             set_error("rumi_read_stack_dlpack: null or empty argument");
             return RUMI_ERR_INVALID;
         }
@@ -535,9 +596,11 @@ rumi_read_stack_dlpack(const char* const* paths,
             return RUMI_ERR_INVALID;
         }
         for (size_t i = 0; i < n_images; ++i) {
-            if (!paths[i] || !specs[i]) {
-                set_error("rumi_read_stack_dlpack: null entry at index "
-                          + std::to_string(i));
+            if (!sources[i] || !specs[i]) {
+                char msg[80];
+                std::snprintf(msg, sizeof(msg),
+                              "rumi_read_stack_dlpack: null entry at index %zu", i);
+                set_error(msg);
                 return RUMI_ERR_INVALID;
             }
         }
@@ -567,8 +630,13 @@ rumi_read_stack_dlpack(const char* const* paths,
         }
 
         std::vector<const rumi::Header*> headers;
+        std::vector<rumi::Source*>       srcs;
         headers.reserve(n_images);
-        for (size_t i = 0; i < n_images; ++i) headers.push_back(&specs[i]->h);
+        srcs.reserve(n_images);
+        for (size_t i = 0; i < n_images; ++i) {
+            headers.push_back(&specs[i]->h);
+            srcs.push_back(sources[i]->impl.get());
+        }
 
         auto* buffer = static_cast<std::byte*>(std::malloc(need ? need : 1));
         if (!buffer) {
@@ -577,7 +645,7 @@ rumi_read_stack_dlpack(const char* const* paths,
         }
 
         auto r = rumi::read_stack(
-            std::span<const char* const>(paths, n_images),
+            std::span<rumi::Source* const>(srcs.data(), n_images),
             std::span<const rumi::Header* const>(headers.data(), n_images),
             std::span<const int>(picked_n),
             std::span<const int>(picked_b),
@@ -612,7 +680,7 @@ rumi_write(const char*                 path,
         d.samples_per_pixel = desc->samples_per_pixel;
         d.dtype             = desc->dtype;
         d.transform         = desc->transform;
-        d.srs               = desc->srs ? desc->srs : "";
+        d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
         d.header_size       = desc->header_size;
 
@@ -651,7 +719,7 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
         d.samples_per_pixel = desc->samples_per_pixel;
         d.dtype             = desc->dtype;
         d.transform         = desc->transform;
-        d.srs               = desc->srs ? desc->srs : "";
+        d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
         d.header_size       = desc->header_size;
 
@@ -669,19 +737,19 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
 // Geo keys.
 
 extern "C" rumi_status
-rumi_geokeys(const char* srs, int pixel_is_point,
+rumi_geokeys(uint32_t epsg, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
              unsigned char** out_dbl,   size_t* out_dbl_size,
              unsigned char** out_ascii, size_t* out_ascii_size)
 {
     return capi_call([&]() -> rumi_status {
-        if (!srs || !out_dir || !out_dir_size || !out_dbl || !out_dbl_size
-                 || !out_ascii || !out_ascii_size) {
+        if (!out_dir || !out_dir_size || !out_dbl || !out_dbl_size
+                     || !out_ascii || !out_ascii_size) {
             set_error("rumi_geokeys: null argument");
             return RUMI_ERR_INVALID;
         }
 
-        auto result = rumi::build_geokeys(srs, pixel_is_point != 0);
+        auto result = rumi::build_geokeys(epsg, pixel_is_point != 0);
         if (!result) {
             set_error(result.error());
             return RUMI_ERR_INVALID;
@@ -711,12 +779,4 @@ rumi_geokeys(const char* srs, int pixel_is_point,
         *out_ascii = bufs[2]; *out_ascii_size = result->ascii_params.size();
         return RUMI_OK;
     });
-}
-
-
-// GDAL driver.
-
-extern "C" void GDALRegister_RUMI(void)
-{
-    rumi::register_driver();
 }

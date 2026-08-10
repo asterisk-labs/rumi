@@ -3,14 +3,13 @@
 
 #include "geozl/geozl.h"
 
-#include "cpl_error.h"
-#include "cpl_vsi_virtual.h"
-
 #include "openzl/zl_decompress.h"    // ZL_DCtx, ZL_DCtx_decompressTyped, ZL_OutputInfo
 #include "openzl/zl_common_types.h"  // ZL_TernaryParam
 #include "openzl/zl_version.h"       // ZL_MAX_FORMAT_VERSION
 
 #include <atomic>
+#include <cstdarg>
+#include <mutex>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -92,14 +91,27 @@ bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
     return true;
 }
 
-rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
+// The failing task's message, formatted once and handed up to Executor.
+[[gnu::format(printf, 2, 3)]]
+void say(std::string& out, const char* fmt, ...) noexcept
+{
+    char buf[512];
+    std::va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    try { out = std::string(buf); } catch (...) { out.clear(); }
+}
+
+rumi_status execute_task(const TileTask& t, const TileSpec& spec,
+                         std::string& msg) noexcept
 {
     char img[24] = "";
     if (t.image) std::snprintf(img, sizeof img, " (image %u)", t.image);
 
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
-        CPLError(CE_Failure, CPLE_OutOfMemory,
+        say(msg,
                  "rumi: could not allocate OpenZL decompression context");
         return RUMI_ERR_OOM;
     }
@@ -108,19 +120,19 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
         try {
             ws.compressed.resize(t.compressed_size);
         } catch (const std::bad_alloc&) {
-            CPLError(CE_Failure, CPLE_OutOfMemory,
+            say(msg,
                      "rumi: out of memory growing compressed scratch");
             return RUMI_ERR_OOM;
         }
     }
 
     // Frame bytes. Lockless under PRead, locked otherwise, decode runs after.
-    const std::size_t got = t.reader->read(
+    const std::size_t got = t.source->read(
         t.offset, t.compressed_size, ws.compressed.data());
     if (got != t.compressed_size) {
-        CPLError(CE_Failure, CPLE_FileIO,
-                 "rumi: short read at " CPL_FRMT_GUIB ": %llu of %llu%s",
-                 static_cast<GUIntBig>(t.offset),
+        say(msg,
+                 "rumi: short read at %llu: %llu of %llu%s",
+                 static_cast<unsigned long long>(t.offset),
                  static_cast<unsigned long long>(got),
                  static_cast<unsigned long long>(t.compressed_size), img);
         return RUMI_ERR_IO;
@@ -134,7 +146,7 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
             try {
                 ws.scratch.resize(spec.tile_bytes);
             } catch (const std::bad_alloc&) {
-                CPLError(CE_Failure, CPLE_OutOfMemory,
+                say(msg,
                          "rumi: out of memory growing tile scratch");
                 return RUMI_ERR_OOM;
             }
@@ -156,18 +168,18 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec) noexcept
             const char* what = geozl_owns_ctid(ctid)
                 ? "a geozl codec this build lacks, update geozl"
                 : "an unknown OpenZL custom codec";
-            CPLError(CE_Failure, CPLE_NotSupported,
+            say(msg,
                      "rumi: file uses %s (CTid %lu)%s", what, ctid, img);
             return RUMI_ERR_UNSUPPORTED;
         }
-        CPLError(CE_Failure, CPLE_AppDefined,
+        say(msg,
                  "rumi: OpenZL decode failed: %s%s", ctx, img);
         return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
         info.fixedWidth != spec.bytes_per_sample ||
         info.decompressedByteSize != t.tile_bytes) {
-        CPLError(CE_Failure, CPLE_AppDefined,
+        say(msg,
                  "rumi: unexpected tile output (type %u, width %u, size %llu; "
                  "expected numeric width %u, size %llu)%s",
                  static_cast<unsigned>(info.type),
@@ -200,13 +212,19 @@ bool Executor::run(const Plan& plan) const
     if (plan.tasks.empty()) return true;
 
     std::atomic<int> st{RUMI_OK};
+    std::mutex       first;
 
-    const auto run_one = [&st, &plan](const TileTask& t) {
+    const auto run_one = [&st, &first, this, &plan](const TileTask& t) {
         if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
-        const rumi_status r = execute_task(t, plan.spec);
+        std::string msg;
+        const rumi_status r = execute_task(t, plan.spec, msg);
         if (r != RUMI_OK) {
             int expected = RUMI_OK;
-            st.compare_exchange_strong(expected, r, std::memory_order_relaxed);
+            if (st.compare_exchange_strong(expected, r,
+                                           std::memory_order_relaxed)) {
+                std::lock_guard lock(first);
+                error_ = std::move(msg);
+            }
         }
     };
 

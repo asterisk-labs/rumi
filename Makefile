@@ -1,5 +1,5 @@
 # make            build, stage the lib, editable install, smoke load
-# make build      build librumi and the GDAL plugin only
+# make build      build librumi only
 # make lib        build and stage the shared lib next to the binding (CI entry)
 # make test       build, install, then pytest
 # make r          build the R binding (skips until bindings/r exists)
@@ -9,14 +9,13 @@
 # make submodules fetch or update geozl (and OpenZL under it)
 
 # rumi build. `make help` lists the targets and the variables.
-# Vendors geozl as a submodule, fetched on first build. GDAL is a system
-# dependency, 3.8 or newer, found by find_package.
+# Vendors geozl as a submodule, fetched on first build. Nothing else is needed:
+# rumi links no system library beyond libc and the C++ runtime.
 
 PYTHON ?= python
 PREFIX ?= /usr/local
-BUILD  ?= Release
+BUILD_TYPE ?= Release
 GEN    ?= Ninja
-PLUGIN ?= ON
 
 CORE      := core
 BUILD_DIR := core/build
@@ -36,18 +35,10 @@ else
   LIBRUMI := librumi.so
 endif
 
-# Homebrew prefix on macOS so find_package picks up GDAL.
-BREW_PREFIX := $(shell brew --prefix 2>/dev/null)
-ifneq ($(BREW_PREFIX),)
-  PREFIX_FLAG := -DCMAKE_PREFIX_PATH=$(BREW_PREFIX)
-endif
-
-# RUMI_BUILD_SHARED_LIB is on because the Python binding dlopens that lib; the
-# plugin alone is what GDAL auto-loads and carries no C API.
+# RUMI_BUILD_SHARED_LIB is on because the Python binding dlopens that lib.
 CMAKE_FLAGS ?=
-CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD) \
-               -DRUMI_BUILD_SHARED_LIB=ON -DRUMI_BUILD_PLUGIN=$(PLUGIN) \
-               $(PREFIX_FLAG) $(CMAKE_FLAGS)
+CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+               -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
 .PHONY: all build configure lib stage-lib python test r sync \
         install submodules clean help
@@ -70,15 +61,17 @@ configure: $(GEOZL)/core/CMakeLists.txt
 build: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR)
 
-# Stage the shared lib next to the binding, cffi loads it from there.
+# Stage the shared lib next to the binding, cffi loads it from there. One file,
+# under the plain soname: a wheel turns the version symlinks into full copies,
+# and nothing here resolves a soname anyway, cffi dlopens the path it finds.
 lib: build
 	@mkdir -p $(PY_LIB_DIR)
 	@rm -f $(PY_LIB_DIR)/librumi* $(PY_LIB_DIR)/rumi*.dll
 	@f=$$(find $(BUILD_DIR) \( -name 'librumi*.dylib' \
-	        -o -name 'librumi*.so*' -o -name 'rumi*.dll' \) | head -1); \
+	        -o -name 'librumi*.so.*' -o -name 'rumi*.dll' \) \
+	      -type f | head -1); \
 	  [ -n "$$f" ] || { echo "no $(LIBRUMI) under $(BUILD_DIR)"; exit 1; }; \
-	  cp -a "$$(dirname "$$f")"/librumi* $(PY_LIB_DIR)/ 2>/dev/null || true; \
-	  cp -a "$$(dirname "$$f")"/rumi*.dll $(PY_LIB_DIR)/ 2>/dev/null || true; \
+	  cp "$$f" $(PY_LIB_DIR)/$(LIBRUMI); \
 	  echo "staged $(LIBRUMI) into $(PY_LIB_DIR)"
 
 # Copy the lib to STAGE_DIR for upload-artifact, no glob logic in the YAML.
@@ -104,7 +97,7 @@ test: python
 	  rc=$$?; if [ $$rc -eq 5 ]; then echo "no tests collected"; \
 	  elif [ $$rc -ne 0 ]; then exit $$rc; fi
 
-# R binding (terra, system GDAL). Skips cleanly until bindings/r exists.
+# R binding. Skips cleanly until bindings/r exists.
 r:
 	@if [ ! -d $(R_DIR) ]; then \
 	  echo "no R binding yet ($(R_DIR) absent); skipping"; \
@@ -142,7 +135,7 @@ clean:
 
 help:
 	@echo "make            build, stage the lib, editable install, smoke load"
-	@echo "make build      build librumi and the GDAL plugin only"
+	@echo "make build      build librumi only"
 	@echo "make lib        build and stage the shared lib next to the binding (CI entry)"
 	@echo "make test       build, install, then pytest"
 	@echo "make r          build the R binding (skips until $(R_DIR) exists)"
@@ -151,10 +144,6 @@ help:
 	@echo "make clean      remove all build output, caches and generated files"
 	@echo "make submodules fetch or update geozl (and OpenZL under it)"
 	@echo ""
-	@echo "vars  BUILD=Debug  PYTHON=python3.12  GEN='Unix Makefiles'  PREFIX=/opt"
-	@echo "      PLUGIN=OFF (skip the GDAL auto-load plugin, lib only)"
-	@echo "      STAGE_DIR=out  CMAKE_FLAGS=-DCMAKE_PREFIX_PATH=/opt/gdal"
+	@echo "vars  BUILD_TYPE=Debug  PYTHON=python3.12  GEN='Unix Makefiles'  PREFIX=/opt"
+	@echo "      STAGE_DIR=out  CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Debug"
 	@echo ""
-	@echo "GDAL 3.8 or newer is a system dependency. To use the plugin without"
-	@echo "installing, point GDAL at the build tree:"
-	@echo "      GDAL_DRIVER_PATH=$(BUILD_DIR) gdalinfo -oo RUMI_HEADER=... file.rumi"

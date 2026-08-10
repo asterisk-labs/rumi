@@ -26,15 +26,25 @@ std::unexpected<std::string> err(const char* fmt, ...)
     return std::unexpected(std::string(buf));
 }
 
-struct VsiCloser {
-    void operator()(VSILFILE* f) const noexcept { if (f) VSIFCloseL(f); }
+struct FileCloser {
+    void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); }
 };
-using VsiPtr = std::unique_ptr<VSILFILE, VsiCloser>;
+using FilePtr = std::unique_ptr<std::FILE, FileCloser>;
 
-bool read_at(VSILFILE* fp, std::uint64_t off, void* dst, std::size_t n) noexcept
+// 64-bit seek, which plain fseek is not on 32-bit Windows.
+bool seek64(std::FILE* fp, std::uint64_t off) noexcept
 {
-    if (VSIFSeekL(fp, off, SEEK_SET) != 0) return false;
-    return VSIFReadL(dst, 1, n, fp) == n;
+#ifdef _WIN32
+    return _fseeki64(fp, static_cast<__int64>(off), SEEK_SET) == 0;
+#else
+    return std::fseek(fp, static_cast<long>(off), SEEK_SET) == 0;
+#endif
+}
+
+bool read_at(std::FILE* fp, std::uint64_t off, void* dst, std::size_t n) noexcept
+{
+    if (!seek64(fp, off)) return false;
+    return std::fread(dst, 1, n, fp) == n;
 }
 
 // One BigTIFF IFD entry. value is inline when it fits 8 bytes, else an offset.
@@ -72,9 +82,9 @@ build_blob_from_file(const char* path) noexcept
 {
     if (!path) return err("path is null");
 
-    VsiPtr file(VSIFOpenL(path, "rb"));
+    FilePtr file(std::fopen(path, "rb"));
     if (!file) return err("could not open: %s", path);
-    VSILFILE* fp = file.get();
+    std::FILE* fp = file.get();
 
     // BigTIFF header. II, version 43, 8-byte offsets, then the first IFD offset.
     unsigned char hdr[16];

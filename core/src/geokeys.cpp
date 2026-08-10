@@ -1,141 +1,117 @@
 #include "rumi/rumi.hpp"
 
-#include "gdal_priv.h"
-#include "ogr_spatialref.h"
-#include "cpl_conv.h"
-#include "cpl_string.h"
-#include "cpl_vsi.h"
-
-#include <atomic>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <string>
+#include <vector>
 
 namespace rumi {
 namespace {
 
-constexpr std::uint16_t TAG_DIRECTORY = 34735;  // SHORT
-constexpr std::uint16_t TAG_DOUBLE    = 34736;  // DOUBLE
-constexpr std::uint16_t TAG_ASCII     = 34737;  // ASCII
+[[gnu::format(printf, 1, 2)]]
+std::unexpected<std::string> err(const char* fmt, ...)
+{
+    char buf[256];
+    std::va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    return std::unexpected(std::string(buf));
+}
 
-std::size_t tiff_type_size(std::uint16_t type) noexcept {
-    switch (type) {
-        case 2:  return 1;   // ASCII
-        case 3:  return 2;   // SHORT
-        case 12: return 8;   // DOUBLE
-        default: return 0;
+// GeoTIFF key ids. https://docs.ogc.org/is/19-008r4/19-008r4.html
+constexpr std::uint16_t GT_MODEL_TYPE   = 1024;
+constexpr std::uint16_t GT_RASTER_TYPE  = 1025;
+constexpr std::uint16_t GEOGRAPHIC_TYPE = 2048;
+constexpr std::uint16_t PROJECTED_TYPE  = 3072;
+
+constexpr std::uint16_t MODEL_PROJECTED  = 1;
+constexpr std::uint16_t MODEL_GEOGRAPHIC = 2;
+constexpr std::uint16_t RASTER_AREA      = 1;
+constexpr std::uint16_t RASTER_POINT     = 2;
+
+// Geographic or projected is not readable off the number. EPSG:4037 sits inside
+// the geographic block and is projected, and it has company. The table is
+// generated from the registry by tools/gen_epsg_kinds.py.
+struct CodeRange {
+    std::uint32_t lo;
+    std::uint32_t hi;
+};
+
+#define RUMI_EPSG_BEGIN(kind)          constexpr CodeRange kind##_RANGES[] = {
+#define RUMI_EPSG_RANGE(kind, lo, hi)      {lo, hi},
+#define RUMI_EPSG_END(kind)            };
+#include "rumi/epsg_kinds.def"
+#undef RUMI_EPSG_BEGIN
+#undef RUMI_EPSG_RANGE
+#undef RUMI_EPSG_END
+
+template <std::size_t N>
+bool in_table(const CodeRange (&t)[N], std::uint32_t epsg) noexcept
+{
+    std::size_t lo = 0, hi = N;
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        if (epsg < t[mid].lo)       hi = mid;
+        else if (epsg > t[mid].hi)  lo = mid + 1;
+        else                        return true;
     }
+    return false;
 }
 
-std::uint16_t rd16(std::span<const std::byte> b, std::size_t o) noexcept {
-    return std::uint16_t(std::to_integer<unsigned>(b[o]) |
-                         std::to_integer<unsigned>(b[o + 1]) << 8);
+bool is_geographic(std::uint32_t epsg) noexcept
+{
+    return in_table(GEOGRAPHIC_RANGES, epsg);
 }
 
-std::uint32_t rd32(std::span<const std::byte> b, std::size_t o) noexcept {
-    return std::uint32_t(std::to_integer<unsigned>(b[o])            |
-                         std::to_integer<unsigned>(b[o + 1]) << 8   |
-                         std::to_integer<unsigned>(b[o + 2]) << 16  |
-                         std::to_integer<unsigned>(b[o + 3]) << 24);
+bool is_projected(std::uint32_t epsg) noexcept
+{
+    return in_table(PROJECTED_RANGES, epsg);
 }
 
-// Walk the classic little-endian probe IFD and lift the three CRS tags.
-std::expected<GeoKeys, std::string>
-lift_geo_tags(std::span<const std::byte> t) {
-    if (t.size() < 8 || rd16(t, 0) != 0x4949 || rd16(t, 2) != 42)
-        return std::unexpected("probe is not classic little-endian TIFF");
-
-    const std::uint32_t ifd = rd32(t, 4);
-    if (std::size_t(ifd) + 2 > t.size())
-        return std::unexpected("probe IFD out of range");
-    const std::uint16_t n = rd16(t, ifd);
-
-    GeoKeys out;
-    for (std::uint16_t i = 0; i < n; ++i) {
-        const std::size_t e = std::size_t(ifd) + 2 + std::size_t(i) * 12;
-        if (e + 12 > t.size())
-            return std::unexpected("probe entry out of range");
-
-        const std::uint16_t tag  = rd16(t, e);
-        std::vector<std::byte>* dst =
-            tag == TAG_DIRECTORY ? &out.directory
-          : tag == TAG_DOUBLE    ? &out.double_params
-          : tag == TAG_ASCII     ? &out.ascii_params
-          : nullptr;
-        if (!dst) continue;
-
-        const std::uint16_t type  = rd16(t, e + 2);
-        const std::size_t   bytes = std::size_t(rd32(t, e + 4)) * tiff_type_size(type);
-        const std::size_t   at    = bytes <= 4 ? e + 8 : rd32(t, e + 8);
-        if (at + bytes > t.size())
-            return std::unexpected("probe tag payload out of range");
-
-        dst->assign(t.begin() + at, t.begin() + at + bytes);
-    }
-
-    if (out.directory.empty())
-        return std::unexpected("probe carried no GeoKeyDirectory");
-    return out;
+void put16(std::vector<std::byte>& out, std::uint16_t v)
+{
+    const std::size_t at = out.size();
+    out.resize(at + 2);
+    std::memcpy(out.data() + at, &v, 2);
 }
 
 }  // namespace
 
+
 std::expected<GeoKeys, std::string>
-build_geokeys(std::string_view srs, bool pixel_is_point) noexcept
+build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept
 try {
-    OGRSpatialReference osr;
-    if (osr.SetFromUserInput(std::string(srs).c_str()) != OGRERR_NONE)
-        return std::unexpected("unrecognised CRS: " + std::string(srs));
+    const bool geographic = is_geographic(epsg);
+    if (!geographic && !is_projected(epsg))
+        return err("EPSG:%u is not a projected or geographic CRS. Pass GeoTIFF "
+                   "keys directly for a CRS no EPSG code names.", epsg);
 
-    GDALAllRegister();  // idempotent; needed before GTiff is available
-    GDALDriver* drv = GetGDALDriverManager()->GetDriverByName("GTiff");
-    if (!drv)
-        return std::unexpected("GTiff driver unavailable");
+    // Ascending key id, which the format requires.
+    const std::uint16_t keys[][4] = {
+        {GT_MODEL_TYPE,  0, 1, geographic ? MODEL_GEOGRAPHIC : MODEL_PROJECTED},
+        {GT_RASTER_TYPE, 0, 1, pixel_is_point ? RASTER_POINT : RASTER_AREA},
+        {geographic ? GEOGRAPHIC_TYPE : PROJECTED_TYPE, 0, 1,
+         static_cast<std::uint16_t>(epsg)},
+    };
+    constexpr std::size_t n = sizeof(keys) / sizeof(keys[0]);
 
-    // Unique path so concurrent callers never collide in the shared vsimem.
-    static std::atomic<std::uint64_t> seq{0};
-    const std::string path = "/vsimem/rumi_geokeys_" +
-        std::to_string(seq.fetch_add(1, std::memory_order_relaxed)) + ".tif";
+    GeoKeys out;
+    out.directory.reserve((4 + 4 * n) * 2);
+    put16(out.directory, 1);  // KeyDirectoryVersion
+    put16(out.directory, 1);  // KeyRevision
+    put16(out.directory, 0);  // MinorRevision
+    put16(out.directory, static_cast<std::uint16_t>(n));
+    for (const auto& k : keys)
+        for (std::uint16_t v : k) put16(out.directory, v);
 
-    // Classic little-endian pins the read-back to a single fixed IFD shape.
-    char** opts = nullptr;
-    opts = CSLSetNameValue(opts, "BIGTIFF", "NO");
-    opts = CSLSetNameValue(opts, "ENDIANNESS", "LITTLE");
-    GDALDataset* ds = drv->Create(path.c_str(), 1, 1, 1, GDT_Byte, opts);
-    CSLDestroy(opts);
-    if (!ds) {
-        VSIUnlink(path.c_str());
-        return std::unexpected("could not create CRS probe");
-    }
-
-    ds->SetSpatialRef(&osr);
-    double gt[6] = {0.0, 1.0, 0.0, 0.0, 0.0, -1.0};
-    ds->SetGeoTransform(gt);
-    ds->SetMetadataItem("AREA_OR_POINT", pixel_is_point ? "Point" : "Area");
-    GDALClose(ds);  // flushes the keys into the vsimem buffer
-
-    vsi_l_offset size = 0;
-    GByte* buf = VSIGetMemFileBuffer(path.c_str(), &size, /*bUnlinkAndSeize=*/false);
-    auto keys = buf
-        ? lift_geo_tags({reinterpret_cast<const std::byte*>(buf), size})
-        : std::expected<GeoKeys, std::string>(
-              std::unexpected("CRS probe produced no bytes"));
-    VSIUnlink(path.c_str());
-    return keys;
+    // double_params and ascii_params stay empty: the code carries everything,
+    // so there are no parameters to spill into the companion tags.
+    return out;
 }
 catch (const std::exception& e) {
-    return std::unexpected(std::string("build_geokeys: ") + e.what());
-}
-
-void set_proj_data(const char* proj_dir, const char* gdal_dir) noexcept
-{
-    // Vendored PROJ has no proj.db off-conda. Point our own GDAL at the bundled
-    // one. Scoped to our GDAL, so a host rasterio in the process is untouched.
-    if (proj_dir && *proj_dir) {
-        const char* paths[] = {proj_dir, nullptr};
-        OSRSetPROJSearchPaths(paths);
-    }
-    if (gdal_dir && *gdal_dir) {
-        CPLSetConfigOption("GDAL_DATA", gdal_dir);
-    }
+    return err("build_geokeys: %s", e.what());
 }
 
 }  // namespace rumi

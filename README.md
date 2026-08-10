@@ -73,14 +73,14 @@ arr = rumi.read("scene.tif", header, b=[0, 3], y=(0, 512), x=(0, 512))
 </p>
 
 <p align="center">
-  <i>One VSI path plus one header is one row, so a collection of files is a table.</i>
+  <i>One path plus one header is one row, so a collection of files is a table.</i>
 </p>
 
 **The header is a bypass.** A normal reader has to scan the file before it can touch a pixel. Open it, parse the IFD, load the offset arrays, then seek. With the header in hand there is nothing to discover. The reader computes the byte range and goes straight to the data. Reads become stateless, no open, no parse, nothing cached per file.
 
 **It is also far smaller.** A BigTIFF IFD spends 16 bytes per tile on `TileOffsets` and `TileByteCounts`, plus the tag block itself. rumi stores 4 bytes per tile and nothing else, because the layout is fixed and everything else is predictable.
 
-So it is a row. A VSI path in one column, the header bytes in the other. That pair is everything you need to open a scene, so a million scenes is a million rows and nothing else. The collection stops being a pile of files and becomes one object you can query, where reaching any tile in it costs a single seek.
+So it is a row. A path in one column, the header bytes in the other. That pair is everything you need to open a scene, so a million scenes is a million rows and nothing else. The collection stops being a pile of files and becomes one object you can query, where reaching any tile in it costs a single seek.
 
 ```python
 import pyarrow as pa
@@ -89,7 +89,7 @@ import pyarrow.parquet as pq
 rows = []
 for scene, tf in scenes:
     path, header = rumi.write(scene, tf)
-    rows.append({"vsi_path": path, "rumi_header": header})
+    rows.append({"path": str(path), "rumi_header": header})
 
 pq.write_table(pa.Table.from_pylist(rows), "catalog.parquet")
 ```
@@ -99,7 +99,7 @@ A read then takes the row and goes straight to the pixels.
 ```python
 row = pq.read_table("catalog.parquet").to_pylist()[0]
 
-chip = rumi.read(row["vsi_path"], row["rumi_header"], y=(0, 512), x=(0, 512))
+chip = rumi.read(row["path"], row["rumi_header"], y=(0, 512), x=(0, 512))
 ```
 
 ## Data model

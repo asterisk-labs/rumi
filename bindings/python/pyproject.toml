@@ -18,7 +18,6 @@ authors = [
 dependencies = [
     "numpy>=1.24",
     "cffi>=1.17",
-    "certifi",
 ]
 
 classifiers = [
@@ -65,7 +64,6 @@ artifacts = [
     "rumi/_lib/*.so.*",
     "rumi/_lib/*.dylib",
     "rumi/_lib/*.dll",
-    "rumi/_lib/proj/**",
 ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
@@ -83,7 +81,6 @@ exclude = [
     "rumi/_lib/*.so.*",
     "rumi/_lib/*.dylib",
     "rumi/_lib/*.dll",
-    "rumi/_lib/proj/**",
 ]
 
 

@@ -27,10 +27,9 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
-// The dtype set, expanded once from rumi_dtypes.def. GDAL is a separate switch
-// below, not a column here, so this ABI-facing struct pulls in no GDAL header.
+// The dtype set, expanded once from rumi_dtypes.def.
 static const rumi_dtype_info k_dtype_table[] = {
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \
     { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
       static_cast<std::uint8_t>(dlbits), name },
 #include "rumi/rumi_dtypes.def"
@@ -68,22 +67,6 @@ std::size_t dtype_size(rumi_dtype dt) noexcept
         }
     }
     return 0;
-}
-
-// Same table's GDAL column. G_NONE is GDT_Unknown, the types with no GDAL enum
-// (float16, the float8s), which stay native-API only.
-GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept
-{
-#define G_NONE GDT_Unknown
-    switch (dt) {
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
-        case RUMI_DT_##sym: return gdal;
-#include "rumi/rumi_dtypes.def"
-#undef RUMI_DTYPE
-        case RUMI_DT_UNKNOWN: break;
-    }
-    return GDT_Unknown;
-#undef G_NONE
 }
 
 std::expected<Header, ParseError>
@@ -132,7 +115,6 @@ parse_blob(std::span<const std::byte> blob)
     h.sample_format     = bh.sample_format;
     h.base_tiles_offset = bh.base_tiles_offset;
     h.dtype             = dt;
-    h.gdal_type         = dtype_to_gdal(dt);
     // Codec element width, bytes for whole-byte types and 1 for packed sub-byte.
     h.bytes_per_sample  = (bh.bits_per_sample >= 8)
                         ? (bh.bits_per_sample / 8u) : 1u;

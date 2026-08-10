@@ -1,11 +1,11 @@
 #include "rumi/rumi.hpp"
 #include "rumi/thread_pool.hpp"
 
-#include "cpl_vsi_virtual.h"
-
 #include <algorithm>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <expected>
 #include <iterator>
@@ -13,6 +13,15 @@
 #include <mutex>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#else
+#  include <fcntl.h>
+#  include <sys/stat.h>
+#  include <unistd.h>
+#endif
 
 namespace rumi {
 namespace {
@@ -22,10 +31,19 @@ std::unexpected<std::string> err(std::string msg)
     return std::unexpected(std::move(msg));
 }
 
-struct FileCloser {
-    void operator()(VSILFILE* f) const noexcept { if (f) VSIFCloseL(f); }
-};
-using FilePtr = std::unique_ptr<VSILFILE, FileCloser>;
+// printf-checked. Error paths format into a buffer rather than concatenating
+// std::string, which pulls a symbol from a newer libstdc++ and raises the
+// platform tag of the wheel.
+[[gnu::format(printf, 1, 2)]]
+std::unexpected<std::string> errf(const char* fmt, ...)
+{
+    char buf[256];
+    std::va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    return std::unexpected(std::string(buf));
+}
 
 // Set by read_window on the calling thread, read by the C ABI after the call
 // returns.
@@ -38,8 +56,7 @@ validate_request(const Header& h, std::span<const int> bands,
     if (bands.empty()) return err("no bands selected");
     for (int b : bands) {
         if (b < 1 || b > h.samples_per_pixel) {
-            return err("band " + std::to_string(b) + " out of range [1, "
-                       + std::to_string(h.samples_per_pixel) + "]");
+            return errf("band %d out of range [1, %u]", b, h.samples_per_pixel);
         }
     }
     if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
@@ -68,35 +85,98 @@ rumi_status take_read_status() noexcept
 
 
 std::expected<void, std::string>
-check_data_fits(const Header& h, VSILFILE* fp)
+check_data_fits(const Header& h, const Source& src)
 {
-    if (VSIFSeekL(fp, 0, SEEK_END) != 0) return err("could not size the file");
-    const vsi_l_offset size = VSIFTellL(fp);
-    VSIFSeekL(fp, 0, SEEK_SET);
+    const std::uint64_t size = src.size();
     const std::uint64_t need = h.data_end();
     if (need > size) {
-        return err("tile data needs " + std::to_string(need)
-                   + " bytes, file has " + std::to_string(size));
+        return errf("tile data needs %llu bytes, source has %llu",
+                    static_cast<unsigned long long>(need),
+                    static_cast<unsigned long long>(size));
     }
     return {};
 }
 
 
-// File reader
+// Sources
 
-FileReader::FileReader(VSILFILE* fp) noexcept
-    : fp_(fp), has_pread_(fp->HasPRead())
+std::expected<std::unique_ptr<FileSource>, std::string>
+FileSource::open(const char* path) noexcept
 {
+    std::unique_ptr<FileSource> src(new (std::nothrow) FileSource);
+    if (!src) return errf("out of memory opening %s", path);
+
+#ifdef _WIN32
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return errf("could not open: %s", path);
+    LARGE_INTEGER n{};
+    if (!GetFileSizeEx(h, &n)) {
+        CloseHandle(h);
+        return errf("could not size: %s", path);
+    }
+    src->handle_ = h;
+    src->size_   = static_cast<std::uint64_t>(n.QuadPart);
+#else
+    const int fd = ::open(path, O_RDONLY);
+    if (fd < 0) return errf("could not open: %s", path);
+    struct stat st {};
+    if (::fstat(fd, &st) != 0) {
+        ::close(fd);
+        return errf("could not size: %s", path);
+    }
+    src->fd_   = fd;
+    src->size_ = static_cast<std::uint64_t>(st.st_size);
+#endif
+    return src;
+}
+
+FileSource::~FileSource()
+{
+#ifdef _WIN32
+    if (handle_) CloseHandle(static_cast<HANDLE>(handle_));
+#else
+    if (fd_ >= 0) ::close(fd_);
+#endif
+}
+
+// Positional, so no lock and no shared cursor. Every worker reads at once.
+std::size_t
+FileSource::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
+{
+    auto* out = static_cast<std::byte*>(buffer);
+    std::size_t done = 0;
+    while (done < count) {
+#ifdef _WIN32
+        OVERLAPPED ov{};
+        ov.Offset     = static_cast<DWORD>((offset + done) & 0xFFFFFFFFu);
+        ov.OffsetHigh = static_cast<DWORD>((offset + done) >> 32);
+        DWORD got = 0;
+        if (!ReadFile(static_cast<HANDLE>(handle_), out + done,
+                      static_cast<DWORD>(count - done), &got, &ov) || got == 0)
+            break;
+#else
+        const ssize_t got = ::pread(fd_, out + done, count - done,
+                                    static_cast<off_t>(offset + done));
+        if (got < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (got == 0) break;
+#endif
+        done += static_cast<std::size_t>(got);
+    }
+    return done;
 }
 
 std::size_t
-FileReader::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
+MemorySource::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
 {
-    if (has_pread_) {
-        return fp_->PRead(buffer, count, offset);
-    }
-    std::lock_guard lock(mutex_);
-    return fp_->Seek(offset, SEEK_SET) == 0 ? fp_->Read(buffer, 1, count) : 0;
+    if (offset >= size_) return 0;
+    const std::size_t n =
+        std::min<std::uint64_t>(count, size_ - offset);
+    std::memcpy(buffer, data_ + offset, n);
+    return n;
 }
 
 
@@ -112,11 +192,11 @@ TileSpec make_tile_spec(const Header& h) noexcept
 
 // One TileTask per intersecting (tile, band). A full tile with contiguous
 // output decodes straight into the buffer; the rest goes through scratch.
-Plan build_plan(const Header& h, FileReader* reader,
+Plan build_plan(const Header& h, Source* source,
                 int x_off, int y_off, int x_size, int y_size,
                 std::byte* data,
                 std::span<const int> bands,
-                GSpacing pixel_space, GSpacing line_space, GSpacing band_space)
+                std::int64_t pixel_space, std::int64_t line_space, std::int64_t band_space)
 {
     const int tw  = h.tile_width;
     const int tl  = h.tile_length;
@@ -134,7 +214,7 @@ Plan build_plan(const Header& h, FileReader* reader,
 
     // Direct decode needs a one-sample pixel stride; the matching row pitch is
     // checked per tile, since edge tiles are narrower.
-    const bool one_sample_stride = pixel_space == static_cast<GSpacing>(bps);
+    const bool one_sample_stride = pixel_space == static_cast<std::int64_t>(bps);
 
     Plan plan;
     plan.spec = make_tile_spec(h);
@@ -159,8 +239,8 @@ Plan build_plan(const Header& h, FileReader* reader,
                 ix0 == tile_px && iy0 == tile_py &&
                 ix1 == tile_px + ex_w && iy1 == tile_py + ex_h;
             const bool direct = full_tile && one_sample_stride &&
-                line_space == static_cast<GSpacing>(ex_w)
-                            * static_cast<GSpacing>(bps);
+                line_space == static_cast<std::int64_t>(ex_w)
+                            * static_cast<std::int64_t>(bps);
 
             const std::size_t tile_bytes = static_cast<std::size_t>(ex_w)
                                          * static_cast<std::size_t>(ex_h) * bps;
@@ -173,12 +253,12 @@ Plan build_plan(const Header& h, FileReader* reader,
                     band);
 
                 std::byte* dst = data
-                    + static_cast<GSpacing>(iy0 - y_off) * line_space
-                    + static_cast<GSpacing>(ix0 - x_off) * pixel_space
-                    + static_cast<GSpacing>(i)          * band_space;
+                    + static_cast<std::int64_t>(iy0 - y_off) * line_space
+                    + static_cast<std::int64_t>(ix0 - x_off) * pixel_space
+                    + static_cast<std::int64_t>(i)          * band_space;
 
                 TileTask task{};
-                task.reader          = reader;
+                task.source          = source;
                 task.offset          = h.tile_offset(idx);
                 task.compressed_size = h.tile_byte_counts[idx];
                 task.tile_w          = static_cast<std::uint32_t>(ex_w);
@@ -203,15 +283,38 @@ Plan build_plan(const Header& h, FileReader* reader,
 }
 
 
+std::vector<Range>
+plan_ranges(const Header& h, std::span<const int> bands,
+            int y_off, int y_size, int x_off, int x_size)
+{
+    const std::uint32_t r0 = static_cast<std::uint32_t>(y_off) / h.tile_length;
+    const std::uint32_t r1 = static_cast<std::uint32_t>(y_off + y_size - 1) / h.tile_length;
+    const std::uint32_t c0 = static_cast<std::uint32_t>(x_off) / h.tile_width;
+    const std::uint32_t c1 = static_cast<std::uint32_t>(x_off + x_size - 1) / h.tile_width;
+
+    std::vector<Range> out;
+    out.reserve(std::size_t(r1 - r0 + 1) * (c1 - c0 + 1) * bands.size());
+    for (std::uint32_t row = r0; row <= r1; ++row) {
+        for (std::uint32_t col = c0; col <= c1; ++col) {
+            for (int b : bands) {
+                const std::uint32_t i =
+                    h.tile_index(row, col, static_cast<std::uint32_t>(b - 1));
+                out.push_back({h.tile_offsets[i], h.tile_byte_counts[i]});
+            }
+        }
+    }
+    return out;
+}
+
+
 std::expected<void, std::string>
-read_window(const char* path, const Header& h,
+read_window(Source& src, const Header& h,
             std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
             const LayoutPlan& layout, std::byte* dst,
             int num_threads)
 {
     g_read_status = RUMI_ERR_IO;
-    if (!path) return err("path is null");
     if (auto ok = validate_request(h, bands, y_off, y_size, x_off, x_size); !ok) {
         return ok;
     }
@@ -221,16 +324,10 @@ read_window(const char* path, const Header& h,
         return err("sub-byte types support only a full-image read for now");
     }
 
-    FilePtr file(VSIFOpenL(path, "rb"));
-    if (!file) return err(std::string("could not open: ") + path);
-
-    if (auto ok = check_data_fits(h, file.get()); !ok) {
+    if (auto ok = check_data_fits(h, src); !ok) {
         g_read_status = RUMI_ERR_FORMAT;
         return ok;
     }
-
-    // Lives for the whole run, every task points at it.
-    FileReader reader(file.get());
 
     ThreadPool* pool = nullptr;
     if (clamp_threads(num_threads) > 1) {
@@ -239,11 +336,11 @@ read_window(const char* path, const Header& h,
     }
 
     const std::size_t bps = h.bytes_per_sample;
-    Plan plan = build_plan(h, &reader,
+    Plan plan = build_plan(h, &src,
                            x_off, y_off, x_size, y_size, dst, bands,
-                           static_cast<GSpacing>(layout.sx) * bps,
-                           static_cast<GSpacing>(layout.sy) * bps,
-                           static_cast<GSpacing>(layout.sb) * bps);
+                           static_cast<std::int64_t>(layout.sx) * bps,
+                           static_cast<std::int64_t>(layout.sy) * bps,
+                           static_cast<std::int64_t>(layout.sb) * bps);
 
     Executor exec(pool);
     if (!exec.run(plan)) {
@@ -256,7 +353,7 @@ read_window(const char* path, const Header& h,
 
 
 std::expected<void, std::string>
-read_stack(std::span<const char* const> paths,
+read_stack(std::span<Source* const> sources,
            std::span<const Header* const> headers,
            std::span<const int> n_index,
            std::span<const int> bands,
@@ -265,36 +362,35 @@ read_stack(std::span<const char* const> paths,
            int num_threads)
 {
     g_read_status = RUMI_ERR_IO;
-    if (paths.empty() || paths.size() != headers.size()) {
-        return err("paths and headers must be non-empty and the same length");
+    if (sources.empty() || sources.size() != headers.size()) {
+        return err("sources and headers must be non-empty and the same length");
     }
     for (std::size_t i = 0; i < headers.size(); ++i) {
-        if (!paths[i])   return err("null path at index " + std::to_string(i + 1));
-        if (!headers[i]) return err("null spec at index " + std::to_string(i + 1));
+        if (!sources[i]) return errf("null source at index %zu", i + 1);
+        if (!headers[i]) return errf("null header at index %zu", i + 1);
     }
 
     const Header& ref = *headers[0];
     for (std::size_t i = 1; i < headers.size(); ++i) {
         const Header& h = *headers[i];
         if (h.image_width != ref.image_width || h.image_length != ref.image_length) {
-            return err("image " + std::to_string(i + 1) + ": image size mismatch");
+            return errf("image %zu: image size mismatch", i + 1);
         }
         if (h.tile_width != ref.tile_width || h.tile_length != ref.tile_length) {
-            return err("image " + std::to_string(i + 1) + ": tile size mismatch");
+            return errf("image %zu: tile size mismatch", i + 1);
         }
         if (h.samples_per_pixel != ref.samples_per_pixel) {
-            return err("image " + std::to_string(i + 1) + ": band count mismatch");
+            return errf("image %zu: band count mismatch", i + 1);
         }
         if (h.dtype != ref.dtype) {
-            return err("image " + std::to_string(i + 1) + ": dtype mismatch");
+            return errf("image %zu: dtype mismatch", i + 1);
         }
     }
 
     if (n_index.empty()) return err("no images selected");
     for (int ni : n_index) {
         if (ni < 1 || static_cast<std::size_t>(ni) > headers.size()) {
-            return err("n=" + std::to_string(ni) + " out of range [1, "
-                       + std::to_string(headers.size()) + "]");
+            return errf("n=%d out of range [1, %zu]", ni, headers.size());
         }
     }
 
@@ -318,31 +414,23 @@ read_stack(std::span<const char* const> paths,
     const std::size_t bps      = ref.bytes_per_sample;
     const std::size_t n_stride = static_cast<std::size_t>(layout.sn) * bps;
 
-    // One reader per file, kept alive for the run. deque so the pointers hold.
-    std::vector<FilePtr>   files;
-    std::deque<FileReader> readers;
-    files.reserve(n_index.size());
-
     Plan plan;
     plan.spec = make_tile_spec(ref);
 
     for (std::size_t k = 0; k < n_index.size(); ++k) {
         const std::size_t i = static_cast<std::size_t>(n_index[k] - 1);
-        FilePtr file(VSIFOpenL(paths[i], "rb"));
-        if (!file) return err(std::string("could not open: ") + paths[i]);
-        if (auto ok = check_data_fits(*headers[i], file.get()); !ok) {
+        Source& src = *sources[i];
+        if (auto ok = check_data_fits(*headers[i], src); !ok) {
             g_read_status = RUMI_ERR_FORMAT;
-            return err("image " + std::to_string(n_index[k]) + ": " + ok.error());
+            return errf("image %d: %s", n_index[k], ok.error().c_str());
         }
-        FileReader& reader = readers.emplace_back(file.get());
-        files.push_back(std::move(file));
 
-        Plan sub = build_plan(*headers[i], &reader,
+        Plan sub = build_plan(*headers[i], &src,
                               x_off, y_off, x_size, y_size,
                               dst + k * n_stride, bands,
-                              static_cast<GSpacing>(layout.sx) * bps,
-                              static_cast<GSpacing>(layout.sy) * bps,
-                              static_cast<GSpacing>(layout.sb) * bps);
+                              static_cast<std::int64_t>(layout.sx) * bps,
+                              static_cast<std::int64_t>(layout.sy) * bps,
+                              static_cast<std::int64_t>(layout.sb) * bps);
         for (TileTask& t : sub.tasks) t.image = static_cast<std::uint32_t>(n_index[k]);
         plan.tasks.insert(plan.tasks.end(),
                           std::make_move_iterator(sub.tasks.begin()),

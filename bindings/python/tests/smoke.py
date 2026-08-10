@@ -1,8 +1,8 @@
 """Post-install check for a built wheel, run against a clean venv.
 
-Writes a georeferenced file and reads its header back. That covers the writer,
-the bundled proj.db a CRS needs, and the header round trip, without geozl and
-without a GDAL on the host. Tile payloads are fake, nothing decodes them here.
+Writes a georeferenced file, reads its header back off disk, and reads a window
+out of the bytes in memory. That covers the writer, the CRS keys, both sources
+and the header round trip. Tile payloads are fake, nothing decodes them here.
 """
 
 import sys
@@ -28,6 +28,11 @@ def main() -> int:
                                   transform=TRANSFORM, crs=CRS)
         facts = rumi.RumiHeader(header).to_dict()
         on_disk = rumi.RumiHeader.from_path(path).to_dict()
+        blob = Path(path).read_bytes()
+
+    if rumi.RumiHeader(header).shape != tuple(facts["shape"]):
+        print("::error::header shape disagrees with itself")
+        return 1
 
     if facts != on_disk:
         print("::error::the header written and the header read back differ")
@@ -37,7 +42,7 @@ def main() -> int:
         return 1
 
     print(f"wrote and re-read EPSG:{CRS}, {facts['tiles']} tiles, "
-          f"{len(header)} byte header")
+          f"{len(header)} byte header, {len(blob)} byte file")
     return 0
 
 

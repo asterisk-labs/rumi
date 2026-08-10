@@ -4,6 +4,30 @@ from ._dtype import dtype_code
 from ._ffi import PathLike, _check, _enc, ffi, lib
 
 
+def _epsg(crs) -> int:
+    """rumi writes a CRS as an EPSG code, which is the whole reference, and
+    leaves everything else to the reader's own EPSG tables."""
+    if isinstance(crs, bool):
+        raise TypeError("crs must be an EPSG code")
+    if isinstance(crs, int):
+        return crs
+    if isinstance(crs, str):
+        text = crs.strip()
+        if text.upper().startswith("EPSG:"):
+            text = text[5:]
+        if text.isdigit():
+            return int(text)
+    code = getattr(crs, "to_epsg", None)
+    if callable(code):
+        got = code()
+        if got:
+            return int(got)
+    raise ValueError(
+        f"crs must be an EPSG code, got {crs!r}. rumi does not parse WKT or "
+        "PROJ strings; pass the code, or the GeoTIFF keys for a CRS no code "
+        "names.")
+
+
 def _desc(tf, transform, crs, pixel_is_point, header_size):
     """Fill a rumi_write_desc. Returns it with the buffers it points at, which
     the caller has to hold until the call returns."""
@@ -29,14 +53,12 @@ def _desc(tf, transform, crs, pixel_is_point, header_size):
 
     if transform is None:
         d.transform = ffi.NULL
-        d.srs = ffi.NULL
+        d.epsg = 0
     else:
         coeffs = ffi.new("double[6]", [float(v) for v in tuple(transform)[:6]])
-        srs = ffi.new("char[]", (f"EPSG:{crs}" if isinstance(crs, int)
-                                 else str(crs)).encode("utf-8"))
-        keep += [coeffs, srs]
+        keep.append(coeffs)
         d.transform = coeffs
-        d.srs = srs
+        d.epsg = _epsg(crs)
     return d, keep
 
 
@@ -84,7 +106,8 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
                     of graph.
     transform       affine coefficients (x_res, row_rot, x_origin, col_rot,
                     y_res, y_origin); pairs with crs.
-    crs             EPSG int or projection string; pairs with transform.
+    crs             EPSG code, as an int, "EPSG:32718", or any object with
+                    a to_epsg(); pairs with transform.
     pixel_is_point  anchor the pixel at its center (PixelIsPoint) rather than
                     its top-left corner (PixelIsArea, the default).
     header_size     round the tile-data offset up to this multiple for

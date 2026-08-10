@@ -11,7 +11,6 @@ project(rumi
     LANGUAGES   CXX C
 )
 
-option(RUMI_BUILD_PLUGIN      "Build the GDAL auto-loadable plugin"               ON)
 option(RUMI_BUILD_SHARED_LIB  "Build standalone librumi for direct link"          OFF)
 
 # geozl owns OpenZL and brings it in transitively, so rumi vendors geozl only.
@@ -43,17 +42,14 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # compile_commands.json for clangd and friends, so the warnings show in editor.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Hide everything by default. The C++ surface is re-exported with RUMI_API and
-# the extern "C" entry points with GDAL's CPL_DLL. Hiding keeps the vendored
-# OpenZL and its bundled zstd out of the plugin's dynamic symbol table, which
-# matters because GDAL also links a zstd.
+# Hide everything by default; the surface is re-exported with RUMI_API. Keeps
+# the vendored OpenZL and its bundled zstd out of the dynamic symbol table, so
+# a host zstd in the same process cannot collide with ours.
 set(CMAKE_CXX_VISIBILITY_PRESET     hidden)
 set(CMAKE_C_VISIBILITY_PRESET       hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 include(GNUInstallDirs)
-
-find_package(GDAL 3.8 CONFIG REQUIRED)
 
 # geozl is the OpenZL frame codec (compression 60000) plus rumi's spatial
 # decoders. Vendored static so it folds into rumi with no extra runtime
@@ -73,7 +69,6 @@ set(RUMI_SOURCES
     src/plan.cpp
     src/read.cpp
     src/pattern.cpp
-    src/image.cpp
     src/capi.cpp
     src/dlpack.cpp
 )
@@ -87,7 +82,6 @@ target_include_directories(rumi_config INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(rumi_config INTERFACE
-    GDAL::GDAL
     geozl::geozl
 )
 target_compile_definitions(rumi_config INTERFACE
@@ -101,8 +95,8 @@ target_compile_options(rumi_config INTERFACE
     $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4 /permissive->
 )
 
-# A sanitizer applies to every target through this interface: lib and plugin.
-# It has to be on both the compile and the link line.
+# A sanitizer applies to every target through this interface. It has to be on
+# both the compile and the link line.
 if(RUMI_SANITIZE)
     target_compile_options(rumi_config INTERFACE
         -fsanitize=${RUMI_SANITIZE} -fno-omit-frame-pointer -g)
@@ -110,27 +104,6 @@ if(RUMI_SANITIZE)
         -fsanitize=${RUMI_SANITIZE})
 endif()
 
-# GDAL's loader scans for gdal_<NAME>.{so,dll,dylib} and calls
-# GDALRegister_<NAME>(). The empty PREFIX strips the "lib" CMake would prepend.
-if(RUMI_BUILD_PLUGIN)
-    add_library(gdal_RUMI MODULE ${RUMI_SOURCES})
-    target_link_libraries(gdal_RUMI PRIVATE rumi_config)
-    set_target_properties(gdal_RUMI PROPERTIES
-        PREFIX      ""
-        OUTPUT_NAME "gdal_RUMI"
-    )
-
-    # GDAL's compiled-in plugin path is <prefix>/lib/gdalplugins on every
-    # platform. A MODULE .dll is a RUNTIME artifact on Windows, so it also goes
-    # to lib/gdalplugins, not bin, or GDAL would not find it.
-    install(TARGETS gdal_RUMI
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/gdalplugins
-        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/gdalplugins
-    )
-endif()
-
-# For apps that link directly and call rumi::register_driver() themselves
-# instead of relying on plugin auto-discovery.
 if(RUMI_BUILD_SHARED_LIB)
     add_library(rumi SHARED ${RUMI_SOURCES})
     add_library(rumi::rumi ALIAS rumi)
@@ -156,10 +129,8 @@ endif()
 
 message(STATUS "")
 message(STATUS "rumi ${RUMI_VERSION_FULL}")
-message(STATUS "  GDAL:           ${GDAL_VERSION}")
 message(STATUS "  geozl:          ${RUMI_GEOZL_DIR}")
 message(STATUS "  OpenZL:         via geozl")
-message(STATUS "  Plugin:         ${RUMI_BUILD_PLUGIN}")
 message(STATUS "  Standalone lib: ${RUMI_BUILD_SHARED_LIB}")
 message(STATUS "  Sanitize:       ${RUMI_SANITIZE}")
 message(STATUS "")

@@ -3,7 +3,8 @@ import os
 from collections.abc import Sequence
 
 from ._dtype import name as dtype_name
-from ._ffi import PathLike, _check, _enc, _header_from_file, _Spec, ffi, lib
+from ._ffi import (PathLike, _check, _header_from_file, _Source, _Spec,
+                   ffi, lib)
 
 Axis = tuple[int, int] | list[int] | None
 
@@ -159,7 +160,15 @@ def _to_c(lst: list[int] | None):
     return ffi.new("int[]", lst), len(lst)
 
 
-def _read_one(path: PathLike, spec: _Spec, pattern: str | None,
+def _header_of(source) -> bytes:
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        raise ValueError(
+            "reading from bytes needs the header passed in; it cannot be "
+            "recovered from the buffer alone")
+    return _header_from_file(source)
+
+
+def _read_one(src: _Source, spec: _Spec, pattern: str | None,
               b: Axis, y: tuple[int, int] | None, x: tuple[int, int] | None,
               num_threads: int) -> RumiArray:
     h = spec.fields
@@ -180,24 +189,24 @@ def _read_one(path: PathLike, spec: _Spec, pattern: str | None,
     bands_c, n_bands_c = _to_c(bands)
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_dlpack(
-        _enc(path), spec.handle, bands_c, n_bands_c,
+        src.handle, spec.handle, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,
         pattern.encode("ascii"), num_threads, out,
     ))
     return RumiArray(out[0], shape, spec.fields.dtype)
 
 
-def _read_stack(paths: Sequence[PathLike], specs: Sequence[_Spec],
+def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
                 pattern: str | None, n: Axis, b: Axis,
                 y: tuple[int, int] | None, x: tuple[int, int] | None,
                 num_threads: int) -> RumiArray:
-    paths = list(paths)
+    sources = list(sources)
     specs = list(specs)
-    if len(paths) != len(specs):
+    if len(sources) != len(specs):
         raise ValueError(
-            f"paths and specs length mismatch: {len(paths)} vs {len(specs)}"
+            f"sources and specs length mismatch: {len(sources)} vs {len(specs)}"
         )
-    if not paths:
+    if not sources:
         raise ValueError("read requires at least one image")
 
     h = specs[0].fields
@@ -217,15 +226,14 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[_Spec],
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
 
-    paths_c = [ffi.new("char[]", _enc(p)) for p in paths]
-    paths_arr = ffi.new("char*[]", paths_c)
     specs_arr = ffi.new("rumi_spec*[]", [s.handle for s in specs])
+    srcs_arr = ffi.new("rumi_source*[]", [s.handle for s in sources])
 
     n_c, n_count_c = _to_c(n_sel)
     bands_c, n_bands_c = _to_c(bands)
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_stack_dlpack(
-        paths_arr, specs_arr, len(specs),
+        srcs_arr, specs_arr, len(specs),
         n_c, n_count_c, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size,
         pattern.encode("ascii"), num_threads, out,
@@ -233,26 +241,34 @@ def _read_stack(paths: Sequence[PathLike], specs: Sequence[_Spec],
     return RumiArray(out[0], shape, specs[0].fields.dtype)
 
 
-def read(path: PathLike | Sequence[PathLike],
+def read(source: PathLike | bytes | Sequence[PathLike | bytes],
          header: bytes | Sequence[bytes] | None = None, *,
          framework: str | None = "numpy", pattern: str | None = None,
          n: Axis = None, b: Axis = None,
          y: tuple[int, int] | None = None,
          x: tuple[int, int] | None = None,
          num_threads: int = 1):
-    """Read a rumi image, or a stack of them. A single path reads one image, a
-    list reads a stack. header is the raw header bytes, cached from a catalog
-    or Parquet; when omitted they are read from each file. framework picks the
-    return type
-    ("numpy", "torch", "jax", "tensorflow"), or None for the zero-copy
-    RumiArray. Stateless, opens and closes each call."""
-    if isinstance(path, (str, bytes, os.PathLike)):
+    """Read a rumi image, or a stack of them.
+
+    source is a local path, or the file's bytes when you already hold them.
+    A list of either reads a stack.
+
+    header is the raw header bytes, cached from a catalog or Parquet; when
+    omitted it is read off the file, which needs a path.
+
+    framework picks the return type ("numpy", "torch", "jax", "tensorflow"),
+    or None for the zero-copy RumiArray. Stateless, opens and closes each call.
+    """
+    if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):
         if n is not None:
-            raise ValueError("n applies to a stack; pass lists of paths")
-        raw = header if header is not None else _header_from_file(path)
-        arr = _read_one(path, _Spec(raw), pattern, b, y, x, num_threads)
+            raise ValueError("n applies to a stack; pass a list of sources")
+        raw = header if header is not None else _header_of(source)
+        arr = _read_one(_Source(source), _Spec(raw), pattern, b, y, x, num_threads)
         return _to_framework(arr, framework)
-    raws = header if header is not None else [_header_from_file(p) for p in path]
+
+    sources = list(source)
+    raws = header if header is not None else [_header_of(s) for s in sources]
     specs = [_Spec(r) for r in raws]
-    arr = _read_stack(path, specs, pattern, n, b, y, x, num_threads)
+    arr = _read_stack([_Source(s) for s in sources], specs,
+                      pattern, n, b, y, x, num_threads)
     return _to_framework(arr, framework)

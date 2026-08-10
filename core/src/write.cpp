@@ -1,7 +1,5 @@
 #include "rumi/rumi.hpp"
 
-#include "cpl_vsi.h"
-
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -85,11 +83,12 @@ Entry pack(std::uint16_t tag, std::uint16_t type, const std::vector<T>& values)
     return e;
 }
 
-// A geokey payload GDAL already encoded, embedded verbatim.
-Entry adopt(std::uint16_t tag, std::uint16_t type, std::vector<std::byte> raw)
+// An already-encoded geokey payload, embedded verbatim.
+Entry adopt(std::uint16_t tag, std::uint16_t type,
+            const std::vector<std::byte>& raw)
 {
     const std::uint64_t count = raw.size() / type_size(type);
-    return Entry{tag, type, count, std::move(raw)};
+    return Entry{tag, type, count, raw};
 }
 
 // The on-disk encoding for a type, straight off the generated table.
@@ -124,14 +123,19 @@ geo_entries(const WriteDesc& d)
                                              0.0,  0.0,  0.0, 1.0}));
     }
 
-    auto keys = build_geokeys(d.srs, d.pixel_is_point);
-    if (!keys) return std::unexpected(keys.error());
+    GeoKeys built;
+    if (!d.keys) {
+        auto keys = build_geokeys(d.epsg, d.pixel_is_point);
+        if (!keys) return std::unexpected(keys.error());
+        built = std::move(*keys);
+    }
+    const GeoKeys& keys = d.keys ? *d.keys : built;
 
-    out.push_back(adopt(34735, T_SHORT, std::move(keys->directory)));
-    if (!keys->double_params.empty())
-        out.push_back(adopt(34736, T_DOUBLE, std::move(keys->double_params)));
-    if (!keys->ascii_params.empty())
-        out.push_back(adopt(34737, T_ASCII, std::move(keys->ascii_params)));
+    out.push_back(adopt(34735, T_SHORT, keys.directory));
+    if (!keys.double_params.empty())
+        out.push_back(adopt(34736, T_DOUBLE, keys.double_params));
+    if (!keys.ascii_params.empty())
+        out.push_back(adopt(34737, T_ASCII, keys.ascii_params));
     return out;
 }
 
@@ -197,8 +201,8 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
         return err("tile_size must be a multiple of 16, got %u", d.tile_size);
     if (d.samples_per_pixel == 0)
         return err("samples_per_pixel must be at least 1");
-    if ((d.transform == nullptr) != d.srs.empty())
-        return err("transform and srs must be given together");
+    if ((d.transform == nullptr) != (d.epsg == 0 && d.keys == nullptr))
+        return err("transform and a CRS must be given together");
 
     Grid g{};
     if (!sample_encoding(d.dtype, &g.sample_format, &g.bits))
@@ -354,15 +358,15 @@ try {
     head.insert(head.end(), ext.begin(), ext.end());
     head.resize(static_cast<std::size_t>(l->base), std::byte{0});
 
-    VSILFILE* fp = VSIFOpenL(path, "wb");
+    std::FILE* fp = std::fopen(path, "wb");
     if (!fp) return err("could not open %s for writing", path);
 
-    bool ok = VSIFWriteL(head.data(), 1, head.size(), fp) == head.size();
+    bool ok = std::fwrite(head.data(), 1, head.size(), fp) == head.size();
     for (std::size_t i = 0; ok && i < frame_count; ++i)
-        ok = VSIFWriteL(frames[i], 1, sizes[i], fp) == sizes[i];
-    const bool closed = VSIFCloseL(fp) == 0;
+        ok = std::fwrite(frames[i], 1, sizes[i], fp) == sizes[i];
+    const bool closed = std::fclose(fp) == 0;
     if (!ok || !closed) {
-        VSIUnlink(path);
+        std::remove(path);
         return err("write to %s failed", path);
     }
 

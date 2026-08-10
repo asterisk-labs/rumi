@@ -63,8 +63,6 @@ void        rumi_free(void* ptr);
 
 size_t rumi_dtype_table(const rumi_dtype_info** out);
 
-void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
-
 rumi_status
 rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size);
 
@@ -82,15 +80,30 @@ void rumi_spec_destroy(rumi_spec* spec);
 rumi_status
 rumi_spec_header(const rumi_spec* spec, rumi_header* out);
 
+typedef struct rumi_source rumi_source;
+
+rumi_status rumi_source_file(const char* path, rumi_source** out);
+
+rumi_status rumi_source_memory(const void* data, size_t size, rumi_source** out);
+
+void rumi_source_free(rumi_source* src);
+
+typedef struct { uint64_t offset; uint64_t length; } rumi_range;
+
 rumi_status
-rumi_read(const char* path, const rumi_spec* spec,
+rumi_plan_ranges(const rumi_spec* spec, const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 rumi_range** out, size_t* out_count);
+
+rumi_status
+rumi_read(rumi_source* src, const rumi_spec* spec,
           const int* bands, size_t n_bands,
           int y_off, int y_size, int x_off, int x_size,
           const char* pattern, int num_threads,
           void* dst, size_t dst_size);
 
 rumi_status
-rumi_read_stack(const char* const* paths,
+rumi_read_stack(rumi_source* const* sources,
                 const rumi_spec* const* specs, size_t n_images,
                 const int* n_index, size_t n_n,
                 const int* bands, size_t n_bands,
@@ -101,14 +114,14 @@ rumi_read_stack(const char* const* paths,
 typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 
 rumi_status
-rumi_read_dlpack(const char* path, const rumi_spec* spec,
+rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                  const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
                  const char* pattern, int num_threads,
                  DLManagedTensorVersioned** out);
 
 rumi_status
-rumi_read_stack_dlpack(const char* const* paths,
+rumi_read_stack_dlpack(rumi_source* const* sources,
                        const rumi_spec* const* specs, size_t n_images,
                        const int* n_index, size_t n_n,
                        const int* bands, size_t n_bands,
@@ -125,7 +138,7 @@ DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 void rumi_dlpack_legacy_free(DLManagedTensor* t);
 
 rumi_status
-rumi_geokeys(const char* srs, int pixel_is_point,
+rumi_geokeys(uint32_t epsg, int pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
              unsigned char** out_dbl,   size_t* out_dbl_size,
              unsigned char** out_ascii, size_t* out_ascii_size);
@@ -137,7 +150,7 @@ typedef struct {
     uint16_t      samples_per_pixel;
     rumi_dtype    dtype;
     const double* transform;
-    const char*   srs;
+    uint32_t      epsg;
     int           pixel_is_point;
     uint32_t      header_size;
 } rumi_write_desc;
@@ -161,49 +174,6 @@ _LIB_GLOBS = ("*.so", "*.so.*", "*.dylib", "*.dll")
 PathLike = str | bytes | os.PathLike
 
 
-def _ensure_ca_bundle():
-    # conda libcurl/openssl use CA paths absent off-conda,
-    # breaking HTTPS /vsicurl/ reads
-    if any(os.environ.get(v) for v in (
-        "CURL_CA_BUNDLE", "GDAL_CURL_CA_BUNDLE", "SSL_CERT_FILE",
-        "GDAL_HTTP_UNSAFESSL",
-    )):
-        return
-
-    bundle = None
-    try:
-        import certifi
-        bundle = certifi.where()
-    except Exception:
-        for p in ("/etc/ssl/certs/ca-certificates.crt",
-                  "/etc/pki/tls/certs/ca-bundle.crt",
-                  "/etc/ssl/cert.pem"):
-            if os.path.exists(p):
-                bundle = p
-                break
-
-    if bundle and os.path.exists(bundle):
-        os.environ.setdefault("CURL_CA_BUNDLE", bundle)
-        os.environ.setdefault("GDAL_CURL_CA_BUNDLE", bundle)
-        os.environ.setdefault("SSL_CERT_FILE", bundle)
-
-
-def _ensure_proj_data(lib):
-    # vendored GDAL/PROJ cannot find proj.db off-conda
-    try:
-        setter = lib.rumi_set_data_paths
-    except AttributeError:
-        return
-
-    lib_dir = Path(__file__).parent / "_lib"
-    proj_dir = lib_dir / "proj"
-    gdal_dir = lib_dir / "gdal"
-    proj_arg = str(proj_dir).encode("utf-8") if proj_dir.is_dir() else ffi.NULL
-    gdal_arg = str(gdal_dir).encode("utf-8") if gdal_dir.is_dir() else ffi.NULL
-    if proj_arg is not ffi.NULL or gdal_arg is not ffi.NULL:
-        setter(proj_arg, gdal_arg)
-
-
 def _bundled_lib():
     lib_dir = Path(__file__).parent / "_lib"
     for pattern in _LIB_GLOBS:
@@ -223,14 +193,11 @@ def _load_lib():
         return ffi.dlopen(candidate)
     except OSError as exc:
         raise OSError(
-            f"failed to load librumi from {candidate!r}: {exc}. "
-            "It links GDAL; put a compatible libgdal on the loader path."
+            f"failed to load librumi from {candidate!r}: {exc}"
         ) from exc
 
 
-_ensure_ca_bundle()
 lib = _load_lib()
-_ensure_proj_data(lib)
 
 
 _STATUS_TO_EXC = {
@@ -267,6 +234,22 @@ def _header_from_file(path: PathLike) -> bytes:
         return bytes(ffi.buffer(out[0], size[0]))
     finally:
         lib.rumi_free(out[0])
+
+
+class _Source:
+    """Where rumi reads bytes from: a local path, or a buffer the caller holds."""
+
+    __slots__ = ("handle", "_keep")
+
+    def __init__(self, target) -> None:
+        out = ffi.new("rumi_source**")
+        if isinstance(target, (bytes, bytearray, memoryview)):
+            self._keep = ffi.from_buffer(target)
+            _check(lib.rumi_source_memory(self._keep, len(self._keep), out))
+        else:
+            self._keep = None
+            _check(lib.rumi_source_file(_enc(target), out))
+        self.handle = ffi.gc(out[0], lib.rumi_source_free)
 
 
 class _Spec:

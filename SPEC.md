@@ -156,7 +156,7 @@ The width in bits of one stored sample slot. For non-complex formats this is the
 
 The sample type. `1` is unsigned integer. `2` is signed integer. `3` is IEEE floating point. `5` is complex signed integer. `6` is complex IEEE floating point. The values `100` through `106` are rumi-private formats for ML and EO types that standard TIFF has no `SampleFormat` for, they are never written by a plain TIFF encoder and only rumi produces them.
 
-The valid sample encodings are listed below. This table and every projection of it, the enum, the byte size, the DLPack code and the GDAL type, are generated from a single source, `core/include/rumi/rumi_dtypes.def`.
+The valid sample encodings are listed below. This table and every projection of it, the enum, the byte size and the DLPack code, are generated from a single source, `core/include/rumi/rumi_dtypes.def`.
 
 | sample_format | bits_per_sample | encoding |
 |---|---|---|

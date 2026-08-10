@@ -62,20 +62,15 @@ jobs:
           environment-name: build
           create-args: >-
             python=3.12
-            gdal=3.12
             cmake
             ninja
             make
-            cxx-compiler
       - name: Build lib
         shell: bash -el {0}
         run: make lib
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
-      - name: Stage proj.db (matches the GDAL this build links)
-        shell: bash -el {0}
-        run: cp -a "$CONDA_PREFIX/share/proj" staged/proj
       - uses: actions/upload-artifact@v4
         with:
           name: librumi-${{ matrix.name }}
@@ -99,20 +94,15 @@ jobs:
           environment-name: build
           create-args: >-
             python=3.12
-            gdal=3.12
             cmake
             ninja
             make
-            cxx-compiler
       - name: Build lib
         shell: bash -el {0}
         run: make lib
       - name: Stage lib for artifact
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
-      - name: Stage proj.db (matches the GDAL this build links)
-        shell: bash -el {0}
-        run: cp -a "$CONDA_PREFIX/share/proj" staged/proj
       - uses: actions/upload-artifact@v4
         with:
           name: librumi-macos-arm64
@@ -141,7 +131,6 @@ jobs:
           environment-name: build
           create-args: >-
             python=3.12
-            gdal=3.12
       - uses: actions/download-artifact@v4
         with:
           name: librumi-${{ matrix.name }}
@@ -163,12 +152,11 @@ jobs:
         # The platform tag is set later, off the real glibc floor of the binaries.
         shell: bash -el {0}
         run: python -m wheel tags --python-tag py3 --abi-tag none --remove wheelhouse-raw/*.whl
-      - name: Repair wheel + vendor C++ runtime
+      - name: Repair wheel
         shell: bash -el {0}
         run: |
           set -euo pipefail
-          python -m pip install auditwheel patchelf wheel
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          python -m pip install auditwheel wheel
 
           # Read the floor off auditwheel's "platform tag" line, not the max in the report.
           floor_of() {
@@ -178,53 +166,12 @@ jobs:
           }
 
           plat=$(floor_of wheelhouse-raw/*.whl)
-          mkdir -p wheelhouse-repaired
-          auditwheel repair ${plat:+--plat "$plat"} -w wheelhouse-repaired wheelhouse-raw/*.whl
-
-          work=$(mktemp -d)
-          python -m wheel unpack -d "$work" "$(ls wheelhouse-repaired/*.whl)"
-          pkg=$(ls -d "$work"/*/)
-          libs=$(ls -d "$pkg"*.libs/ 2>/dev/null | head -1)
-          [ -n "$libs" ] || { echo "::error::no .libs dir"; exit 1; }
-
-          # auditwheel won't vendor libstdc++/libgcc_s, leaving the wheel needing a
-          # gcc-12/13 C++ runtime that Colab lacks. Vendor them under a PRIVATE soname
-          # (a plain-named copy gets shadowed by the system lib at load time) so the
-          # wheel carries its own runtime and only needs glibc 2.17 from the host.
-          declare -A priv=( [libstdc++.so.6]=libstdc++-rumi.so.6 \
-                            [libgcc_s.so.1]=libgcc_s-rumi.so.1 )
-          for so in "${!priv[@]}"; do
-            cp -v "$(readlink -f "$CONDA_PREFIX/lib/$so")" "$libs/${priv[$so]}"
-            patchelf --set-soname "${priv[$so]}" "$libs/${priv[$so]}"
-            patchelf --set-rpath '$ORIGIN' "$libs/${priv[$so]}"
-          done
-          mapfile -t elfs < <(find "$pkg" \( -name '*.so' -o -name '*.so.*' \))
-          for f in "${elfs[@]}"; do
-            for so in "${!priv[@]}"; do
-              patchelf --replace-needed "$so" "${priv[$so]}" "$f" 2>/dev/null || true
-            done
-          done
-
-          # glibc is the only system dep left; tag at its real floor from the binaries.
-          g=$(find "$pkg" \( -name '*.so' -o -name '*.so.*' \) -exec objdump -T {} + 2>/dev/null \
-              | grep -oE 'GLIBC_2\.[0-9]+' | sed 's/GLIBC_2\.//' | sort -n | tail -1)
-          tag="manylinux_2_${g:-17}_$(uname -m)"
-          echo "floor -> $tag"
-
-          mkdir -p /tmp/packed
-          python -m wheel pack -d /tmp/packed "$pkg"
-          packed=$(ls /tmp/packed/*.whl)
-          python -m wheel tags --remove --platform-tag "$tag" "$packed"
           mkdir -p wheelhouse
-          cp /tmp/packed/*.whl wheelhouse/
+          auditwheel repair ${plat:+--plat "$plat"} -w wheelhouse wheelhouse-raw/*.whl
           ls -1 wheelhouse/
-      - name: Install, smoke-test and run the suite (GDAL-free)
-        # The wheel carries its own C++ runtime under a private soname
-        # (libstdc++-rumi). conda's bash -el would load a second libstdc++ into the
-        # process and PROJ segfaults on the first CRS parse. The bare manylinux
-        # python keeps conda out, so the wheel stands alone the way a user install
-        # would. smoke.py writes a georeferenced file, which is what proves the
-        # bundled proj.db resolves a CRS; the suite then runs against the wheel.
+      - name: Install, smoke-test and run the suite
+        # A bare manylinux python with no conda on the path, so the wheel stands
+        # alone the way a user install would.
         shell: bash
         env:
           LD_LIBRARY_PATH: ""
@@ -270,26 +217,13 @@ jobs:
         run: |
           python -m wheel tags --python-tag py3 --abi-tag none \
             --platform-tag macosx_14_0_arm64 --remove wheelhouse-raw/*.whl
-      - uses: mamba-org/setup-micromamba@v2
-        with:
-          environment-name: build
-          create-args: >-
-            python=3.12
-            gdal=3.12
-      - name: Repair wheel (vendor GDAL)
-        shell: bash -el {0}
-        run: |
-          python -m pip install delocate
-          export DYLD_FALLBACK_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
-          mkdir -p wheelhouse
-          delocate-wheel -w wheelhouse -v wheelhouse-raw/*.whl
-      - name: Install, smoke-test and run the suite (GDAL-free)
-        # Clear the DYLD fallbacks so the only GDAL the test can reach is the one
-        # delocate vendored into the wheel, not conda's from the repair step.
+      - name: Stage the wheel
         shell: bash
-        env:
-          DYLD_LIBRARY_PATH: ""
-          DYLD_FALLBACK_LIBRARY_PATH: ""
+        run: |
+          mkdir -p wheelhouse
+          cp wheelhouse-raw/*.whl wheelhouse/
+      - name: Install, smoke-test and run the suite
+        shell: bash
         run: |
           python -m venv /tmp/clean
           source /tmp/clean/bin/activate
@@ -308,6 +242,9 @@ jobs:
     name: Check wheel platform tags
     # Block the release if a platform's wheel is missing, or if a manylinux wheel
     # floors above glibc 2.28, which would leave older hosts unable to install it.
+    # The tag is not only about glibc. auditwheel raises it for a libstdc++
+    # symbol too, so a single std::string concatenation in librumi can push a
+    # wheel several policies up and fail here.
     needs: [build-wheel-linux, build-wheel-macos]
     runs-on: ubuntu-latest
     steps:
@@ -341,7 +278,9 @@ jobs:
           for n in wheels:
               f = floor(n)
               if f and f > (2, 28):
-                  print(f"::error::{n} needs glibc {f[0]}.{f[1]} (> 2.28)")
+                  print(f"::error::{n} floors at glibc {f[0]}.{f[1]}, above 2.28. "
+                        "Run `auditwheel show` on it: the tag is driven by the "
+                        "highest GLIBC, GLIBCXX or CXXABI symbol it references.")
                   ok = False
 
           print("found:", *("  " + n for n in wheels), sep="\n")

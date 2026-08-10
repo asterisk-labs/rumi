@@ -67,11 +67,6 @@ RUMI_API void rumi_free(void* ptr);
 
 // Data paths.
 
-// Point this library's own GDAL/PROJ at data directories so the wheel can find
-// its bundled proj.db. Either may be NULL to leave it unchanged.
-RUMI_API void rumi_set_data_paths(const char* proj_dir, const char* gdal_dir);
-
-
 // Indexing.
 
 // On success *out_blob is *out_size bytes owned by the caller, released
@@ -89,11 +84,11 @@ rumi_index_file(const char*     path,
 #define RUMI_DL_NONE 255
 
 // The dtype set is defined once in rumi_dtypes.def. The enum, the descriptor
-// table below, and the GDAL projection are all generated from it, so a new
+// table below are all generated from it, so a new
 // type is one row and nothing here drifts. RUMI_DT_UNKNOWN = 0 has no row.
 typedef enum {
     RUMI_DT_UNKNOWN = 0,
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, gdal) \
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \
     RUMI_DT_##sym = code,
 #include "rumi_dtypes.def"
 #undef RUMI_DTYPE
@@ -101,8 +96,7 @@ typedef enum {
 
 // One row of the dtype table, the ABI-stable view a binding walks to learn
 // every type instead of hard-coding the set. dl_code is RUMI_DL_NONE when the
-// type has no DLPack form. The GDAL type is deliberately not here, no GDAL enum
-// crosses the ABI so it cannot move when GDAL adds a type.
+// type has no DLPack form.
 typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
@@ -116,9 +110,8 @@ typedef struct {
 // by the caller. Bindings build their own numpy/name maps by walking it.
 RUMI_API size_t rumi_dtype_table(const rumi_dtype_info** out);
 
-// dtype is the canonical type, rumi's own, independent of GDAL. The
-// (sample_format, bits_per_sample) pair is kept for reference. No GDAL enum
-// crosses the ABI, so it does not move when GDAL adds a type.
+// dtype is the canonical type, rumi's own. The (sample_format,
+// bits_per_sample) pair is kept for reference.
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
@@ -173,15 +166,44 @@ RUMI_API rumi_status
 rumi_spec_header(const rumi_spec* spec, rumi_header* out);
 
 
+// Sources.
+
+// Where tile bytes come from. A source is opened once and shared by every read
+// against it; reads are safe to issue concurrently.
+typedef struct rumi_source rumi_source;
+
+// A local file, read with pread, so workers share it without a cursor.
+// rumi speaks no network protocol; fetch remote bytes yourself and open them
+// with rumi_source_memory.
+RUMI_API rumi_status rumi_source_file(const char* path, rumi_source** out);
+
+// A buffer the caller owns and keeps alive for the life of the source.
+RUMI_API rumi_status
+rumi_source_memory(const void* data, size_t size, rumi_source** out);
+
+RUMI_API void rumi_source_free(rumi_source* src);
+
+// The byte ranges a window needs, in tile order, so a caller can fetch exactly
+// those and read the result back through a memory source. Pure arithmetic over
+// the header, no I/O. *out is caller-owned, released with rumi_free.
+typedef struct { uint64_t offset; uint64_t length; } rumi_range;
+
+RUMI_API rumi_status
+rumi_plan_ranges(const rumi_spec* spec,
+                 const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 rumi_range** out, size_t* out_count);
+
+
 // Stateless read.
 
-// Opens path, reads the window, closes. path is a VSI path. bands holds
+// Reads the window from src. bands holds
 // 1-based indices in output order, NULL with n_bands = 0 means all bands in
 // file order. pattern NULL is shorthand for "b y x". dst must be aligned to
 // the sample size and dst_size is checked up front. num_threads > 1 uses the
 // process-global pool (sized on first use).
 RUMI_API rumi_status
-rumi_read(const char*      path,
+rumi_read(rumi_source*     src,
           const rumi_spec* spec,
           const int*       bands, size_t n_bands,
           int              y_off, int y_size,
@@ -190,12 +212,12 @@ rumi_read(const char*      path,
           int              num_threads,
           void*            dst,   size_t dst_size);
 
-// Stack form. One path+spec per image, all sharing grid, tile size, band
+// Stack form. One source+spec per image, all sharing grid, tile size, band
 // count and dtype. n_index holds 1-based image indices, NULL with n_n = 0
 // means all images in order. The pattern must contain n when more than one
 // image is selected. dst follows the same alignment rule as rumi_read.
 RUMI_API rumi_status
-rumi_read_stack(const char* const*      paths,
+rumi_read_stack(rumi_source* const*     sources,
                 const rumi_spec* const* specs,  size_t n_images,
                 const int*              n_index, size_t n_n,
                 const int*              bands,   size_t n_bands,
@@ -210,7 +232,7 @@ rumi_read_stack(const char* const*      paths,
 // it, released through its own deleter. A dtype with no DLPack code, the complex
 // integers, gives RUMI_ERR_UNSUPPORTED.
 RUMI_API rumi_status
-rumi_read_dlpack(const char*      path,
+rumi_read_dlpack(rumi_source*     src,
                  const rumi_spec* spec,
                  const int*       bands, size_t n_bands,
                  int              y_off, int y_size,
@@ -220,7 +242,7 @@ rumi_read_dlpack(const char*      path,
                  DLManagedTensorVersioned** out);
 
 RUMI_API rumi_status
-rumi_read_stack_dlpack(const char* const*      paths,
+rumi_read_stack_dlpack(rumi_source* const*     sources,
                        const rumi_spec* const* specs,  size_t n_images,
                        const int*              n_index, size_t n_n,
                        const int*              bands,   size_t n_bands,
@@ -247,9 +269,8 @@ RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
 
 // One image to write. transform is six affine coefficients in the order
 // (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), NULL when
-// the image carries no georeferencing, in which case srs is NULL too. srs is
-// anything OSRSetFromUserInput accepts. header_size rounds the tile base up to
-// a multiple of itself, 0 packs tight.
+// the image carries no georeferencing, in which case epsg is 0 too.
+// header_size rounds the tile base up to a multiple of itself, 0 packs tight.
 typedef struct {
     uint32_t      image_width;
     uint32_t      image_length;
@@ -257,7 +278,7 @@ typedef struct {
     uint16_t      samples_per_pixel;
     rumi_dtype    dtype;
     const double* transform;
-    const char*   srs;
+    uint32_t      epsg;
     int           pixel_is_point;
     uint32_t      header_size;
 } rumi_write_desc;
@@ -282,26 +303,20 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 
 // Geo keys.
 
-// Builds the GeoTIFF CRS tags for a coordinate reference system. srs is any
-// string OSRSetFromUserInput accepts (EPSG code, WKT, PROJJSON, PROJ).
-// pixel_is_point selects the raster type, 0 area, non-zero point. On success
-// each out buffer is caller-owned and released with rumi_free, holding the
-// raw little-endian tag payload for GeoKeyDirectory (SHORT), GeoDoubleParams
-// (DOUBLE) and GeoAsciiParams (ASCII). dbl and ascii may come back NULL with
-// size 0 when the CRS needs neither. On failure the out-pointers are untouched.
+// Builds the GeoTIFF CRS tags from an EPSG code. Three keys, no projection
+// database: the code is the reference and every reader resolves it from its own
+// EPSG tables. pixel_is_point selects the raster type, 0 area, non-zero point.
+// On success each out buffer is caller-owned and released with rumi_free,
+// holding the raw little-endian tag payload for GeoKeyDirectory (SHORT),
+// GeoDoubleParams (DOUBLE) and GeoAsciiParams (ASCII). The last two come back
+// NULL with size 0, which an EPSG code never needs. On failure the out-pointers
+// are untouched.
 RUMI_API rumi_status
-rumi_geokeys(const char*     srs,
+rumi_geokeys(uint32_t        epsg,
              int             pixel_is_point,
              unsigned char** out_dir,   size_t* out_dir_size,
              unsigned char** out_dbl,   size_t* out_dbl_size,
              unsigned char** out_ascii, size_t* out_ascii_size);
-
-
-// GDAL driver.
-
-// Registers the RUMI driver so GDALOpenEx accepts rumi files
-// via the open option "RUMI_HEADER=<base64 blob>". Idempotent.
-RUMI_API void GDALRegister_RUMI(void);
 
 
 #ifdef __cplusplus

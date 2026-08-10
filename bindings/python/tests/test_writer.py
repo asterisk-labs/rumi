@@ -208,17 +208,43 @@ def test_rotated_transform(tmp_path):
                                            0.0, 0.0, 0.0, 1.0]
 
 
-def test_geokeys(tmp_path):
+# GeoTIFF key ids
+MODEL, RASTER, GEOGRAPHIC, PROJECTED = 1024, 1025, 2048, 3072
+
+
+def geokeys(path):
+    """The key directory as {key id: value}, plus the header."""
+    v = values(read_ifd(path)[0][34735], "H")
+    return v[:4], {v[4 + i * 4]: v[7 + i * 4] for i in range(v[3])}
+
+
+def test_geokeys_projected(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
-    entries = read_ifd(path)[0]
 
-    keys = values(entries[34735], "H")
-    assert len(keys) % 4 == 0
-    assert keys[:3] == [1, 1, 0]
-    assert keys[3] == len(keys) // 4 - 1
-    assert UTM18S in keys
+    head, keys = geokeys(path)
+    assert head == [1, 1, 0, 3]
+    assert keys == {MODEL: 1, RASTER: 1, PROJECTED: UTM18S}
+    # an EPSG code needs no parameters, so neither companion tag is written
+    assert 34736 not in read_ifd(path)[0]
+    assert 34737 not in read_ifd(path)[0]
+
+
+def test_geokeys_geographic(tmp_path):
+    tf = make_frame()
+    path = tmp_path / "a.tif"
+    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4326)
+    assert geokeys(path)[1] == {MODEL: 2, RASTER: 1, GEOGRAPHIC: 4326}
+
+
+def test_geokeys_kind_is_not_the_code_range(tmp_path):
+    """EPSG:4037 sits inside the geographic block and is projected. The kind
+    comes from the generated table, not from the number."""
+    tf = make_frame()
+    path = tmp_path / "a.tif"
+    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4037)
+    assert geokeys(path)[1] == {MODEL: 1, RASTER: 1, PROJECTED: 4037}
 
 
 def test_pixel_is_point(tmp_path):
@@ -226,8 +252,32 @@ def test_pixel_is_point(tmp_path):
     area, point = tmp_path / "area.tif", tmp_path / "point.tif"
     write_frames(area, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     write_frames(point, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S,
-             pixel_is_point=True)
-    assert read_ifd(area)[0][34735] != read_ifd(point)[0][34735]
+                 pixel_is_point=True)
+    assert geokeys(area)[1][RASTER] == 1
+    assert geokeys(point)[1][RASTER] == 2
+
+
+def test_crs_must_be_an_epsg_code(tmp_path):
+    tf = make_frame()
+    for bad in ("+proj=utm +zone=18 +south", "WGS 84 / UTM zone 18S", 1.5):
+        with pytest.raises((ValueError, TypeError), match="EPSG"):
+            write_frames(tmp_path / "a.tif", tf["compressed"], tf,
+                         transform=NORTH_UP, crs=bad)
+
+
+def test_crs_forms_agree(tmp_path):
+    tf = make_frame()
+    a, b = tmp_path / "int.tif", tmp_path / "str.tif"
+    write_frames(a, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(b, tf["compressed"], tf, transform=NORTH_UP, crs="EPSG:32718")
+    assert a.read_bytes() == b.read_bytes()
+
+
+def test_unknown_epsg_is_refused(tmp_path):
+    tf = make_frame()
+    with pytest.raises(ValueError, match="not a projected or geographic"):
+        write_frames(tmp_path / "a.tif", tf["compressed"], tf,
+                     transform=NORTH_UP, crs=999999)
 
 
 def test_write_blob_round_trip(tmp_path):
@@ -268,13 +318,15 @@ def test_sample_format(tmp_path, dtype):
     assert values(entries[258], "H") == [np.dtype(dtype).itemsize * 8]
 
 
-# Digests of the whole file, taken from the Python writer before the port.
+# Digests of the whole file. The writer is deterministic, so a change here is a
+# change to the bytes on disk. Regenerate deliberately, never to make a test
+# pass.
 GOLDEN = {
     "plain": "d1568b2bf477c20b9142de26b33be0b53c4eac427abbec42a6a548629531400d",
     "aligned": "925d0865975fe223ff72da0686cdf35c352e85f2493543615b8414a9ea91e88a",
-    "north_up": "d41eb800c0563a08c61ddf2ea8ddeb834225c6835ddd56a73685dedd7264ffd7",
-    "rotated": "13af95924691533e2e869162ce55f84b14891adcbf6a12a6ac742aaea7496987",
-    "point": "d84c5c8cbe103f7ffe52f5961ca734bc6649d32f82a7c7d6f2b4897e3918c55a",
+    "north_up": "7810307574be07df240dbcd0fcdfc885dfd2a9d77e678d6589ef623934777478",
+    "rotated": "5085b8dd59c8f1017d64be5510088229ff45a60001d6bde06b6ee995c3f032e4",
+    "point": "c8b38a5c1cda85e1f875fb1186f369cf277c2f12d863fd2169bc003727615f14",
 }
 
 CASES = {

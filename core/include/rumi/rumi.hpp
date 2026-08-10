@@ -2,8 +2,7 @@
 
 #include "rumi.h"
 
-#include "gdal_priv.h"
-#include "cpl_vsi.h"
+#include <cstdio>
 
 #include <cstdint>
 #include <cstddef>
@@ -84,7 +83,6 @@ struct Header {
     std::uint32_t tile_count{};
     std::size_t   bytes_per_sample{};
     std::size_t   max_tile_size{};
-    GDALDataType  gdal_type{GDT_Unknown};
     rumi_dtype    dtype{RUMI_DT_UNKNOWN};
 
     std::vector<std::uint32_t> tile_byte_counts;
@@ -118,36 +116,78 @@ parse_blob(std::span<const std::byte> blob);
 dtype_table(std::size_t* count) noexcept;
 
 // The canonical (sample_format, bits) to rumi_dtype map, RUMI_DT_UNKNOWN when
-// the pair is not one rumi supports. This is the validity gate, not GDAL.
+// the pair is not one rumi supports. This is the validity gate.
 [[nodiscard]] RUMI_API rumi_dtype
 sample_to_dtype(std::uint8_t sample_format,
                 std::uint8_t bits_per_sample) noexcept;
 
 [[nodiscard]] RUMI_API std::size_t dtype_size(rumi_dtype dt) noexcept;
 
-// Best-effort projection to a GDAL type for the driver, GDT_Unknown for a type
-// this GDAL build cannot express.
-[[nodiscard]] RUMI_API GDALDataType dtype_to_gdal(rumi_dtype dt) noexcept;
 
+// Sources
 
-// File reader
+// A byte range in the file, as plan_ranges reports them.
+struct Range {
+    std::uint64_t offset;
+    std::uint64_t length;
+};
 
-// PRead when the handle has it, a mutex around seek+read otherwise. The lock
-// covers the read, never the decode. One per file, shared by every task.
-class FileReader {
+// Where tile bytes come from. read() runs on every worker at once, so an
+// implementation has to be safe under concurrent calls. prefetch() announces a
+// batch before the decode starts, for a source where a round trip is worth
+// batching; one backed by a file or a buffer ignores it.
+class RUMI_API Source {
 public:
-    explicit FileReader(VSILFILE* fp) noexcept;
+    virtual ~Source() = default;
+
+    [[nodiscard]] virtual std::size_t
+    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept = 0;
+
+    [[nodiscard]] virtual std::uint64_t size() const noexcept = 0;
+
+    virtual void prefetch(const Range*, std::size_t) noexcept {}
+};
+
+// A local file. pread where the platform has it, a mutex around seek+read
+// otherwise. The lock covers the read, never the decode.
+class RUMI_API FileSource final : public Source {
+public:
+    [[nodiscard]] static std::expected<std::unique_ptr<FileSource>, std::string>
+    open(const char* path) noexcept;
+
+    ~FileSource() override;
 
     [[nodiscard]] std::size_t
-    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept;
+    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept override;
 
-    FileReader(const FileReader&)            = delete;
-    FileReader& operator=(const FileReader&) = delete;
+    [[nodiscard]] std::uint64_t size() const noexcept override { return size_; }
 
 private:
-    VSILFILE*  fp_;
-    bool       has_pread_;
-    std::mutex mutex_;
+    FileSource() = default;
+
+#ifdef _WIN32
+    void*         handle_{};
+#else
+    int           fd_{-1};
+#endif
+    std::uint64_t size_{};
+    std::mutex    mutex_;
+};
+
+// A buffer the caller holds. Borrows, so the buffer has to outlive the source.
+class RUMI_API MemorySource final : public Source {
+public:
+    MemorySource(const void* data, std::size_t size) noexcept
+        : data_(static_cast<const std::byte*>(data)), size_(size) {}
+
+    [[nodiscard]] std::size_t
+    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept override;
+
+    [[nodiscard]] std::uint64_t size() const noexcept override { return size_; }
+
+private:
+    const std::byte* data_;
+    std::uint64_t    size_;
 };
 
 
@@ -167,7 +207,7 @@ struct TileSpec {
 // the result buffer, never the disk layout. tile_w and tile_bytes are this
 // tile's real width and decoded size, smaller than a full tile at the edges.
 struct TileTask {
-    FileReader*   reader;
+    Source*       source;
     std::uint64_t offset;
     std::uint32_t compressed_size;
     std::uint32_t tile_w;
@@ -211,11 +251,11 @@ private:
 // window and band indices (1-based) beforehand. The reader is shared by every
 // task and must outlive the run.
 [[nodiscard]] RUMI_API Plan
-build_plan(const Header& h, FileReader* reader,
+build_plan(const Header& h, Source* source,
            int x_off, int y_off, int x_size, int y_size,
            std::byte* data,
            std::span<const int> bands,
-           GSpacing pixel_space, GSpacing line_space, GSpacing band_space);
+           std::int64_t pixel_space, std::int64_t line_space, std::int64_t band_space);
 
 
 // Layout
@@ -249,16 +289,22 @@ compile_layout(std::string_view pattern,
 // without changing the read_window error type. Defaults to RUMI_ERR_IO.
 [[nodiscard]] rumi_status take_read_status() noexcept;
 
-// Rejects a header whose tiles run past the end of fp, a truncated file or a
-// blob with inflated byte counts, before any tile buffer is allocated.
+// Rejects a header whose tiles run past the end of the source, a truncated file
+// or a blob with inflated byte counts, before any tile buffer is allocated.
 [[nodiscard]] RUMI_API std::expected<void, std::string>
-check_data_fits(const Header& h, VSILFILE* fp);
+check_data_fits(const Header& h, const Source& src);
 
-// Opens path via VSI, plans the window, runs it, closes. bands are 1-based.
-// dst must be aligned to bytes_per_sample.
-// num_threads > 1 uses the process-global pool (sized on first use).
+// The byte ranges a window needs, in tile order. Arithmetic over the header
+// alone, no I/O, so a caller can fetch just these and pass them to a
+// MemorySource.
+[[nodiscard]] RUMI_API std::vector<Range>
+plan_ranges(const Header& h, std::span<const int> bands,
+            int y_off, int y_size, int x_off, int x_size);
+
+// Plans the window, runs it, and returns. bands are 1-based, dst must be
+// aligned to bytes_per_sample, num_threads > 1 uses the process-global pool.
 [[nodiscard]] RUMI_API std::expected<void, std::string>
-read_window(const char* path, const Header& h,
+read_window(Source& src, const Header& h,
             std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
             const LayoutPlan& layout, std::byte* dst,
@@ -268,73 +314,13 @@ read_window(const char* path, const Header& h,
 // then reads each selected asset (n_index, 1-based) into its layout.sn slice
 // of dst.
 [[nodiscard]] RUMI_API std::expected<void, std::string>
-read_stack(std::span<const char* const> paths,
+read_stack(std::span<Source* const> sources,
            std::span<const Header* const> headers,
            std::span<const int> n_index,
            std::span<const int> bands,
            int y_off, int y_size, int x_off, int x_size,
            const LayoutPlan& layout, std::byte* dst,
            int num_threads);
-
-
-// Image (GDAL driver only; the native fast path is read_window/read_stack)
-
-class Image;
-
-class Band : public GDALRasterBand {
-public:
-    Band(Image* image, int band_index) noexcept;
-    ~Band() override = default;
-
-    Band(const Band&)            = delete;
-    Band& operator=(const Band&) = delete;
-
-    CPLErr IReadBlock(int x_block, int y_block, void* buffer) override;
-
-    CPLErr IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
-                     int x_size, int y_size, void* data,
-                     int buf_x_size, int buf_y_size, GDALDataType buf_type,
-                     GSpacing pixel_space, GSpacing line_space,
-                     GDALRasterIOExtraArg* extra_arg) override;
-
-private:
-    Image* image_{nullptr};
-};
-
-class RUMI_API Image : public GDALDataset {
-public:
-    static constexpr const char* OPEN_OPTION_HEADER  = "RUMI_HEADER";
-    static constexpr const char* OPEN_OPTION_THREADS = "NUM_THREADS";
-
-    Image();
-    ~Image() override;
-
-    Image(const Image&)            = delete;
-    Image& operator=(const Image&) = delete;
-
-    static GDALDataset* Open(GDALOpenInfo* open_info);
-    static int          Identify(GDALOpenInfo* open_info);
-
-    CPLErr IRasterIO(GDALRWFlag rw_flag, int x_off, int y_off,
-                     int x_size, int y_size, void* data,
-                     int buf_x_size, int buf_y_size, GDALDataType buf_type,
-                     int band_count, int* band_map,
-                     GSpacing pixel_space, GSpacing line_space, GSpacing band_space,
-                     GDALRasterIOExtraArg* extra_arg) override;
-
-    [[nodiscard]] const Header& header() const noexcept { return header_; }
-    [[nodiscard]] VSILFILE*     file()   const noexcept { return file_.get(); }
-    [[nodiscard]] ThreadPool*   pool()   const noexcept { return pool_; }
-    [[nodiscard]] FileReader*   reader() const noexcept {
-        return reader_ ? &*reader_ : nullptr;
-    }
-
-private:
-    Header                       header_{};
-    std::shared_ptr<VSILFILE>    file_;
-    mutable std::optional<FileReader> reader_;  // mutable, reads hold its lock
-    ThreadPool*                  pool_{nullptr};
-};
 
 
 // Builder
@@ -357,29 +343,32 @@ struct GeoKeys {
     std::vector<std::byte> ascii_params;   // GeoAsciiParams, ASCII
 };
 
-// Encodes a CRS to GeoTIFF keys by driving GDAL, the only place that turns an
-// arbitrary CRS into keys. srs is anything OSRSetFromUserInput takes. noexcept,
-// failures come back as a string.
+// Encodes an EPSG code as GeoTIFF keys. The code is the reference, so three
+// keys carry it and a reader resolves the rest from its own EPSG tables. A CRS
+// no code names is passed as raw keys instead, see WriteDesc::keys.
 [[nodiscard]] RUMI_API std::expected<GeoKeys, std::string>
-build_geokeys(std::string_view srs, bool pixel_is_point) noexcept;
+build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept;
 
 
 // Writer
 
 // One image to write. transform is six affine coefficients in the order
 // (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), null when
-// the image carries no georeferencing, in which case srs is empty too.
+// the image carries no georeferencing, in which case epsg is 0 too.
 // header_size rounds the tile base up to a multiple of itself, 0 packs tight.
+// keys, when set, is embedded verbatim and epsg is ignored, for a CRS no EPSG
+// code names.
 struct WriteDesc {
-    std::uint32_t    image_width{};
-    std::uint32_t    image_length{};
-    std::uint16_t    tile_size{};
-    std::uint16_t    samples_per_pixel{};
-    rumi_dtype       dtype{RUMI_DT_UNKNOWN};
-    const double*    transform{};
-    std::string_view srs{};
-    bool             pixel_is_point{};
-    std::uint32_t    header_size{};
+    std::uint32_t   image_width{};
+    std::uint32_t   image_length{};
+    std::uint16_t   tile_size{};
+    std::uint16_t   samples_per_pixel{};
+    rumi_dtype      dtype{RUMI_DT_UNKNOWN};
+    const double*   transform{};
+    std::uint32_t   epsg{};
+    const GeoKeys*  keys{};
+    bool            pixel_is_point{};
+    std::uint32_t   header_size{};
 };
 
 // Writes the BigTIFF and returns the sidecar blob for it. frames are the
@@ -394,11 +383,5 @@ write_file(const char* path, const WriteDesc& desc,
 // the geo tags to measure them, same as write_file.
 [[nodiscard]] RUMI_API std::expected<std::uint64_t, std::string>
 base_offset(const WriteDesc& desc) noexcept;
-
-// Point our own GDAL/PROJ at data dirs so the wheel finds its bundled proj.db.
-// Either may be NULL. Scoped to our GDAL, a host one is untouched.
-RUMI_API void set_proj_data(const char* proj_dir, const char* gdal_dir) noexcept;
-
-RUMI_API void register_driver();
 
 }  // namespace rumi
