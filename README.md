@@ -14,7 +14,7 @@ A GeoTIFF can be written in countless ways, and that flexibility is half of why 
 
 rumi answers them the same way every time. A rumi GeoTIFF file is ALWAYS a **BigTIFF, tiled, band separate, and tile interleaved**, one IFD, no overviews, and every tile is a self-contained [OpenZL](https://github.com/facebook/openzl) frame. The full rules live in the [specification](SPEC.md).
 
-Because the layout is fixed, almost everything about a rumi file is predictable. The metadata that is left fits in a tiny self-contained space, so a million files stay indexed in memory and reads go straight to the pixels.
+Because the layout is fixed, everything in front of the pixels is predictable. The same tags, in the same order, with every value in the same place, so the byte where the tile data starts follows from the shape of the image. Two scenes of the same shape put their first tile at the same offset, whatever is in them. What metadata is left over is small enough to keep a million files indexed in memory, and reads go straight to the pixels.
 
 <p align="center">
   <img src="img/rumi-index.svg" alt="rumi index" width="720"/>
@@ -30,6 +30,9 @@ Because the layout is fixed, almost everything about a rumi file is predictable.
 > [!WARNING]
 > **TIFF compression tag 60000 is experimental, not a registered code.**
 > rumi marks OpenZL-compressed tiles with TIFF `Compression` tag `60000`. This is not a registered TIFF compression code, it is a private-range value rumi uses by convention. A standard TIFF or GeoTIFF reader cannot decode a rumi file, it sees an unknown compression. The value may change if OpenZL is assigned an official tag or if it collides with another private use. A rumi file is only readable by a reader that knows `60000` means OpenZL.
+
+> [!NOTE]
+> **The CRS is an EPSG code, or nothing.** rumi writes the CRS as one EPSG code and stops there. A CRS that only WKT or a PROJ string can name does not fit, and neither do ESRI codes, compound and vertical CRS, or the coordinate epoch of a dynamic CRS. Each of those is as long as its contents make it, so the header would grow with the CRS and stop being predictable. A raster that needs one of them wants an ordinary GeoTIFF.
 
 ## Install
 
@@ -64,9 +67,13 @@ arr = rumi.read("scene.tif")                          # (B, Y, X)
 arr = rumi.read("scene.tif", header, b=[0, 3], y=(0, 512), x=(0, 512))
 ```
 
-## Catalog
+## Stateless reads
 
-`rumi.write` returns two things, the file and its header. The file is an ordinary `.tif` that lives wherever your scenes already live. The header is a small binary record you keep yourself.
+A rumi read is one call that takes a path and a header and hands back pixels. Nothing is opened beforehand, nothing is remembered afterwards.
+
+Any other reader has to work differently. Before it can touch a pixel it opens the file, parses the IFD, and loads the offset arrays, and because repeating that per read would be absurd it keeps the result alive in memory. That memory is state. It belongs to one process, it dies with it, and it has to be rebuilt from scratch anywhere else. Sixteen dataloader workers means the same file opened and parsed sixteen times.
+
+`rumi.write` hands you that state up front, as bytes.
 
 <p align="center">
   <img src="img/rumi-catalog.svg" alt="rumi.write returns a .tif and a header, and the headers become rows in a parquet catalog" width="720"/>
@@ -76,31 +83,36 @@ arr = rumi.read("scene.tif", header, b=[0, 3], y=(0, 512), x=(0, 512))
   <i>One path plus one header is one row, so a collection of files is a table.</i>
 </p>
 
-**The header is a bypass.** A normal reader has to scan the file before it can touch a pixel. Open it, parse the IFD, load the offset arrays, then seek. With the header in hand there is nothing to discover. The reader computes the byte range and goes straight to the data. Reads become stateless, no open, no parse, nothing cached per file.
+With the header in hand there is nothing left to discover. The reader already knows where the tiles it wants begin and how long they are, so it reads exactly those bytes. No open, no parse, nothing cached per file, and nothing that workers have to share.
 
-**It is also far smaller.** A BigTIFF IFD spends 16 bytes per tile on `TileOffsets` and `TileByteCounts`, plus the tag block itself. rumi stores 4 bytes per tile and nothing else, because the layout is fixed and everything else is predictable.
+**It is small enough to keep a million of them.** rumi stores 26 bytes and 4 bytes per tile, and nothing else, because the layout is fixed and everything else is predictable. A BigTIFF IFD carries a full 64-bit offset and a full 64-bit length for every tile, plus the tag block itself.
 
-So it is a row. A path in one column, the header bytes in the other. That pair is everything you need to open a scene, so a million scenes is a million rows and nothing else. The collection stops being a pile of files and becomes one object you can query, where reaching any tile in it costs a single seek.
+**And because the header is bytes, it is a column.** A path in one column, the header in the other. That pair is the whole read, so a million scenes is a million rows and nothing else.
 
 ```python
-import pyarrow as pa
-import pyarrow.parquet as pq
+import pandas as pd
 
 rows = []
 for scene, tf in scenes:
     path, header = rumi.write(scene, tf)
     rows.append({"path": str(path), "rumi_header": header})
 
-pq.write_table(pa.Table.from_pylist(rows), "catalog.parquet")
+pd.DataFrame(rows).to_parquet("catalog.parquet")
 ```
 
-A read then takes the row and goes straight to the pixels.
+A read then takes a row and goes straight to the pixels.
 
 ```python
-row = pq.read_table("catalog.parquet").to_pylist()[0]
+catalog = pd.read_parquet("catalog.parquet")
+row = catalog.iloc[0]
 
 chip = rumi.read(row["path"], row["rumi_header"], y=(0, 512), x=(0, 512))
 ```
+
+The collection stops being a pile of files and becomes one object you can query, where reaching any tile in it costs a single seek. Nothing in the catalog is a live connection, so it travels, and a worker that receives one row can read without ever having seen the dataset.
+
+> [!NOTE]
+> rumi speaks no network protocol yet. A source is a local path, or a buffer you already hold, so a remote scene means fetching its bytes yourself for now. Reading object storage paths directly is on the way.
 
 ## Data model
 
