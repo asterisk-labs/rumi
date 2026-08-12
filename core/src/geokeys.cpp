@@ -26,6 +26,7 @@ constexpr std::uint16_t GT_RASTER_TYPE  = 1025;
 constexpr std::uint16_t GEOGRAPHIC_TYPE = 2048;
 constexpr std::uint16_t PROJECTED_TYPE  = 3072;
 
+constexpr std::uint16_t MODEL_UNDEFINED  = 0;
 constexpr std::uint16_t MODEL_PROJECTED  = 1;
 constexpr std::uint16_t MODEL_GEOGRAPHIC = 2;
 constexpr std::uint16_t RASTER_AREA      = 1;
@@ -83,17 +84,25 @@ void put16(std::vector<std::byte>& out, std::uint16_t v)
 std::expected<GeoKeys, std::string>
 build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept
 try {
-    const bool geographic = is_geographic(epsg);
-    if (!geographic && !is_projected(epsg))
-        return err("EPSG:%u is not a projected or geographic CRS. Pass GeoTIFF "
-                   "keys directly for a CRS no EPSG code names.", epsg);
+    // 0 is GeoTIFF's code for a parameter left out on purpose.
+    const bool undefined  = epsg == 0;
+    const bool geographic = !undefined && is_geographic(epsg);
+    if (!undefined && !geographic && !is_projected(epsg))
+        return err("EPSG:%u is not a projected or geographic CRS. rumi stores "
+                   "the CRS as an EPSG code and nothing else.", epsg);
+
+    std::uint16_t model = MODEL_UNDEFINED;
+    std::uint16_t crs_key = GEOGRAPHIC_TYPE;
+    if (!undefined) {
+        model   = geographic ? MODEL_GEOGRAPHIC : MODEL_PROJECTED;
+        crs_key = geographic ? GEOGRAPHIC_TYPE  : PROJECTED_TYPE;
+    }
 
     // Ascending key id, which the format requires.
     const std::uint16_t keys[][4] = {
-        {GT_MODEL_TYPE,  0, 1, geographic ? MODEL_GEOGRAPHIC : MODEL_PROJECTED},
+        {GT_MODEL_TYPE,  0, 1, model},
         {GT_RASTER_TYPE, 0, 1, pixel_is_point ? RASTER_POINT : RASTER_AREA},
-        {geographic ? GEOGRAPHIC_TYPE : PROJECTED_TYPE, 0, 1,
-         static_cast<std::uint16_t>(epsg)},
+        {crs_key, 0, 1, static_cast<std::uint16_t>(epsg)},
     };
     constexpr std::size_t n = sizeof(keys) / sizeof(keys[0]);
 

@@ -269,8 +269,8 @@ RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
 
 // One image to write. transform is six affine coefficients in the order
 // (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), NULL when
-// the image carries no georeferencing, in which case epsg is 0 too.
-// header_size rounds the tile base up to a multiple of itself, 0 packs tight.
+// the image carries no georeferencing, in which case epsg is 0 too and the
+// file gets the identity matrix with an undefined CRS.
 typedef struct {
     uint32_t      image_width;
     uint32_t      image_length;
@@ -280,7 +280,6 @@ typedef struct {
     const double* transform;
     uint32_t      epsg;
     int           pixel_is_point;
-    uint32_t      header_size;
 } rumi_write_desc;
 
 // Writes the file and hands back its header blob, *out_size bytes owned by the

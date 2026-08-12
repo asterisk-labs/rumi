@@ -109,35 +109,21 @@ bool sample_encoding(rumi_dtype dt, std::uint8_t* sf, std::uint8_t* bits) noexce
 std::expected<std::vector<Entry>, std::string>
 geo_entries(const WriteDesc& d)
 {
+    static const double IDENTITY[6] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    const double* t = d.transform ? d.transform : IDENTITY;
+
     std::vector<Entry> out;
-    if (!d.transform) return out;
+    out.push_back(pack(34264, T_DOUBLE, {t[0], t[1], 0.0, t[2],
+                                         t[3], t[4], 0.0, t[5],
+                                         0.0,  0.0,  0.0, 0.0,
+                                         0.0,  0.0,  0.0, 1.0}));
 
-    const double* t = d.transform;
-    if (t[1] == 0.0 && t[3] == 0.0) {
-        out.push_back(pack(33550, T_DOUBLE, {t[0], -t[4], 0.0}));
-        out.push_back(pack(33922, T_DOUBLE, {0.0, 0.0, 0.0, t[2], t[5], 0.0}));
-    } else {
-        out.push_back(pack(34264, T_DOUBLE, {t[0], t[1], 0.0, t[2],
-                                             t[3], t[4], 0.0, t[5],
-                                             0.0,  0.0,  0.0, 0.0,
-                                             0.0,  0.0,  0.0, 1.0}));
-    }
-
-    GeoKeys built;
-    if (!d.keys) {
-        auto keys = build_geokeys(d.epsg, d.pixel_is_point);
-        if (!keys) return std::unexpected(keys.error());
-        built = std::move(*keys);
-    }
-    const GeoKeys& keys = d.keys ? *d.keys : built;
-
-    out.push_back(adopt(34735, T_SHORT, keys.directory));
-    if (!keys.double_params.empty())
-        out.push_back(adopt(34736, T_DOUBLE, keys.double_params));
-    if (!keys.ascii_params.empty())
-        out.push_back(adopt(34737, T_ASCII, keys.ascii_params));
+    auto keys = build_geokeys(d.transform ? d.epsg : 0, d.pixel_is_point);
+    if (!keys) return std::unexpected(keys.error());
+    out.push_back(adopt(34735, T_SHORT, keys->directory));
     return out;
 }
+
 
 std::vector<Entry>
 base_entries(const WriteDesc& d, std::uint64_t tile_count,
@@ -178,12 +164,6 @@ std::uint64_t place_external(const std::vector<Entry>& entries,
     return cursor;
 }
 
-std::uint64_t round_up(std::uint64_t value, std::uint32_t multiple) noexcept
-{
-    if (multiple == 0) return value;
-    return (value + multiple - 1) / multiple * multiple;
-}
-
 struct Grid {
     std::uint32_t across;
     std::uint32_t down;
@@ -201,7 +181,7 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
         return err("tile_size must be a multiple of 16, got %u", d.tile_size);
     if (d.samples_per_pixel == 0)
         return err("samples_per_pixel must be at least 1");
-    if ((d.transform == nullptr) != (d.epsg == 0 && d.keys == nullptr))
+    if ((d.transform == nullptr) != (d.epsg == 0))
         return err("transform and a CRS must be given together");
 
     Grid g{};
@@ -241,9 +221,7 @@ plan(const WriteDesc& d, const Grid& g,
                      std::make_move_iterator(geo->end()));
 
     const std::uint64_t ifd_size = 8 + 20 * l.entries.size() + 8;
-    const std::uint64_t natural =
-        place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
-    l.base = round_up(natural, d.header_size);
+    l.base = place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
 
     if (l.base > 0xFFFFFFFFu)
         return err("first tile offset %llu exceeds uint32 "

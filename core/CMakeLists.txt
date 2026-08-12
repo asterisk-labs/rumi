@@ -12,6 +12,7 @@ project(rumi
 )
 
 option(RUMI_BUILD_SHARED_LIB  "Build standalone librumi for direct link"          OFF)
+option(RUMI_BUILD_TESTS       "Build the C++ component tests"                     OFF)
 
 # geozl owns OpenZL and brings it in transitively, so rumi vendors geozl only.
 # The VERSION file sits one level up, so the submodule at the repo root is one
@@ -130,10 +131,20 @@ if(RUMI_BUILD_SHARED_LIB)
     )
 endif()
 
+# rumi.hpp is internal and its symbols are hidden, so the tests compile the
+# sources rather than link the shared lib.
+if(RUMI_BUILD_TESTS)
+    enable_testing()
+    add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})
+    target_link_libraries(rumi_tests PRIVATE rumi_config)
+    add_test(NAME core COMMAND rumi_tests)
+endif()
+
 message(STATUS "")
 message(STATUS "rumi ${RUMI_VERSION_FULL}")
 message(STATUS "  geozl:          ${RUMI_GEOZL_DIR}")
 message(STATUS "  OpenZL:         via geozl")
 message(STATUS "  Standalone lib: ${RUMI_BUILD_SHARED_LIB}")
+message(STATUS "  Tests:          ${RUMI_BUILD_TESTS}")
 message(STATUS "  Sanitize:       ${RUMI_SANITIZE}")
 message(STATUS "")

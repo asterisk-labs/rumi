@@ -129,7 +129,6 @@ typedef struct {
     const double* transform;
     uint32_t      epsg;
     int           pixel_is_point;
-    uint32_t      header_size;
 } rumi_write_desc;
 
 rumi_status

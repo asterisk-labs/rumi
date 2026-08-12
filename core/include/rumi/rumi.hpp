@@ -347,10 +347,8 @@ build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept;
 
 // One image to write. transform is six affine coefficients in the order
 // (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), null when
-// the image carries no georeferencing, in which case epsg is 0 too.
-// header_size rounds the tile base up to a multiple of itself, 0 packs tight.
-// keys, when set, is embedded verbatim and epsg is ignored, for a CRS no EPSG
-// code names.
+// the image carries no georeferencing, in which case epsg is 0 too and the
+// file gets the identity matrix with an undefined CRS.
 struct WriteDesc {
     std::uint32_t   image_width{};
     std::uint32_t   image_length{};
@@ -359,9 +357,7 @@ struct WriteDesc {
     rumi_dtype      dtype{RUMI_DT_UNKNOWN};
     const double*   transform{};
     std::uint32_t   epsg{};
-    const GeoKeys*  keys{};
     bool            pixel_is_point{};
-    std::uint32_t   header_size{};
 };
 
 // Writes the BigTIFF and returns the sidecar blob for it. frames are the

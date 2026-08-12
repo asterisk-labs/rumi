@@ -2,6 +2,7 @@
 # make build      build librumi only
 # make lib        build and stage the shared lib next to the binding (CI entry)
 # make test       build, install, then pytest
+# make ctest      build and run the C++ component tests
 # make r          build the R binding (skips until bindings/r exists)
 # make sync       validate VERSION; write R DESCRIPTION if present
 # make install    cmake --install into PREFIX (/usr/local)
@@ -40,7 +41,7 @@ CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
-.PHONY: all build configure lib stage-lib python test r sync \
+.PHONY: all build configure lib stage-lib python test ctest r sync \
         install submodules clean help
 
 all: python
@@ -97,6 +98,13 @@ test: python
 	  rc=$$?; if [ $$rc -eq 5 ]; then echo "no tests collected"; \
 	  elif [ $$rc -ne 0 ]; then exit $$rc; fi
 
+# Its own build dir, so it never disturbs the lib staged for the binding.
+ctest: $(GEOZL)/core/CMakeLists.txt
+	cmake -S $(CORE) -B $(BUILD_DIR)-tests -G $(GEN) \
+	  -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DRUMI_BUILD_TESTS=ON $(CMAKE_FLAGS)
+	cmake --build $(BUILD_DIR)-tests --target rumi_tests
+	$(BUILD_DIR)-tests/rumi_tests
+
 # R binding. Skips cleanly until bindings/r exists.
 r:
 	@if [ ! -d $(R_DIR) ]; then \
@@ -127,7 +135,7 @@ install: build
 	cmake --install $(BUILD_DIR) --prefix $(PREFIX)
 
 clean:
-	rm -rf $(BUILD_DIR) $(STAGE_DIR)
+	rm -rf $(BUILD_DIR) $(BUILD_DIR)-tests $(STAGE_DIR)
 	rm -rf $(PY_DIR)/build $(PY_DIR)/*.egg-info .pytest_cache
 	rm -f $(PY_LIB_DIR)/librumi* $(PY_LIB_DIR)/rumi*.dll
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

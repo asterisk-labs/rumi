@@ -12,6 +12,18 @@
 #include <vector>
 
 namespace rumi {
+
+// Where the profile puts the tile data, from the shape alone.
+std::uint64_t derived_base_offset(std::uint32_t bands,
+                                  std::uint64_t tiles) noexcept
+{
+    std::uint64_t external = 128 + 32;                   // 34264 and 34735
+    if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
+    if (tiles >= 2) external += 8 * tiles;                 // 324
+    if (tiles >= 3) external += 4 * tiles;                 // 325
+    return 16 + (8 + 20 * 15 + 8) + external;
+}
+
 namespace {
 
 // printf-checked error builder.
@@ -154,9 +166,18 @@ build_blob_from_file(const char* path) noexcept
         return nullptr;
     };
 
-    // SubIFDs carry overviews and masks, which rumi forbids.
-    if (find(330) != nullptr) {
-        return err("rumi rejects SubIFDs (overviews or masks)");
+    static constexpr std::uint16_t ALLOWED[] = {
+        256, 257, 258, 259, 262, 277, 284, 317, 322, 323, 324, 325, 339,
+        34264, 34735,
+    };
+    for (const Entry& e : entries) {
+        bool ok = false;
+        for (std::uint16_t t : ALLOWED) if (e.tag == t) { ok = true; break; }
+        if (!ok) return err("rumi allows 15 tags and this file has tag %u",
+                            e.tag);
+    }
+    for (std::uint16_t t : ALLOWED) {
+        if (find(t) == nullptr) return err("required tag %u is missing", t);
     }
 
     // First element of a scalar integer tag, or the default if absent.
@@ -258,6 +279,17 @@ build_blob_from_file(const char* path) noexcept
         return err("rumi requires Predictor 1; file has %llu",
                    static_cast<unsigned long long>(*pred_e));
     }
+    auto photo_e = scalar(262, 1); if (!photo_e) return std::unexpected(photo_e.error());
+    if (*photo_e != 1) {
+        return err("rumi requires PhotometricInterpretation 1 (MinIsBlack); "
+                   "file has %llu", static_cast<unsigned long long>(*photo_e));
+    }
+    if (tw % 16 || tl % 16) {
+        return err("TIFF requires tile dimensions to be a multiple of 16; "
+                   "file has %llux%llu",
+                   static_cast<unsigned long long>(tw),
+                   static_cast<unsigned long long>(tl));
+    }
 
     // SampleFormat defaults to 1. All bands share one depth and one format.
     auto bits_e = array(258, spp); if (!bits_e) return std::unexpected(bits_e.error());
@@ -334,6 +366,15 @@ build_blob_from_file(const char* path) noexcept
     if (base > 0xFFFFFFFFu) {
         return err("first tile offset %llu exceeds uint32 (IFD must precede the tiles)",
                    static_cast<unsigned long long>(base));
+    }
+
+    if (base != derived_base_offset(static_cast<std::uint32_t>(spp), n_tiles)) {
+        return err("tile data starts at %llu, the profile puts it at %llu; "
+                   "the file has padding or a value out of place",
+                   static_cast<unsigned long long>(base),
+                   static_cast<unsigned long long>(
+                       derived_base_offset(static_cast<std::uint32_t>(spp),
+                                           n_tiles)));
     }
 
     BlobHeader bh{};

@@ -682,7 +682,6 @@ rumi_write(const char*                 path,
         d.transform         = desc->transform;
         d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
-        d.header_size       = desc->header_size;
 
         auto result = rumi::write_file(path, d, frames, sizes, frame_count);
         if (!result) {
@@ -721,7 +720,6 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
         d.transform         = desc->transform;
         d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
-        d.header_size       = desc->header_size;
 
         auto base = rumi::base_offset(d);
         if (!base) {

@@ -90,7 +90,7 @@ def test_tag_set(tmp_path):
     entries = read_ifd(path)[0]
 
     assert set(entries) == {256, 257, 258, 259, 262, 277, 284, 317, 322, 323,
-                            324, 325, 339}
+                            324, 325, 339, 34264, 34735}
     assert values(entries[256], "I") == [tf.image_width]
     assert values(entries[257], "I") == [tf.image_length]
     assert values(entries[258], "H") == [16] * tf.bands
@@ -167,22 +167,6 @@ def test_tile_write_order(tmp_path):
     assert blob[header_bytes(tf):] == b"".join(tf["compressed"])
 
 
-def test_header_size_alignment(tmp_path):
-    tf = make_frame()
-    path = tmp_path / "a.tif"
-    write_frames(path, tf["compressed"], tf, header_size=4096)
-    entries, _next, blob = read_ifd(path)
-
-    natural = header_bytes(tf)
-    base = header_bytes(tf, header_size=4096)
-    assert base == 4096 and base > natural
-    assert min(values(entries[TILE_OFFSETS], "Q")) == base
-
-    end = max(at + TYPE_SIZE[t] * n
-              for t, n, at, _ in entries.values() if at is not None)
-    assert blob[end:base] == b"\x00" * (base - end)
-
-
 def test_north_up_transform(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
@@ -190,9 +174,11 @@ def test_north_up_transform(tmp_path):
     entries = read_ifd(path)[0]
 
     # coefficient 0 is the x resolution, coefficient 2 the x origin
-    assert 34264 not in entries
-    assert values(entries[33550], "d") == [30.0, 30.0, 0.0]
-    assert values(entries[33922], "d") == [0.0, 0.0, 0.0, 500000.0, 8000000.0, 0.0]
+    assert 33550 not in entries and 33922 not in entries
+    assert values(entries[34264], "d") == [30.0, 0.0, 0.0, 500000.0,
+                                           0.0, -30.0, 0.0, 8000000.0,
+                                           0.0, 0.0, 0.0, 0.0,
+                                           0.0, 0.0, 0.0, 1.0]
 
 
 def test_rotated_transform(tmp_path):
@@ -320,18 +306,16 @@ def test_sample_format(tmp_path, dtype):
 
 # Digests of the whole file. The writer is deterministic, so a change here is a
 # change to the bytes on disk. Regenerate deliberately, never to make a test
-# pass.
+# pass. Last regenerated when the geo tags became mandatory.
 GOLDEN = {
-    "plain": "d1568b2bf477c20b9142de26b33be0b53c4eac427abbec42a6a548629531400d",
-    "aligned": "925d0865975fe223ff72da0686cdf35c352e85f2493543615b8414a9ea91e88a",
-    "north_up": "7810307574be07df240dbcd0fcdfc885dfd2a9d77e678d6589ef623934777478",
+    "plain": "62b1f8100cf0de5312996fa25bfc89650e002f514e6d7d982d0cf42ce9337ca1",
+    "north_up": "4615c8aada2f86b1a817325e014a5b26ed65f0dc02b52b9ce00ca9e0c4676c08",
     "rotated": "5085b8dd59c8f1017d64be5510088229ff45a60001d6bde06b6ee995c3f032e4",
-    "point": "c8b38a5c1cda85e1f875fb1186f369cf277c2f12d863fd2169bc003727615f14",
+    "point": "41f921e9f4842236fd4b4e8652d51ee140e56cbc55a533586bfef5ea8b2e11ec",
 }
 
 CASES = {
     "plain": {},
-    "aligned": {"header_size": 512},
     "north_up": {"transform": NORTH_UP, "crs": UTM18S},
     "rotated": {"transform": ROTATED, "crs": UTM18S},
     "point": {"transform": NORTH_UP, "crs": UTM18S, "pixel_is_point": True},
@@ -367,13 +351,6 @@ def test_transform_needs_crs(tmp_path):
         write_frames(tmp_path / "a.tif", tf["compressed"], tf, transform=NORTH_UP)
     with pytest.raises(ValueError, match="together"):
         write_frames(tmp_path / "a.tif", tf["compressed"], tf, crs=UTM18S)
-
-
-def test_bad_header_size(tmp_path):
-    tf = make_frame()
-    for bad in (0, -16, 4096.0, "4096"):
-        with pytest.raises(TypeError, match="header_size"):
-            write_frames(tmp_path / "a.tif", tf["compressed"], tf, header_size=bad)
 
 
 def test_write_needs_all_tiles(tmp_path):
