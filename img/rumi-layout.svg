@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="180" viewBox="0 0 720 180">
+  <style>
+    text {
+      font-family: system-ui, sans-serif;
+      fill: #222;
+    }
+    .box {
+      fill: #fff;
+      stroke: #555;
+      stroke-width: 2;
+      rx: 8;
+    }
+    .arrow {
+      fill: none;
+      stroke: #777;
+      stroke-width: 2;
+      marker-end: url(#arrowhead);
+    }
+    .label {
+      font-size: 16px;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+    .small {
+      font-size: 13px;
+      fill: #666;
+      text-anchor: middle;
+    }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8"
+            refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#777"/>
+    </marker>
+  </defs>
+
+  <!-- Input -->
+  <rect class="box" x="30" y="55" width="150" height="70"/>
+  <text class="label" x="105" y="82">Array</text>
+  <text class="small" x="105" y="108">(B, Y, X)</text>
+
+  <!-- Split -->
+  <path class="arrow" d="M180 90 H255"/>
+  <circle cx="270" cy="90" r="4" fill="#777"/>
+
+  <path class="arrow" d="M274 88 C320 88, 320 48, 370 48"/>
+  <path class="arrow" d="M274 92 C320 92, 320 132, 370 132"/>
+
+  <!-- Outputs -->
+  <rect class="box" x="375" y="18" width="250" height="60"/>
+  <text class="label" x="500" y="48">rumi file</text>
+
+  <rect class="box" x="375" y="102" width="250" height="60"/>
+  <text class="label" x="500" y="132">rumi header blob</text>
+</svg>
