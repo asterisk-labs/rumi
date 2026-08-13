@@ -20,7 +20,7 @@ class ThreadPool;
 
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
-inline constexpr std::size_t   HEADER_SIZE = 26;
+inline constexpr std::size_t   HEADER_SIZE = 27;
 
 // TIFF Compression tag rumi writes and requires. Coordinated with OpenZL.
 inline constexpr std::uint16_t OPENZL_COMPRESSION = 60000;
@@ -43,7 +43,10 @@ struct BlobHeader {
     // For complex formats (5, 6) this holds the summed component widths.
     std::uint8_t  bits_per_sample;
     std::uint8_t  sample_format;
-    std::uint32_t base_tiles_offset;
+    // Counts are stored as count_min plus a count_bits wide residual, packed
+    // with no alignment.
+    std::uint32_t count_min;
+    std::uint8_t  count_bits;
 };
 #pragma pack(pop)
 
@@ -62,9 +65,34 @@ enum class ParseError {
     tile_size_overflow,
     non_positive_tile_byte_count,
     offset_overflow,
+    invalid_count_bits,
+    non_canonical_counts,
+    count_overflow,
 };
 
 [[nodiscard]] std::string_view describe(ParseError e) noexcept;
+
+// Where the profile puts the tile data, from the shape alone. The tag set never
+// changes, so the only thing to add up is the values too big to sit inside
+// their own IFD entry. Writers place the tiles here, readers seek here, and
+// nothing stores it.
+[[nodiscard]] std::uint64_t derived_base_offset(std::uint32_t bands,
+                                                std::uint64_t tiles) noexcept;
+
+// The two header fields that describe the packing, and the size of the region
+// they describe. One implementation so the two write paths cannot drift.
+struct CountPacking {
+    std::uint32_t min;
+    std::uint8_t  bits;
+    std::size_t   bytes;
+};
+
+[[nodiscard]] CountPacking
+plan_counts(std::span<const std::uint32_t> counts) noexcept;
+
+// Writes counts.size() residuals into out, which must hold p.bytes.
+void pack_counts(std::span<const std::uint32_t> counts,
+                 const CountPacking& p, std::byte* out) noexcept;
 
 struct Header {
     std::uint32_t image_width{};

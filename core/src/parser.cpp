@@ -22,9 +22,55 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::tile_count_overflow:          return "tile count overflows uint32";
         case ParseError::tile_size_overflow:           return "tile byte size overflows size_t";
         case ParseError::non_positive_tile_byte_count: return "tile byte count is zero";
+        case ParseError::invalid_count_bits:           return "count_bits above 32";
+        case ParseError::non_canonical_counts:         return "tile byte counts are not packed canonically";
+        case ParseError::count_overflow:               return "tile byte count does not fit in uint32";
         case ParseError::offset_overflow:              return "reconstructed offsets overflow";
     }
     return "unknown parse error";
+}
+
+std::uint64_t derived_base_offset(std::uint32_t bands,
+                                  std::uint64_t tiles) noexcept
+{
+    std::uint64_t external = 128 + 32;                     // 34264 and 34735
+    if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
+    if (tiles >= 2) external += 8 * tiles;                 // 324
+    if (tiles >= 3) external += 4 * tiles;                 // 325
+    return 16 + (8 + 20 * 15 + 8) + external;
+}
+
+CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept
+{
+    if (counts.empty()) return {0, 0, 0};
+
+    std::uint32_t low = counts[0];
+    for (auto c : counts) low = c < low ? c : low;
+
+    // The highest bit set anywhere is the highest bit of the largest residual,
+    // so an or over the lot gives the width without a second comparison.
+    std::uint32_t any = 0;
+    for (auto c : counts) any |= c - low;
+
+    const auto bits = static_cast<std::uint8_t>(std::bit_width(any));
+    return {low, bits, (counts.size() * bits + 7) / 8};
+}
+
+void pack_counts(std::span<const std::uint32_t> counts,
+                 const CountPacking& p, std::byte* out) noexcept
+{
+    if (p.bytes == 0) return;      // an empty region, and out may be null
+    std::memset(out, 0, p.bytes);
+
+    for (std::size_t i = 0; i < counts.size(); ++i) {
+        const std::uint64_t at = std::uint64_t(i) * p.bits;
+        // A 32 bit residual shifted by at most 7 lands inside five bytes.
+        const std::uint64_t w = std::uint64_t(counts[i] - p.min) << (at % 8);
+        const std::size_t   b = static_cast<std::size_t>(at / 8);
+        for (std::size_t k = 0; k < 5 && b + k < p.bytes; ++k) {
+            out[b + k] |= static_cast<std::byte>((w >> (8 * k)) & 0xFF);
+        }
+    }
 }
 
 // The dtype set, expanded once from rumi_dtypes.def.
@@ -113,7 +159,6 @@ parse_blob(std::span<const std::byte> blob)
     h.samples_per_pixel = bh.samples_per_pixel;
     h.bits_per_sample   = bh.bits_per_sample;
     h.sample_format     = bh.sample_format;
-    h.base_tiles_offset = bh.base_tiles_offset;
     h.dtype             = dt;
     // Codec element width, bytes for whole-byte types and 1 for packed sub-byte.
     h.bytes_per_sample  = (bh.bits_per_sample >= 8)
@@ -142,31 +187,78 @@ parse_blob(std::span<const std::byte> blob)
     }
     h.max_tile_size = static_cast<std::size_t>(tile_bytes_u64);
 
-    const std::size_t expected_size =
-        HEADER_SIZE + static_cast<std::size_t>(h.tile_count) * sizeof(std::uint32_t);
-    if (blob.size() != expected_size) {
+    if (bh.count_bits > 32) {
+        return std::unexpected(ParseError::invalid_count_bits);
+    }
+
+    const auto packed_bytes = static_cast<std::size_t>(
+        (std::uint64_t(h.tile_count) * bh.count_bits + 7) / 8);
+    if (blob.size() != HEADER_SIZE + packed_bytes) {
         return std::unexpected(ParseError::blob_size_mismatch);
     }
 
-    h.tile_byte_counts.resize(h.tile_count);
-    std::memcpy(h.tile_byte_counts.data(),
-                blob.data() + HEADER_SIZE,
-                static_cast<std::size_t>(h.tile_count) * sizeof(std::uint32_t));
+    h.base_tiles_offset = derived_base_offset(bh.samples_per_pixel, h.tile_count);
 
-    // Prefix sum over the contiguous run. counts >= 1, so only u64 overflow fails.
+    const auto* packed = reinterpret_cast<const unsigned char*>(blob.data())
+                       + HEADER_SIZE;
+    const std::uint64_t mask = bh.count_bits == 0
+                             ? 0 : (~0ull >> (64 - bh.count_bits));
+
+    h.tile_byte_counts.resize(h.tile_count);
     h.tile_offsets.resize(h.tile_count);
-    std::uint64_t offset = bh.base_tiles_offset;
+
+    // Prefix sum over the contiguous run, unpacking as it goes. seen_low and
+    // seen_any come out of the same pass and settle whether the writer packed
+    // canonically.
+    std::uint64_t offset   = h.base_tiles_offset;
+    std::uint64_t seen_low = ~0ull;
+    std::uint64_t seen_any = 0;
+
     for (std::uint32_t i = 0; i < h.tile_count; ++i) {
-        if (h.tile_byte_counts[i] == 0) {
+        const std::uint64_t at   = std::uint64_t(i) * bh.count_bits;
+        const std::size_t   byte = static_cast<std::size_t>(at / 8);
+        const std::size_t   have = packed_bytes - byte;
+
+        // A residual ends inside the region, but a load of eight would not, and
+        // the blob belongs to the caller. Read what is there.
+        std::uint64_t word = 0;
+        std::memcpy(&word, packed + byte, have < 8 ? have : 8);
+
+        const std::uint64_t residual = (word >> (at % 8)) & mask;
+        seen_low = residual < seen_low ? residual : seen_low;
+        seen_any |= residual;
+
+        const std::uint64_t count = std::uint64_t(bh.count_min) + residual;
+        if (count == 0) {
             return std::unexpected(ParseError::non_positive_tile_byte_count);
         }
-        h.tile_offsets[i] = offset;
+        if (count > std::numeric_limits<std::uint32_t>::max()) {
+            return std::unexpected(ParseError::count_overflow);
+        }
 
-        const std::uint64_t step = h.tile_byte_counts[i];
-        if (offset > std::numeric_limits<std::uint64_t>::max() - step) {
+        h.tile_byte_counts[i] = static_cast<std::uint32_t>(count);
+        h.tile_offsets[i]     = offset;
+
+        if (offset > std::numeric_limits<std::uint64_t>::max() - count) {
             return std::unexpected(ParseError::offset_overflow);
         }
-        offset += step;
+        offset += count;
+    }
+
+    // Same counts must give the same bytes, or a blob stops being comparable
+    // and a column of them stops deduplicating. The smallest residual is zero
+    // when count_min was the real minimum, and the or of them all carries the
+    // top bit of the largest.
+    if (h.tile_count > 0) {
+        if (seen_low != 0) return std::unexpected(ParseError::non_canonical_counts);
+        if (std::bit_width(seen_any) != bh.count_bits) {
+            return std::unexpected(ParseError::non_canonical_counts);
+        }
+    }
+    const auto spare = static_cast<unsigned>(
+        packed_bytes * 8 - std::uint64_t(h.tile_count) * bh.count_bits);
+    if (spare != 0 && (packed[packed_bytes - 1] >> (8 - spare)) != 0) {
+        return std::unexpected(ParseError::non_canonical_counts);
     }
 
     return h;

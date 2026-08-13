@@ -369,18 +369,19 @@ The packed region is `ceil(N * count_bits / 8)` bytes. Spare bits in the last by
 
 ### Decoding
 
-A reader gets any count on its own, without reading the ones before it.
+Residual `i` occupies the `count_bits` bits that start at bit `i * count_bits`, counting from the low bit of the first byte. Adding `count_min` to it gives the count.
 
-```c
-size_t   bit = (size_t)i * count_bits;
-uint64_t raw;
-memcpy(&raw, packed + bit / 8, 8);
-uint32_t count = count_min + (uint32_t)((raw >> (bit % 8)) & ((1ull << count_bits) - 1));
+```text
+lo       = i * count_bits
+residual = the count_bits bits at lo, read little endian
+count    = count_min + residual
 ```
 
-A residual spans at most five bytes, so eight always cover it and the load never has to change size. That load runs past the end of the packed region on the last few tiles. Those bytes are read and thrown away, but a reader MUST NOT fault on them, so it MUST leave eight readable bytes after the region or use a shorter load at the end.
+Every residual ends inside the packed region, so a reader never leaves the blob it was handed, and any tile can be read on its own.
 
-When `count_bits` is `0` there is nothing to load. Every count is `count_min`.
+A residual covers five bytes at most. Loading eight and shifting is simpler, and a reader may do that wherever eight bytes past the position are readable. In a blob held in a column they are not, and the last few tiles need a narrower read.
+
+When `count_bits` is `0` there is nothing to read. Every count is `count_min`.
 
 ## Contiguity and offset reconstruction
 

@@ -223,9 +223,10 @@ plan(const WriteDesc& d, const Grid& g,
     const std::uint64_t ifd_size = 8 + 20 * l.entries.size() + 8;
     l.base = place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
 
+    // Nothing in the format caps this now that the blob does not carry it.
+    // The cap is this writer's, which builds the whole header in memory.
     if (l.base > 0xFFFFFFFFu)
-        return err("first tile offset %llu exceeds uint32 "
-                   "(the IFD must precede the tiles)",
+        return err("the header would be %llu bytes, past what this writer builds",
                    static_cast<unsigned long long>(l.base));
     return l;
 }
@@ -358,16 +359,27 @@ try {
     bh.samples_per_pixel = spp;
     bh.bits_per_sample   = g->bits;
     bh.sample_format     = g->sample_format;
-    bh.base_tiles_offset = static_cast<std::uint32_t>(l->base);
 
-    std::vector<std::byte> blob(HEADER_SIZE + n * sizeof(std::uint32_t));
-    std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
-    // The blob carries counts in frame order, not the tag's plane-major one.
-    std::byte* dst = blob.data() + HEADER_SIZE;
-    for (std::size_t i = 0; i < n; ++i) {
-        const auto c = static_cast<std::uint32_t>(sizes[i]);
-        std::memcpy(dst + i * sizeof(std::uint32_t), &c, sizeof(c));
+    // place_external walks the entries it is about to write. Readers use the
+    // closed form and never see them. Nothing else checks that the two agree.
+    if (l->base != derived_base_offset(spp, n)) {
+        return err("laid the tiles at %llu, the profile puts them at %llu",
+                   static_cast<unsigned long long>(l->base),
+                   static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }
+
+    // The blob carries counts in frame order, not the tag's plane-major one.
+    std::vector<std::uint32_t> counts(n);
+    for (std::size_t i = 0; i < n; ++i)
+        counts[i] = static_cast<std::uint32_t>(sizes[i]);
+
+    const CountPacking cp = plan_counts(counts);
+    bh.count_min  = cp.min;
+    bh.count_bits = cp.bits;
+
+    std::vector<std::byte> blob(HEADER_SIZE + cp.bytes);
+    std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
+    pack_counts(counts, cp, blob.data() + HEADER_SIZE);
     return blob;
 }
 catch (const std::bad_alloc&) {
