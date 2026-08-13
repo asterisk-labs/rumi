@@ -1,0 +1,35 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #080b10;
+  --bg-elevated: #0d121a;
+  --panel: rgba(17, 23, 33, 0.82);
+  --panel-solid: #111721;
+  --panel-soft: rgba(255, 255, 255, 0.035);
+  --edge: rgba(231, 237, 244, 0.12);
+  --edge-strong: rgba(231, 237, 244, 0.2);
+  --rule: rgba(231, 237, 244, 0.075);
+
+  --ink: #f1f5f9;
+  --ink-soft: #c3ccd7;
+  --dim: #8f9aaa;
+  --faint: #626d7b;
+
+  --violet: #7457ff;
+  --violet-soft: rgba(116, 87, 255, 0.16);
+  --gold: #ffd54a;
+  --gold-soft: rgba(255, 213, 74, 0.14);
+  --mint: #91f2bc;
+  --mint-soft: rgba(145, 242, 188, 0.14);
+  --ember: #ff7a4f;
+  --ember-soft: rgba(255, 122, 79, 0.14);
+
+  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+
+  --page: 1180px;
+  --pad-inline: clamp(20px, 4vw, 56px);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+}

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 104 104" role="img" aria-label="rumi">
+  <style>
+    polygon {
+      stroke: #dfe7ef;
+      stroke-opacity: .72;
+      stroke-width: 1.35;
+      stroke-linejoin: round;
+      fill: #111721;
+      animation: lit 6s step-end infinite;
+    }
+    .nw { --on: #7457ff; animation-delay: 0s }
+    .ne { --on: #ffd54a; animation-delay: 1.5s }
+    .se { --on: #91f2bc; animation-delay: 3s }
+    .sw { --on: #ff7a4f; animation-delay: 4.5s }
+
+    @keyframes lit {
+      0%   { fill: var(--on) }
+      25%  { fill: #111721 }
+      100% { fill: #111721 }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      polygon { animation: none }
+    }
+  </style>
+
+  <polygon class="nw" points="0,0 47,0 43,38 0,32"/>
+  <polygon class="ne" points="47,0 100,0 100,55 70,50 43,38"/>
+  <polygon class="se" points="70,50 100,55 100,100 58,100 50,72"/>
+  <polygon class="sw" points="0,32 43,38 70,50 50,72 58,100 0,100"/>
+</svg>

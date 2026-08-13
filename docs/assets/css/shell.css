@@ -1,0 +1,317 @@
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.34;
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(circle at 64% 46%, black 0, transparent 68%);
+  -webkit-mask-image: radial-gradient(circle at 64% 46%, black 0, transparent 68%);
+}
+
+.ambient-tiles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  mask-image: radial-gradient(circle at 64% 46%, black 0, transparent 68%);
+  -webkit-mask-image: radial-gradient(circle at 64% 46%, black 0, transparent 68%);
+}
+
+.ambient-orb {
+  position: absolute;
+  width: 28rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.08;
+}
+
+.ambient-orb--violet {
+  top: 4%;
+  right: 4%;
+  background: var(--violet);
+}
+
+.ambient-orb--mint {
+  right: 28%;
+  bottom: -22rem;
+  background: var(--mint);
+}
+
+.page {
+  width: min(100%, calc(var(--page) + (var(--pad-inline) * 2)));
+  min-height: 100vh;
+  min-height: 100svh;
+  margin-inline: auto;
+  padding: max(18px, env(safe-area-inset-top)) var(--pad-inline) max(16px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(18px, 3vh, 32px);
+}
+
+.masthead {
+  min-width: 0;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+}
+
+.wordmark {
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  border-radius: 0;
+}
+
+.wordmark img {
+  width: 40px;
+  height: 40px;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.3));
+}
+
+.wordmark span {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.045em;
+}
+
+/* no container. the active route is marked by a rule under the word, which
+   also gives the nav the same easing as the view transition. */
+
+.nav {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 2.4vw, 30px);
+}
+
+.nav a {
+  position: relative;
+  padding: 6px 0;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  transition: color 200ms ease;
+}
+
+.nav a::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1), background-color 200ms ease;
+}
+
+.nav a:hover {
+  color: var(--ink-soft);
+}
+
+.nav a:hover::after {
+  transform: scaleX(1);
+}
+
+.nav a[aria-current="page"] {
+  color: var(--ink);
+}
+
+.nav a[aria-current="page"]::after {
+  background: var(--violet);
+  transform: scaleX(1);
+}
+
+.offsite {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.offsite a {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 0;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.offsite img {
+  width: 17px;
+  height: 17px;
+  opacity: 0.62;
+  transition: opacity 160ms ease;
+}
+
+.offsite a:hover,
+.offsite a:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--edge);
+  background: var(--panel-soft);
+}
+
+.offsite a:hover img,
+.offsite a:focus-visible img {
+  opacity: 1;
+}
+
+#view {
+  min-width: 0;
+  display: grid;
+  align-items: center;
+  view-transition-name: view;
+}
+
+.colophon {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.heart {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  background: var(--violet);
+  transform-origin: center;
+  transition: background-color 160ms ease;
+  animation: heartbeat 2.4s ease-in-out infinite;
+  -webkit-mask: url('../svg/heart.svg') center / contain no-repeat;
+  mask: url('../svg/heart.svg') center / contain no-repeat;
+}
+
+@keyframes heartbeat {
+  0%, 55%, 100% { transform: scale(1) }
+  10% { transform: scale(1.22) }
+  20% { transform: scale(1) }
+  30% { transform: scale(1.14) }
+  40% { transform: scale(1) }
+}
+
+.colophon:hover .heart {
+  background: #f05b7f;
+}
+
+.by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+  transition: color 160ms ease;
+}
+
+.by:hover,
+.by:focus-visible {
+  color: var(--ink-soft);
+}
+
+.by img {
+  width: 13px;
+  height: 15px;
+  opacity: 0.74;
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+}
+
+@keyframes view-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* the box interpolates its own size, which is most of the smoothness when
+   two views are different heights */
+::view-transition-group(view) {
+  animation-duration: 460ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+::view-transition-old(view) {
+  animation: view-out 200ms cubic-bezier(0.4, 0, 0.8, 1) forwards;
+}
+
+/* held back until the old one is most of the way out, so the two stop
+   fighting over the same pixels */
+::view-transition-new(view) {
+  animation: view-in 420ms cubic-bezier(0.32, 0.72, 0, 1) 140ms backwards;
+}
+
+.no-vt #view {
+  animation: view-in 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (max-width: 760px) {
+  .page {
+    grid-template-rows: auto auto auto;
+    gap: 26px;
+  }
+
+  .masthead {
+    grid-template-columns: 1fr auto;
+    row-gap: 14px;
+  }
+
+  .nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 420px) {
+  .page {
+    padding-inline: 18px;
+  }
+
+  .wordmark img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .wordmark span {
+    font-size: 20px;
+  }
+
+  .offsite a {
+    width: 34px;
+    height: 34px;
+  }
+}
