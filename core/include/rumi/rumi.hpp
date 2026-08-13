@@ -18,7 +18,7 @@ namespace rumi {
 
 class ThreadPool;
 
-inline constexpr std::uint32_t MAGIC       = 0x796D6173;  // "samy"
+inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 26;
 

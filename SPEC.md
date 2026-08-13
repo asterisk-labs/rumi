@@ -1,8 +1,8 @@
 # rumi
 
-- Specification 0.2.0
+- Specification 0.1.0
 - Status Draft
-- Date 2026-08-11
+- Date 2026-08-13
 - License GPLv3
 
 rumi is a profile for GeoTIFF files paired with a compact binary header that lets a reader locate every tile without parsing the TIFF IFD. Tile payloads are compressed with OpenZL.
@@ -116,9 +116,7 @@ base_tiles_offset = 16 + 316 + external
                   = 332 + external
 ```
 
-The result MUST match the `base_tiles_offset` field in the header blob and the first entry of `TileOffsets`. Any two files of the same shape and band count start their tile data at the same byte. Not the pixels, not the CRS, and not whether there is a CRS at all can change it.
-
-The field is a `uint32`, so the result MUST fit in `0xFFFFFFFF`. Since it grows by 12 bytes per tile, that caps a file at roughly 357 million tiles. A file that big would carry a blob of 1.4 GB, which is far past the point where holding a header in a table stops making sense, so the ceiling is not one a real dataset meets. A writer MUST fail rather than truncate.
+The result MUST match the first entry of `TileOffsets`. Any two files of the same shape and band count start their tile data at the same byte.
 
 ## Georeferencing
 
@@ -214,13 +212,14 @@ OpenZL has no complex element type, and its numeric streams are limited to eleme
 
 The header blob is a small binary record stored outside the GeoTIFF and passed to the reader. A reader uses it directly and does not inspect the TIFF IFD before seeking to tile payloads.
 
-The blob is a fixed-length header followed by one `uint32` byte count per tile.
+The blob is a fixed-length header followed by the tile byte counts, packed at
+the narrowest bit width that holds them.
 
 ```
-+---------------+---------------------------+
-| Header        | tile_byte_counts[N]       |
-+---------------+---------------------------+
-  26 bytes        4 * N bytes
++---------------+-----------------------------+
+| Header        | tile_byte_counts[N]         |
++---------------+-----------------------------+
+  27 bytes        ceil(N * count_bits / 8) bytes
 ```
 
 The reader derives the tile grid and `N` from the header fields.
@@ -231,7 +230,7 @@ tiles_down   = ceil(image_length / tile_length)
 N            = tiles_across * tiles_down * samples_per_pixel
 ```
 
-The full blob size MUST be exactly `26 + 4 * N` bytes. The header is packed with no padding.
+The full blob size MUST be exactly `27 + ceil(N * count_bits / 8)` bytes. The header is packed with no padding.
 
 ## Header fields
 
@@ -246,13 +245,19 @@ The full blob size MUST be exactly `26 + 4 * N` bytes. The header is packed with
 | 18 | 2 | uint16 | samples_per_pixel |
 | 20 | 1 | uint8 | bits_per_sample |
 | 21 | 1 | uint8 | sample_format |
-| 22 | 4 | uint32 | base_tiles_offset |
+| 22 | 4 | uint32 | count_min |
+| 26 | 1 | uint8 | count_bits |
 
-The header is 26 bytes.
+The header is 27 bytes.
+
+The blob carries no tile offsets and no `base_tiles_offset`. Every one of them
+follows from the fields above, so storing them would be storing an answer the
+reader already has. Deriving base_tiles_offset gives the first, and Contiguity
+and offset reconstruction gives the rest.
 
 ### magic
 
-Identifies the blob as a rumi header. The value is `0x796D6173`. A reader MUST reject any blob with a different value.
+Identifies the blob as a rumi header. The value is `0x45564F4C`, which is the four bytes `4C 4F 56 45` on the wire, `LOVE`. A reader MUST reject any blob with a different value.
 
 ### version
 
@@ -317,36 +322,83 @@ The valid sample encodings are listed below. This table and every projection of 
 
 A reader MUST reject any pair not listed above. This pair is also the element type a writer hands to OpenZL for the tile stream. For complex formats the writer hands OpenZL the component type, not the complex pair, as defined in Complex tiles.
 
-### base_tiles_offset
+### count_min and count_bits
 
-The absolute byte offset of the first compressed tile payload. It points to the first byte handed to the OpenZL decoder.
+The two parameters of the tile byte count encoding, defined in Tile byte counts.
 
-The field is there so a reader gets the offset without doing arithmetic, not because the offset could be anything. Deriving base_tiles_offset gives its value from the image shape, and a reader MAY check the field against it. A mismatch means the file carries a tag or a gap the profile does not allow.
+`count_min` is the smallest byte count in the file. `count_bits` is the number of bits each stored count occupies, from `0` to `32`.
 
 ## Tile byte counts
 
-After the 26-byte header, the blob stores `N` little-endian `uint32` values. Each is the compressed byte size of one tile OpenZL frame. Every value MUST be greater than zero.
+After the 27-byte header, the blob stores the `N` compressed sizes of the tile OpenZL frames. Every count MUST be greater than zero.
 
 Tiles are listed in tile-index order. All samples of one spatial tile are listed before the next spatial tile. Spatial positions are walked row-major.
 
 The tile index for `(row, col, sample)` is `(row * tiles_across + col) * samples_per_pixel + sample`.
 
+### Why the counts are not `uint32`
+
+The header is 27 bytes. The counts are four bytes each, one per tile. On any real file they are almost the whole blob.
+
+A `uint32` spends 32 bits on a number whether it needs them or not. The counts in one file are all close together, since tiles of the same shape compress to sizes of the same order, so the same high bits get written out `N` times.
+
+rumi writes the smallest count once, then writes each count as the amount above it. Those amounts are small, and they are stored at the width the largest one needs.
+
+The counts come back exactly. Nothing is rounded or approximated.
+
+### Encoding
+
+Let `c[i]` be the byte count of tile `i`.
+
+```text
+count_min  = min(c)
+count_bits = 0 if max(c) == count_min else bit_length(max(c) - count_min)
+```
+
+`bit_length(x)` is the number of bits needed to write `x`, so `bit_length(1)` is `1` and `bit_length(255)` is `8`.
+
+A writer MUST use exactly these two values. It MUST NOT widen `count_bits` beyond the minimum and MUST NOT lower `count_min` below the smallest count. The encoding is therefore canonical, and two writers given the same counts MUST produce the same bytes.
+
+`count_bits` is `0` when every count is the same. Each residual is then zero, so nothing follows the header and every count is `count_min`. A file with a single tile always lands here.
+
+### Packing
+
+Residual `i` is `c[i] - count_min`. It is written at bit `i * count_bits`, low bit first. Residuals sit back to back with no gap, and none of them is aligned to anything. One that runs past the end of a byte continues in the next, low bits in the earlier byte.
+
+The packed region is `ceil(N * count_bits / 8)` bytes. Spare bits in the last byte MUST be zero.
+
+### Decoding
+
+A reader gets any count on its own, without reading the ones before it.
+
+```c
+size_t   bit = (size_t)i * count_bits;
+uint64_t raw;
+memcpy(&raw, packed + bit / 8, 8);
+uint32_t count = count_min + (uint32_t)((raw >> (bit % 8)) & ((1ull << count_bits) - 1));
+```
+
+A residual spans at most five bytes, so eight always cover it and the load never has to change size. That load runs past the end of the packed region on the last few tiles. Those bytes are read and thrown away, but a reader MUST NOT fault on them, so it MUST leave eight readable bytes after the region or use a shorter load at the end.
+
+When `count_bits` is `0` there is nothing to load. Every count is `count_min`.
+
 ## Contiguity and offset reconstruction
 
-rumi stores no explicit tile offsets. A reader reconstructs tile payload offsets by walking `tile_byte_counts` in tile-index order and prefix summing their values. A file is compliant only when the reconstructed offsets match the real TIFF `TileOffsets` in the same order.
+rumi stores no offsets. A reader takes `base_tiles_offset` from the image shape, then adds up the counts in tile-index order to get the rest. A file is compliant only when the offsets it rebuilds match the file's `TileOffsets`, in the same order.
 
 Walking `idx` from `0` upward, every tile payload offset MUST satisfy the following.
 
 ```text
-offset[0]     = base_tiles_offset
+offset[0]     = base_tiles_offset            # from Deriving base_tiles_offset
 offset[idx+1] = offset[idx] + tile_byte_counts[idx]
 ```
 
-The check MUST be performed in tile-index order. Do not sort offsets first. A band-interleaved file can still look like one contiguous run if offsets are sorted, but it fails the rumi ordering rule because the next payload in file order is not the next payload in tile-index order.
+Check them in tile-index order. Do not sort them first. A band-interleaved file also looks like one contiguous run once its offsets are sorted, but it breaks the rumi ordering rule, because the next payload on disk is not the next payload in tile-index order.
 
-A reader reads exactly `tile_byte_counts[idx]` bytes from `offset[idx]` and hands them to the OpenZL decoder. The next payload begins immediately after, so the offset of the next tile is the current offset plus its byte count.
+A reader takes exactly `tile_byte_counts[idx]` bytes from `offset[idx]` and hands them to the OpenZL decoder. The next payload starts on the very next byte.
+
+Getting to the start of a window costs less than the walk suggests. Every count is `count_min` plus a residual, so the first `k` of them come to `k * count_min` plus the sum of the first `k` residuals. That sum is a plain total with nothing feeding forward, so it vectorises. Only the window itself has to be walked one tile at a time.
 
 ## Changelog
 
-- 0.2.0. Header predictability becomes a guarantee of the profile. Pins `PhotometricInterpretation` to `1`, requires tile dimensions to be multiples of 16, and caps `base_tiles_offset` at `uint32`. Fixes the IFD to an exact tag set, pins the placement of out-of-line values and forbids padding and ghost areas, defines `base_tiles_offset` as a function of the image shape, restricts the CRS to an EPSG code in a 32-byte geokey directory, replaces the scale and tiepoint pair with `ModelTransformationTag`, and makes both geo tags mandatory, written with undefined values when the raster has no georeferencing.
 - 0.1.0. Initial draft.

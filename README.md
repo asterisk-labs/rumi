@@ -85,7 +85,7 @@ Any other reader has to work differently. Before it can touch a pixel it opens t
 
 With the header in hand there is nothing left to discover. The reader already knows where the tiles it wants begin and how long they are, so it reads exactly those bytes. No open, no parse, nothing cached per file, and nothing that workers have to share.
 
-**It is small enough to keep a million of them.** rumi stores 26 bytes and 4 bytes per tile, and nothing else, because the layout is fixed and everything else is predictable. A BigTIFF IFD carries a full 64-bit offset and a full 64-bit length for every tile, plus the tag block itself.
+**It is small enough to keep a million of them**. rumi keeps 27 bytes and one number a tile.
 
 **And because the header is bytes, it is a column.** A path in one column, the header in the other. That pair is the whole read, so a million scenes is a million rows and nothing else.
 
