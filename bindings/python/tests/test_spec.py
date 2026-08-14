@@ -18,14 +18,13 @@ from rumi._write import header_bytes, write_frames
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
 TYPE_SIZE = {ASCII: 1, SHORT: 2, LONG: 4, DOUBLE: 8, LONG8: 8}
 
-TAGS = (256, 257, 258, 259, 262, 277, 284, 317, 322, 323, 324, 325, 339,
-        34264, 34735)
+TAGS = (256, 257, 258, 277, 284, 322, 323, 324, 325, 339, 34264, 34735)
 GEO = (34264, 34735)
 FORBIDDEN_GEO = (33550, 33922, 34736, 34737)
 
 IFD_OFFSET = 16
-IFD_SIZE = 8 + 20 * len(TAGS) + 8          # 316
-BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 332
+IFD_SIZE = 8 + 20 * len(TAGS) + 8          # 256
+BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 272
 
 MODEL, RASTER, GEOGRAPHIC, PROJECTED = 1024, 1025, 2048, 3072
 UTM18S = 32718
@@ -155,9 +154,8 @@ def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
                  (GEOGRAPHIC if model == 2 else PROJECTED), 0, 1, epsg]
     return {
         256: (LONG, [width]), 257: (LONG, [length]),
-        258: (SHORT, [bits] * bands), 259: (SHORT, [60000]),
-        262: (SHORT, [1]), 277: (SHORT, [bands]),
-        284: (SHORT, [2]), 317: (SHORT, [1]),
+        258: (SHORT, [bits] * bands), 277: (SHORT, [bands]),
+        284: (SHORT, [2]),
         322: (SHORT, [tile]), 323: (SHORT, [tile]),
         324: (LONG8, [0] * len(tiles)),
         325: (LONG, [len(tiles[i])
@@ -210,13 +208,6 @@ def test_the_ifd_is_always_316_bytes(tmp_path):
     (count,) = struct.unpack_from("<Q", read_ifd(path)[2], IFD_OFFSET)
     assert count == len(TAGS)
     assert 8 + 20 * count + 8 == IFD_SIZE
-
-
-def test_photometric_is_min_is_black(tmp_path):
-    tf = make_frame()
-    path = tmp_path / "a.tif"
-    write_frames(path, tf["compressed"], tf)
-    assert values(read_ifd(path)[0][262], "H") == [1]
 
 
 # Placement
@@ -521,13 +512,6 @@ def test_a_forbidden_geo_tag_is_rejected(tmp_path, valid_file, tag, type_, vals)
 def test_a_gap_before_the_tile_data_is_rejected(tmp_path, valid_file):
     _p, entries, tiles = valid_file
     _rejects(tmp_path, entries, tiles, "padding", pad=512)
-
-
-def test_a_wrong_photometric_is_rejected(tmp_path, valid_file):
-    _p, entries, tiles = valid_file
-    entries = dict(entries)
-    entries[262] = (SHORT, [2])
-    _rejects(tmp_path, entries, tiles, "Photometric|262")
 
 
 def test_a_tile_size_off_the_grid_is_rejected(tmp_path):

@@ -125,19 +125,24 @@ def _human(n):
 
 
 def _cells(r):
-    """The column strings for one row tuple."""
+    """The column strings for one row tuple. A cell row has no band."""
     _, b, y, x, shape, size = r
-    h, w = shape
-    return (f"{b}.{y}.{x}", f"{y}.{x}", f"{w}\u00d7{h}",
-            "\u00b7" if size < 0 else _human(size))
+    dims = "\u00d7".join(str(d) for d in reversed(shape))
+    size = "\u00b7" if size < 0 else _human(size)
+    if b is None:
+        return (f"{y}.{x}", dims, size)
+    return (f"{b}.{y}.{x}", f"{y}.{x}", dims, size)
 
 
 def _meta(f):
     """Label and value for the summary block, in both reprs."""
+    tiled = f.get("unit", "tile") == "tile"
+    grid = (f"{f['across']} \u00d7 {f['down']} \u00d7 {f['b']}" if tiled
+            else f"{f['across']} \u00d7 {f['down']}")
     out = [("dtype", f["dtype"]),
            ("tile", f"{f['t']} \u00d7 {f['t']}"),
-           ("grid", f"{f['across']} \u00d7 {f['down']} \u00d7 {f['b']}"),
-           ("tiles", f"{f['n']:,}")]
+           ("grid", grid),
+           ("tiles" if tiled else "cells", f"{f['n']:,}")]
     if f["done"]:
         out.append(("bytes", f"{_human(f['nbytes'])} ({f['ratio']:.1f}\u00d7)"))
     return out
@@ -152,7 +157,7 @@ def frame_text(f, rows, cols):
     table = ["  ".join(c[k].rjust(wide[k]) for k in range(ncol)).rstrip()
              for c in (head, *body)]
     pad = max(len(k) for k, _ in _meta(f))
-    return "\n".join([f"<rumi.TileFrame ({f['b']}, {f['y']}, {f['x']})>",
+    return "\n".join([f"<rumi.FrameTable ({f['b']}, {f['y']}, {f['x']})>",
                       *table, "",
                       *(f"  {k.ljust(pad)} : {v}" for k, v in _meta(f))])
 

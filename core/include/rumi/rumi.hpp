@@ -22,9 +22,6 @@ inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 27;
 
-// TIFF Compression tag rumi writes and requires. Coordinated with OpenZL.
-inline constexpr std::uint16_t OPENZL_COMPRESSION = 60000;
-
 // The OpenZL frame format version.
 [[nodiscard]] int openzl_format_version() noexcept;
 

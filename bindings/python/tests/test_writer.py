@@ -89,16 +89,13 @@ def test_tag_set(tmp_path):
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
-    assert set(entries) == {256, 257, 258, 259, 262, 277, 284, 317, 322, 323,
-                            324, 325, 339, 34264, 34735}
+    assert set(entries) == {256, 257, 258, 277, 284, 322, 323, 324, 325, 339,
+                            34264, 34735}
     assert values(entries[256], "I") == [tf.image_width]
     assert values(entries[257], "I") == [tf.image_length]
     assert values(entries[258], "H") == [16] * tf.bands
-    assert values(entries[259], "H") == [60000]
-    assert values(entries[262], "H") == [1]
     assert values(entries[277], "H") == [tf.bands]
     assert values(entries[284], "H") == [2]
-    assert values(entries[317], "H") == [1]
     assert values(entries[322], "H") == [tf.tile_size]
     assert values(entries[323], "H") == [tf.tile_size]
     assert values(entries[339], "H") == [1] * tf.bands

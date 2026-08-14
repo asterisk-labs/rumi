@@ -156,13 +156,12 @@ build_blob_from_file(const char* path) noexcept
     };
 
     static constexpr std::uint16_t ALLOWED[] = {
-        256, 257, 258, 259, 262, 277, 284, 317, 322, 323, 324, 325, 339,
-        34264, 34735,
+        256, 257, 258, 277, 284, 322, 323, 324, 325, 339, 34264, 34735,
     };
     for (const Entry& e : entries) {
         bool ok = false;
         for (std::uint16_t t : ALLOWED) if (e.tag == t) { ok = true; break; }
-        if (!ok) return err("rumi allows 15 tags and this file has tag %u",
+        if (!ok) return err("rumi allows 12 tags and this file has tag %u",
                             e.tag);
     }
     for (std::uint16_t t : ALLOWED) {
@@ -252,26 +251,10 @@ build_blob_from_file(const char* path) noexcept
     if (iw > 0xFFFFFFFFu || ih > 0xFFFFFFFFu) return err("image dimension exceeds uint32");
 
     // Profile gates.
-    auto comp_e = scalar(259, 0); if (!comp_e) return std::unexpected(comp_e.error());
-    if (*comp_e != OPENZL_COMPRESSION) {
-        return err("rumi requires Compression %u (OpenZL); file has %llu",
-                   static_cast<unsigned>(OPENZL_COMPRESSION),
-                   static_cast<unsigned long long>(*comp_e));
-    }
     auto planar_e = scalar(284, 1); if (!planar_e) return std::unexpected(planar_e.error());
     if (*planar_e != 2) {
         return err("rumi requires PlanarConfiguration 2 (Separate); file has %llu",
                    static_cast<unsigned long long>(*planar_e));
-    }
-    auto pred_e = scalar(317, 1); if (!pred_e) return std::unexpected(pred_e.error());
-    if (*pred_e != 1) {
-        return err("rumi requires Predictor 1; file has %llu",
-                   static_cast<unsigned long long>(*pred_e));
-    }
-    auto photo_e = scalar(262, 1); if (!photo_e) return std::unexpected(photo_e.error());
-    if (*photo_e != 1) {
-        return err("rumi requires PhotometricInterpretation 1 (MinIsBlack); "
-                   "file has %llu", static_cast<unsigned long long>(*photo_e));
     }
     if (tw % 16 || tl % 16) {
         return err("TIFF requires tile dimensions to be a multiple of 16; "

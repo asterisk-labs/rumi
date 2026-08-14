@@ -29,9 +29,7 @@ constexpr std::uint16_t T_LONG   = 4;
 constexpr std::uint16_t T_DOUBLE = 12;
 constexpr std::uint16_t T_LONG8  = 16;
 
-constexpr std::uint16_t PHOTOMETRIC_MINISBLACK = 1;
 constexpr std::uint16_t PLANARCONFIG_SEPARATE  = 2;
-constexpr std::uint16_t PREDICTOR_NONE         = 1;
 
 constexpr std::uint16_t TAG_TILE_OFFSETS = 324;
 
@@ -135,11 +133,8 @@ base_entries(const WriteDesc& d, std::uint64_t tile_count,
     e.push_back(pack(256, T_LONG,  {d.image_width}));
     e.push_back(pack(257, T_LONG,  {d.image_length}));
     e.push_back(pack(258, T_SHORT, std::vector<std::uint16_t>(spp, bits)));
-    e.push_back(pack(259, T_SHORT, {OPENZL_COMPRESSION}));
-    e.push_back(pack(262, T_SHORT, {PHOTOMETRIC_MINISBLACK}));
     e.push_back(pack(277, T_SHORT, {spp}));
     e.push_back(pack(284, T_SHORT, {PLANARCONFIG_SEPARATE}));
-    e.push_back(pack(317, T_SHORT, {PREDICTOR_NONE}));
     e.push_back(pack(322, T_SHORT, {d.tile_size}));
     e.push_back(pack(323, T_SHORT, {d.tile_size}));
     e.push_back(Entry{TAG_TILE_OFFSETS, T_LONG8, tile_count, {}});

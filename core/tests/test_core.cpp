@@ -44,7 +44,7 @@ void ok_at(int line, bool cond, const char* expr)
 // Kept independent of the implementation so the two can disagree.
 std::uint64_t derived_base(std::uint32_t bands, std::uint64_t tiles)
 {
-    const std::uint64_t ifd = 8 + 20 * 15 + 8;
+    const std::uint64_t ifd = 8 + 20 * 12 + 8;
     std::uint64_t external = 128 + 32;
     if (bands >= 5) external += 2 * bands * 2;      // 258 and 339
     if (tiles >= 2) external += 8 * tiles;          // 324
@@ -209,11 +209,11 @@ void test_parse_blob()
 
     CASE("offsets are a prefix sum from the base")
     if (h) {
-        EQ(h->tile_offset(0), std::uint64_t(540));
-        EQ(h->tile_offset(1), std::uint64_t(550));
-        EQ(h->tile_offset(2), std::uint64_t(570));
-        EQ(h->tile_offset(3), std::uint64_t(600));
-        EQ(h->data_end(), std::uint64_t(640));
+        EQ(h->tile_offset(0), std::uint64_t(480));
+        EQ(h->tile_offset(1), std::uint64_t(490));
+        EQ(h->tile_offset(2), std::uint64_t(510));
+        EQ(h->tile_offset(3), std::uint64_t(540));
+        EQ(h->data_end(), std::uint64_t(580));
     }
 
     CASE("the tile index walks row major with the band innermost")

@@ -37,7 +37,7 @@ std::uint64_t derived_base_offset(std::uint32_t bands,
     if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
     if (tiles >= 2) external += 8 * tiles;                 // 324
     if (tiles >= 3) external += 4 * tiles;                 // 325
-    return 16 + (8 + 20 * 15 + 8) + external;
+    return 16 + (8 + 20 * 12 + 8) + external;
 }
 
 CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept
