@@ -20,7 +20,7 @@ class ThreadPool;
 
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
-inline constexpr std::size_t   HEADER_SIZE = 27;
+inline constexpr std::size_t   HEADER_SIZE = 28;
 
 // The OpenZL frame format version.
 [[nodiscard]] int openzl_format_version() noexcept;
@@ -40,6 +40,9 @@ struct BlobHeader {
     // For complex formats (5, 6) this holds the summed component widths.
     std::uint8_t  bits_per_sample;
     std::uint8_t  sample_format;
+    // 0 is tile, one band at one grid position. 1 is cell, every band at one
+    // grid position. Together with the image shape it fixes the frame count.
+    std::uint8_t  frame_unit;
     // Counts are stored as count_min plus a count_bits wide residual, packed
     // with no alignment.
     std::uint32_t count_min;
@@ -56,6 +59,7 @@ enum class ParseError {
     unsupported_version,
     invalid_bits_per_sample,
     invalid_sample_format,
+    invalid_frame_unit,
     invalid_dimensions,
     blob_size_mismatch,
     tile_count_overflow,
@@ -99,6 +103,7 @@ struct Header {
     std::uint16_t samples_per_pixel{};
     std::uint8_t  bits_per_sample{};
     std::uint8_t  sample_format{};
+    std::uint8_t  frame_unit{};
     std::uint64_t base_tiles_offset{};
 
     std::uint32_t tiles_across{};
@@ -122,10 +127,13 @@ struct Header {
              : tile_offsets.back() + tile_byte_counts.back();
     }
 
+    // Cell frames hold every band, so band is ignored there and the index is
+    // the grid position alone.
     [[nodiscard]] std::uint32_t tile_index(std::uint32_t row,
                                            std::uint32_t col,
                                            std::uint32_t band) const noexcept {
-        return (row * tiles_across + col) * samples_per_pixel + band;
+        const std::uint32_t spatial = row * tiles_across + col;
+        return frame_unit == 0 ? spatial * samples_per_pixel + band : spatial;
     }
 };
 
@@ -230,6 +238,9 @@ struct TileTask {
     std::uint32_t compressed_size;
     std::uint32_t tile_w;
     std::size_t   tile_bytes;
+    // Byte offset of this band's plane inside the decoded frame. Zero for a
+    // tile frame, band * plane_bytes for a cell frame.
+    std::size_t   src_plane;
     std::byte*    direct;
     std::byte*    dst;
     std::uint32_t src_x;
@@ -367,6 +378,11 @@ struct GeoKeys {
 [[nodiscard]] std::expected<GeoKeys, std::string>
 build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept;
 
+// What GTModelTypeGeoKey must hold for this code. 1 projected, 2 geographic,
+// 0 when the EPSG registry does not name it. A reader validating a file needs
+// the same answer the writer used.
+[[nodiscard]] std::uint16_t epsg_model_type(std::uint32_t epsg) noexcept;
+
 
 // Writer
 
@@ -383,6 +399,7 @@ struct WriteDesc {
     const double*   transform{};
     std::uint32_t   epsg{};
     bool            pixel_is_point{};
+    std::uint8_t    frame_unit{};
 };
 
 // Writes the BigTIFF and returns the sidecar blob for it. frames are the

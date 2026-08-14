@@ -240,8 +240,13 @@ Plan build_plan(const Header& h, Source* source,
                 line_space == static_cast<std::int64_t>(ex_w)
                             * static_cast<std::int64_t>(bps);
 
-            const std::size_t tile_bytes = static_cast<std::size_t>(ex_w)
-                                         * static_cast<std::size_t>(ex_h) * bps;
+            const std::size_t plane_bytes = static_cast<std::size_t>(ex_w)
+                                          * static_cast<std::size_t>(ex_h) * bps;
+            // A cell frame decodes to every band at once, so the whole frame
+            // lands in scratch and each band is copied out of its plane.
+            const bool cell = h.frame_unit == 1;
+            const std::size_t tile_bytes = cell
+                ? plane_bytes * h.samples_per_pixel : plane_bytes;
 
             for (int i = 0; i < band_count; ++i) {
                 const auto band = static_cast<std::uint32_t>(bands[i] - 1);
@@ -261,7 +266,8 @@ Plan build_plan(const Header& h, Source* source,
                 task.compressed_size = h.tile_byte_counts[idx];
                 task.tile_w          = static_cast<std::uint32_t>(ex_w);
                 task.tile_bytes      = tile_bytes;
-                if (direct) {
+                task.src_plane       = cell ? plane_bytes * band : 0;
+                if (direct && !cell) {
                     task.direct = dst;
                 } else {
                     task.dst              = dst;

@@ -22,6 +22,7 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::tile_count_overflow:          return "tile count overflows uint32";
         case ParseError::tile_size_overflow:           return "tile byte size overflows size_t";
         case ParseError::non_positive_tile_byte_count: return "tile byte count is zero";
+        case ParseError::invalid_frame_unit:           return "frame_unit is neither tile nor cell";
         case ParseError::invalid_count_bits:           return "count_bits above 32";
         case ParseError::non_canonical_counts:         return "tile byte counts are not packed canonically";
         case ParseError::count_overflow:               return "tile byte count does not fit in uint32";
@@ -37,7 +38,7 @@ std::uint64_t derived_base_offset(std::uint32_t bands,
     if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
     if (tiles >= 2) external += 8 * tiles;                 // 324
     if (tiles >= 3) external += 4 * tiles;                 // 325
-    return 16 + (8 + 20 * 12 + 8) + external;
+    return 16 + (8 + 20 * 11 + 8) + external;
 }
 
 CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept
@@ -139,6 +140,9 @@ parse_blob(std::span<const std::byte> blob)
     if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
     }
+    if (bh.frame_unit > 1) {
+        return std::unexpected(ParseError::invalid_frame_unit);
+    }
 
     if (bh.image_width == 0 || bh.image_length == 0 ||
         bh.tile_width  == 0 || bh.tile_length  == 0 ||
@@ -159,6 +163,7 @@ parse_blob(std::span<const std::byte> blob)
     h.samples_per_pixel = bh.samples_per_pixel;
     h.bits_per_sample   = bh.bits_per_sample;
     h.sample_format     = bh.sample_format;
+    h.frame_unit        = bh.frame_unit;
     h.dtype             = dt;
     // Codec element width, bytes for whole-byte types and 1 for packed sub-byte.
     h.bytes_per_sample  = (bh.bits_per_sample >= 8)
@@ -167,9 +172,12 @@ parse_blob(std::span<const std::byte> blob)
     h.tiles_across = (bh.image_width  + bh.tile_width  - 1) / bh.tile_width;
     h.tiles_down   = (bh.image_length + bh.tile_length - 1) / bh.tile_length;
 
+    // A tile frame holds one band, a cell frame holds every band.
     const auto tile_count_u64 = static_cast<std::uint64_t>(h.tiles_across)
                               * static_cast<std::uint64_t>(h.tiles_down)
-                              * static_cast<std::uint64_t>(bh.samples_per_pixel);
+                              * (bh.frame_unit == 0
+                                 ? static_cast<std::uint64_t>(bh.samples_per_pixel)
+                                 : 1u);
     if (tile_count_u64 > std::numeric_limits<std::uint32_t>::max()) {
         return std::unexpected(ParseError::tile_count_overflow);
     }
@@ -177,7 +185,10 @@ parse_blob(std::span<const std::byte> blob)
 
     const auto tile_bits_u64 = static_cast<std::uint64_t>(bh.tile_width)
                              * static_cast<std::uint64_t>(bh.tile_length)
-                             * static_cast<std::uint64_t>(bh.bits_per_sample);
+                             * static_cast<std::uint64_t>(bh.bits_per_sample)
+                             * (bh.frame_unit == 0
+                                ? 1u
+                                : static_cast<std::uint64_t>(bh.samples_per_pixel));
     if (tile_bits_u64 % 8u != 0u) {
         return std::unexpected(ParseError::invalid_bits_per_sample);
     }

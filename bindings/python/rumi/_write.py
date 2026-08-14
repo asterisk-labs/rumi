@@ -42,6 +42,7 @@ def _desc(tf, transform, crs, pixel_is_point):
     d.samples_per_pixel = tf.bands
     d.dtype = dtype_code(tf.dtype)
     d.pixel_is_point = 1 if pixel_is_point else 0
+    d.frame_unit = 0 if tf.unit == "tile" else 1
 
     if transform is None:
         d.transform = ffi.NULL
@@ -66,7 +67,7 @@ def header_bytes(tf, *, transform=None, crs=None,
 
 def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
                  transform=None, crs=None, pixel_is_point=False) -> bytes:
-    """Write the file and return its header. tf is a TileFrame, and the five
+    """Write the file and return its header. tf is a FrameTable, and the five
     fields it carries are the header; the frames come in its own order, which
     is the wire order."""
     frames = [ffi.from_buffer(f) for f in frames]
@@ -86,12 +87,12 @@ def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
 
 
 def write(path, tf, *, transform=None, crs=None, pixel_is_point=False):
-    """Write a compressed TileFrame to a rumi file.
+    """Write a compressed FrameTable to a rumi file.
 
     Returns (path, header), the header being the bytes you cache in a catalog
     or Parquet and hand back to read.
 
-    tf              a TileFrame with every tile compressed. rumi does not
+    tf              a FrameTable with every frame compressed. rumi does not
                     compress, that is the caller's loop and the caller's choice
                     of graph.
     transform       affine coefficients (x_res, row_rot, x_origin, col_rot,

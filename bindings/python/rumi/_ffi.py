@@ -36,6 +36,7 @@ typedef struct {
     uint16_t samples_per_pixel;
     uint8_t  bits_per_sample;
     uint8_t  sample_format;
+    uint8_t  frame_unit;
     uint32_t tiles_across;
     uint32_t tiles_down;
     uint64_t base_tiles_offset;
@@ -129,6 +130,7 @@ typedef struct {
     const double* transform;
     uint32_t      epsg;
     int           pixel_is_point;
+    uint8_t       frame_unit;
 } rumi_write_desc;
 
 rumi_status

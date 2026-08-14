@@ -42,6 +42,18 @@ bool seek64(std::FILE* fp, std::uint64_t off) noexcept
 #endif
 }
 
+std::uint64_t file_size(std::FILE* fp) noexcept
+{
+#if defined(_WIN32)
+    if (_fseeki64(fp, 0, SEEK_END) != 0) return 0;
+    const std::int64_t n = _ftelli64(fp);
+#else
+    if (std::fseek(fp, 0, SEEK_END) != 0) return 0;
+    const long n = std::ftell(fp);
+#endif
+    return n < 0 ? 0 : static_cast<std::uint64_t>(n);
+}
+
 bool read_at(std::FILE* fp, std::uint64_t off, void* dst, std::size_t n) noexcept
 {
     if (!seek64(fp, off)) return false;
@@ -156,12 +168,12 @@ build_blob_from_file(const char* path) noexcept
     };
 
     static constexpr std::uint16_t ALLOWED[] = {
-        256, 257, 258, 277, 284, 322, 323, 324, 325, 339, 34264, 34735,
+        256, 257, 258, 277, 322, 323, 324, 325, 339, 34264, 34735,
     };
     for (const Entry& e : entries) {
         bool ok = false;
         for (std::uint16_t t : ALLOWED) if (e.tag == t) { ok = true; break; }
-        if (!ok) return err("rumi allows 12 tags and this file has tag %u",
+        if (!ok) return err("rumi allows 11 tags and this file has tag %u",
                             e.tag);
     }
     for (std::uint16_t t : ALLOWED) {
@@ -251,11 +263,6 @@ build_blob_from_file(const char* path) noexcept
     if (iw > 0xFFFFFFFFu || ih > 0xFFFFFFFFu) return err("image dimension exceeds uint32");
 
     // Profile gates.
-    auto planar_e = scalar(284, 1); if (!planar_e) return std::unexpected(planar_e.error());
-    if (*planar_e != 2) {
-        return err("rumi requires PlanarConfiguration 2 (Separate); file has %llu",
-                   static_cast<unsigned long long>(*planar_e));
-    }
     if (tw % 16 || tl % 16) {
         return err("TIFF requires tile dimensions to be a multiple of 16; "
                    "file has %llux%llu",
@@ -287,10 +294,85 @@ build_blob_from_file(const char* path) noexcept
     // Tile grid and the tile table.
     const std::uint32_t tiles_across = static_cast<std::uint32_t>((iw + tw - 1) / tw);
     const std::uint32_t tiles_down   = static_cast<std::uint32_t>((ih + tl - 1) / tl);
-    const std::uint64_t tpp     = static_cast<std::uint64_t>(tiles_across) * tiles_down;
-    const std::uint64_t n_tiles = tpp * spp;
+    // Georeferencing. The two tags are fixed size and the directory holds three
+    // keys in a fixed order, so every field has one legal shape.
+    auto mt_e = array(34264, 16); if (!mt_e) return std::unexpected(mt_e.error());
+    auto gk_e = array(34735, 16); if (!gk_e) return std::unexpected(gk_e.error());
+    const auto& gk = *gk_e;
+
+    if (gk[0] != 1 || gk[1] != 1 || gk[2] != 0 || gk[3] != 3) {
+        return err("GeoKeyDirectory header is %llu %llu %llu %llu, rumi writes 1 1 0 3",
+                   (unsigned long long)gk[0], (unsigned long long)gk[1],
+                   (unsigned long long)gk[2], (unsigned long long)gk[3]);
+    }
+    if (gk[4] != 1024 || gk[8] != 1025) {
+        return err("GeoKeyDirectory must hold GTModelType then GTRasterType, "
+                   "found keys %llu and %llu",
+                   (unsigned long long)gk[4], (unsigned long long)gk[8]);
+    }
+    const std::uint64_t model  = gk[7];
+    const std::uint64_t raster = gk[11];
+    const std::uint64_t crs_key = gk[12];
+    const std::uint64_t epsg    = gk[15];
+    if (raster != 1 && raster != 2) {
+        return err("GTRasterType is %llu, rumi allows 1 or 2",
+                   (unsigned long long)raster);
+    }
+    if (model == 0) {
+        if ((crs_key != 2048 && crs_key != 3072) || epsg != 0) {
+            return err("an undefined CRS needs key 2048 or 3072 set to 0, "
+                       "found key %llu set to %llu",
+                       (unsigned long long)crs_key, (unsigned long long)epsg);
+        }
+    } else if (model == 1 || model == 2) {
+        const std::uint64_t want_key = model == 2 ? 2048 : 3072;
+        if (crs_key != want_key) {
+            return err("GTModelType %llu needs key %llu, found %llu",
+                       (unsigned long long)model,
+                       (unsigned long long)want_key,
+                       (unsigned long long)crs_key);
+        }
+        if (epsg < 1024 || epsg > 32766) {
+            return err("EPSG code %llu is outside the 1024 to 32766 rumi accepts",
+                       (unsigned long long)epsg);
+        }
+        const std::uint16_t kind =
+            epsg_model_type(static_cast<std::uint32_t>(epsg));
+        if (kind == 0) {
+            return err("EPSG code %llu is not in the registry",
+                       (unsigned long long)epsg);
+        }
+        if (kind != model) {
+            return err("EPSG %llu is %s but GTModelType says %s",
+                       (unsigned long long)epsg,
+                       kind == 2 ? "geographic" : "projected",
+                       model == 2 ? "geographic" : "projected");
+        }
+    } else {
+        return err("GTModelType is %llu, rumi allows 0, 1 or 2",
+                   (unsigned long long)model);
+    }
+
+    const std::uint64_t tpp = static_cast<std::uint64_t>(tiles_across) * tiles_down;
+
+    // No tag carries the frame unit, so the entry count of TileOffsets is what
+    // names it. tpp means cell, tpp * spp means tile. With one band the two are
+    // equal and the layouts are identical, so tile is the reading.
+    const Entry* offs_entry = find(324);
+    std::uint8_t frame_unit;
+    if (offs_entry->count == tpp * spp)   frame_unit = 0;
+    else if (offs_entry->count == tpp)    frame_unit = 1;
+    else {
+        return err("TileOffsets has %llu entries, expected %llu for tile frames "
+                   "or %llu for cell frames",
+                   static_cast<unsigned long long>(offs_entry->count),
+                   static_cast<unsigned long long>(tpp * spp),
+                   static_cast<unsigned long long>(tpp));
+    }
+
+    const std::uint64_t n_tiles = offs_entry->count;
     if (n_tiles > 0xFFFFFFFFu) {
-        return err("tile count overflows uint32: %llu",
+        return err("frame count overflows uint32: %llu",
                    static_cast<unsigned long long>(n_tiles));
     }
 
@@ -299,40 +381,32 @@ build_blob_from_file(const char* path) noexcept
     const auto& offs = *offs_e;
     const auto& cnts = *cnts_e;
 
-    // TIFF is plane-major, rumi samples-innermost. Remap and walk; a
-    // contiguous run proves tile-interleaved.
+    // Both tags run in frame-index order, which is also the physical order, so
+    // a contiguous walk over them proves the layout is tile-interleaved.
     std::vector<std::uint32_t> counts(static_cast<std::size_t>(n_tiles));
-    std::uint64_t base    = 0;
-    std::uint64_t running = 0;
-    for (std::uint64_t spatial = 0; spatial < tpp; ++spatial) {
-        for (std::uint64_t s = 0; s < spp; ++s) {
-            const std::uint64_t ri  = spatial * spp + s;
-            const std::uint64_t ti  = s * tpp + spatial;
-            const std::uint64_t off = offs[static_cast<std::size_t>(ti)];
-            const std::uint64_t cnt = cnts[static_cast<std::size_t>(ti)];
-            if (cnt == 0) {
-                return err("tile %llu has a zero byte count",
-                           static_cast<unsigned long long>(ri));
-            }
-            if (cnt > 0xFFFFFFFFu) {
-                return err("tile %llu byte count %llu exceeds uint32",
-                           static_cast<unsigned long long>(ri),
-                           static_cast<unsigned long long>(cnt));
-            }
-            if (ri == 0) {
-                base    = off;
-                running = off;
-            }
-            if (off != running) {
-                return err("tile %llu is not contiguous (expected %llu, got %llu); "
-                           "the file is band-interleaved or has framing between tiles",
-                           static_cast<unsigned long long>(ri),
-                           static_cast<unsigned long long>(running),
-                           static_cast<unsigned long long>(off));
-            }
-            counts[static_cast<std::size_t>(ri)] = static_cast<std::uint32_t>(cnt);
-            running += cnt;
+    std::uint64_t base    = offs[0];
+    std::uint64_t running = base;
+    for (std::uint64_t i = 0; i < n_tiles; ++i) {
+        const std::uint64_t off = offs[static_cast<std::size_t>(i)];
+        const std::uint64_t cnt = cnts[static_cast<std::size_t>(i)];
+        if (cnt == 0) {
+            return err("frame %llu has a zero byte count",
+                       static_cast<unsigned long long>(i));
         }
+        if (cnt > 0xFFFFFFFFu) {
+            return err("frame %llu byte count %llu exceeds uint32",
+                       static_cast<unsigned long long>(i),
+                       static_cast<unsigned long long>(cnt));
+        }
+        if (off != running) {
+            return err("frame %llu is not contiguous (expected %llu, got %llu); "
+                       "the file is band-interleaved or has framing between frames",
+                       static_cast<unsigned long long>(i),
+                       static_cast<unsigned long long>(running),
+                       static_cast<unsigned long long>(off));
+        }
+        counts[static_cast<std::size_t>(i)] = static_cast<std::uint32_t>(cnt);
+        running += cnt;
     }
 
     if (base != derived_base_offset(static_cast<std::uint32_t>(spp), n_tiles)) {
@@ -342,6 +416,17 @@ build_blob_from_file(const char* path) noexcept
                    static_cast<unsigned long long>(
                        derived_base_offset(static_cast<std::uint32_t>(spp),
                                            n_tiles)));
+    }
+
+    // The frames are the tail of the file, so the last offset plus its count is
+    // exactly the file length. A short file is truncated, however well formed
+    // its IFD looks.
+    const std::uint64_t on_disk = file_size(fp);
+    if (running != on_disk) {
+        return err("frames end at %llu but the file is %llu bytes; "
+                   "it is truncated or has trailing bytes",
+                   static_cast<unsigned long long>(running),
+                   static_cast<unsigned long long>(on_disk));
     }
 
     BlobHeader bh{};
@@ -354,6 +439,7 @@ build_blob_from_file(const char* path) noexcept
     bh.samples_per_pixel = static_cast<std::uint16_t>(spp);
     bh.bits_per_sample   = bps;
     bh.sample_format     = sff;
+    bh.frame_unit        = frame_unit;
 
     const CountPacking cp = plan_counts(counts);
     bh.count_min  = cp.min;

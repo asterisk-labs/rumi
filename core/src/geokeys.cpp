@@ -81,6 +81,14 @@ void put16(std::vector<std::byte>& out, std::uint16_t v)
 }  // namespace
 
 
+std::uint16_t epsg_model_type(std::uint32_t epsg) noexcept
+{
+    if (epsg == 0) return MODEL_UNDEFINED;
+    if (is_geographic(epsg)) return MODEL_GEOGRAPHIC;
+    if (is_projected(epsg))  return MODEL_PROJECTED;
+    return MODEL_UNDEFINED;
+}
+
 std::expected<GeoKeys, std::string>
 build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept
 try {

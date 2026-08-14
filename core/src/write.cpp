@@ -29,7 +29,6 @@ constexpr std::uint16_t T_LONG   = 4;
 constexpr std::uint16_t T_DOUBLE = 12;
 constexpr std::uint16_t T_LONG8  = 16;
 
-constexpr std::uint16_t PLANARCONFIG_SEPARATE  = 2;
 
 constexpr std::uint16_t TAG_TILE_OFFSETS = 324;
 
@@ -134,7 +133,6 @@ base_entries(const WriteDesc& d, std::uint64_t tile_count,
     e.push_back(pack(257, T_LONG,  {d.image_length}));
     e.push_back(pack(258, T_SHORT, std::vector<std::uint16_t>(spp, bits)));
     e.push_back(pack(277, T_SHORT, {spp}));
-    e.push_back(pack(284, T_SHORT, {PLANARCONFIG_SEPARATE}));
     e.push_back(pack(322, T_SHORT, {d.tile_size}));
     e.push_back(pack(323, T_SHORT, {d.tile_size}));
     e.push_back(Entry{TAG_TILE_OFFSETS, T_LONG8, tile_count, {}});
@@ -176,6 +174,9 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
         return err("tile_size must be a multiple of 16, got %u", d.tile_size);
     if (d.samples_per_pixel == 0)
         return err("samples_per_pixel must be at least 1");
+    if (d.frame_unit > 1)
+        return err("frame_unit must be 0 (tile) or 1 (cell), got %u",
+                   unsigned(d.frame_unit));
     if ((d.transform == nullptr) != (d.epsg == 0))
         return err("transform and a CRS must be given together");
 
@@ -185,7 +186,9 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
 
     g.across = (d.image_width  + d.tile_size - 1) / d.tile_size;
     g.down   = (d.image_length + d.tile_size - 1) / d.tile_size;
-    g.tiles  = std::uint64_t(g.across) * g.down * d.samples_per_pixel;
+    // A tile frame holds one band, a cell frame holds every band.
+    g.tiles  = std::uint64_t(g.across) * g.down
+             * (d.frame_unit == 0 ? d.samples_per_pixel : 1);
     if (g.tiles > 0xFFFFFFFFu)
         return err("tile count overflows uint32: %llu",
                    static_cast<unsigned long long>(g.tiles));
@@ -269,24 +272,13 @@ try {
     }
 
     const std::uint16_t spp = d.samples_per_pixel;
-    const std::uint64_t tpp = g->tiles / spp;
     const auto n = static_cast<std::size_t>(g->tiles);
 
-    // The frame runs samples-innermost, the file runs plane-major.
-    std::vector<std::size_t> to_frame(n);
-    for (std::uint64_t spatial = 0; spatial < tpp; ++spatial) {
-        for (std::uint16_t s = 0; s < spp; ++s) {
-            const std::uint64_t ri = spatial * spp + s;
-            const std::uint64_t ti = std::uint64_t(s) * tpp + spatial;
-            to_frame[static_cast<std::size_t>(ti)] = static_cast<std::size_t>(ri);
-        }
-    }
+    std::vector<std::uint32_t> counts(n);
+    for (std::size_t i = 0; i < n; ++i)
+        counts[i] = static_cast<std::uint32_t>(sizes[i]);
 
-    std::vector<std::uint32_t> counts_pm(n);
-    for (std::size_t ti = 0; ti < n; ++ti)
-        counts_pm[ti] = static_cast<std::uint32_t>(sizes[to_frame[ti]]);
-
-    auto l = plan(d, *g, counts_pm);
+    auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
 
     // Tile data is one contiguous run in frame order, so the offsets fall out
@@ -300,7 +292,7 @@ try {
     for (auto& e : l->entries) {
         if (e.tag != TAG_TILE_OFFSETS) continue;
         e.payload.reserve(n * sizeof(std::uint64_t));
-        for (std::size_t ti = 0; ti < n; ++ti) put(e.payload, offsets[to_frame[ti]]);
+        for (std::size_t i = 0; i < n; ++i) put(e.payload, offsets[i]);
     }
 
     std::vector<std::byte> head;
@@ -354,6 +346,10 @@ try {
     bh.samples_per_pixel = spp;
     bh.bits_per_sample   = g->bits;
     bh.sample_format     = g->sample_format;
+    // With one band a cell frame holds exactly what a tile frame holds, so the
+    // two files are byte for byte the same and the count cannot tell them
+    // apart. Pin the blob to tile so a rebuild from the file matches it.
+    bh.frame_unit        = spp == 1 ? 0 : d.frame_unit;
 
     // place_external walks the entries it is about to write. Readers use the
     // closed form and never see them. Nothing else checks that the two agree.
@@ -362,11 +358,6 @@ try {
                    static_cast<unsigned long long>(l->base),
                    static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }
-
-    // The blob carries counts in frame order, not the tag's plane-major one.
-    std::vector<std::uint32_t> counts(n);
-    for (std::size_t i = 0; i < n; ++i)
-        counts[i] = static_cast<std::uint32_t>(sizes[i]);
 
     const CountPacking cp = plan_counts(counts);
     bh.count_min  = cp.min;

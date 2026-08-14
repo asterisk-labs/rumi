@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import rumi
-from rumi import TileFrame
+from rumi import FrameTable
 from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
@@ -26,12 +26,12 @@ NORTH_UP = (30.0, 0.0, 500000.0, 0.0, -30.0, 8000000.0)
 ROTATED = (30.0, 5.0, 500000.0, 5.0, -30.0, 8000000.0)
 
 
-def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16):
+def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16, unit="tile"):
     """A frame whose payloads are all different sizes, so a permutation bug in
     the offset table cannot hide behind equal-length tiles."""
     n = np.prod(shape[1:])
     arr = np.arange(shape[0] * n, dtype=dtype).reshape(shape)
-    tf = TileFrame.from_array(arr, tile_size=tile_size)
+    tf = FrameTable.from_array(arr, tile_size=tile_size, unit=unit)
     tf["compressed"] = [bytes([i % 251]) * (7 + 3 * i) for i in range(len(tf))]
     return tf
 
@@ -89,13 +89,12 @@ def test_tag_set(tmp_path):
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
-    assert set(entries) == {256, 257, 258, 277, 284, 322, 323, 324, 325, 339,
+    assert set(entries) == {256, 257, 258, 277, 322, 323, 324, 325, 339,
                             34264, 34735}
     assert values(entries[256], "I") == [tf.image_width]
     assert values(entries[257], "I") == [tf.image_length]
     assert values(entries[258], "H") == [16] * tf.bands
     assert values(entries[277], "H") == [tf.bands]
-    assert values(entries[284], "H") == [2]
     assert values(entries[322], "H") == [tf.tile_size]
     assert values(entries[323], "H") == [tf.tile_size]
     assert values(entries[339], "H") == [1] * tf.bands
@@ -123,18 +122,18 @@ def test_inline_and_external_values(tmp_path):
         cursor += size + (size & 1)
 
 
-def test_plane_major_order(tmp_path):
+def test_frame_index_order(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
-    sizes = [len(f) for f in tf["compressed"]]
-    tiles = tf.tiles_across * tf.tiles_down
-    # the frame runs band-innermost, the file runs band-outermost
-    expected = [sizes[pos * tf.bands + b]
-                for b in range(tf.bands) for pos in range(tiles)]
+    # Both tags run in frame-index order, which is also the physical order, so
+    # the byte counts come out exactly as the frames were handed over.
+    expected = [len(f) for f in tf["compressed"]]
     assert values(entries[TILE_BYTE_COUNTS], "I") == expected
+    assert values(entries[TILE_OFFSETS], "Q") == sorted(
+        values(entries[TILE_OFFSETS], "Q"))
 
 
 def test_payload_offsets(tmp_path):
@@ -149,10 +148,7 @@ def test_payload_offsets(tmp_path):
     assert min(offsets) == base
     assert len(blob) == base + sum(counts)
 
-    tiles = tf.tiles_across * tf.tiles_down
-    order = [pos * tf.bands + b
-             for b in range(tf.bands) for pos in range(tiles)]
-    for off, n, i in zip(offsets, counts, order, strict=True):
+    for i, (off, n) in enumerate(zip(offsets, counts, strict=True)):
         assert blob[off:off + n] == tf["compressed"][i]
 
 
@@ -284,7 +280,17 @@ def test_edge_tiles(tmp_path):
     _path, blob = rumi.write(tmp_path / "a.tif", tf)
     h = rumi.RumiHeader(blob).to_dict()
     assert h["height"] == 257 and h["width"] == 256
-    assert h["tiles"] == len(tf)
+    assert h["frames"] == len(tf)
+    assert h["frame_unit"] == "tile"
+
+
+def test_cell_frame_count(tmp_path):
+    """A cell frame holds every band, so the grid alone gives the count."""
+    tf = make_frame(shape=(3, 257, 256), tile_size=128, unit="cell")
+    _path, blob = rumi.write(tmp_path / "a.tif", tf)
+    h = rumi.RumiHeader(blob).to_dict()
+    assert h["frame_unit"] == "cell"
+    assert h["frames"] == len(tf) == h["tiles_across"] * h["tiles_down"]
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.int16, np.uint16, np.int32,
@@ -303,12 +309,12 @@ def test_sample_format(tmp_path, dtype):
 
 # Digests of the whole file. The writer is deterministic, so a change here is a
 # change to the bytes on disk. Regenerate deliberately, never to make a test
-# pass. Last regenerated when the geo tags became mandatory.
+# pass. Last regenerated when the IFD went from 12 tags to 11.
 GOLDEN = {
-    "plain": "62b1f8100cf0de5312996fa25bfc89650e002f514e6d7d982d0cf42ce9337ca1",
-    "north_up": "4615c8aada2f86b1a817325e014a5b26ed65f0dc02b52b9ce00ca9e0c4676c08",
-    "rotated": "5085b8dd59c8f1017d64be5510088229ff45a60001d6bde06b6ee995c3f032e4",
-    "point": "41f921e9f4842236fd4b4e8652d51ee140e56cbc55a533586bfef5ea8b2e11ec",
+    "plain": "7a6818bd71b3fbb5579ce4c7e07833cd2509555d3cee179ea260697929ad6a11",
+    "north_up": "5077418d91f271d316f91fb50859d3693332237e7239a5fb91cdfc314e9aa5e9",
+    "rotated": "42afc0fb931b839e9c7f4e821cbd84960482f9d9d1236fd088b59d398948b124",
+    "point": "fbbac06cc59555cea0a3454a69b2c43d60d3d070978b29ebce98ce31ab8e4dc9",
 }
 
 CASES = {

@@ -12,19 +12,19 @@ import numpy as np
 import pytest
 
 import rumi
-from rumi import TileFrame
+from rumi import FrameTable
 from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
 TYPE_SIZE = {ASCII: 1, SHORT: 2, LONG: 4, DOUBLE: 8, LONG8: 8}
 
-TAGS = (256, 257, 258, 277, 284, 322, 323, 324, 325, 339, 34264, 34735)
+TAGS = (256, 257, 258, 277, 322, 323, 324, 325, 339, 34264, 34735)
 GEO = (34264, 34735)
 FORBIDDEN_GEO = (33550, 33922, 34736, 34737)
 
 IFD_OFFSET = 16
-IFD_SIZE = 8 + 20 * len(TAGS) + 8          # 256
-BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 272
+IFD_SIZE = 8 + 20 * len(TAGS) + 8          # 236
+BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 252
 
 MODEL, RASTER, GEOGRAPHIC, PROJECTED = 1024, 1025, 2048, 3072
 UTM18S = 32718
@@ -48,7 +48,7 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16):
     tiles of equal size."""
     n = int(np.prod(shape[1:]))
     arr = np.arange(shape[0] * n, dtype=dtype).reshape(shape)
-    tf = TileFrame.from_array(arr, tile_size=tile_size)
+    tf = FrameTable.from_array(arr, tile_size=tile_size)
     tf["compressed"] = [bytes([i % 251]) * (7 + 3 * i) for i in range(len(tf))]
     return tf
 
@@ -89,12 +89,6 @@ def geokeys(path):
     return v[:4], {v[4 + i * 4]: v[7 + i * 4] for i in range(v[3])}
 
 
-def plane_major(n_pos, bands):
-    """TIFF orders the tile arrays band outermost while the payloads go down
-    band innermost, so the two need a permutation between them."""
-    return [pos * bands + b for b in range(bands) for pos in range(n_pos)]
-
-
 def build_tiff(entries, tiles, bands=1, pad_before_tiles=0):
     """entries is {tag: (type, values)}, tiles the payloads in wire order.
     pad_before_tiles opens a gap, for the tests that need an invalid file."""
@@ -118,9 +112,9 @@ def build_tiff(entries, tiles, bands=1, pad_before_tiles=0):
         for payload in tiles:
             where.append(at)
             at += len(payload)
-        order = plane_major(len(tiles) // bands, bands)
-        packed[324] = struct.pack("<" + "Q" * len(order),
-                                  *[where[i] for i in order])
+        # Frame-index order, which is also the physical order, so the offsets
+        # go into the tag exactly as the payloads land in the file.
+        packed[324] = struct.pack("<" + "Q" * len(where), *where)
 
     out = bytearray(struct.pack("<HHHHQ", 0x4949, 43, 8, 0, IFD_OFFSET))
     out += struct.pack("<Q", len(ordered))
@@ -151,15 +145,13 @@ def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
     directory = [1, 1, 0, 3,
                  MODEL, 0, 1, model,
                  RASTER, 0, 1, 1,
-                 (GEOGRAPHIC if model == 2 else PROJECTED), 0, 1, epsg]
+                 (PROJECTED if model == 1 else GEOGRAPHIC), 0, 1, epsg]
     return {
         256: (LONG, [width]), 257: (LONG, [length]),
         258: (SHORT, [bits] * bands), 277: (SHORT, [bands]),
-        284: (SHORT, [2]),
         322: (SHORT, [tile]), 323: (SHORT, [tile]),
         324: (LONG8, [0] * len(tiles)),
-        325: (LONG, [len(tiles[i])
-                     for i in plane_major(len(tiles) // bands, bands)]),
+        325: (LONG, [len(t) for t in tiles]),
         339: (SHORT, [fmt] * bands),
         34264: (DOUBLE, matrix), 34735: (SHORT, directory),
     }
@@ -167,7 +159,7 @@ def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
 
 # Fixed IFD
 
-def test_the_tag_set_is_exactly_the_fifteen(tmp_path):
+def test_the_tag_set_is_exactly_the_eleven(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.tif"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
@@ -430,7 +422,7 @@ def test_there_is_no_header_size_parameter(tmp_path):
 def test_tile_size_must_be_a_multiple_of_sixteen(bad):
     arr = np.zeros((1, 64, 64), np.uint16)
     with pytest.raises(ValueError, match="16"):
-        rumi.tile(arr, bad)
+        rumi.frames(arr, bad)
 
 
 def test_a_crs_needs_a_transform(tmp_path):
@@ -544,7 +536,7 @@ def test_pixels_survive_the_round_trip(tmp_path):
     geozl = pytest.importorskip("geozl")
     rng = np.random.default_rng(0)
     data = rng.integers(0, 3000, (3, 100, 130)).astype(np.uint16)
-    tf = rumi.tile(data, 32)
+    tf = rumi.frames(data, 32)
     graphs = {}
     for t in tf:
         g = graphs.setdefault(t.data.shape,

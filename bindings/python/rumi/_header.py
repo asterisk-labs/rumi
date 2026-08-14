@@ -15,7 +15,7 @@ class RumiHeader:
 
     @classmethod
     def from_path(cls, path: PathLike) -> "RumiHeader":
-        """Read the header off disk and build. Tile data is not touched."""
+        """Read the header off disk and build. Frame data is not touched."""
         return cls(_header_from_file(path))
 
     @property
@@ -26,6 +26,19 @@ class RumiHeader:
     @property
     def dtype(self) -> type[np.generic]:
         return numpy_dtype(self._fields.dtype)
+
+    @property
+    def frame_unit(self) -> str:
+        """What one frame holds, "tile" for one band at one grid position and
+        "cell" for every band at one."""
+        return "tile" if self._fields.frame_unit == 0 else "cell"
+
+    @property
+    def frames(self) -> int:
+        """Frame count, which follows from the grid and the frame unit."""
+        h = self._fields
+        per = h.samples_per_pixel if h.frame_unit == 0 else 1
+        return int(h.tiles_across * h.tiles_down * per)
 
     def to_dict(self) -> dict:
         """Header fields as a plain, JSON-serializable dict, for a catalog or a
@@ -40,7 +53,8 @@ class RumiHeader:
             "tile": [int(h.tile_width), int(h.tile_length)],
             "tiles_across": int(h.tiles_across),
             "tiles_down": int(h.tiles_down),
-            "tiles": int(h.tiles_across * h.tiles_down * h.samples_per_pixel),
+            "frame_unit": self.frame_unit,
+            "frames": self.frames,
             "base_tiles_offset": int(h.base_tiles_offset),
             "codec": "OpenZL",
         }
@@ -55,7 +69,8 @@ class RumiHeader:
                 "dtype": dtype_name(h.dtype),
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
-                "tiles": h.tiles_across * h.tiles_down * h.samples_per_pixel,
+                "unit": self.frame_unit,
+                "tiles": self.frames,
                 "codec": "OpenZL",
             }
         except Exception:

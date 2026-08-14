@@ -2,7 +2,7 @@
 
 Writes a georeferenced file, reads its header back off disk, and reads a window
 out of the bytes in memory. That covers the writer, the CRS keys, both sources
-and the header round trip. Tile payloads are fake, nothing decodes them here.
+and the header round trip. Frame payloads are fake, nothing decodes them here.
 """
 
 import sys
@@ -20,7 +20,7 @@ TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
 def main() -> int:
     print("rumi", rumi.__version__)
 
-    tf = rumi.tile(np.zeros((2, 40, 70), np.uint16), 16)
+    tf = rumi.frames(np.zeros((2, 40, 70), np.uint16), 16)
     tf["compressed"] = [bytes([i % 251]) * (8 + i) for i in range(len(tf))]
 
     with tempfile.TemporaryDirectory() as d:

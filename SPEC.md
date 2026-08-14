@@ -42,14 +42,14 @@ Everything required to decode a frame MUST be contained in the frame itself. rum
 
 `frame_unit` defines what one frame contains.
 
-| frame_unit | one frame holds                | decodes to  | N                               | PlanarConfiguration |
-| ---------- | ------------------------------ | ----------- | ------------------------------- | ------------------- |
-| `0` tile   | one band at one grid position  | `(h, w)`    | `tiles_across * tiles_down * B` | `2`                 |
-| `1` cell   | all bands at one grid position | `(B, h, w)` | `tiles_across * tiles_down`     | `1`                 |
+| frame_unit | one frame holds                | decodes to  | N                               |
+| ---------- | ------------------------------ | ----------- | ------------------------------- |
+| `0` tile   | one band at one grid position  | `(h, w)`    | `tiles_across * tiles_down * B` |
+| `1` cell   | all bands at one grid position | `(B, h, w)` | `tiles_across * tiles_down`     |
 
 `B` is `samples_per_pixel`. `h` and `w` are the actual frame height and width at that grid position, cut to the image bounds.
 
-A tile frame lets a reader decode one band independently. A cell frame decodes all bands together, which lets OpenZL model correlation across bands. A cell frame is band-sequential, with each band stored as a complete plane.
+A tile frame lets a reader decode one band independently. A cell frame decodes all bands together, which lets OpenZL model correlation across bands.
 
 Both modes use the same file structure. `frame_unit` changes what each frame contains, and therefore `N`.
 
@@ -76,6 +76,21 @@ frame_index(row, col) = row * tiles_across + col
 N                     = tiles_across * tiles_down
 ```
 
+### Deriving the frame unit
+
+The blob carries `frame_unit` directly. A reader holding only the IFD derives it from the entry count of `TileOffsets`.
+
+```text
+g = tiles_across * tiles_down
+
+count == g       ->  cell
+count == g * B   ->  tile
+```
+
+A reader MUST reject a file whose count matches neither value. When `B` is `1` the two are equal and the two layouts are identical, so either reading is correct.
+
+The frame unit is not stored in the IFD. No TIFF tag can carry it, since the interleaving a tag would describe belongs to the OpenZL frame and rumi does not define it. The entry count is the only place the choice is visible, and it is also the value a reader needs anyway.
+
 ### Rejected orders
 
 For tile frames, a multi-band image can be laid out in two ways.
@@ -85,7 +100,7 @@ For tile frames, a multi-band image can be laid out in two ways.
 | band-interleaved | all tiles of band 0, then all tiles of band 1          | rejected |
 | tile-interleaved | all bands at one grid position, then the next position | required |
 
-`PlanarConfiguration = 2` does not distinguish between these layouts, so rumi defines the physical order explicitly.
+The index of a `TileOffsets` entry is a position in a list. TIFF does not define how that position maps to a grid position and a band, so rumi defines the physical order explicitly.
 
 The header blob stores byte counts in frame-index order and reconstructs offsets with a prefix sum. This works only when frame-index order is also the physical order of the frames in the file. Band-interleaved layout breaks that property and MUST be rejected.
 
@@ -153,7 +168,6 @@ A file is rumi compliant when all of the following hold.
 - the file has no overviews
 - the file has no masks or auxiliary IFDs
 - the image is tiled, not stripped
-- `PlanarConfiguration` is `2` when `frame_unit` is tile, `1` when it is cell
 - at the tile level, tiles are stored tile-interleaved
 - the single IFD is positioned before the frame data
 - the IFD holds exactly the tags listed in Fixed IFD, and no others
@@ -161,7 +175,7 @@ A file is rumi compliant when all of the following hold.
 - georeferencing is encoded as defined in Georeferencing
 - the `(sample_format, bits_per_sample)` pair is one listed in Sample encodings
 - each frame is one self-contained OpenZL frame, every frame in the file written at one pinned OpenZL frame format version
-- `TileOffsets` and `TileByteCounts` are present, with `N` entries
+- `TileOffsets` and `TileByteCounts` are present, with `N` entries, and the entry count matches one of the two values in Deriving the frame unit
 - no frame is sparse. Every frame is present and every `TileByteCounts` entry is greater than zero
 - the frames form one contiguous run in frame-index order, each frame immediately followed by the next, with no framing between them
 
@@ -179,7 +193,6 @@ Readers that parse the IFD to rebuild a header blob or validate a file MUST reje
 | 257   | ImageLength            | LONG   | 1     |
 | 258   | BitsPerSample          | SHORT  | B     |
 | 277   | SamplesPerPixel        | SHORT  | 1     |
-| 284   | PlanarConfiguration    | SHORT  | 1     |
 | 322   | TileWidth              | SHORT  | 1     |
 | 323   | TileLength             | SHORT  | 1     |
 | 324   | TileOffsets            | LONG8  | N     |
@@ -188,11 +201,11 @@ Readers that parse the IFD to rebuild a header blob or validate a file MUST reje
 | 34264 | ModelTransformationTag | DOUBLE | 16    |
 | 34735 | GeoKeyDirectoryTag     | SHORT  | 16    |
 
-Every rumi file carries all 12 tags. Files without georeferencing still carry `ModelTransformationTag` and `GeoKeyDirectoryTag` with the values defined in Undefined georeferencing.
+Every rumi file carries all 11 tags. Files without georeferencing still carry `ModelTransformationTag` and `GeoKeyDirectoryTag` with the values defined in Undefined georeferencing.
 
 ### Placement
 
-The IFD starts at byte `16`, immediately after the BigTIFF header. It is always `8 + 20 * 12 + 8` bytes long, which is `256` bytes. This includes the entry count, the 12 entries, and the zero offset for the next IFD.
+The IFD starts at byte `16`, immediately after the BigTIFF header. It is always `8 + 20 * 11 + 8` bytes long, which is `236` bytes. This includes the entry count, the 11 entries, and the zero offset for the next IFD.
 
 Values of 8 bytes or less are stored directly inside their IFD entry. Larger values MUST be stored immediately after the IFD, in rising tag order and with no gaps between them.
 
@@ -210,8 +223,8 @@ external = (2 * B  if B >= 5 else 0)      # 258 BitsPerSample
          + 128                            # 34264 ModelTransformationTag
          + 32                             # 34735 GeoKeyDirectoryTag
 
-base_frame_offset = 16 + 256 + external
-                  = 272 + external
+base_frame_offset = 16 + 236 + external
+                  = 252 + external
 ```
 
 The result MUST match the first entry of `TileOffsets`. Files with the same image shape, band count, and `frame_unit` start their frame data at the same byte.
@@ -437,8 +450,8 @@ The second term is a product and the third has no dependency between its terms, 
 rumi uses the BigTIFF and GeoTIFF structures, but it is not a standard GeoTIFF. The following rules make it incompatible.
 
 - **Required TIFF tags are absent.** rumi omits `Compression` and `PhotometricInterpretation`. TIFF treats a missing `Compression` as uncompressed, so a TIFF reader would read OpenZL frames as raw samples.
+- **`PlanarConfiguration` is absent.** TIFF treats the missing tag as `1`, which sets the tile count to `tiles_across * tiles_down`. A tile-unit rumi file has `B` times that many, so a TIFF reader finds an entry count it does not expect. rumi omits the tag because its interleaving meaning describes the inside of a frame, which belongs to OpenZL.
 - **Edge tiles are cut rather than padded.** TIFF pads tiles on the right and bottom edges to the full tile dimensions. rumi stores only the pixels inside the image bounds.
-- **Cell frames are band-sequential.** With `PlanarConfiguration = 1`, TIFF expects samples to be interleaved by pixel. A rumi cell frame decodes as `(B, h, w)`, with each band stored as a complete plane.
 - **`SampleFormat` values `100` through `106` are rumi-specific.** They represent float8, bfloat16, float6, and float4 types that TIFF does not define.
 
 ## Changelog

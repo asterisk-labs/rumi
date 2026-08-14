@@ -51,6 +51,7 @@ void copy_rect(const TileTask& t, const TileSpec& spec,
 {
     const std::size_t bps       = spec.bytes_per_sample;
     const std::size_t src_pitch = static_cast<std::size_t>(t.tile_w) * bps;
+    tile += t.src_plane;
 
     if (t.dst_pixel_stride == bps) {
         const std::size_t row_bytes = static_cast<std::size_t>(t.w) * bps;

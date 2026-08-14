@@ -218,7 +218,7 @@ def frame_html(f, rows, states, cols, fallback):
     e = html.escape
     summary = "".join(f'<tr><td class="k">{k}</td><td>{e(v)}</td></tr>'
                       for k, v in _meta(f))
-    meta = (f'<div><div class="hdr"><span class="cls">rumi.TileFrame</span> '
+    meta = (f'<div><div class="hdr"><span class="cls">rumi.FrameTable</span> '
             f'<span class="dim">({f["b"]}, {f["y"]}, {f["x"]})</span></div>'
             f'<table>{summary}</table></div>')
 

@@ -44,7 +44,7 @@ void ok_at(int line, bool cond, const char* expr)
 // Kept independent of the implementation so the two can disagree.
 std::uint64_t derived_base(std::uint32_t bands, std::uint64_t tiles)
 {
-    const std::uint64_t ifd = 8 + 20 * 12 + 8;
+    const std::uint64_t ifd = 8 + 20 * 11 + 8;
     std::uint64_t external = 128 + 32;
     if (bands >= 5) external += 2 * bands * 2;      // 258 and 339
     if (tiles >= 2) external += 8 * tiles;          // 324
@@ -209,11 +209,11 @@ void test_parse_blob()
 
     CASE("offsets are a prefix sum from the base")
     if (h) {
-        EQ(h->tile_offset(0), std::uint64_t(480));
-        EQ(h->tile_offset(1), std::uint64_t(490));
-        EQ(h->tile_offset(2), std::uint64_t(510));
-        EQ(h->tile_offset(3), std::uint64_t(540));
-        EQ(h->data_end(), std::uint64_t(580));
+        EQ(h->tile_offset(0), std::uint64_t(460));
+        EQ(h->tile_offset(1), std::uint64_t(470));
+        EQ(h->tile_offset(2), std::uint64_t(490));
+        EQ(h->tile_offset(3), std::uint64_t(520));
+        EQ(h->data_end(), std::uint64_t(560));
     }
 
     CASE("the tile index walks row major with the band innermost")
@@ -364,8 +364,25 @@ void test_count_packing()
 
     CASE("a width above 32 is refused")
     auto huge = make_blob(32, 32, 16, 1, counts);
-    huge[26] = std::byte{33};
+    huge[rumi::HEADER_SIZE - 1] = std::byte{33};
     OK(!rumi::parse_blob(huge).has_value());
+
+    CASE("frame_unit is tile or cell and nothing else")
+    auto bad_unit = make_blob(32, 32, 16, 1, counts);
+    bad_unit[22] = std::byte{2};
+    OK(!rumi::parse_blob(bad_unit).has_value());
+    // A cell blob names one frame per grid position, so its count list is
+    // shorter and a tile-length one no longer fits.
+    auto cell = make_blob(32, 32, 16, 3, std::vector<std::uint32_t>(4, 9));
+    cell[22] = std::byte{1};
+    auto cp = rumi::parse_blob(cell);
+    OK(cp.has_value());
+    if (cp) {
+        EQ(cp->frame_unit, std::uint8_t(1));
+        EQ(cp->tile_count, 4u);
+        EQ(cp->tile_index(1, 1, 0), 3u);
+        EQ(cp->tile_index(1, 1, 2), 3u);   // band is ignored for cell frames
+    }
 
     CASE("a count of zero is refused whichever side it comes from")
     OK(!rumi::parse_blob(make_blob(32, 32, 16, 1, {1, 0, 3, 4})).has_value());
@@ -406,8 +423,10 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     if (!rebuilt) { fail(__LINE__, "reread: " + rebuilt.error()); return; }
 
     OK(*written == *rebuilt);                       // deterministic both ways
+    // count_bits is the last byte of the header, offset 27 in the spec table.
     OK(written->size() == rumi::HEADER_SIZE
-          + (n * (std::size_t)std::to_integer<unsigned>((*written)[26]) + 7) / 8);
+          + (n * (std::size_t)std::to_integer<unsigned>(
+                     (*written)[rumi::HEADER_SIZE - 1]) + 7) / 8);
 
     auto ph = rumi::parse_blob(*written);
     OK(ph.has_value());

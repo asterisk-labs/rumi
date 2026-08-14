@@ -20,7 +20,7 @@ def image(tmp_path_factory):
     """A small scene written once, with edge tiles."""
     rng = np.random.default_rng(0)
     data = rng.integers(0, 3000, (3, 100, 130)).astype(np.uint16)
-    tf = rumi.tile(data, 32)
+    tf = rumi.frames(data, 32)
     graphs = {}
     for t in tf:
         g = graphs.get(t.data.shape)

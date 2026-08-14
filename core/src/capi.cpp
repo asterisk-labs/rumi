@@ -294,6 +294,7 @@ void fill_header(const rumi::Header& h, rumi_header* out)
     out->samples_per_pixel = h.samples_per_pixel;
     out->bits_per_sample   = h.bits_per_sample;
     out->sample_format     = h.sample_format;
+    out->frame_unit        = h.frame_unit;
     out->dtype             = h.dtype;
     out->tiles_across      = h.tiles_across;
     out->tiles_down        = h.tiles_down;
@@ -682,6 +683,7 @@ rumi_write(const char*                 path,
         d.transform         = desc->transform;
         d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
+        d.frame_unit        = desc->frame_unit;
 
         auto result = rumi::write_file(path, d, frames, sizes, frame_count);
         if (!result) {
@@ -720,6 +722,7 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
         d.transform         = desc->transform;
         d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
+        d.frame_unit        = desc->frame_unit;
 
         auto base = rumi::base_offset(d);
         if (!base) {

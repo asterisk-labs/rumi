@@ -120,6 +120,7 @@ typedef struct {
     uint16_t samples_per_pixel;
     uint8_t  bits_per_sample;
     uint8_t  sample_format;
+    uint8_t  frame_unit;
     uint32_t tiles_across;
     uint32_t tiles_down;
     uint64_t base_tiles_offset;
@@ -280,11 +281,15 @@ typedef struct {
     const double* transform;
     uint32_t      epsg;
     int           pixel_is_point;
+    // 0 is tile, one band at one grid position. 1 is cell, every band at one
+    // grid position, which lets a graph model the correlation between bands.
+    uint8_t       frame_unit;
 } rumi_write_desc;
 
 // Writes the file and hands back its header blob, *out_size bytes owned by the
-// caller and released with rumi_free. frames holds frame_count compressed tiles
-// in row, column, sample order with sample innermost, sizes one length each.
+// caller and released with rumi_free. frames holds frame_count compressed
+// frames in frame-index order, sizes one length each. For tile frames that is
+// row, column, sample with sample innermost; for cell frames, row then column.
 // On failure the file is removed and the out-pointers are left untouched.
 RUMI_API rumi_status
 rumi_write(const char*                 path,

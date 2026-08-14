@@ -391,10 +391,3 @@ def frames(arr, tile_size=512, *, unit="tile"):
     correlation between bands.
     """
     return FrameTable.from_array(arr, tile_size, unit=unit)
-
-
-# The names rumi shipped with. A tile table is the default, so these still
-# read correctly, but frames() is the one that names both units.
-Tile = Frame
-TileFrame = FrameTable
-tile = frames
