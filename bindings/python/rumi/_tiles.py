@@ -98,8 +98,9 @@ class FrameTable:
     place. Indexing returns Frame views that write back by index.
 
     Edge tiles are cut to where the image reaches, never padded. Each one goes
-    to geozl as its own raster, and geozl reads its width off the last axis, so
-    a tile of 512 by 44 needs nothing said about it.
+    to geozl as its own raster, and geozl reads its shape off the array, the
+    width from the last axis and the plane count from the first, so a tile of
+    512 by 44 needs nothing said about it.
     """
 
     __slots__ = ("_data", "_comp", "_size", "_band", "_row", "_col", "_extra",
@@ -386,8 +387,9 @@ def _frame_bytes(v, i):
 def frames(arr, tile_size=512, *, unit="tile"):
     """Cut a (B, Y, X) cube into a FrameTable. Edges are cut, not padded.
 
-    unit says what one frame holds. "tile" is one band at one grid position,
-    "cell" is every band at one grid position, which lets a graph model the
-    correlation between bands.
+    unit says what one frame holds. "tile" is one band at one grid position, so
+    a frame is a 2D raster. "cell" is every band at one grid position, so a
+    frame is a (B, h, w) cube that geozl reads as stacked planes, predicted band
+    by band inside one frame.
     """
     return FrameTable.from_array(arr, tile_size, unit=unit)

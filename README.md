@@ -50,7 +50,7 @@ import rumi
 arr = np.random.randint(0, 4096, (4, 2048, 2048), dtype=np.uint16)  # (B, Y, X)
 
 # 1. Cut the Image into a TileFrame
-tf = rumi.tile(arr, tile_size=512)
+tf = rumi.frames(arr, tile_size=512)
 
 # 2. You build the geozl graph, run the graph on the tile, and compress the tile.
 for t in tf:

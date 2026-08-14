@@ -41,7 +41,7 @@ ml = [
     "ml_dtypes",
 ]
 write = [
-    "geozl>=0.11",
+    "geozl>=0.12",
 ]
 test = [
     "pytest>=7",
