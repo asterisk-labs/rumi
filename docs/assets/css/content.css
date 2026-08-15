@@ -1,13 +1,44 @@
 .hero {
+  position: relative;
+  isolation: isolate;
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(340px, 0.9fr) minmax(500px, 1.1fr);
+  min-height: clamp(500px, 67vh, 620px);
+  display: flex;
   align-items: center;
-  gap: clamp(42px, 5vw, 78px);
+  overflow: clip;
 }
 
-.hero-copy,
-.rumi-flow {
+.hero::before {
+  position: absolute;
+  inset: -2% -8% -6% -4%;
+  z-index: -2;
+  content: '';
+  background:
+    radial-gradient(ellipse at 72% 44%, rgba(124, 135, 149, 0.13), transparent 58%),
+    radial-gradient(ellipse at 38% 58%, rgba(145, 242, 188, 0.06), transparent 48%);
+  filter: blur(12px);
+}
+
+.hero::after {
+  position: absolute;
+  inset: -2px auto -2px -2px;
+  z-index: 1;
+  width: min(58%, 680px);
+  content: '';
+  background: linear-gradient(
+    90deg,
+    rgba(8, 11, 16, 0.82) 0%,
+    rgba(8, 11, 16, 0.74) 48%,
+    rgba(8, 11, 16, 0.24) 82%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 2;
+  width: min(52%, 590px);
   min-width: 0;
 }
 
@@ -144,34 +175,23 @@
 }
 
 .rumi-flow {
-  width: min(100%, 700px);
-  align-self: center;
-  justify-self: end;
+  position: absolute;
+  inset: -3% -1% -4% 39%;
+  z-index: 0;
+  min-width: 0;
+  margin: 0;
+  opacity: 0.9;
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent 0%, black 12%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 12%, black 92%, transparent 100%);
 }
 
 .rumi-flow canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
-  aspect-ratio: 4 / 3;
+  height: 100%;
   display: block;
-}
-
-.rumi-flow figcaption {
-  padding-top: 12px;
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  border-top: 1px solid var(--rule);
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.rumi-flow figcaption [data-flow-step] {
-  color: var(--mint);
 }
 
 .stub {
@@ -554,12 +574,15 @@
 
 @media (max-width: 1000px) {
   .hero {
-    grid-template-columns: minmax(290px, 0.82fr) minmax(430px, 1.18fr);
-    gap: 36px;
+    min-height: clamp(500px, 66vh, 600px);
   }
 
   .hero h1 {
     font-size: clamp(44px, 5.8vw, 60px);
+  }
+
+  .rumi-flow {
+    inset-inline: 40% -4%;
   }
 }
 
@@ -569,12 +592,25 @@
   }
 
   .hero {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 30px;
+    min-height: 820px;
+    align-items: start;
   }
 
   .hero-copy {
     width: min(100%, 720px);
+    padding-top: clamp(32px, 7vh, 64px);
+  }
+
+  .hero::after {
+    width: min(100%, 720px);
+    height: 58%;
+    background: linear-gradient(
+      180deg,
+      var(--bg) 0%,
+      rgba(8, 11, 16, 0.97) 68%,
+      rgba(8, 11, 16, 0.58) 88%,
+      transparent 100%
+    );
   }
 
   .hero h1 {
@@ -583,7 +619,10 @@
   }
 
   .rumi-flow {
-    width: 100%;
+    inset: 43% -12% -2% 0;
+    opacity: 0.72;
+    mask-image: linear-gradient(180deg, transparent 0%, black 5%, black 92%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 5%, black 92%, transparent 100%);
   }
 
   .spec-layout {
@@ -647,12 +686,7 @@
   }
 
   .rumi-flow canvas {
-    height: 320px;
-  }
-
-  .rumi-flow figcaption {
-    flex-direction: column;
-    gap: 4px;
+    height: 100%;
   }
 
   .spec-toc {
@@ -697,7 +731,7 @@
 
 @media (min-width: 861px) and (max-height: 760px) {
   .hero {
-    gap: 44px;
+    min-height: 500px;
   }
 
   .hero h1 {
@@ -713,12 +747,8 @@
     margin-top: 22px;
   }
 
-  .rumi-flow canvas {
-    height: auto;
-  }
-
   .rumi-flow {
-    width: min(100%, 620px);
+    inset-block: -2% -3%;
   }
 
 }

@@ -1,15 +1,39 @@
-// Shows a frame lookup and read.
+// Shows a catalog query resolving a byte range through a stored rumi header.
 
 (function (rumi) {
   'use strict';
 
-  var FRAME_COUNT = 16;
-  var CYCLE = 3600;
-  var SEQUENCE = [7, 14, 4, 15, 11];
-  var WEIGHTS = [
-    1.0, 0.72, 1.28, 0.9, 1.14, 0.68, 1.22, 0.84,
-    1.08, 0.76, 1.32, 0.94, 0.7, 1.18, 0.86, 1.26
+  var ROW_COUNT = 5;
+  var CYCLE = 6000;
+  var ROW_SEQUENCE = [2, 4, 1, 3, 0];
+  var FRAME_RANGES = [[1, 2], [4], [6, 7, 8], [10, 11], [12]];
+  var FRAME_WEIGHTS = [
+    0.82, 1.16, 0.94, 1.28, 0.76, 1.08, 1.22,
+    0.88, 1.3, 0.72, 1.12, 0.9, 1.24, 0.84
   ];
+  var WINDOWS = [
+    { y: [0, 512], x: [0, 512] },
+    { y: [512, 1024], x: [0, 512] },
+    { y: [0, 512], x: [512, 1024] },
+    { y: [256, 768], x: [256, 768] },
+    { y: [512, 1024], x: [512, 1024] }
+  ];
+
+  function clamp(value) {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function ease(value) {
+    value = clamp(value);
+    return value < 0.5
+      ? 2 * value * value
+      : 1 - Math.pow(-2 * value + 2, 2) / 2;
+  }
+
+  function fadeBetween(value, start, fadeInEnd, fadeOutStart, end) {
+    return ease((value - start) / (fadeInEnd - start)) *
+      (1 - ease((value - fadeOutStart) / (end - fadeOutStart)));
+  }
 
   function pointOnQuadratic(from, control, to, value) {
     var inverse = 1 - value;
@@ -19,10 +43,14 @@
     };
   }
 
-  function ease(value) {
-    return value < 0.5
-      ? 2 * value * value
-      : 1 - Math.pow(-2 * value + 2, 2) / 2;
+  function mixColor(from, to, value, alpha) {
+    value = clamp(value);
+    return 'rgba(' + [
+      Math.round(from[0] + (to[0] - from[0]) * value),
+      Math.round(from[1] + (to[1] - from[1]) * value),
+      Math.round(from[2] + (to[2] - from[2]) * value),
+      alpha
+    ].join(', ') + ')';
   }
 
   rumi.flow = function (canvas) {
@@ -30,32 +58,52 @@
     canvas.dataset.flowReady = 'true';
 
     var context = canvas.getContext('2d');
-    var figure = canvas.closest('.rumi-flow');
-    var caption = figure.querySelector('[data-flow-step]');
     var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var started = performance.now();
     var measuredWidth = 0;
     var measuredHeight = 0;
-    var lastCaption = '';
     var observer;
 
     function measure() {
       var rect = canvas.getBoundingClientRect();
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var nextWidth = Math.max(1, Math.round(rect.width));
+      var nextHeight = Math.max(1, Math.round(rect.height));
+      var pixelWidth = Math.round(nextWidth * dpr);
+      var pixelHeight = Math.round(nextHeight * dpr);
 
-      measuredWidth = Math.max(1, Math.round(rect.width));
-      measuredHeight = Math.max(1, Math.round(rect.height));
-      canvas.width = Math.round(measuredWidth * dpr);
-      canvas.height = Math.round(measuredHeight * dpr);
+      measuredWidth = nextWidth;
+      measuredHeight = nextHeight;
+
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+      }
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    function label(text, x, y, color, size, align) {
-      context.fillStyle = color;
-      context.font = '600 ' + size + 'px "SFMono-Regular", "Cascadia Code", Consolas, monospace';
-      context.textAlign = align || 'left';
-      context.textBaseline = 'alphabetic';
-      context.fillText(text, x, y);
+    function roundedRect(x, y, width, height, radius) {
+      var safeRadius = Math.min(radius, width / 2, height / 2);
+      context.beginPath();
+      context.moveTo(x + safeRadius, y);
+      context.arcTo(x + width, y, x + width, y + height, safeRadius);
+      context.arcTo(x + width, y + height, x, y + height, safeRadius);
+      context.arcTo(x, y + height, x, y, safeRadius);
+      context.arcTo(x, y, x + width, y, safeRadius);
+      context.closePath();
+    }
+
+    function fillRoundedRect(x, y, width, height, radius, fill) {
+      roundedRect(x, y, width, height, radius);
+      context.fillStyle = fill;
+      context.fill();
+    }
+
+    function strokeRoundedRect(x, y, width, height, radius, stroke, lineWidth) {
+      roundedRect(x, y, width, height, radius);
+      context.strokeStyle = stroke;
+      context.lineWidth = lineWidth || 1;
+      context.stroke();
     }
 
     function line(fromX, fromY, toX, toY, color, width) {
@@ -67,22 +115,121 @@
       context.stroke();
     }
 
-    function panel(box, fill, stroke, accent) {
+    function dot(x, y, radius, fill) {
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
       context.fillStyle = fill;
-      context.fillRect(box.x, box.y, box.width, box.height);
-      context.strokeStyle = stroke;
+      context.fill();
+    }
+
+    function label(text, x, y, color, size, align) {
+      context.fillStyle = color;
+      context.font = '600 ' + size + 'px "SFMono-Regular", "Cascadia Code", Consolas, monospace';
+      context.textAlign = align || 'left';
+      context.textBaseline = 'alphabetic';
+      context.fillText(text, x, y);
+    }
+
+    function fittedLabel(text, x, y, color, preferredSize, minimumSize, maxWidth) {
+      var size = preferredSize;
+      context.font = '600 ' + size + 'px "SFMono-Regular", "Cascadia Code", Consolas, monospace';
+
+      while (size > minimumSize && context.measureText(text).width > maxWidth) {
+        size -= 0.25;
+        context.font = '600 ' + size + 'px "SFMono-Regular", "Cascadia Code", Consolas, monospace';
+      }
+
+      label(text, x, y, color, size);
+    }
+
+    function drawQuery(box, selectedRow, window, active, contentAlpha, compact, colors, stageColor) {
+      fillRoundedRect(box.x, box.y, box.width, box.height, 8, colors.panel);
+      if (active > 0) {
+        fillRoundedRect(
+          box.x,
+          box.y,
+          box.width,
+          box.height,
+          8,
+          'rgba(145, 242, 188, ' + (active * 0.045) + ')'
+        );
+      }
+      strokeRoundedRect(box.x + 0.5, box.y + 0.5, box.width - 1, box.height - 1, 8, stageColor);
+
+      var code = 'rumi.read(df[' + selectedRow + '].path, df[' + selectedRow + '].header, ' +
+        'y=(' + window.y[0] + ', ' + window.y[1] + '), x=(' + window.x[0] + ', ' + window.x[1] + '))';
+      var baseline = box.y + box.height / 2 + (compact ? 3 : 4);
+
+      context.save();
+      context.globalAlpha = contentAlpha;
+      label('>', box.x + (compact ? 10 : 14), baseline, stageColor, compact ? 8 : 10);
+      fittedLabel(
+        code,
+        box.x + (compact ? 24 : 31),
+        baseline,
+        colors.ink,
+        compact ? 8.5 : 11.5,
+        compact ? 6.5 : 8.5,
+        box.width - (compact ? 33 : 43)
+      );
+      context.restore();
+    }
+
+    function drawDatabaseGlyph(x, y, width, height, color) {
+      context.beginPath();
+      context.ellipse(x + width / 2, y + height * 0.2, width / 2, height * 0.2, 0, 0, Math.PI * 2);
+      context.strokeStyle = color;
       context.lineWidth = 1;
-      context.strokeRect(box.x + 0.5, box.y + 0.5, box.width - 1, box.height - 1);
-      context.fillStyle = accent;
-      context.fillRect(box.x, box.y, 2, box.height);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(x, y + height * 0.2);
+      context.lineTo(x, y + height * 0.76);
+      context.bezierCurveTo(x, y + height, x + width, y + height, x + width, y + height * 0.76);
+      context.lineTo(x + width, y + height * 0.2);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(x, y + height * 0.48);
+      context.bezierCurveTo(x, y + height * 0.7, x + width, y + height * 0.7, x + width, y + height * 0.48);
+      context.stroke();
+    }
+
+    function drawFileGlyph(x, y, width, height, color) {
+      var fold = Math.min(width, height) * 0.28;
+      context.beginPath();
+      context.moveTo(x + 0.5, y + 0.5);
+      context.lineTo(x + width - fold, y + 0.5);
+      context.lineTo(x + width - 0.5, y + fold);
+      context.lineTo(x + width - 0.5, y + height - 0.5);
+      context.lineTo(x + 0.5, y + height - 0.5);
+      context.closePath();
+      context.strokeStyle = color;
+      context.lineWidth = 1;
+      context.stroke();
+      line(x + width - fold, y, x + width - fold, y + fold, color, 1);
+      line(x + width - fold, y + fold, x + width, y + fold, color, 1);
+    }
+
+    function drawHeaderBytes(x, y, width, height, row, active, activeColor, colors) {
+      var pattern = [0.18, 0.31, 0.14, 0.24, 0.12, 0.27, 0.2];
+      var cursor = x;
+      var usable = width - 6 * 2;
+
+      pattern.forEach(function (weight, index) {
+        var segmentWidth = Math.max(2, usable * weight * (0.72 + ((row + index) % 3) * 0.1));
+        context.fillStyle = active
+          ? (index < 2 ? activeColor : 'rgba(145, 242, 188, 0.24)')
+          : (index < 2 ? colors.headerSoft : colors.headerFaint);
+        context.fillRect(cursor, y, Math.min(segmentWidth, x + width - cursor), height);
+        cursor += segmentWidth + 2;
+      });
     }
 
     function frameGeometry(x, width) {
-      var total = WEIGHTS.reduce(function (sum, weight) { return sum + weight; }, 0);
+      var total = FRAME_WEIGHTS.reduce(function (sum, weight) { return sum + weight; }, 0);
       var positions = [];
       var cursor = x;
 
-      WEIGHTS.forEach(function (weight) {
+      FRAME_WEIGHTS.forEach(function (weight) {
         var frameWidth = width * weight / total;
         positions.push({ x: cursor, width: frameWidth });
         cursor += frameWidth;
@@ -99,222 +246,298 @@
       if (!measuredWidth || !measuredHeight) measure();
       context.clearRect(0, 0, measuredWidth, measuredHeight);
 
-      var elapsed = reduced ? CYCLE * 0.84 : now - started;
-      var cycleIndex = Math.floor(elapsed / CYCLE) % SEQUENCE.length;
-      var frameIndex = reduced ? 16 : SEQUENCE[cycleIndex];
-      var progress = reduced ? 0.84 : (elapsed % CYCLE) / CYCLE;
+      var elapsed = reduced ? CYCLE * 0.78 : Math.max(0, now - started);
+      var cycleIndex = reduced ? 0 : Math.floor(elapsed / CYCLE) % ROW_SEQUENCE.length;
+      var selectedRow = reduced ? 2 : ROW_SEQUENCE[cycleIndex];
+      var progress = reduced ? 0.78 : (elapsed % CYCLE) / CYCLE;
       var compact = measuredWidth < 520;
-      var pad = Math.max(12, Math.min(24, measuredWidth * 0.04));
-      var ink = 'rgba(241, 245, 249, 0.92)';
-      var soft = 'rgba(195, 204, 215, 0.72)';
-      var faint = 'rgba(98, 109, 123, 0.72)';
-      var rule = 'rgba(231, 237, 244, 0.12)';
-      var violet = '#8f7cff';
-      var gold = '#ffd54a';
-      var mint = '#91f2bc';
-      var ember = '#ff7a4f';
-
-      var gridSize = compact
-        ? Math.min(108, measuredWidth * 0.36)
-        : Math.min(190, measuredWidth * 0.31, measuredHeight * 0.39);
-      var grid = compact
-        ? { x: pad, y: 54, width: gridSize, height: gridSize }
-        : { x: pad, y: 86, width: gridSize, height: gridSize };
-      var rail = compact
-        ? { x: measuredWidth * 0.51, y: 78, width: measuredWidth * 0.45 }
-        : { x: measuredWidth * 0.44, y: 122, width: measuredWidth * 0.52 };
-      var fileY = compact
-        ? 194
-        : Math.min(measuredHeight - 122, Math.max(248, measuredHeight * 0.62));
-      var stageY = measuredHeight - (compact ? 34 : 44);
-      var headerPanel = {
-        x: rail.x - (compact ? 8 : 12),
-        y: rail.y - (compact ? 34 : 46),
-        width: rail.width + (compact ? 16 : 24),
-        height: compact ? 62 : 82
+      var colors = {
+        ink: 'rgba(241, 245, 249, 0.82)',
+        soft: 'rgba(195, 204, 215, 0.64)',
+        faint: 'rgba(98, 109, 123, 0.54)',
+        rule: 'rgba(231, 237, 244, 0.15)',
+        edge: 'rgba(231, 237, 244, 0.22)',
+        panel: 'rgba(17, 23, 33, 0.58)',
+        mint: '#91f2bc',
+        header: '#9aa1bd',
+        headerSoft: 'rgba(154, 161, 189, 0.42)',
+        headerFaint: 'rgba(154, 161, 189, 0.2)',
+        headerRgb: [154, 161, 189],
+        stageRgb: [124, 135, 149],
+        mintRgb: [145, 242, 188]
       };
-      var filePanel = {
-        x: rail.x - (compact ? 8 : 12),
-        y: fileY - (compact ? 40 : 52),
-        width: rail.width + (compact ? 16 : 24),
-        height: compact ? 82 : 104
-      };
-      var columns = 4;
-      var rows = 4;
-      var gap = compact ? 3 : 4;
-      var cellWidth = (grid.width - gap * (columns - 1)) / columns;
-      var cellHeight = (grid.height - gap * (rows - 1)) / rows;
-      var selectedColumn = frameIndex % columns;
-      var selectedRow = Math.floor(frameIndex / columns);
-      var selectedX = grid.x + selectedColumn * (cellWidth + gap);
-      var selectedY = grid.y + selectedRow * (cellHeight + gap);
+      var cyclePresence = fadeBetween(progress, 0, 0.045, 0.93, 1);
+      var queryTransit = fadeBetween(progress, 0.12, 0.18, 0.35, 0.43);
+      var headerTransit = fadeBetween(progress, 0.48, 0.54, 0.73, 0.81);
+      var selectionStrength = ease((progress - 0.27) / 0.1) *
+        (1 - ease((progress - 0.91) / 0.07));
+      var queryActivity = (1 - ease((progress - 0.22) / 0.1)) * cyclePresence;
+      var catalogActivity = ease((progress - 0.25) / 0.1) *
+        (1 - ease((progress - 0.55) / 0.12));
+      var fileActivity = ease((progress - 0.64) / 0.12) *
+        (1 - ease((progress - 0.94) / 0.06));
+      var frameReveal = ease((progress - 0.61) / 0.12) *
+        (1 - ease((progress - 0.94) / 0.06));
+      var queryColor = mixColor(colors.stageRgb, colors.mintRgb, queryActivity, 0.9);
+      var catalogColor = mixColor(colors.stageRgb, colors.mintRgb, catalogActivity, 0.9);
+      var fileColor = mixColor(colors.stageRgb, colors.mintRgb, fileActivity, 0.9);
+      var headerSignalColor = mixColor(colors.headerRgb, colors.mintRgb, headerTransit, 1);
+      var readWindow = WINDOWS[selectedRow];
+      var queryBox = compact
+        ? { x: measuredWidth * 0.07, y: 24, width: measuredWidth * 0.86, height: 46 }
+        : { x: measuredWidth * 0.1, y: measuredHeight * 0.07, width: measuredWidth * 0.82, height: 54 };
+      var table = compact
+        ? { x: measuredWidth * 0.12, y: 112, width: measuredWidth * 0.76, height: 210 }
+        : { x: measuredWidth * 0.17, y: measuredHeight * 0.27, width: measuredWidth * 0.7, height: measuredHeight * 0.37 };
+      var tableHeaderHeight = compact ? 26 : 30;
+      var rowHeight = (table.height - tableHeaderHeight) / ROW_COUNT;
+      var columns = [0, 0.14, 0.45, 0.66, 1];
+      var selectedRowY = table.y + tableHeaderHeight + selectedRow * rowHeight;
+      var selectedRowCenter = selectedRowY + rowHeight / 2;
 
-      label('RASTER / FRAME ' + String(frameIndex).padStart(2, '0'), grid.x, grid.y - 18, soft, compact ? 8 : 9);
+      label('USER QUERY', queryBox.x, queryBox.y - 10, queryColor, compact ? 8 : 11);
+      drawQuery(queryBox, selectedRow, readWindow, queryActivity, cyclePresence, compact, colors, queryColor);
 
-      for (var cell = 0; cell < FRAME_COUNT; cell += 1) {
-        var column = cell % columns;
-        var row = Math.floor(cell / columns);
-        var x = grid.x + column * (cellWidth + gap);
-        var y = grid.y + row * (cellHeight + gap);
-        var isSelected = cell === frameIndex;
-        var pulse = 0.78 + Math.sin(now / 180) * 0.18;
+      label('IN-MEMORY CATALOG', table.x, table.y - 10, catalogColor, compact ? 8 : 11);
+      fillRoundedRect(table.x, table.y, table.width, table.height, 4, 'rgba(17, 23, 33, 0.42)');
+      strokeRoundedRect(table.x + 0.5, table.y + 0.5, table.width - 1, table.height - 1, 4, colors.edge);
+      strokeRoundedRect(
+        table.x + 0.5,
+        table.y + 0.5,
+        table.width - 1,
+        table.height - 1,
+        4,
+        mixColor(colors.stageRgb, colors.mintRgb, catalogActivity, 0.18 + catalogActivity * 0.42)
+      );
+      context.fillStyle = 'rgba(231, 237, 244, 0.055)';
+      context.fillRect(table.x, table.y, table.width, tableHeaderHeight);
 
-        context.fillStyle = isSelected
-          ? 'rgba(145, 242, 188, ' + pulse + ')'
-          : 'rgba(116, 87, 255, ' + (0.035 + (cell % 5) * 0.012) + ')';
-        context.fillRect(x, y, cellWidth, cellHeight);
-        context.strokeStyle = isSelected ? mint : rule;
-        context.lineWidth = isSelected ? 1.5 : 1;
-        context.strokeRect(x + 0.5, y + 0.5, cellWidth - 1, cellHeight - 1);
+      for (var column = 1; column < columns.length - 1; column += 1) {
+        var columnX = table.x + table.width * columns[column];
+        line(columnX, table.y, columnX, table.y + table.height, colors.rule, 1);
+      }
+      for (var boundary = 0; boundary <= ROW_COUNT; boundary += 1) {
+        var boundaryY = table.y + tableHeaderHeight + boundary * rowHeight;
+        line(table.x, boundaryY, table.x + table.width, boundaryY, colors.rule, 1);
       }
 
-      panel(
-        headerPanel,
-        'rgba(145, 242, 188, 0.025)',
-        'rgba(145, 242, 188, 0.2)',
-        mint
+      drawDatabaseGlyph(
+        table.x + table.width * 0.045,
+        table.y + 6,
+        compact ? 14 : 17,
+        compact ? 14 : 17,
+        colors.soft
       );
-      label(
-        'rumi header',
-        headerPanel.x + (compact ? 8 : 12),
-        headerPanel.y + (compact ? 17 : 21),
-        mint,
-        compact ? 8 : 9
-      );
-      label(
-        'BYTE COUNTS',
-        headerPanel.x + headerPanel.width - (compact ? 8 : 12),
-        headerPanel.y + (compact ? 17 : 21),
-        faint,
-        compact ? 7 : 8,
-        'right'
-      );
-      line(rail.x, rail.y, rail.x + rail.width, rail.y, 'rgba(145, 242, 188, 0.2)', 1);
+      label('path', table.x + table.width * columns[1] + 9, table.y + 19, colors.soft, compact ? 6.5 : 7.5);
+      label('query fields', table.x + table.width * columns[2] + 9, table.y + 19, colors.soft, compact ? 6.5 : 7.5);
+      label('rumi header', table.x + table.width * columns[3] + 9, table.y + 19, colors.header, compact ? 6.5 : 7.5);
 
-      var headerPositions = [];
-      for (var count = 0; count < FRAME_COUNT; count += 1) {
-        var headerX = rail.x + rail.width * (count + 0.5) / FRAME_COUNT;
-        var tickHeight = 8 + (count % 4) * 3;
-        headerPositions.push(headerX);
-        line(
-          headerX,
-          rail.y - tickHeight / 2,
-          headerX,
-          rail.y + tickHeight / 2,
-          count === frameIndex && progress > 0.24 ? gold : rule,
-          count === frameIndex && progress > 0.24 ? 3 : 1
+      if (selectionStrength > 0) {
+        context.fillStyle = mixColor(
+          colors.stageRgb,
+          colors.mintRgb,
+          catalogActivity,
+          selectionStrength * 0.075
+        );
+        context.fillRect(table.x, selectedRowY, table.width, rowHeight);
+        context.fillStyle = mixColor(
+          colors.stageRgb,
+          colors.mintRgb,
+          catalogActivity,
+          selectionStrength * 0.9
+        );
+        context.fillRect(table.x, selectedRowY, 2, rowHeight);
+      }
+
+      for (var row = 0; row < ROW_COUNT; row += 1) {
+        var rowY = table.y + tableHeaderHeight + row * rowHeight;
+        var rowCenter = rowY + rowHeight / 2;
+        var active = row === selectedRow && selectionStrength > 0.45;
+        var firstCellX = table.x + table.width * 0.045;
+        var secondCellX = table.x + table.width * columns[1] + 9;
+        var thirdCellX = table.x + table.width * columns[2] + 9;
+        var headerCellX = table.x + table.width * columns[3] + 9;
+        var headerCellWidth = table.width * (columns[4] - columns[3]) - 18;
+
+        drawFileGlyph(
+          firstCellX,
+          rowCenter - (compact ? 7 : 8),
+          compact ? 11 : 13,
+          compact ? 14 : 16,
+          active ? catalogColor : colors.faint
+        );
+        context.fillStyle = active ? 'rgba(195, 204, 215, 0.62)' : colors.faint;
+        context.fillRect(secondCellX, rowCenter - 5, table.width * (0.16 + (row % 3) * 0.025), 3);
+        context.fillRect(secondCellX, rowCenter + 3, table.width * (0.1 + (row % 2) * 0.03), 2);
+        context.fillStyle = active ? 'rgba(145, 242, 188, 0.48)' : 'rgba(98, 109, 123, 0.2)';
+        context.fillRect(thirdCellX, rowCenter - 5, table.width * (0.09 + (row % 2) * 0.025), 10);
+        drawHeaderBytes(
+          headerCellX,
+          rowCenter - (compact ? 3 : 4),
+          headerCellWidth,
+          compact ? 6 : 8,
+          row,
+          active,
+          catalogColor,
+          colors
         );
       }
 
-      panel(
-        filePanel,
-        'rgba(116, 87, 255, 0.035)',
-        'rgba(143, 124, 255, 0.22)',
-        violet
-      );
-      label(
-        'RUMI FILE',
-        filePanel.x + (compact ? 8 : 12),
-        filePanel.y + (compact ? 18 : 22),
-        violet,
-        compact ? 8 : 9
-      );
-      label(
-        'OPENZL FRAMES',
-        filePanel.x + filePanel.width - (compact ? 8 : 12),
-        filePanel.y + (compact ? 18 : 22),
-        ember,
-        compact ? 7 : 8,
-        'right'
-      );
-
-      var fixedWidth = rail.width * 0.15;
-      var payloadX = rail.x + fixedWidth + 8;
-      var payloadWidth = rail.width - fixedWidth - 8;
-      context.fillStyle = violet;
-      context.fillRect(rail.x, fileY - 4, fixedWidth * 0.22, 8);
-      context.fillStyle = gold;
-      context.fillRect(rail.x + fixedWidth * 0.22, fileY - 4, fixedWidth * 0.78, 8);
-      label('IFD', rail.x, fileY + 23, faint, compact ? 7 : 8);
-
-      var frames = frameGeometry(payloadX, payloadWidth);
-      frames.forEach(function (frame, index) {
-        var active = index === frameIndex && progress > 0.62;
-        context.fillStyle = active ? ember : 'rgba(255, 122, 79, 0.12)';
-        context.fillRect(frame.x + 1, fileY - (active ? 12 : 5), Math.max(1, frame.width - 2), active ? 24 : 10);
-      });
-
-      var tilePoint = {
-        x: selectedX + cellWidth / 2,
-        y: selectedY + cellHeight / 2
+      var queryFrom = { x: queryBox.x + queryBox.width * 0.5, y: queryBox.y + queryBox.height };
+      var queryTo = { x: table.x, y: selectedRowCenter };
+      var queryControl = {
+        x: queryFrom.x + (queryTo.x - queryFrom.x) * 0.58,
+        y: queryFrom.y + (queryTo.y - queryFrom.y) * 0.2
       };
-      var headerPoint = { x: headerPositions[frameIndex], y: rail.y };
-      var targetFrame = frames[frameIndex];
-      var filePoint = { x: targetFrame.x + targetFrame.width / 2, y: fileY };
-      var firstControl = {
-        x: tilePoint.x + (headerPoint.x - tilePoint.x) * 0.55,
-        y: tilePoint.y - (compact ? 44 : 72)
-      };
-
       context.save();
-      context.setLineDash([4, 7]);
+      context.setLineDash([3, 7]);
       context.beginPath();
-      context.moveTo(tilePoint.x, tilePoint.y);
-      context.quadraticCurveTo(firstControl.x, firstControl.y, headerPoint.x, headerPoint.y);
-      context.strokeStyle = progress > 0.1 ? 'rgba(145, 242, 188, 0.38)' : 'rgba(145, 242, 188, 0.08)';
+      context.moveTo(queryFrom.x, queryFrom.y);
+      context.quadraticCurveTo(queryControl.x, queryControl.y, queryTo.x, queryTo.y);
+      context.strokeStyle = 'rgba(145, 242, 188, ' + (0.045 + queryTransit * 0.3) + ')';
       context.lineWidth = 1;
       context.stroke();
       context.restore();
 
-      line(
-        headerPoint.x,
-        headerPoint.y + 10,
-        filePoint.x,
-        filePoint.y - 14,
-        progress > 0.48 ? 'rgba(255, 213, 74, 0.42)' : 'rgba(255, 213, 74, 0.08)',
-        1
-      );
+      var queryDotProgress = ease((progress - 0.16) / 0.21);
+      var queryDot = pointOnQuadratic(queryFrom, queryControl, queryTo, queryDotProgress);
+      context.save();
+      context.globalAlpha = queryTransit * 0.2;
+      dot(queryDot.x, queryDot.y, compact ? 6 : 8, colors.mint);
+      context.globalAlpha = queryTransit;
+      dot(queryDot.x, queryDot.y, compact ? 2.5 : 3.5, colors.mint);
+      context.restore();
 
-      var moving;
-      if (progress < 0.5) {
-        moving = pointOnQuadratic(tilePoint, firstControl, headerPoint, ease(Math.max(0, (progress - 0.08) / 0.42)));
-      } else {
-        var second = ease(Math.min(1, (progress - 0.5) / 0.36));
-        moving = {
-          x: headerPoint.x + (filePoint.x - headerPoint.x) * second,
-          y: headerPoint.y + (filePoint.y - headerPoint.y) * second
-        };
+      var file = compact
+        ? { x: measuredWidth * 0.16, y: 380, width: measuredWidth * 0.68, height: 50 }
+        : { x: measuredWidth * 0.22, y: measuredHeight * 0.79, width: measuredWidth * 0.68, height: 62 };
+      label(
+        'RUMI FILE',
+        file.x,
+        file.y - 10,
+        fileColor,
+        compact ? 8 : 11
+      );
+      fillRoundedRect(file.x, file.y, file.width, file.height, 4, 'rgba(17, 23, 33, 0.46)');
+      strokeRoundedRect(file.x + 0.5, file.y + 0.5, file.width - 1, file.height - 1, 4, colors.edge);
+      strokeRoundedRect(
+        file.x + 0.5,
+        file.y + 0.5,
+        file.width - 1,
+        file.height - 1,
+        4,
+        mixColor(colors.stageRgb, colors.mintRgb, fileActivity, 0.22 + fileActivity * 0.5)
+      );
+      if (fileActivity > 0) {
+        fillRoundedRect(
+          file.x,
+          file.y,
+          file.width,
+          file.height,
+          4,
+          'rgba(145, 242, 188, ' + (fileActivity * 0.055) + ')'
+        );
+      }
+      drawFileGlyph(
+        file.x + 12,
+        file.y + file.height / 2 - (compact ? 10 : 12),
+        compact ? 16 : 19,
+        compact ? 20 : 24,
+        colors.soft
+      );
+      if (fileActivity > 0) {
+        drawFileGlyph(
+          file.x + 12,
+          file.y + file.height / 2 - (compact ? 10 : 12),
+          compact ? 16 : 19,
+          compact ? 20 : 24,
+          'rgba(145, 242, 188, ' + fileActivity + ')'
+        );
       }
 
-      context.beginPath();
-      context.arc(moving.x, moving.y, compact ? 3 : 4, 0, Math.PI * 2);
-      context.fillStyle = progress < 0.5 ? mint : gold;
-      context.fill();
+      var payloadX = file.x + (compact ? 40 : 48);
+      var payloadWidth = file.width - (compact ? 50 : 60);
+      var headerWidth = payloadWidth * 0.27;
+      var payloadY = file.y + file.height * 0.64;
+      label(
+        'rumi file header · IFD',
+        payloadX + headerWidth / 2,
+        file.y + (compact ? 14 : 17),
+        colors.header,
+        compact ? 5.5 : 7.5,
+        'center'
+      );
+      context.fillStyle = 'rgba(195, 204, 215, 0.28)';
+      context.fillRect(payloadX, payloadY - 4, headerWidth * 0.25, 8);
+      context.fillStyle = colors.header;
+      context.fillRect(payloadX + headerWidth * 0.25, payloadY - 4, headerWidth * 0.75, 8);
 
-      var activeStage = progress < 0.28 ? 0 : progress < 0.62 ? 1 : 2;
-      var stages = compact
-        ? ['REQUEST', 'LOCATE', 'FETCH']
-        : ['01  REQUEST FRAME', '02  LOCATE FROM rumi header', '03  FETCH OPENZL FRAME'];
-      var stageWidth = (measuredWidth - pad * 2) / stages.length;
-      stages.forEach(function (stage, index) {
-        label(
-          stage,
-          pad + stageWidth * index,
-          stageY,
-          index === activeStage ? ink : faint,
-          compact ? 7 : 8
+      var frames = frameGeometry(payloadX + headerWidth + 5, payloadWidth - headerWidth - 5);
+      var activeFrames = FRAME_RANGES[selectedRow];
+      frames.forEach(function (frame, index) {
+        var isActive = activeFrames.indexOf(index) !== -1;
+        var activeHeight = compact ? 14 : 18;
+        context.fillStyle = isActive
+          ? mixColor(colors.stageRgb, colors.mintRgb, fileActivity, frameReveal * (0.18 + fileActivity * 0.76))
+          : 'rgba(98, 109, 123, 0.14)';
+        context.fillRect(
+          frame.x + 1,
+          payloadY - (isActive ? activeHeight / 2 : 5),
+          Math.max(1, frame.width - 2),
+          isActive ? activeHeight : 10
         );
       });
 
-      var captionText = activeStage === 0
-        ? 'request frame ' + String(frameIndex).padStart(2, '0')
-        : activeStage === 1
-          ? 'reconstruct its byte offset'
-          : 'fetch OpenZL frame ' + String(frameIndex).padStart(2, '0');
-      if (captionText !== lastCaption) {
-        caption.textContent = captionText;
-        lastCaption = captionText;
-      }
+      var headerFrom = {
+        x: table.x + table.width * 0.85,
+        y: selectedRowCenter
+      };
+      var targetFrame = frames[activeFrames[Math.floor(activeFrames.length / 2)]];
+      var fileTo = {
+        x: targetFrame.x + targetFrame.width / 2,
+        y: payloadY
+      };
+      var headerControl = {
+        x: headerFrom.x + (fileTo.x - headerFrom.x) * 0.68,
+        y: headerFrom.y + (fileTo.y - headerFrom.y) * 0.35
+      };
+      context.save();
+      context.setLineDash([3, 7]);
+      context.beginPath();
+      context.moveTo(headerFrom.x, headerFrom.y);
+      context.quadraticCurveTo(headerControl.x, headerControl.y, fileTo.x, fileTo.y);
+      context.strokeStyle = mixColor(
+        colors.headerRgb,
+        colors.mintRgb,
+        headerTransit,
+        0.065 + headerTransit * 0.32
+      );
+      context.lineWidth = 1;
+      context.stroke();
+      context.restore();
+
+      var headerDotProgress = ease((progress - 0.52) / 0.23);
+      var headerDot = pointOnQuadratic(headerFrom, headerControl, fileTo, headerDotProgress);
+      context.save();
+      context.globalAlpha = headerTransit * 0.18;
+      fillRoundedRect(
+        headerDot.x - (compact ? 6 : 8),
+        headerDot.y - (compact ? 4 : 5),
+        compact ? 12 : 16,
+        compact ? 8 : 10,
+        3,
+        headerSignalColor
+      );
+      context.globalAlpha = headerTransit;
+      fillRoundedRect(
+        headerDot.x - (compact ? 3 : 4),
+        headerDot.y - (compact ? 2 : 2.5),
+        compact ? 6 : 8,
+        compact ? 4 : 5,
+        1,
+        headerSignalColor
+      );
+      context.restore();
 
       if (!reduced) requestAnimationFrame(draw);
     }
