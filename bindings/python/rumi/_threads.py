@@ -1,4 +1,4 @@
-"""The process-wide thread count, the same shape torch gives it."""
+"""Process-wide read thread configuration."""
 
 import operator
 import warnings
@@ -12,9 +12,8 @@ def _apply(n: int, stacklevel: int) -> int:
     effective = lib.rumi_set_num_threads(n)
     if effective != n:
         warnings.warn(
-            f"rumi's thread count is pinned at {effective}, so the request for "
-            f"{n} was ignored. Set the count before the first parallel read, "
-            f"or through RUMI_NUM_THREADS.",
+            f"rumi's thread count is pinned at {effective}; the request for "
+            f"{n} was ignored. Configure it before the first parallel read.",
             RuntimeWarning, stacklevel=stacklevel)
     return effective
 
@@ -30,16 +29,11 @@ def _validate(n) -> int:
 
 
 def set_num_threads(n: int) -> int:
-    """Set the thread count reads take when they name none.
+    """Set the process-wide default for reads.
 
-    Process-wide, like torch.set_num_threads. Call it before the first read that
-    asks for more than one thread: once that read reserves the count, a later
-    call warns and changes nothing. RUMI_NUM_THREADS seeds the value, an
-    integer or ALL_CPUS. A forked child does not inherit the pinned state; it
-    evaluates its environment again and therefore defaults to 1 when unset.
-
-    Returns the count in effect after the call, which is the old one when the
-    request was refused.
+    Call before the first parallel read. RUMI_NUM_THREADS accepts an integer or
+    ALL_CPUS. A forked child reads the variable independently and defaults to 1.
+    Returns the count in effect.
     """
     return _apply(_validate(n), stacklevel=3)
 
@@ -50,14 +44,7 @@ def get_num_threads() -> int:
 
 
 def resolve(n: int | None) -> int:
-    """Turn a read's num_threads into the one the C ABI wants.
-
-    None defers to the process-wide count. 1 stays on the calling thread and
-    never builds the pool, so a DataLoader worker asking for it cannot fix the
-    size for its whole process. Anything else sets the count, reports a refused
-    resize, and passes the effective value explicitly so a concurrent setter
-    cannot silently change this read before the C core pins the pool.
-    """
+    """Validate a read's thread count and apply its process-wide setting."""
     if n is None:
         return 0
     n = _validate(n)

@@ -45,8 +45,7 @@ _c_destructor = _Destructor(_capsule_destructor)
 
 
 class RumiArray:
-    """Zero-copy result of a read. Hand it to a framework through DLPack,
-    torch.from_dlpack(a), np.from_dlpack(a), jax.dlpack.from_dlpack(a)."""
+    """Zero-copy read result exposing the DLPack protocol."""
 
     def __init__(self, tensor, shape, dtype_code):
         self._tensor = tensor
@@ -257,16 +256,14 @@ def read(source: PathLike | bytes | Sequence[PathLike | bytes],
     source is a local path, or the file's bytes when you already hold them.
     A list of either reads a stack.
 
-    header is the raw header bytes, cached from a catalog or Parquet; when
-    omitted it is read off the file, which needs a path.
+    header is the binary header returned by write. When omitted, it is rebuilt
+    from a local file path.
 
     framework picks the return type ("numpy", "torch", "jax", "tensorflow"),
-    or None for the zero-copy RumiArray. Stateless, opens and closes each call.
+    or None for the zero-copy RumiArray.
 
-    num_threads defaults to the process-wide count, which is 1 unless
-    set_num_threads or RUMI_NUM_THREADS says otherwise. 1 always reads on the
-    calling thread. A larger number sets the process-wide count on its way
-    through, and warns if a parallel read already pinned another count.
+    num_threads defaults to the process-wide setting. A value of 1 reads on the
+    calling thread; a larger value updates that setting.
     """
     threads = _resolve_threads(num_threads)
     if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):

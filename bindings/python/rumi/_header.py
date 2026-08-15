@@ -7,16 +7,14 @@ from ._repr import header_html, header_text
 
 
 class RumiHeader:
-    """Inspection view over a rumi header. The header is bytes, C parses it.
-    Build from bytes in hand, or from a file with from_path. read() does not
-    need this, it takes the bytes."""
+    """Parsed view of a binary rumi header."""
 
     def __init__(self, header: bytes | bytearray | memoryview) -> None:
         self._fields = _Spec(header).fields
 
     @classmethod
     def from_path(cls, path: PathLike) -> "RumiHeader":
-        """Read the header off disk and build. Frame data is not touched."""
+        """Build a header view from a local rumi file."""
         return cls(_header_from_file(path))
 
     @property
@@ -30,20 +28,18 @@ class RumiHeader:
 
     @property
     def frame_unit(self) -> str:
-        """What one frame holds, "tile" for one band at one grid position and
-        "cell" for every band at one."""
+        """Return ``"tile"`` or ``"cell"``."""
         return "tile" if self._fields.frame_unit == 0 else "cell"
 
     @property
     def frames(self) -> int:
-        """Frame count, which follows from the grid and the frame unit."""
+        """Return the total frame count."""
         h = self._fields
         per = h.samples_per_pixel if h.frame_unit == 0 else 1
         return int(h.tiles_across * h.tiles_down * per)
 
     def to_dict(self) -> dict:
-        """Header fields as a plain, JSON-serializable dict, for a catalog or a
-        Parquet column set. Pass straight to json.dumps if you want a string."""
+        """Return JSON-serializable header metadata."""
         h = self._fields
         return {
             "shape": list(self.shape),
@@ -61,7 +57,7 @@ class RumiHeader:
         }
 
     def _facts(self) -> dict:
-        # short keys the repr layer expects; ok=False lets it degrade gracefully
+        # Compact keys used by the text and HTML representations.
         try:
             h = self._fields
             return {

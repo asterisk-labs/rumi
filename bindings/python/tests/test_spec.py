@@ -228,7 +228,7 @@ def test_external_values_are_packed_right_after_the_ifd(tmp_path):
     assert cursor == header_bytes(tf)
 
 
-def test_no_gap_anywhere_in_front_of_the_tile_data(tmp_path):
+def test_no_gap_before_frame_data(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
@@ -410,7 +410,6 @@ def test_pixel_is_point_with_a_crs(tmp_path):
 # What the writer refuses
 
 def test_there_is_no_header_size_parameter(tmp_path):
-    """The knob that used to pad in front of the frame data."""
     tf = make_frame()
     with pytest.raises(TypeError):
         write_frames(tmp_path / "a.rumi", tf["compressed"], tf, header_size=4096)
@@ -419,7 +418,7 @@ def test_there_is_no_header_size_parameter(tmp_path):
 
 
 @pytest.mark.parametrize("size", [1, 8, 17, 24, 100, 65535])
-def test_tile_size_needs_no_tiff_alignment(size):
+def test_tile_size_accepts_positive_uint16_values(size):
     arr = np.zeros((1, 64, 64), np.uint16)
     assert rumi.frames(arr, size).tile_size == size
 

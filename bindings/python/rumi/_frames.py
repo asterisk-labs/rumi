@@ -7,7 +7,7 @@ _HEAD, _HEAD_TAIL = 5, 10  # rows either side of the gap, and when to cut
 _MAX_CELLS = 24            # past this the drawn face bins, one cell per block
 _TILE_COLS = ("tile", "cell", "data", "compressed")
 _CELL_COLS = ("cell", "data", "compressed")
-_DIMS = ("band", "row", "col")  # indexable, but tile and cell already say them
+_DIMS = ("band", "row", "col")  # indexable dimension columns
 UNITS = ("tile", "cell")
 
 # What a column name may not be, since attach() puts one on Frame.
@@ -16,7 +16,7 @@ _RESERVED = (frozenset(_TILE_COLS) | frozenset(_DIMS)
 
 
 class Frame:
-    """One row. A view on its frame, so assigning compressed writes through."""
+    """View of one FrameTable row."""
 
     __slots__ = ("_f", "_i")
 
@@ -89,19 +89,13 @@ class Frame:
 
 
 class FrameTable:
-    """Fixed-grid frames in wire order, one row per frame.
+    """Frames in wire order, one row per frame.
 
     A tile frame holds one band at one grid position and the order is
     (row, col, band), band innermost. A cell frame holds every band at one
     grid position and the order is (row, col).
 
-    The order is the wire order, so the storage is never sorted or filtered in
-    place. Indexing returns Frame views that write back by index.
-
-    Edge tiles are cut to where the image reaches, never padded. Each one goes
-    to geozl as its own raster, and geozl reads its shape off the array, the
-    width from the last axis and the plane count from the first, so a tile of
-    512 by 44 needs nothing said about it.
+    Indexing returns Frame views that update the table.
     """
 
     __slots__ = ("_data", "_comp", "_size", "_band", "_row", "_col", "_extra",
@@ -165,11 +159,7 @@ class FrameTable:
 
     @classmethod
     def from_array(cls, arr, tile_size=512, *, unit="tile"):
-        """Cut a (B, Y, X) cube into frames, the edges cut short.
-
-        A frame is only as big as the image reaches, so nothing is invented and
-        nothing is decoded that was never written.
-        """
+        """Cut a ``(B, Y, X)`` array into frames clipped to image bounds."""
         arr = np.asarray(arr)
         if arr.ndim != 3:
             raise ValueError(f"expected (B, Y, X), got shape {arr.shape}")
@@ -217,7 +207,7 @@ class FrameTable:
 
     @property
     def cells(self):
-        """The grid positions, one per (row, col), all bands together."""
+        """Return grid-position labels in row-major order."""
         return [f"{r}.{c}" for r in range(self.tiles_down)
                 for c in range(self.tiles_across)]
 
@@ -230,11 +220,10 @@ class FrameTable:
         return int(self._size[self._size >= 0].sum())
 
     def attach(self, name, values):
-        """Hang a column on the table, one value per frame or one per cell.
+        """Attach values per frame or per grid position.
 
-        Scaffolding for the loop that routes frames to graphs. Never written to
-        the file. A cell table has one frame per cell, so the two lengths
-        coincide there.
+        Per-position values are expanded across tile frames. Attached columns
+        are not written to the rumi file.
         """
         if not isinstance(name, str) or not name.isidentifier():
             raise ValueError(f"name must be an identifier, got {name!r}")
@@ -279,8 +268,7 @@ class FrameTable:
                 known = (*self.columns, *col, *self._extra)
                 raise KeyError(f"no column {key!r}, columns are {known}")
             return col[key].copy()
-        # One frame at a time. A slice or a tuple would have to answer what a
-        # sub-table means, and the grid is what makes a table a table.
+        # Row indexing returns one frame view.
         if not isinstance(key, (int, np.integer)):
             raise TypeError(
                 f"index with an int or a column name, got {type(key).__name__}")
@@ -307,7 +295,7 @@ class FrameTable:
                               np.int64)
 
     def to_pandas(self):
-        """The scalar columns as a DataFrame, for looking. Without data."""
+        """Return scalar metadata columns as a DataFrame."""
         import pandas as pd
         cols = {}
         if self._band is not None:
@@ -322,7 +310,7 @@ class FrameTable:
         return pd.DataFrame(cols)
 
     def _raw(self):
-        """Uncompressed bytes of the frames that have been compressed."""
+        """Return decoded bytes represented by completed frames."""
         it = self.dtype.itemsize
         return sum(a.size * it
                    for a, s in zip(self._data, self._size, strict=True)
@@ -338,7 +326,7 @@ class FrameTable:
                 "ratio": raw / nbytes if nbytes else 0.0}
 
     def _rows(self):
-        """The shown rows as (index, band, row, col, shape, size)."""
+        """Return rows used by the compact representation."""
         n = len(self._data)
         keep = (range(n) if n <= _HEAD_TAIL + 1 else
                 [*range(_HEAD), None, *range(n - (_HEAD_TAIL - _HEAD), n)])
@@ -349,7 +337,7 @@ class FrameTable:
 
     @property
     def columns(self):
-        """The columns this table shows. A cell table has no tile column."""
+        """Return the columns shown by the representation."""
         return _TILE_COLS if self.unit == "tile" else _CELL_COLS
 
     def __repr__(self):
@@ -361,12 +349,7 @@ class FrameTable:
                           frame_text(f, rows, self.columns))
 
     def _states(self):
-        """Per drawn cell, 0 pending, 1 partial, 2 done, as an (ny, nx) array.
-
-        Bins the grid when it is larger than the face can show, so a block is
-        done only when every frame under it is. A cell table has one frame per
-        position, so the per-position sum is over one.
-        """
+        """Return the binned completion state used by the grid preview."""
         across, down = self.tiles_across, self.tiles_down
         per = self.bands if self.unit == "tile" else 1
         step = max(1, -(-max(across, down) // _MAX_CELLS))
@@ -387,19 +370,16 @@ def _frame_bytes(v, i):
     if isinstance(v, (int, np.integer)):
         raise TypeError(f"frame {i} must be bytes-like, got {type(v).__name__}")
     buf = bytes(v)
-    # Caught on assignment rather than at write time, so the traceback lands in
-    # the loop that produced it. A zero-length payload is not a legal frame.
+    # Validate on assignment so the traceback identifies the producing loop.
     if not buf:
-        raise ValueError(f"frame {i} got an empty frame")
+        raise ValueError(f"frame {i} is empty")
     return buf
 
 
 def frames(arr, tile_size=512, *, unit="tile"):
-    """Cut a (B, Y, X) cube into a FrameTable. Edges are cut, not padded.
+    """Cut a ``(B, Y, X)`` array into a FrameTable.
 
-    unit says what one frame holds. "tile" is one band at one grid position, so
-    a frame is a 2D raster. "cell" is every band at one grid position, so a
-    frame is a (B, h, w) cube that geozl reads as stacked planes, predicted band
-    by band inside one frame.
+    ``unit="tile"`` creates 2D frames; ``unit="cell"`` creates ``(B, h, w)``
+    frames.
     """
     return FrameTable.from_array(arr, tile_size, unit=unit)

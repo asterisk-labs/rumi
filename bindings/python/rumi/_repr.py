@@ -174,10 +174,8 @@ _FRAME_CSS = (_CSS + """
 #ID table.rows tr.gap td{text-align:center;opacity:.4;padding:1px 0}
 """).replace("#ID", ".rumi-tf")
 
-# A stable class instead of an id per instance, so the block is identical every
-# time and the browser folds the repeats. The plain text repr ships inside as a
-# fallback, shown when the style is stripped, which is what a notebook that
-# does not trust the output does.
+# A stable class lets notebooks deduplicate the style block. Plain text remains
+# available when HTML output is stripped.
 _FILL = (_FACE, _TOP, _SIDE)
 
 

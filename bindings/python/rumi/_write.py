@@ -5,8 +5,7 @@ from ._ffi import PathLike, _check, _enc, ffi, lib
 
 
 def _epsg(crs) -> int:
-    """rumi writes a CRS as an EPSG code, which is the whole reference, and
-    leaves everything else to the reader's own EPSG tables."""
+    """Return an EPSG code accepted by the writer."""
     if isinstance(crs, bool):
         raise TypeError("crs must be an EPSG code")
     if isinstance(crs, int):
@@ -22,15 +21,11 @@ def _epsg(crs) -> int:
         got = code()
         if got:
             return int(got)
-    raise ValueError(
-        f"crs must be an EPSG code, got {crs!r}. rumi does not parse WKT or "
-        "PROJ strings; pass the code, or the GeoTIFF keys for a CRS no code "
-        "names.")
+    raise ValueError(f"crs must be an EPSG code, got {crs!r}")
 
 
 def _desc(tf, transform, crs, pixel_is_point):
-    """Fill a rumi_write_desc. Returns it with the buffers it points at, which
-    the caller has to hold until the call returns."""
+    """Build a write descriptor and retain its referenced buffers."""
     if (transform is None) != (crs is None):
         raise ValueError("transform and crs must be given together")
 
@@ -57,8 +52,7 @@ def _desc(tf, transform, crs, pixel_is_point):
 
 def header_bytes(tf, *, transform=None, crs=None,
                  pixel_is_point=False) -> int:
-    """Where the frame data will start, without writing. The tag set is fixed,
-    so this is arithmetic over the shape and never reads a file."""
+    """Return the first frame offset for this layout."""
     d, _keep = _desc(tf, transform, crs, pixel_is_point)
     out = ffi.new("uint64_t*")
     _check(lib.rumi_write_base_offset(d, out))
@@ -67,9 +61,7 @@ def header_bytes(tf, *, transform=None, crs=None,
 
 def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
                  transform=None, crs=None, pixel_is_point=False) -> bytes:
-    """Write the file and return its header. tf is a FrameTable, and the five
-    fields it carries are the header; the frames come in its own order, which
-    is the wire order."""
+    """Write compressed frames and return the binary header."""
     frames = [ffi.from_buffer(f) for f in frames]
     d, keep = _desc(tf, transform, crs, pixel_is_point)
     ptrs = ffi.new("unsigned char*[]", [ffi.cast("unsigned char*", f)
@@ -89,12 +81,10 @@ def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
 def write(path, tf, *, transform=None, crs=None, pixel_is_point=False):
     """Write a compressed FrameTable to a rumi file.
 
-    Returns (path, header), the header being the bytes you cache in a catalog
-    or Parquet and hand back to read.
+    Returns ``(path, header)``. Pass the header to ``read`` or store it in a
+    catalog.
 
-    tf              a FrameTable with every frame compressed. rumi does not
-                    compress, that is the caller's loop and the caller's choice
-                    of graph.
+    tf              a FrameTable with every frame compressed.
     transform       affine coefficients (x_res, row_rot, x_origin, col_rot,
                     y_res, y_origin); pairs with crs.
     crs             EPSG code, as an int, "EPSG:32718", or any object with

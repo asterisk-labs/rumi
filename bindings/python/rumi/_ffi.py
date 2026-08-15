@@ -234,8 +234,7 @@ class _Source:
 
 
 class _Spec:
-    """A header handed to C to parse. Holds the rumi_spec it becomes and the
-    struct that spec reports, which is every field a caller needs off it."""
+    """Parsed header and its C handle."""
 
     __slots__ = ("handle", "fields")
 
