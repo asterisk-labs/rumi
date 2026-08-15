@@ -2,7 +2,9 @@
 // bindings/python/tests.
 
 #include "rumi/rumi.hpp"
+#include "rumi/thread_pool.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <random>
@@ -529,6 +531,38 @@ void test_dtype_table()
     OK(rumi::sample_to_dtype(99, 8) == RUMI_DT_UNKNOWN);
 }
 
+// No read here builds the pool, so this sees the count while it is still free
+// to move. The pinned side lives in bindings/python/tests/test_threads.py,
+// where each case gets its own process.
+void test_thread_count()
+{
+    CASE("the thread count moves until the pool exists")
+    OK(rumi::global_thread_pool_size() == 0);
+    EQ(rumi::set_num_threads(4), 4);
+    EQ(rumi::num_threads(), 4);
+    // Out of range folds into the allowed span rather than failing.
+    EQ(rumi::set_num_threads(0), 1);
+    EQ(rumi::set_num_threads(1 << 20), 1024);
+    EQ(rumi::num_threads(), 1024);
+    EQ(rumi::set_num_threads(1), 1);
+}
+
+void test_thread_pool_batches()
+{
+    CASE("a batch owns its submitted jobs until they finish")
+    rumi::ThreadPool pool(4);
+    std::atomic<int> ran{0};
+    {
+        rumi::ThreadPool::Batch batch(pool);
+        for (int i = 0; i < 1000; ++i) {
+            batch.submit([&ran] { ran.fetch_add(1, std::memory_order_relaxed); });
+        }
+        // No explicit wait: the destructor is the lifetime guard for jobs that
+        // capture the batch while a later submission or caller unwinds.
+    }
+    EQ(ran.load(std::memory_order_relaxed), 1000);
+}
+
 }  // namespace
 
 
@@ -544,6 +578,8 @@ int main()
     test_plan_ranges();
     test_plan_ranges_c_api_rejects_invalid_requests();
     test_dtype_table();
+    test_thread_pool_batches();
+    test_thread_count();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;
