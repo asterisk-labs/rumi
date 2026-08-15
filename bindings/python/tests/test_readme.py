@@ -12,8 +12,9 @@ geozl = pytest.importorskip("geozl")
 
 README = pathlib.Path(__file__).resolve().parents[3] / "README.md"
 
-# Blocks that call rumi and geozl and nothing else. The rest are sketches.
-RUNNABLE = ("rumi.frames", "rumi.write", "rumi.read")
+# The complete quick start can run by itself. Later blocks intentionally reuse
+# names it defines, so compiling them is enough here.
+RUNNABLE = ("rumi.frames", "rumi.write")
 
 
 def blocks():
@@ -25,7 +26,7 @@ def blocks():
 
 
 def is_runnable(block):
-    return (any(name in block for name in RUNNABLE)
+    return (all(name in block for name in RUNNABLE)
             and "import pandas" not in block
             and "catalog" not in block)
 
@@ -39,17 +40,7 @@ def test_a_readme_block_at_least_compiles(index):
                                    if is_runnable(b)])
 def test_a_readme_block_runs(index, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # Later blocks carry on from the quick start, so hand them the names it
-    # defines instead of making each one repeat the setup. Smaller than the
-    # README's array, which is 32 MiB and says nothing extra.
-    env = {
-        "np": np,
-        "geozl": geozl,
-        "rumi": rumi,
-        "arr": np.random.default_rng(0).integers(
-            0, 4096, (4, 1024, 1024), dtype=np.uint16
-        ),
-    }
+    env = {"np": np, "geozl": geozl, "rumi": rumi}
     exec(compile(blocks()[index], f"README.md block {index}", "exec"), env)
 
 
@@ -60,8 +51,8 @@ def test_the_quick_start_writes_a_file_that_reads_back(tmp_path, monkeypatch):
     env = {"np": np, "geozl": geozl, "rumi": rumi}
     exec(compile(blocks()[0], "README.md quick start", "exec"), env)
 
-    scene = tmp_path / "scene.tif"
+    scene = tmp_path / "scene.rumi"
     assert scene.is_file()
-    # The block ends on a windowed read, so arr holds the window, not the cube.
-    assert np.asarray(env["arr"]).shape == (2, 512, 512)
-    assert np.asarray(rumi.read(str(scene))).shape == (4, 2048, 2048)
+    assert np.array_equal(env["result"], env["image"])
+    assert np.asarray(env["chip"]).shape == (2, 512, 512)
+    assert np.asarray(rumi.read(str(scene))).shape == (4, 1024, 1024)

@@ -7,6 +7,8 @@
 
 rumi is a raster file format with a predictable, GeoTIFF-inspired layout and a compact external **binary header**. The restricted file profile makes it possible for the header to contain everything needed to locate any frame directly, without first opening or parsing the rumi file. This makes access stateless, even across millions of files. See the [File profile](#file-profile) section for the full set of restrictions.
 
+The filename extension for the format is `.rumi`.
+
 ![A raster array is encoded as a rumi file and a rumi header blob](img/rumi-layout.svg)
 
 The words MUST, MUST NOT, SHOULD, and MAY in this document carry the RFC 2119 meaning.

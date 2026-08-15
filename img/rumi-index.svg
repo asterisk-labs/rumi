@@ -1,6 +1,6 @@
 <svg width="980" viewBox="-20 0 980 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
-<title id="t">One array in, one .tif out. A plain GeoTIFF has thousands of valid forms, rumi has one</title>
-<desc id="d">The same array goes into both paths and a .tif comes out of both. Written as a plain GeoTIFF it fans through seven compression choices, three interleave choices and five further switches into roughly two thousand valid files. Written as rumi every switch is fixed, so one path leads to one file.</desc>
+<title id="t">One array in. GeoTIFF has thousands of valid forms; rumi has one .rumi form</title>
+<desc id="d">The same array goes into both paths. A plain GeoTIFF fans through seven compression choices, three interleave choices and five further switches into roughly two thousand .tif files. rumi fixes every choice, so one path leads to one .rumi file.</desc>
 <style>
   .sans{font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
   .mono{font-family:ui-monospace,'SFMono-Regular','JetBrains Mono',Menlo,Consolas,monospace}
@@ -65,9 +65,9 @@
 
 <path class="filev" d="M808.0 423.0H857.0L872.0 438.0V501.0A4 4 0 0 1 868.0 505.0H808.0A4 4 0 0 1 804.0 501.0V427.0A4 4 0 0 1 808.0 423.0Z"/><path class="filev" d="M857.0 423.0V438.0H872.0"/>
 <text class="mono fix tvio" x="240" y="497" text-anchor="middle">OpenZL</text>
-<text class="mono fix key tvio" x="385" y="497" text-anchor="middle">tile-interleaved</text>
-<text class="mono fix tvio" x="600" y="497" text-anchor="middle">BigTIFF &#183; band-separate</text>
+<text class="mono fix key tvio" x="385" y="497" text-anchor="middle">frame-index order</text>
+<text class="mono fix tvio" x="600" y="497" text-anchor="middle">11 fixed IFD tags</text>
 <text class="mono rowlab tvio" x="838" y="400" text-anchor="middle">rumi</text>
-<text class="mono ext tvio" x="834" y="472" text-anchor="middle">.tif</text>
+<text class="mono ext tvio" x="834" y="472" text-anchor="middle">.rumi</text>
 <text class="sans num tvio" x="838" y="539.0" text-anchor="middle">1</text>
 </svg>

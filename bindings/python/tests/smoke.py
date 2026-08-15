@@ -24,7 +24,7 @@ def main() -> int:
     tf["compressed"] = [bytes([i % 251]) * (8 + i) for i in range(len(tf))]
 
     with tempfile.TemporaryDirectory() as d:
-        path, header = rumi.write(Path(d) / "smoke.tif", tf,
+        path, header = rumi.write(Path(d) / "smoke.rumi", tf,
                                   transform=TRANSFORM, crs=CRS)
         facts = rumi.RumiHeader(header).to_dict()
         on_disk = rumi.RumiHeader.from_path(path).to_dict()

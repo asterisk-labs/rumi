@@ -27,7 +27,7 @@ def image(tmp_path_factory):
         if g is None:
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
-    path = tmp_path_factory.mktemp("read") / "img.tif"
+    path = tmp_path_factory.mktemp("read") / "img.rumi"
     path, header = rumi.write(path, tf)
     return str(path), header, data
 
@@ -83,7 +83,7 @@ def test_truncated_buffer_is_refused(image):
 def test_missing_file(tmp_path, image):
     _path, header, _data = image
     with pytest.raises(OSError, match="could not open"):
-        rumi.read(tmp_path / "gone.tif", header)
+        rumi.read(tmp_path / "gone.rumi", header)
 
 
 def plan(header, *, bands=None, y=(0, 0), x=(0, 0)):
@@ -165,7 +165,7 @@ def cell_image(tmp_path_factory):
         if g is None:
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
-    path = tmp_path_factory.mktemp("cell") / "img.tif"
+    path = tmp_path_factory.mktemp("cell") / "img.rumi"
     path, header = rumi.write(path, tf)
     return str(path), header, data
 
@@ -198,7 +198,7 @@ def test_a_cell_window_matches_a_tile_window(tmp_path, bands):
             if g is None:
                 g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
             t.compressed = geozl.compress(t.data, graph=g)
-        path, header = rumi.write(tmp_path / f"{unit}.tif", tf)
+        path, header = rumi.write(tmp_path / f"{unit}.rumi", tf)
         out[unit] = np.asarray(
             rumi.read(str(path), header, b=bands, y=(30, 70), x=(20, 90)))
     assert np.array_equal(out["tile"], out["cell"])
@@ -233,7 +233,7 @@ def test_a_cell_stack_round_trips(tmp_path):
         for t in tf:
             t.compressed = geozl.compress(t.data,
                                           graph=geozl.graph(t.data, GRAPH))
-        path, header = rumi.write(tmp_path / f"s{i}.tif", tf)
+        path, header = rumi.write(tmp_path / f"s{i}.rumi", tf)
         paths.append(str(path))
         headers.append(header)
         cubes.append(cube)

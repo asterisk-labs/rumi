@@ -68,7 +68,7 @@ def values(entry, fmt):
 
 def test_bigtiff_header(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     entries, next_ifd, blob = read_ifd(path)
     assert struct.unpack_from("<Q", blob, 8) == (16,)
@@ -77,7 +77,7 @@ def test_bigtiff_header(tmp_path):
 
 def test_tags_ascending(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     tags = list(read_ifd(path)[0])
     assert tags == sorted(tags)
@@ -85,12 +85,14 @@ def test_tags_ascending(tmp_path):
 
 def test_tag_set(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
     assert set(entries) == {256, 257, 258, 277, 322, 323, 324, 325, 339,
                             34264, 34735}
+    # rumi is not TIFF/GeoTIFF: these compatibility fields do not exist.
+    assert {259, 262, 284}.isdisjoint(entries)  # compression/photo/planar
     assert values(entries[256], "I") == [tf.image_width]
     assert values(entries[257], "I") == [tf.image_length]
     assert values(entries[258], "H") == [16] * tf.bands
@@ -106,7 +108,7 @@ def test_tag_set(tmp_path):
 
 def test_inline_and_external_values(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
@@ -124,7 +126,7 @@ def test_inline_and_external_values(tmp_path):
 
 def test_frame_index_order(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
@@ -138,7 +140,7 @@ def test_frame_index_order(tmp_path):
 
 def test_payload_offsets(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     entries, _next, blob = read_ifd(path)
 
@@ -154,7 +156,7 @@ def test_payload_offsets(tmp_path):
 
 def test_tile_write_order(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     blob = open(path, "rb").read()
     assert blob[header_bytes(tf):] == b"".join(tf["compressed"])
@@ -162,7 +164,7 @@ def test_tile_write_order(tmp_path):
 
 def test_north_up_transform(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     entries = read_ifd(path)[0]
 
@@ -176,7 +178,7 @@ def test_north_up_transform(tmp_path):
 
 def test_rotated_transform(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=ROTATED, crs=UTM18S)
     entries = read_ifd(path)[0]
 
@@ -199,7 +201,7 @@ def geokeys(path):
 
 def test_geokeys_projected(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
 
     head, keys = geokeys(path)
@@ -212,7 +214,7 @@ def test_geokeys_projected(tmp_path):
 
 def test_geokeys_geographic(tmp_path):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4326)
     assert geokeys(path)[1] == {MODEL: 2, RASTER: 1, GEOGRAPHIC: 4326}
 
@@ -221,14 +223,14 @@ def test_geokeys_kind_is_not_the_code_range(tmp_path):
     """EPSG:4037 sits inside the geographic block and is projected. The kind
     comes from the generated table, not from the number."""
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4037)
     assert geokeys(path)[1] == {MODEL: 1, RASTER: 1, PROJECTED: 4037}
 
 
 def test_pixel_is_point(tmp_path):
     tf = make_frame()
-    area, point = tmp_path / "area.tif", tmp_path / "point.tif"
+    area, point = tmp_path / "area.rumi", tmp_path / "point.rumi"
     write_frames(area, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     write_frames(point, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S,
                  pixel_is_point=True)
@@ -240,13 +242,13 @@ def test_crs_must_be_an_epsg_code(tmp_path):
     tf = make_frame()
     for bad in ("+proj=utm +zone=18 +south", "WGS 84 / UTM zone 18S", 1.5):
         with pytest.raises((ValueError, TypeError), match="EPSG"):
-            write_frames(tmp_path / "a.tif", tf["compressed"], tf,
+            write_frames(tmp_path / "a.rumi", tf["compressed"], tf,
                          transform=NORTH_UP, crs=bad)
 
 
 def test_crs_forms_agree(tmp_path):
     tf = make_frame()
-    a, b = tmp_path / "int.tif", tmp_path / "str.tif"
+    a, b = tmp_path / "int.rumi", tmp_path / "str.rumi"
     write_frames(a, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     write_frames(b, tf["compressed"], tf, transform=NORTH_UP, crs="EPSG:32718")
     assert a.read_bytes() == b.read_bytes()
@@ -255,13 +257,13 @@ def test_crs_forms_agree(tmp_path):
 def test_unknown_epsg_is_refused(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="not a projected or geographic"):
-        write_frames(tmp_path / "a.tif", tf["compressed"], tf,
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf,
                      transform=NORTH_UP, crs=999999)
 
 
 def test_write_blob_round_trip(tmp_path):
     tf = make_frame()
-    path, blob = rumi.write(tmp_path / "a.tif", tf)
+    path, blob = rumi.write(tmp_path / "a.rumi", tf)
 
     header = rumi.RumiHeader(blob)
     assert header.shape == (tf.bands, tf.image_length, tf.image_width)
@@ -277,7 +279,7 @@ def test_write_blob_round_trip(tmp_path):
 def test_edge_tiles(tmp_path):
     tf = make_frame(shape=(3, 257, 256), tile_size=128)
     assert {t.data.shape for t in tf} == {(128, 128), (1, 128)}
-    _path, blob = rumi.write(tmp_path / "a.tif", tf)
+    _path, blob = rumi.write(tmp_path / "a.rumi", tf)
     h = rumi.RumiHeader(blob).to_dict()
     assert h["height"] == 257 and h["width"] == 256
     assert h["frames"] == len(tf)
@@ -287,7 +289,7 @@ def test_edge_tiles(tmp_path):
 def test_cell_frame_count(tmp_path):
     """A cell frame holds every band, so the grid alone gives the count."""
     tf = make_frame(shape=(3, 257, 256), tile_size=128, unit="cell")
-    _path, blob = rumi.write(tmp_path / "a.tif", tf)
+    _path, blob = rumi.write(tmp_path / "a.rumi", tf)
     h = rumi.RumiHeader(blob).to_dict()
     assert h["frame_unit"] == "cell"
     assert h["frames"] == len(tf) == h["tiles_across"] * h["tiles_down"]
@@ -297,7 +299,7 @@ def test_cell_frame_count(tmp_path):
                                    np.float32, np.float64])
 def test_sample_format(tmp_path, dtype):
     tf = make_frame(shape=(1, 20, 20), tile_size=16, dtype=dtype)
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
@@ -328,7 +330,7 @@ CASES = {
 @pytest.mark.parametrize("case", list(CASES))
 def test_golden_bytes(tmp_path, case):
     tf = make_frame()
-    path = tmp_path / "a.tif"
+    path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, **CASES[case])
     digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
     assert digest == GOLDEN[case]
@@ -337,7 +339,7 @@ def test_golden_bytes(tmp_path, case):
 def test_bad_frame_count(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="expected"):
-        write_frames(tmp_path / "a.tif", tf["compressed"][:-1], tf)
+        write_frames(tmp_path / "a.rumi", tf["compressed"][:-1], tf)
 
 
 def test_empty_payload(tmp_path):
@@ -345,7 +347,7 @@ def test_empty_payload(tmp_path):
     frames = list(tf["compressed"])
     frames[3] = b""
     with pytest.raises(ValueError, match="sparse"):
-        write_frames(tmp_path / "a.tif", frames, tf)
+        write_frames(tmp_path / "a.rumi", frames, tf)
 
 
 @pytest.mark.parametrize("shape", [(0, 16, 16), (1, 0, 16), (1, 16, 0)])
@@ -371,13 +373,13 @@ def test_compressed_frames_must_be_bytes_like():
 def test_transform_needs_crs(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="together"):
-        write_frames(tmp_path / "a.tif", tf["compressed"], tf, transform=NORTH_UP)
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, transform=NORTH_UP)
     with pytest.raises(ValueError, match="together"):
-        write_frames(tmp_path / "a.tif", tf["compressed"], tf, crs=UTM18S)
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, crs=UTM18S)
 
 
 def test_write_needs_all_tiles(tmp_path):
     tf = make_frame()
     tf[2].compressed = None
     with pytest.raises(ValueError, match="no frame"):
-        rumi.write(tmp_path / "a.tif", tf)
+        rumi.write(tmp_path / "a.rumi", tf)

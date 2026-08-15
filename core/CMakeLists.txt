@@ -7,7 +7,7 @@ string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" RUMI_VERSION_NUMERIC
 
 project(rumi
     VERSION     ${RUMI_VERSION_NUMERIC}
-    DESCRIPTION "A GeoTIFF profile for AI training data"
+    DESCRIPTION "A predictable raster format for AI training data"
     LANGUAGES   CXX C
 )
 
@@ -52,8 +52,8 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 include(GNUInstallDirs)
 
-# geozl is the OpenZL frame codec (compression 60000) plus rumi's spatial
-# decoders. Vendored static so it folds into rumi with no extra runtime
+# geozl supplies the OpenZL frame codecs, including rumi's spatial transforms.
+# Vendored static so it folds into rumi with no extra runtime
 # dependency, and GEOZL_STATIC keeps its entry points from being re-exported.
 # geozl exposes OpenZL PUBLIC, so rumi links one OpenZL, the same one geozl
 # registers its decoders against.

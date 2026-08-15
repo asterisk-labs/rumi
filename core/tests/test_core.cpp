@@ -416,7 +416,7 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     if (geo) { d.transform = tf; d.epsg = 32718; }
 
     char path[64];
-    std::snprintf(path, sizeof path, "/tmp/e2e_%llu.tif", (unsigned long long)seed);
+    std::snprintf(path, sizeof path, "/tmp/e2e_%llu.rumi", (unsigned long long)seed);
 
     auto written = rumi::write_file(path, d, ptrs.data(), sizes.data(), n);
     if (!written) { fail(__LINE__, "write: " + written.error()); return; }
