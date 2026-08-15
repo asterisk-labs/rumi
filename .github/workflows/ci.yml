@@ -26,8 +26,8 @@ jobs:
             cxx: g++
           - name: tsan
             sanitize: thread
-            cc: clang
-            cxx: clang++
+            cc: gcc
+            cxx: g++
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,9 +80,7 @@ jobs:
           python -m pip install --upgrade pip cmake ninja
           python -m pip install numpy cffi pytest "geozl>=0.12"
           python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
-      - name: Build and stage librumi
-        run: make lib
+      - name: Build and install rumi
+        run: make python
       - name: Run the Python suite
-        env:
-          PYTHONPATH: bindings/python
         run: python -m pytest bindings/python/tests -q

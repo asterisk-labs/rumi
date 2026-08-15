@@ -34,7 +34,7 @@ To write them as well, install the OpenZL writer dependency:
 pip install "rumi-eo[write]"
 ```
 
-Python 3.11 or newer is required. Linux and macOS are supported.
+Requires Python 3.11+. Wheels are available for Linux x86-64 and macOS arm64.
 
 ## Write and read an image
 

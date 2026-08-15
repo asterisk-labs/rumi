@@ -30,10 +30,7 @@ jobs:
             echo "version=$VERSION_FILE" >> "$GITHUB_OUTPUT"
           fi
 
-  # Only the platforms geozl publishes wheels for. Without geozl nobody can
-  # produce the compressed tiles rumi writes, so a Windows wheel would ship a
-  # library that can read but never author.
-  # Linux builds run in manylinux_2_28 so the binary is compiled against old glibc.
+  # Match geozl/OpenZL wheel support. Linux targets manylinux_2_28.
   build-lib-linux:
     name: librumi (${{ matrix.name }})
     needs: validate
@@ -44,16 +41,13 @@ jobs:
           - name: linux-x86_64
             runner: ubuntu-24.04
             image: quay.io/pypa/manylinux_2_28_x86_64
-          - name: linux-aarch64
-            runner: ubuntu-24.04-arm
-            image: quay.io/pypa/manylinux_2_28_aarch64
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true            # brings extern/geozl, not its nested submodules
-      - name: Init geozl and OpenZL deps (zstd, lz4 only, no xgboost)
+          submodules: true            # geozl only; nested deps are initialized below
+      - name: Init native dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
@@ -85,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Init geozl and OpenZL deps (zstd, lz4 only, no xgboost)
+      - name: Init native dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
@@ -119,9 +113,6 @@ jobs:
           - name: linux-x86_64
             runner: ubuntu-24.04
             image: quay.io/pypa/manylinux_2_28_x86_64
-          - name: linux-aarch64
-            runner: ubuntu-24.04-arm
-            image: quay.io/pypa/manylinux_2_28_aarch64
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
     steps:
@@ -147,9 +138,7 @@ jobs:
           python -m pip install build hatchling cffi wheel
           python -m build --wheel --outdir ../../wheelhouse-raw
       - name: Normalise wheel tags
-        # cffi ABI mode: rumi ships no compiled extension, it dlopens librumi at
-        # runtime, so the wheel is py3-none-<platform>, not bound to a CPython ABI.
-        # The platform tag is set later, off the real glibc floor of the binaries.
+        # cffi loads librumi at runtime, so the wheel is py3-none-<platform>.
         shell: bash -el {0}
         run: python -m wheel tags --python-tag py3 --abi-tag none --remove wheelhouse-raw/*.whl
       - name: Repair wheel
@@ -158,7 +147,7 @@ jobs:
           set -euo pipefail
           python -m pip install auditwheel wheel
 
-          # Read the floor off auditwheel's "platform tag" line, not the max in the report.
+          # Use auditwheel's platform tag as the glibc floor.
           floor_of() {
             auditwheel show "$1" 2>/dev/null | grep -iE 'platform tag' \
               | grep -oE 'manylinux_[0-9]+_[0-9]+_[a-z0-9_]+' \
@@ -169,9 +158,7 @@ jobs:
           mkdir -p wheelhouse
           auditwheel repair ${plat:+--plat "$plat"} -w wheelhouse wheelhouse-raw/*.whl
           ls -1 wheelhouse/
-      - name: Install, smoke-test and run the suite
-        # A bare manylinux python with no conda on the path, so the wheel stands
-        # alone the way a user install would.
+      - name: Test wheel
         shell: bash
         env:
           LD_LIBRARY_PATH: ""
@@ -222,7 +209,7 @@ jobs:
         run: |
           mkdir -p wheelhouse
           cp wheelhouse-raw/*.whl wheelhouse/
-      - name: Install, smoke-test and run the suite
+      - name: Test wheel
         shell: bash
         run: |
           python -m venv /tmp/clean
@@ -240,11 +227,7 @@ jobs:
 
   check-wheels:
     name: Check wheel platform tags
-    # Block the release if a platform's wheel is missing, or if a manylinux wheel
-    # floors above glibc 2.28, which would leave older hosts unable to install it.
-    # The tag is not only about glibc. auditwheel raises it for a libstdc++
-    # symbol too, so a single std::string concatenation in librumi can push a
-    # wheel several policies up and fail here.
+    # Require every supported wheel and a glibc floor no newer than 2.28.
     needs: [build-wheel-linux, build-wheel-macos]
     runs-on: ubuntu-latest
     steps:
@@ -267,7 +250,6 @@ jobs:
 
           targets = {
               "linux x86_64":  lambda n: "manylinux" in n and n.endswith("x86_64.whl"),
-              "linux aarch64": lambda n: "manylinux" in n and n.endswith("aarch64.whl"),
               "macos arm64":   lambda n: "macosx" in n and n.endswith("arm64.whl"),
           }
           for label, pred in targets.items():
@@ -278,9 +260,7 @@ jobs:
           for n in wheels:
               f = floor(n)
               if f and f > (2, 28):
-                  print(f"::error::{n} floors at glibc {f[0]}.{f[1]}, above 2.28. "
-                        "Run `auditwheel show` on it: the tag is driven by the "
-                        "highest GLIBC, GLIBCXX or CXXABI symbol it references.")
+                  print(f"::error::{n} requires glibc {f[0]}.{f[1]}; maximum is 2.28")
                   ok = False
 
           print("found:", *("  " + n for n in wheels), sep="\n")
@@ -308,8 +288,7 @@ jobs:
 
   gh-release:
     name: GitHub Release
-    # Ships the raw librumi C libraries per platform, for consumers that link rumi
-    # directly. The Python wheels and sdist go to PyPI in publish-pypi, not here.
+    # GitHub gets C libraries; PyPI gets Python packages.
     needs: [validate, build-lib-linux, build-lib-macos, build-wheel-linux, build-wheel-macos, build-sdist]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -338,7 +317,7 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, '-') }}
 
-  # Trusted publishing (OIDC): needs the `pypi` environment + a PyPI pending publisher.
+  # PyPI trusted publishing via OIDC.
   publish-pypi:
     name: Publish to PyPI
     needs: [build-wheel-linux, build-wheel-macos, build-sdist, check-wheels]
