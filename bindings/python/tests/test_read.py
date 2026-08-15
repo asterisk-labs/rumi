@@ -76,7 +76,7 @@ def test_stack_mixes_paths_and_bytes(image):
 def test_truncated_buffer_is_refused(image):
     path, header, _data = image
     blob = open(path, "rb").read()
-    with pytest.raises(ValueError, match="tile data needs"):
+    with pytest.raises(ValueError, match="frame data needs"):
         rumi.read(blob[:len(blob) // 2], header)
 
 
@@ -107,10 +107,10 @@ def test_plan_ranges_covers_one_tile(image):
     h = rumi.RumiHeader(header).to_dict()
     ranges = plan(header, bands=[0], y=(0, 1), x=(0, 1))
     assert len(ranges) == 1
-    assert ranges[0][0] == h["base_tiles_offset"]
+    assert ranges[0][0] == h["base_frame_offset"]
 
 
-def test_plan_ranges_counts_tiles_times_bands(image):
+def test_plan_ranges_counts_frames_for_selected_bands(image):
     path, header, _data = image
     ranges = plan(header, bands=[0, 2], y=(0, 64), x=(0, 64))
     assert len(ranges) == 2 * 2 * 2  # 2 rows, 2 cols, 2 bands
@@ -140,7 +140,7 @@ def test_fetching_only_the_planned_ranges_is_enough(image):
     blob = open(path, "rb").read()
     window = dict(b=[0], y=(0, 32), x=(0, 32))
 
-    base = rumi.RumiHeader(header).to_dict()["base_tiles_offset"]
+    base = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
     sparse = bytearray(len(blob))
     sparse[:base] = blob[:base]
     fetched = 0

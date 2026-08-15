@@ -238,7 +238,7 @@ def test_no_gap_anywhere_in_front_of_the_tile_data(tmp_path):
     assert len(blob) == base + sum(len(f) for f in tf["compressed"])
 
 
-# Deriving base_tiles_offset
+# Deriving base_frame_offset
 
 @pytest.mark.parametrize("shape,tile", [
     ((1, 16, 16), 16),        # one tile, both arrays inline
@@ -261,7 +261,7 @@ def test_the_blob_agrees_with_the_derivation(tmp_path):
     tf = make_frame()
     _path, blob = rumi.write(tmp_path / "a.rumi", tf)
     facts = rumi.RumiHeader(blob).to_dict()
-    assert facts["base_tiles_offset"] == derive_base_offset(tf.bands, len(tf))
+    assert facts["base_frame_offset"] == derive_base_offset(tf.bands, len(tf))
 
 
 def test_the_same_shape_gives_the_same_offset(tmp_path):
@@ -410,7 +410,7 @@ def test_pixel_is_point_with_a_crs(tmp_path):
 # What the writer refuses
 
 def test_there_is_no_header_size_parameter(tmp_path):
-    """The knob that used to pad in front of the tile data."""
+    """The knob that used to pad in front of the frame data."""
     tf = make_frame()
     with pytest.raises(TypeError):
         write_frames(tmp_path / "a.rumi", tf["compressed"], tf, header_size=4096)
@@ -418,10 +418,16 @@ def test_there_is_no_header_size_parameter(tmp_path):
         rumi.write(tmp_path / "b.rumi", tf, header_size=4096)
 
 
-@pytest.mark.parametrize("bad", [8, 17, 24, 100])
-def test_tile_size_must_be_a_multiple_of_sixteen(bad):
+@pytest.mark.parametrize("size", [1, 8, 17, 24, 100, 65535])
+def test_tile_size_needs_no_tiff_alignment(size):
     arr = np.zeros((1, 64, 64), np.uint16)
-    with pytest.raises(ValueError, match="16"):
+    assert rumi.frames(arr, size).tile_size == size
+
+
+@pytest.mark.parametrize("bad", [0, -1, 65536])
+def test_tile_size_must_fit_its_uint16_field(bad):
+    arr = np.zeros((1, 64, 64), np.uint16)
+    with pytest.raises(ValueError, match="65535"):
         rumi.frames(arr, bad)
 
 
@@ -462,7 +468,7 @@ def test_the_independent_writer_is_accepted(valid_file):
     path, _entries, _tiles = valid_file
     facts = rumi.RumiHeader.from_path(path).to_dict()
     assert facts["shape"] == [2, 40, 70]
-    assert facts["base_tiles_offset"] == derive_base_offset(2, 30)
+    assert facts["base_frame_offset"] == derive_base_offset(2, 30)
 
 
 def _rejects(tmp_path, entries, tiles, match, bands=2, pad=0):
@@ -538,10 +544,12 @@ def test_a_gap_before_the_tile_data_is_rejected(tmp_path, valid_file):
     _rejects(tmp_path, entries, tiles, "padding", pad=512)
 
 
-def test_a_tile_size_off_the_grid_is_rejected(tmp_path):
+def test_an_unaligned_tile_size_is_accepted(tmp_path):
     tiles = [b"x" * 8] * 4
     entries = spec_entries(40, 40, 20, 1, tiles)
-    _rejects(tmp_path, entries, tiles, "16", bands=1)
+    path = tmp_path / "unaligned.rumi"
+    path.write_bytes(build_tiff(entries, tiles, bands=1))
+    assert rumi.RumiHeader.from_path(path).to_dict()["tile"] == [20, 20]
 
 
 def test_an_overflowing_tile_frame_count_is_rejected(tmp_path):
@@ -582,5 +590,5 @@ def test_pixels_survive_the_round_trip(tmp_path):
     path, header = rumi.write(tmp_path / "a.rumi", tf,
                               transform=NORTH_UP, crs=UTM18S)
     assert np.array_equal(rumi.read(path, header), data)
-    assert rumi.RumiHeader(header).to_dict()["base_tiles_offset"] == \
+    assert rumi.RumiHeader(header).to_dict()["base_frame_offset"] == \
            derive_base_offset(3, len(tf))

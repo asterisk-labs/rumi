@@ -128,8 +128,8 @@ class FrameTable:
             )
         if self.bands <= 0:
             raise ValueError(f"bands must be positive, got {self.bands}")
-        if t < 16 or t % 16:
-            raise ValueError(f"tile_size must be a multiple of 16, got {t}")
+        if not 1 <= t <= 65535:
+            raise ValueError(f"tile_size must be in [1, 65535], got {t}")
 
         self._data = list(data)
         positions = self.tiles_across * self.tiles_down
@@ -176,9 +176,8 @@ class FrameTable:
         if unit not in UNITS:
             raise ValueError(f"unit must be one of {UNITS}, got {unit!r}")
         t = int(tile_size)
-        if t < 16 or t % 16:
-            raise ValueError(
-                f"tile_size must be a multiple of 16, got {tile_size}")
+        if not 1 <= t <= 65535:
+            raise ValueError(f"tile_size must be in [1, 65535], got {tile_size}")
 
         b, y, x = arr.shape
         down, across = -(-y // t), -(-x // t)
@@ -389,7 +388,7 @@ def _frame_bytes(v, i):
         raise TypeError(f"frame {i} must be bytes-like, got {type(v).__name__}")
     buf = bytes(v)
     # Caught on assignment rather than at write time, so the traceback lands in
-    # the loop that produced it. A zero-length payload is not a legal tile.
+    # the loop that produced it. A zero-length payload is not a legal frame.
     if not buf:
         raise ValueError(f"frame {i} got an empty frame")
     return buf

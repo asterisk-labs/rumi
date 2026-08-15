@@ -39,6 +39,7 @@ except ImportError:
 
 
 _NAMES: dict[int, str] = {0: "unknown"}
+_BITS: dict[int, int] = {}
 _TO_NUMPY: dict[int, type] = {}
 _TO_ENCODING: dict[type, tuple[int, int]] = {}
 _TO_CODE: dict[type, int] = {}
@@ -56,6 +57,7 @@ def _load_table() -> None:
         r = rows[i]
         code = int(r.code)
         _NAMES[code] = ffi.string(r.name).decode("ascii")
+        _BITS[code] = int(r.dl_bits)
         key = (int(r.dl_code), int(r.dl_bits))
         np_type = _DL_TO_NP.get(key)
         if np_type is not None:
@@ -93,3 +95,7 @@ def dtype_code(dtype) -> int:
 
 def name(rumi_dtype: int) -> str:
     return _NAMES.get(rumi_dtype, f"rumi_dtype({rumi_dtype})")
+
+
+def is_subbyte(rumi_dtype: int) -> bool:
+    return 0 < _BITS.get(rumi_dtype, 0) < 8

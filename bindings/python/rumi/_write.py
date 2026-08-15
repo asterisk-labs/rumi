@@ -57,7 +57,7 @@ def _desc(tf, transform, crs, pixel_is_point):
 
 def header_bytes(tf, *, transform=None, crs=None,
                  pixel_is_point=False) -> int:
-    """Where the tile data will start, without writing. The tag set is fixed,
+    """Where the frame data will start, without writing. The tag set is fixed,
     so this is arithmetic over the shape and never reads a file."""
     d, _keep = _desc(tf, transform, crs, pixel_is_point)
     out = ffi.new("uint64_t*")
@@ -106,8 +106,8 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False):
     missing = [i for i, f in enumerate(frames) if f is None]
     if missing:
         raise ValueError(
-            f"{len(missing)} of {len(frames)} tiles have no frame, first is "
-            f"{missing[0]}; compress every tile before writing")
+            f"{len(missing)} of {len(frames)} frames have no payload, first is "
+            f"{missing[0]}; compress every frame before writing")
 
     header = write_frames(path, frames, tf, transform=transform, crs=crs,
                           pixel_is_point=pixel_is_point)

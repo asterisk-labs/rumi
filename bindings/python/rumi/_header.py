@@ -56,7 +56,7 @@ class RumiHeader:
             "tiles_down": int(h.tiles_down),
             "frame_unit": self.frame_unit,
             "frames": self.frames,
-            "base_tiles_offset": int(h.base_tiles_offset),
+            "base_frame_offset": int(h.base_frame_offset),
             "codec": "OpenZL",
         }
 
@@ -71,7 +71,7 @@ class RumiHeader:
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
                 "unit": self.frame_unit,
-                "tiles": self.frames,
+                "frames": self.frames,
                 "codec": "OpenZL",
             }
         except Exception:

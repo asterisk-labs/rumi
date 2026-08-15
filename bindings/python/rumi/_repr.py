@@ -88,7 +88,7 @@ def header_text(f):
         f"<rumi.RumiHeader ({f['b']}, {f['y']}, {f['x']})>",
         f"  dtype      : {f['dtype']}",
         f"  tile       : {tw} x {tl}",
-        f"  tiles      : {f['tiles']}",
+        f"  frames     : {f['frames']}",
         f"  tiles/band : {f['across'] * f['down']}",
         f"  codec      : {f['codec']}",
     ])
@@ -103,7 +103,7 @@ def header_html(f):
     rows = (
         f'<tr><td class="k">dtype</td><td>{e(f["dtype"])}</td></tr>'
         f'<tr><td class="k">tile</td><td>{tw} \u00d7 {tl}</td></tr>'
-        f'<tr><td class="k">tiles</td><td><b>{f["tiles"]:,}</b></td></tr>'
+        f'<tr><td class="k">frames</td><td><b>{f["frames"]:,}</b></td></tr>'
         f'<tr><td class="k">tiles/band</td><td>{f["across"] * f["down"]:,}</td></tr>'
         f'<tr><td class="k">codec</td><td>{e(f["codec"])}</td></tr>'
     )
@@ -142,7 +142,7 @@ def _meta(f):
     out = [("dtype", f["dtype"]),
            ("tile", f"{f['t']} \u00d7 {f['t']}"),
            ("grid", grid),
-           ("tiles" if tiled else "cells", f"{f['n']:,}")]
+           ("frames", f"{f['n']:,}")]
     if f["done"]:
         out.append(("bytes", f"{_human(f['nbytes'])} ({f['ratio']:.1f}\u00d7)"))
     return out

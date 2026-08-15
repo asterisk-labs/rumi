@@ -2,6 +2,7 @@ import ctypes
 import os
 from collections.abc import Sequence
 
+from ._dtype import is_subbyte
 from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
 from ._threads import resolve as _resolve_threads
@@ -71,6 +72,9 @@ class RumiArray:
         # versioned struct is a different shape, so the name alone is not it.
         tensor, name = self._tensor, _VERSIONED_NAME
         if max_version is None or tuple(max_version)[:1] < (1,):
+            if is_subbyte(self._dtype_code):
+                raise BufferError(
+                    "this padded sub-byte dtype needs a DLPack 1.0 consumer")
             tensor = lib.rumi_dlpack_legacy(tensor)
             name = _LEGACY_NAME
             if tensor == ffi.NULL:
@@ -262,7 +266,7 @@ def read(source: PathLike | bytes | Sequence[PathLike | bytes],
     num_threads defaults to the process-wide count, which is 1 unless
     set_num_threads or RUMI_NUM_THREADS says otherwise. 1 always reads on the
     calling thread. A larger number sets the process-wide count on its way
-    through, and warns if the pool already exists at another size.
+    through, and warns if a parallel read already pinned another count.
     """
     threads = _resolve_threads(num_threads)
     if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):

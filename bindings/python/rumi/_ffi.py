@@ -39,7 +39,7 @@ typedef struct {
     uint8_t  frame_unit;
     uint32_t tiles_across;
     uint32_t tiles_down;
-    uint64_t base_tiles_offset;
+    uint64_t base_frame_offset;
     rumi_dtype dtype;
 } rumi_header;
 

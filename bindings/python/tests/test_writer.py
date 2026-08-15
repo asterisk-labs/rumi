@@ -272,7 +272,7 @@ def test_write_blob_round_trip(tmp_path):
     assert d["tile"] == [tf.tile_size, tf.tile_size]
     assert d["tiles_across"] == tf.tiles_across
     assert d["tiles_down"] == tf.tiles_down
-    assert d["base_tiles_offset"] == header_bytes(tf)
+    assert d["base_frame_offset"] == header_bytes(tf)
     assert rumi.RumiHeader.from_path(path).to_dict() == d
 
 
@@ -378,8 +378,8 @@ def test_transform_needs_crs(tmp_path):
         write_frames(tmp_path / "a.rumi", tf["compressed"], tf, crs=UTM18S)
 
 
-def test_write_needs_all_tiles(tmp_path):
+def test_write_needs_all_frames(tmp_path):
     tf = make_frame()
     tf[2].compressed = None
-    with pytest.raises(ValueError, match="no frame"):
+    with pytest.raises(ValueError, match="no payload"):
         rumi.write(tmp_path / "a.rumi", tf)

@@ -12,9 +12,9 @@ def _apply(n: int, stacklevel: int) -> int:
     effective = lib.rumi_set_num_threads(n)
     if effective != n:
         warnings.warn(
-            f"rumi already runs {effective} threads and cannot be resized, so "
-            f"the request for {n} was ignored. Set the count before the first "
-            f"read with num_threads > 1, or through RUMI_NUM_THREADS.",
+            f"rumi's thread count is pinned at {effective}, so the request for "
+            f"{n} was ignored. Set the count before the first parallel read, "
+            f"or through RUMI_NUM_THREADS.",
             RuntimeWarning, stacklevel=stacklevel)
     return effective
 
@@ -33,10 +33,10 @@ def set_num_threads(n: int) -> int:
     """Set the thread count reads take when they name none.
 
     Process-wide, like torch.set_num_threads. Call it before the first read that
-    asks for more than one thread: after that the pool exists and its size is
-    the answer, so a later call warns and changes nothing. RUMI_NUM_THREADS
-    seeds the value, an integer or ALL_CPUS. A forked child starts again from
-    its environment, normally 1; it does not inherit the parent's EDA budget.
+    asks for more than one thread: once that read reserves the count, a later
+    call warns and changes nothing. RUMI_NUM_THREADS seeds the value, an
+    integer or ALL_CPUS. A forked child does not inherit the pinned state; it
+    evaluates its environment again and therefore defaults to 1 when unset.
 
     Returns the count in effect after the call, which is the old one when the
     request was refused.
@@ -45,7 +45,7 @@ def set_num_threads(n: int) -> int:
 
 
 def get_num_threads() -> int:
-    """The count in effect: the pool's size once it exists, else the setting."""
+    """Return the process-wide count currently configured or pinned."""
     return lib.rumi_get_num_threads()
 
 
