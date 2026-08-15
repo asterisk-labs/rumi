@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="520" viewBox="0 0 1000 520" role="img" aria-label="Per-file metadata: a kerchunk JSON is about 3.1 KB, a TIFF IFD about 1.7 KB, and a rumi blob for 64 frames is at most 284 bytes because its 28 byte header is followed by bit-packed frame counts">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="520" viewBox="0 0 1000 520" role="img" aria-label="Metadata size for 64 frames: about 3.1 KB for kerchunk, 1.7 KB for a TIFF IFD, and at most 284 bytes for rumi.">
 <style>
 .mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
 .sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
@@ -28,5 +28,5 @@
 <text class="sans" x="965" y="423" text-anchor="end" font-size="21" font-weight="700" fill="#16A34A">&#8804;284 MB</text>
 
 <line x1="40" y1="472" x2="965" y2="472" stroke="#E5E7EB" stroke-width="1"/>
-<text class="sans" x="40" y="500" font-size="14" fill="#6B7280">rumi stores a 28 B header plus canonical bit-packed frame counts, then rebuilds every offset by a prefix sum.</text>
+<text class="sans" x="40" y="500" font-size="14" fill="#6B7280">28 B header + bit-packed frame counts; offsets are prefix sums.</text>
 </svg>

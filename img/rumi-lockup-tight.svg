@@ -1,13 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="504" height="144" viewBox="54 22 504 144" role="img" aria-label="rumi — A GeoTIFF-inspired format for AI4EO">
 <style>
-.s{stroke:#E6EDF3;stroke-width:1;stroke-linejoin:round;animation:pulse 6s step-end infinite;}
+.s{--off:#161B22;stroke:#E6EDF3;stroke-width:1;stroke-linejoin:round;animation:pulse 6s step-end infinite;}
 .s1{--on:#4A2BE8;animation-delay:0s}
 .s2{--on:#F7CC0C;animation-delay:1.5s}
 .s3{--on:#A9FFA6;animation-delay:3s}
 .s4{--on:#FE6B37;animation-delay:4.5s}
-@keyframes pulse{0%{fill:var(--on)}25%{fill:#161B22}100%{fill:#161B22}}
+@keyframes pulse{0%{fill:var(--on)}25%{fill:var(--off)}100%{fill:var(--off)}}
 .wm{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-weight:500;fill:#E6EDF3;}
 .tag{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-weight:400;fill:#8B949E;}
+@media (prefers-color-scheme:light){
+  .s{--off:#F6F8FA;stroke:#161616}
+  .wm{fill:#161616}
+  .tag{fill:#57606A}
+}
 </style>
 <g transform="translate(70,38) scale(1.08)">
 <polygon class="s s1" points="0,0 47,0 43,38 0,32"/>

@@ -10,9 +10,9 @@
 
 <p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
-rumi is a predictable raster format for machine-learning datasets. It reads complete images or small windows directly into NumPy, PyTorch, JAX, and TensorFlow.
+rumi is a GeoTIFF-inspired raster format for machine-learning datasets. It reads complete images or small windows directly into NumPy, PyTorch, JAX, and TensorFlow.
 
-rumi fixes one predictable container profile. A frame can hold one band tile or all bands in a cell, and every frame is independently compressed with [OpenZL](https://github.com/facebook/openzl), so a reader can jump directly to the pixels it needs.
+rumi stores each image as independently compressed [OpenZL](https://github.com/facebook/openzl) frames. A read decodes only the frames it needs.
 
 rumi files use the `.rumi` extension. The exact binary layout is defined in the [format specification](SPEC.md).
 
@@ -90,22 +90,19 @@ rumi.set_num_threads(8)
 image = rumi.read(path, header)
 ```
 
-The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_CPUS`. A child created with `fork()` never uses the parent's pool: it evaluates the environment again and defaults to one thread when the variable is unset. If your training environment exports a larger value globally, call `rumi.set_num_threads(1)` in `worker_init_fn` before the first read.
+The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_CPUS`. Forked workers default to one rumi thread. If the environment sets a larger value, call `rumi.set_num_threads(1)` in `worker_init_fn` before the first read.
 
 ## Current limits
 
 - rumi is currently alpha software.
 - A CRS must be an EPSG code, or be omitted.
 - Sources are local paths or bytes already in memory; object-storage URLs are not read directly yet.
-- Named rumi files use the `.rumi` extension.
 
 ## Learn more
 
 - [Format specification](SPEC.md)
 - [Ten-minute notebook](examples/rumi-demo.ipynb)
 - [Issue tracker](https://github.com/asterisk-labs/rumi/issues)
-
-The names come from stone: *rumi* is one stone—one image.
 
 ## License
 

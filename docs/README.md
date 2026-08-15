@@ -57,13 +57,10 @@ constants at the top of `backdrop.js`.
 under `prefers-reduced-motion`. The heart is painted through a CSS mask so the
 beat and the hover colour stay in `shell.css`.
 
-Nothing on the page has a rounded corner. The only two `border-radius: 50%`
-left are the blurred glow blobs, where the radius makes a gradient rather than
-a corner. `--radius-*` in `tokens.css` are all zero, so raising one there is
-the way back if that ever changes.
+Visible corners are square. The two `border-radius: 50%` declarations belong to
+blurred glow shapes. The shared `--radius-*` values live in `tokens.css`.
 
 `geozl.svg` is the geozl mark redrawn monochrome so it sits with the other
 icons in the header row, and it points at https://asterisk.coop/geozl/.
 
-`pypi.svg` is a plain package glyph rather than the official PyPI mark. Nothing
-refers to its contents, so drop the real one in if you would rather have it.
+`pypi.svg` is a generic package glyph and can be replaced without code changes.

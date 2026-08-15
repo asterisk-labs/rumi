@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#080b10">
 <title>rumi</title>
-<meta name="description" content="A GeoTIFF-inspired format for deep learning.">
+<meta name="description" content="A GeoTIFF-inspired raster format for deep learning.">
 
 <link rel="icon" href="assets/svg/rumi-mark.svg">
 <link rel="stylesheet" href="assets/css/tokens.css">
@@ -69,7 +69,7 @@
       <h1 id="hero-title">Built for <span>deep learning.</span></h1>
 
       <p class="hero-summary">
-        Stateless frame access. The external RUMI header contains everything needed to locate a frame without parsing the raster file.
+        The rumi header maps every frame to its byte range for direct reads.
       </p>
 
       <div class="install" data-copy-root>
@@ -90,11 +90,11 @@
 
     </div>
 
-    <figure class="rumi-flow" role="img" aria-label="An animation showing a requested raster frame being located from the external RUMI header and fetched directly from the rumi file as an OpenZL frame.">
+    <figure class="rumi-flow" role="img" aria-label="A requested frame is located from the rumi header and read from the file.">
       <canvas id="rumi-flow" aria-hidden="true"></canvas>
       <figcaption>
         <span data-flow-step>request frame 17</span>
-        <span>external RUMI header &rarr; byte offset &rarr; OpenZL frame</span>
+        <span>rumi header &rarr; byte offset &rarr; OpenZL frame</span>
       </figcaption>
     </figure>
   </section>

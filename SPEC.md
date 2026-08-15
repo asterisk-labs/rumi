@@ -5,7 +5,7 @@
 - Date 2026-08-15
 - License GPLv3
 
-rumi is a raster file format with a predictable, GeoTIFF-inspired layout and a compact external **binary header**. The restricted file profile makes it possible for the header to contain everything needed to locate any frame directly, without first opening or parsing the rumi file. This makes access stateless, even across millions of files. See the [File profile](#file-profile) section for the full set of restrictions.
+rumi is a GeoTIFF-inspired raster format with an external **binary header**. The header locates every frame without parsing the rumi file.
 
 The filename extension for the format is `.rumi`.
 
@@ -349,7 +349,7 @@ The raster dimensions in pixels. These match `ImageWidth` and `ImageLength` in t
 
 The nominal tile dimensions in pixels. These match `TileWidth` and `TileLength` in the IFD.
 
-Each value MUST be between `1` and `65535`, the range of its `uint16` field. No alignment or multiple-of-16 restriction applies. Tiles need not be square. A tile dimension MAY exceed the corresponding image dimension, in which case the grid holds a single position.
+Both values MUST be greater than zero.
 
 The grid size follows from these and the image dimensions, as defined in [Frame index](#frame-index).
 
@@ -446,15 +446,6 @@ offset[k] = base_frame_offset
 ```
 
 The second term is a product and the third has no dependency between its terms, so reaching frame `k` does not require walking every frame before it.
-
-## Why rumi is not a GeoTIFF
-
-rumi uses the BigTIFF and GeoTIFF structures, but it is not a standard GeoTIFF. The following rules make it incompatible.
-
-- **Required TIFF tags are absent.** rumi omits `Compression` and `PhotometricInterpretation`. TIFF treats a missing `Compression` as uncompressed, so a TIFF reader would read OpenZL frames as raw samples.
-- **`PlanarConfiguration` is absent.** TIFF treats the missing tag as `1`, which sets the tile count to `tiles_across * tiles_down`. A tile-unit rumi file has `B` times that many, so a TIFF reader finds an entry count it does not expect. rumi omits the tag because its interleaving meaning describes the inside of a frame, which belongs to OpenZL.
-- **Edge tiles are cut rather than padded.** TIFF pads tiles on the right and bottom edges to the full tile dimensions. rumi stores only the pixels inside the image bounds.
-- **`SampleFormat` values `100` through `106` are rumi-specific.** They represent float8, bfloat16, float6, and float4 types that TIFF does not define.
 
 ## Changelog
 

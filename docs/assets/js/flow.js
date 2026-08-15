@@ -1,5 +1,4 @@
-// Shows the core rumi read path: choose a raster frame, reconstruct its byte
-// offset from the external RUMI header, then fetch that OpenZL frame directly.
+// Shows a frame lookup and read.
 
 (function (rumi) {
   'use strict';
@@ -176,7 +175,7 @@
         mint
       );
       label(
-        'EXTERNAL RUMI HEADER',
+        'RUMI HEADER',
         headerPanel.x + (compact ? 8 : 12),
         headerPanel.y + (compact ? 17 : 21),
         mint,

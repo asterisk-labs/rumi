@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="380" viewBox="0 0 1000 380" role="img" aria-label="rumi uses one fixed BigTIFF-derived container profile with tile or cell frames stored in frame-index order">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="380" viewBox="0 0 1000 380" role="img" aria-label="rumi has one container profile with tile and cell frame units.">
 <style>
 .mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
 .sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
 </style>
 <rect width="1000" height="380" fill="#FFFFFF"/>
 
-<!-- category headers, each pinned to one value -->
-<text class="mono" x="250" y="94" text-anchor="middle" font-size="13" fill="#1A1A1A">COMPRESS <tspan fill="#16A34A">&#215;1</tspan></text>
+<!-- profile fields -->
+<text class="mono" x="250" y="94" text-anchor="middle" font-size="13" fill="#1A1A1A">FRAME FORMAT <tspan fill="#16A34A">&#215;1</tspan></text>
 <text class="mono" x="460" y="94" text-anchor="middle" font-size="13" fill="#1A1A1A">FRAME UNIT <tspan fill="#16A34A">&#215;2</tspan></text>
 <text class="mono" x="660" y="94" text-anchor="middle" font-size="13" fill="#16A34A">ALL FIXED</text>
 
@@ -35,5 +35,5 @@
 <text class="sans" x="905" y="246" text-anchor="middle" font-size="18" fill="#1A1A1A">profile</text>
 
 <line x1="40" y1="336" x2="965" y2="336" stroke="#E5E7EB" stroke-width="1"/>
-<text class="sans" x="40" y="362" font-size="14" fill="#6B7280">One container profile; each frame holds either one band tile or one multi-band cell.</text>
+<text class="sans" x="40" y="362" font-size="14" fill="#6B7280">Tile and cell frames share the same container.</text>
 </svg>
