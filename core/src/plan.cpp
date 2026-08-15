@@ -7,6 +7,7 @@
 #include "openzl/zl_common_types.h"  // ZL_TernaryParam
 #include "openzl/zl_version.h"       // ZL_MAX_FORMAT_VERSION
 
+#include <algorithm>
 #include <atomic>
 #include <cstdarg>
 #include <mutex>
@@ -234,9 +235,23 @@ bool Executor::run(const Plan& plan) const
     };
 
     if (pool_ != nullptr && plan.tasks.size() > 1) {
+        // Submit one drain job per usable worker, not one std::function per
+        // tile. The atomic index keeps differently sized frames balanced while
+        // bounding queue allocations and mutex traffic by the thread count.
+        std::atomic<std::size_t> next{0};
+        const auto drain = [&] {
+            for (;;) {
+                if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
+                const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                if (i >= plan.tasks.size()) return;
+                run_one(plan.tasks[i]);
+            }
+        };
+
         ThreadPool::Batch batch(*pool_);
-        for (const TileTask& t : plan.tasks) {
-            batch.submit([&run_one, &t]() { run_one(t); });
+        const std::size_t workers = std::min(pool_->size(), plan.tasks.size());
+        for (std::size_t i = 0; i < workers; ++i) {
+            batch.submit(drain);
         }
         batch.wait();
     } else {
