@@ -18,26 +18,26 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::invalid_bits_per_sample:      return "invalid bits per sample";
         case ParseError::invalid_sample_format:        return "invalid sample format";
         case ParseError::invalid_dimensions:           return "invalid dimensions";
-        case ParseError::blob_size_mismatch:           return "blob size does not match tile count";
-        case ParseError::tile_count_overflow:          return "tile count overflows uint32";
-        case ParseError::tile_size_overflow:           return "tile byte size overflows size_t";
-        case ParseError::non_positive_tile_byte_count: return "tile byte count is zero";
+        case ParseError::blob_size_mismatch:           return "blob size does not match frame count";
+        case ParseError::frame_count_overflow:          return "frame count overflows uint32";
+        case ParseError::frame_size_overflow:           return "frame byte size overflows size_t";
+        case ParseError::non_positive_frame_byte_count: return "frame byte count is zero";
         case ParseError::invalid_frame_unit:           return "frame_unit is neither tile nor cell";
         case ParseError::invalid_count_bits:           return "count_bits above 32";
-        case ParseError::non_canonical_counts:         return "tile byte counts are not packed canonically";
-        case ParseError::count_overflow:               return "tile byte count does not fit in uint32";
+        case ParseError::non_canonical_counts:         return "frame byte counts are not packed canonically";
+        case ParseError::count_overflow:               return "frame byte count does not fit in uint32";
         case ParseError::offset_overflow:              return "reconstructed offsets overflow";
     }
     return "unknown parse error";
 }
 
 std::uint64_t derived_base_offset(std::uint32_t bands,
-                                  std::uint64_t tiles) noexcept
+                                  std::uint64_t frames) noexcept
 {
     std::uint64_t external = 128 + 32;                     // 34264 and 34735
     if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
-    if (tiles >= 2) external += 8 * tiles;                 // 324
-    if (tiles >= 3) external += 4 * tiles;                 // 325
+    if (frames >= 2) external += 8 * frames;               // 324
+    if (frames >= 3) external += 4 * frames;               // 325
     return 16 + (8 + 20 * 11 + 8) + external;
 }
 
@@ -103,14 +103,15 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
     return RUMI_DT_UNKNOWN;
 }
 
-// Whole-byte types give bits / 8, sub-byte is not a whole byte and gives 0.
+// Decoded numeric storage width. OpenZL pads a logical sub-byte sample to one
+// byte, the same representation the reader exports through DLPack.
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
     std::size_t n = 0;
     const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (t[i].code == static_cast<std::uint8_t>(dt)) {
-            return t[i].bits >= 8 ? t[i].bits / 8u : 0u;
+            return t[i].bits >= 8 ? t[i].bits / 8u : 1u;
         }
     }
     return 0;
@@ -165,67 +166,64 @@ parse_blob(std::span<const std::byte> blob)
     h.sample_format     = bh.sample_format;
     h.frame_unit        = bh.frame_unit;
     h.dtype             = dt;
-    // Codec element width, bytes for whole-byte types and 1 for packed sub-byte.
-    h.bytes_per_sample  = (bh.bits_per_sample >= 8)
-                        ? (bh.bits_per_sample / 8u) : 1u;
+    h.bytes_per_sample  = dtype_size(dt);
 
-    h.tiles_across = (bh.image_width  + bh.tile_width  - 1) / bh.tile_width;
-    h.tiles_down   = (bh.image_length + bh.tile_length - 1) / bh.tile_length;
+    h.tiles_across = 1 + (bh.image_width  - 1) / bh.tile_width;
+    h.tiles_down   = 1 + (bh.image_length - 1) / bh.tile_length;
 
     // A tile frame holds one band, a cell frame holds every band.
-    const auto tile_count_u64 = static_cast<std::uint64_t>(h.tiles_across)
-                              * static_cast<std::uint64_t>(h.tiles_down)
-                              * (bh.frame_unit == 0
-                                 ? static_cast<std::uint64_t>(bh.samples_per_pixel)
-                                 : 1u);
-    if (tile_count_u64 > std::numeric_limits<std::uint32_t>::max()) {
-        return std::unexpected(ParseError::tile_count_overflow);
+    const auto frame_count_u64 = static_cast<std::uint64_t>(h.tiles_across)
+                               * static_cast<std::uint64_t>(h.tiles_down)
+                               * (bh.frame_unit == 0
+                                  ? static_cast<std::uint64_t>(bh.samples_per_pixel)
+                                  : 1u);
+    if (frame_count_u64 > std::numeric_limits<std::uint32_t>::max()) {
+        return std::unexpected(ParseError::frame_count_overflow);
     }
-    h.tile_count = static_cast<std::uint32_t>(tile_count_u64);
+    h.frame_count = static_cast<std::uint32_t>(frame_count_u64);
 
-    const auto tile_bits_u64 = static_cast<std::uint64_t>(bh.tile_width)
-                             * static_cast<std::uint64_t>(bh.tile_length)
-                             * static_cast<std::uint64_t>(bh.bits_per_sample)
-                             * (bh.frame_unit == 0
-                                ? 1u
-                                : static_cast<std::uint64_t>(bh.samples_per_pixel));
-    if (tile_bits_u64 % 8u != 0u) {
-        return std::unexpected(ParseError::invalid_bits_per_sample);
+    // OpenZL's numeric output has a whole-byte fixedWidth. Sub-byte logical
+    // dtypes therefore decode padded, one byte per sample; DLPack advertises
+    // that representation with its sub-byte-padded flag.
+    const auto frame_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width)
+                               * static_cast<std::uint64_t>(bh.tile_length)
+                               * static_cast<std::uint64_t>(h.bytes_per_sample)
+                               * (bh.frame_unit == 0
+                                  ? 1u
+                                  : static_cast<std::uint64_t>(bh.samples_per_pixel));
+    if (frame_bytes_u64 > std::numeric_limits<std::size_t>::max()) {
+        return std::unexpected(ParseError::frame_size_overflow);
     }
-    const auto tile_bytes_u64 = tile_bits_u64 / 8u;
-    if (tile_bytes_u64 > std::numeric_limits<std::size_t>::max()) {
-        return std::unexpected(ParseError::tile_size_overflow);
-    }
-    h.max_tile_size = static_cast<std::size_t>(tile_bytes_u64);
+    h.max_frame_size = static_cast<std::size_t>(frame_bytes_u64);
 
     if (bh.count_bits > 32) {
         return std::unexpected(ParseError::invalid_count_bits);
     }
 
     const auto packed_bytes = static_cast<std::size_t>(
-        (std::uint64_t(h.tile_count) * bh.count_bits + 7) / 8);
+        (std::uint64_t(h.frame_count) * bh.count_bits + 7) / 8);
     if (blob.size() != HEADER_SIZE + packed_bytes) {
         return std::unexpected(ParseError::blob_size_mismatch);
     }
 
-    h.base_tiles_offset = derived_base_offset(bh.samples_per_pixel, h.tile_count);
+    h.base_frame_offset = derived_base_offset(bh.samples_per_pixel, h.frame_count);
 
     const auto* packed = reinterpret_cast<const unsigned char*>(blob.data())
                        + HEADER_SIZE;
     const std::uint64_t mask = bh.count_bits == 0
                              ? 0 : (~0ull >> (64 - bh.count_bits));
 
-    h.tile_byte_counts.resize(h.tile_count);
-    h.tile_offsets.resize(h.tile_count);
+    h.frame_byte_counts.resize(h.frame_count);
+    h.frame_offsets.resize(h.frame_count);
 
     // Prefix sum over the contiguous run, unpacking as it goes. seen_low and
     // seen_any come out of the same pass and settle whether the writer packed
     // canonically.
-    std::uint64_t offset   = h.base_tiles_offset;
+    std::uint64_t offset   = h.base_frame_offset;
     std::uint64_t seen_low = ~0ull;
     std::uint64_t seen_any = 0;
 
-    for (std::uint32_t i = 0; i < h.tile_count; ++i) {
+    for (std::uint32_t i = 0; i < h.frame_count; ++i) {
         const std::uint64_t at   = std::uint64_t(i) * bh.count_bits;
         const std::size_t   byte = static_cast<std::size_t>(at / 8);
         const std::size_t   have = packed_bytes - byte;
@@ -241,14 +239,14 @@ parse_blob(std::span<const std::byte> blob)
 
         const std::uint64_t count = std::uint64_t(bh.count_min) + residual;
         if (count == 0) {
-            return std::unexpected(ParseError::non_positive_tile_byte_count);
+            return std::unexpected(ParseError::non_positive_frame_byte_count);
         }
         if (count > std::numeric_limits<std::uint32_t>::max()) {
             return std::unexpected(ParseError::count_overflow);
         }
 
-        h.tile_byte_counts[i] = static_cast<std::uint32_t>(count);
-        h.tile_offsets[i]     = offset;
+        h.frame_byte_counts[i] = static_cast<std::uint32_t>(count);
+        h.frame_offsets[i]     = offset;
 
         if (offset > std::numeric_limits<std::uint64_t>::max() - count) {
             return std::unexpected(ParseError::offset_overflow);
@@ -260,14 +258,14 @@ parse_blob(std::span<const std::byte> blob)
     // and a column of them stops deduplicating. The smallest residual is zero
     // when count_min was the real minimum, and the or of them all carries the
     // top bit of the largest.
-    if (h.tile_count > 0) {
+    if (h.frame_count > 0) {
         if (seen_low != 0) return std::unexpected(ParseError::non_canonical_counts);
         if (std::bit_width(seen_any) != bh.count_bits) {
             return std::unexpected(ParseError::non_canonical_counts);
         }
     }
     const auto spare = static_cast<unsigned>(
-        packed_bytes * 8 - std::uint64_t(h.tile_count) * bh.count_bits);
+        packed_bytes * 8 - std::uint64_t(h.frame_count) * bh.count_bits);
     if (spare != 0 && (packed[packed_bytes - 1] >> (8 - spare)) != 0) {
         return std::unexpected(ParseError::non_canonical_counts);
     }

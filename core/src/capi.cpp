@@ -335,7 +335,7 @@ void fill_header(const rumi::Header& h, rumi_header* out)
     out->dtype             = h.dtype;
     out->tiles_across      = h.tiles_across;
     out->tiles_down        = h.tiles_down;
-    out->base_tiles_offset = h.base_tiles_offset;
+    out->base_frame_offset = h.base_frame_offset;
 }
 
 }  // namespace

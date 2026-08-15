@@ -123,7 +123,7 @@ geo_entries(const WriteDesc& d)
 
 
 std::vector<Entry>
-base_entries(const WriteDesc& d, std::uint64_t tile_count,
+base_entries(const WriteDesc& d, std::uint64_t frame_count,
              std::uint8_t sf, std::uint8_t bits,
              const std::vector<std::uint32_t>& counts_pm)
 {
@@ -135,7 +135,7 @@ base_entries(const WriteDesc& d, std::uint64_t tile_count,
     e.push_back(pack(277, T_SHORT, {spp}));
     e.push_back(pack(322, T_SHORT, {d.tile_size}));
     e.push_back(pack(323, T_SHORT, {d.tile_size}));
-    e.push_back(Entry{TAG_TILE_OFFSETS, T_LONG8, tile_count, {}});
+    e.push_back(Entry{TAG_TILE_OFFSETS, T_LONG8, frame_count, {}});
     e.push_back(pack(325, T_LONG, counts_pm));
     e.push_back(pack(339, T_SHORT, std::vector<std::uint16_t>(spp, sf)));
     return e;
@@ -160,7 +160,7 @@ std::uint64_t place_external(const std::vector<Entry>& entries,
 struct Grid {
     std::uint32_t across;
     std::uint32_t down;
-    std::uint64_t tiles;
+    std::uint64_t frames;
     std::uint8_t  sample_format;
     std::uint8_t  bits;
 };
@@ -170,8 +170,8 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
     if (d.image_width == 0 || d.image_length == 0)
         return err("image is %ux%u, both dimensions must be non-zero",
                    d.image_width, d.image_length);
-    if (d.tile_size < 16 || d.tile_size % 16)
-        return err("tile_size must be a multiple of 16, got %u", d.tile_size);
+    if (d.tile_size == 0)
+        return err("tile_size must be at least 1");
     if (d.samples_per_pixel == 0)
         return err("samples_per_pixel must be at least 1");
     if (d.frame_unit > 1)
@@ -184,21 +184,21 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
     if (!sample_encoding(d.dtype, &g.sample_format, &g.bits))
         return err("unknown dtype %d", static_cast<int>(d.dtype));
 
-    g.across = (d.image_width  + d.tile_size - 1) / d.tile_size;
-    g.down   = (d.image_length + d.tile_size - 1) / d.tile_size;
+    g.across = 1 + (d.image_width  - 1) / d.tile_size;
+    g.down   = 1 + (d.image_length - 1) / d.tile_size;
     // A tile frame holds one band, a cell frame holds every band.
-    g.tiles  = std::uint64_t(g.across) * g.down
+    g.frames = std::uint64_t(g.across) * g.down
              * (d.frame_unit == 0 ? d.samples_per_pixel : 1);
-    if (g.tiles > 0xFFFFFFFFu)
-        return err("tile count overflows uint32: %llu",
-                   static_cast<unsigned long long>(g.tiles));
+    if (g.frames > 0xFFFFFFFFu)
+        return err("frame count overflows uint32: %llu",
+                   static_cast<unsigned long long>(g.frames));
     return g;
 }
 
 constexpr std::uint64_t IFD_OFFSET = 16;
 
 // The IFD in tag order, plus where each out-of-line value goes and the offset
-// the tile data starts at. TileOffsets comes back unpacked, it needs the base.
+// the frame data starts at. TileOffsets comes back unpacked, it needs the base.
 struct Layout {
     std::vector<Entry>         entries;
     std::vector<std::uint64_t> external;
@@ -210,7 +210,7 @@ plan(const WriteDesc& d, const Grid& g,
      const std::vector<std::uint32_t>& counts_pm)
 {
     Layout l;
-    l.entries = base_entries(d, g.tiles, g.sample_format, g.bits, counts_pm);
+    l.entries = base_entries(d, g.frames, g.sample_format, g.bits, counts_pm);
 
     auto geo = geo_entries(d);
     if (!geo) return std::unexpected(geo.error());
@@ -239,7 +239,7 @@ try {
     if (!g) return std::unexpected(g.error());
 
     // Only the length of the byte-count tag matters here, not the values.
-    const std::vector<std::uint32_t> counts(static_cast<std::size_t>(g->tiles));
+    const std::vector<std::uint32_t> counts(static_cast<std::size_t>(g->frames));
     auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
     return l->base;
@@ -257,22 +257,22 @@ try {
     auto g = grid_of(d);
     if (!g) return std::unexpected(g.error());
 
-    if (frame_count != g->tiles)
+    if (frame_count != g->frames)
         return err("expected %llu frames for this grid, got %zu",
-                   static_cast<unsigned long long>(g->tiles), frame_count);
+                   static_cast<unsigned long long>(g->frames), frame_count);
 
     for (std::size_t i = 0; i < frame_count; ++i) {
         if (!frames[i])
-            return err("tile %zu is null", i);
+            return err("frame %zu is null", i);
         if (sizes[i] == 0)
-            return err("tile %zu has an empty payload, rumi forbids sparse tiles", i);
+            return err("frame %zu has an empty payload, rumi forbids sparse frames", i);
         if (sizes[i] > 0xFFFFFFFFu)
-            return err("tile %zu is %zu bytes, over the uint32 the header holds",
+            return err("frame %zu is %zu bytes, over the uint32 the header holds",
                        i, sizes[i]);
     }
 
     const std::uint16_t spp = d.samples_per_pixel;
-    const auto n = static_cast<std::size_t>(g->tiles);
+    const auto n = static_cast<std::size_t>(g->frames);
 
     std::vector<std::uint32_t> counts(n);
     for (std::size_t i = 0; i < n; ++i)
@@ -281,7 +281,7 @@ try {
     auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
 
-    // Tile data is one contiguous run in frame order, so the offsets fall out
+    // Frame data is one contiguous run in frame order, so the offsets fall out
     // of the sizes and only their permutation reaches the tag.
     std::vector<std::uint64_t> offsets(n);
     std::uint64_t running = l->base;
@@ -354,7 +354,7 @@ try {
     // place_external walks the entries it is about to write. Readers use the
     // closed form and never see them. Nothing else checks that the two agree.
     if (l->base != derived_base_offset(spp, n)) {
-        return err("laid the tiles at %llu, the profile puts them at %llu",
+        return err("laid the frames at %llu, the profile puts them at %llu",
                    static_cast<unsigned long long>(l->base),
                    static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }

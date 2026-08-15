@@ -98,7 +98,8 @@ int env_threads() noexcept
 // One atomic word keeps the owner PID, count and pinned bit coherent. A child
 // after fork sees a different PID and seeds a new process-local setting instead
 // of inheriting the parent's EDA budget. The low 31 bits hold the count, which
-// is capped far below that; bit 31 means a live pool has claimed the count.
+// is capped far below that; bit 31 means a parallel read reserved the count.
+// A failed pool construction clears that reservation before another build.
 constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
 constexpr std::uint32_t PINNED       = 0x80000000u;
 
@@ -182,6 +183,20 @@ int pin_num_threads(int requested) noexcept
     }
 }
 
+// Called while the process-owned pool mutex is still held. No other builder
+// can publish a pool between a constructor failure and this rollback.
+void rollback_pin_num_threads(unsigned threads) noexcept
+{
+    const std::uint32_t pid = pid_key();
+    std::uint64_t expected = pack_thread_state(
+        pid, static_cast<int>(threads), true);
+    const std::uint64_t desired = pack_thread_state(
+        pid, static_cast<int>(threads), false);
+    (void) g_thread_state.compare_exchange_strong(
+        expected, desired, std::memory_order_acq_rel,
+        std::memory_order_acquire);
+}
+
 // A read that names no count takes the process-wide one. 1 stays on the calling
 // thread and never builds the pool, which is what keeps a worker that asks for
 // one from fixing the size for the whole process.
@@ -196,12 +211,27 @@ ThreadPool* pool_for(int requested, std::size_t tasks)
         return nullptr;
     }
 
-    const int want = pin_num_threads(requested);
-    if (want <= 1) return nullptr;
-    return &global_thread_pool(static_cast<unsigned>(want));
+    return global_thread_pool(
+        [requested] { return detail::reserve_thread_count(requested); },
+        [](unsigned threads) { detail::rollback_thread_count(threads); });
 }
 
 }  // namespace
+
+
+namespace detail {
+
+int reserve_thread_count(int requested) noexcept
+{
+    return pin_num_threads(requested);
+}
+
+void rollback_thread_count(unsigned threads) noexcept
+{
+    rollback_pin_num_threads(threads);
+}
+
+}  // namespace detail
 
 
 int set_num_threads(int n) noexcept
@@ -242,7 +272,7 @@ check_data_fits(const Header& h, const Source& src)
     const std::uint64_t size = src.size();
     const std::uint64_t need = h.data_end();
     if (need > size) {
-        return errf("tile data needs %llu bytes, source has %llu",
+        return errf("frame data needs %llu bytes, source has %llu",
                     static_cast<unsigned long long>(need),
                     static_cast<unsigned long long>(size));
     }
@@ -332,17 +362,17 @@ MemorySource::read(std::uint64_t offset, std::size_t count, void* buffer) noexce
 }
 
 
-TileSpec make_tile_spec(const Header& h) noexcept
+FrameSpec make_frame_spec(const Header& h) noexcept
 {
-    return TileSpec{
+    return FrameSpec{
         h.tile_width,
         h.tile_length,
         static_cast<std::uint8_t>(h.bytes_per_sample),
-        h.max_tile_size,
+        h.max_frame_size,
     };
 }
 
-// One TileTask per intersecting (tile, band). A full tile with contiguous
+// One FrameTask per intersecting frame. A full spatial tile with contiguous
 // output decodes straight into the buffer; the rest goes through scratch.
 Plan build_plan(const Header& h, Source* source,
                 int x_off, int y_off, int x_size, int y_size,
@@ -373,7 +403,7 @@ Plan build_plan(const Header& h, Source* source,
     const bool cell = h.frame_unit == 1;
 
     Plan plan;
-    plan.spec = make_tile_spec(h);
+    plan.spec = make_frame_spec(h);
     plan.plane_index.resize(static_cast<std::size_t>(band_count));
     for (int i = 0; i < band_count; ++i) {
         plan.plane_index[static_cast<std::size_t>(i)] =
@@ -405,14 +435,14 @@ Plan build_plan(const Header& h, Source* source,
 
             const std::size_t plane_bytes = static_cast<std::size_t>(ex_w)
                                           * static_cast<std::size_t>(ex_h) * bps;
-            const std::size_t tile_bytes = cell
+            const std::size_t frame_bytes = cell
                 ? plane_bytes * h.samples_per_pixel : plane_bytes;
 
             const int steps = cell ? 1 : band_count;
             for (int i = 0; i < steps; ++i) {
                 const auto band = static_cast<std::uint32_t>(
                     cell ? 0 : bands[i] - 1);
-                const std::uint32_t idx = h.tile_index(
+                const std::uint32_t idx = h.frame_index(
                     static_cast<std::uint32_t>(ty),
                     static_cast<std::uint32_t>(tx),
                     band);
@@ -422,12 +452,12 @@ Plan build_plan(const Header& h, Source* source,
                     + static_cast<std::int64_t>(ix0 - x_off) * pixel_space
                     + static_cast<std::int64_t>(cell ? 0 : i) * band_space;
 
-                TileTask task{};
+                FrameTask task{};
                 task.source          = source;
-                task.offset          = h.tile_offset(idx);
-                task.compressed_size = h.tile_byte_counts[idx];
-                task.tile_w          = static_cast<std::uint32_t>(ex_w);
-                task.tile_bytes      = tile_bytes;
+                task.offset          = h.frame_offset(idx);
+                task.compressed_size = h.frame_byte_counts[idx];
+                task.frame_width     = static_cast<std::uint32_t>(ex_w);
+                task.frame_bytes     = frame_bytes;
                 task.plane_bytes     = plane_bytes;
                 task.planes          = plan.plane_index.data();
                 task.plane_count     = static_cast<std::uint32_t>(
@@ -473,8 +503,8 @@ plan_ranges(const Header& h, std::span<const int> bands,
             for (std::size_t k = 0; k < per_pos; ++k) {
                 const auto band = static_cast<std::uint32_t>(
                     cell ? 0 : bands[k] - 1);
-                const std::uint32_t i = h.tile_index(row, col, band);
-                out.push_back({h.tile_offsets[i], h.tile_byte_counts[i]});
+                const std::uint32_t i = h.frame_index(row, col, band);
+                out.push_back({h.frame_offsets[i], h.frame_byte_counts[i]});
             }
         }
     }
@@ -579,7 +609,7 @@ read_stack(std::span<Source* const> sources,
     const std::size_t n_stride = static_cast<std::size_t>(layout.sn) * bps;
 
     Plan plan;
-    plan.spec = make_tile_spec(ref);
+    plan.spec = make_frame_spec(ref);
 
     for (std::size_t k = 0; k < n_index.size(); ++k) {
         const std::size_t i = static_cast<std::size_t>(n_index[k] - 1);
@@ -598,7 +628,7 @@ read_stack(std::span<Source* const> sources,
         // sub dies at the end of the loop, so repoint at the merged plan's
         // copy. Every image shares the band request.
         if (plan.plane_index.empty()) plan.plane_index = sub.plane_index;
-        for (TileTask& t : sub.tasks) {
+        for (FrameTask& t : sub.tasks) {
             t.image  = static_cast<std::uint32_t>(n_index[k]);
             t.planes = plan.plane_index.data();
         }

@@ -20,7 +20,7 @@
 namespace rumi {
 namespace {
 
-// Per-thread decode context and scratch, reused across tiles. Grows only.
+// Per-thread decode context and scratch, reused across frames. Grows only.
 struct WorkerState {
     ZL_DCtx*               dctx = ZL_DCtx_create();
     std::vector<std::byte> compressed;
@@ -46,8 +46,8 @@ WorkerState& worker_state() noexcept
 }
 
 // A one-sample pixel stride is a contiguous row, a larger one has another
-// axis inner, so copy pixel by pixel. src_pitch is the tile's real width.
-void copy_one_plane(const TileTask& t, std::size_t bps, std::size_t src_pitch,
+// axis inner, so copy pixel by pixel. src_pitch is the frame's real width.
+void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
                     const std::byte* plane, std::byte* dst) noexcept
 {
     if (t.dst_pixel_stride == bps) {
@@ -75,15 +75,15 @@ void copy_one_plane(const TileTask& t, std::size_t bps, std::size_t src_pitch,
 }
 
 // The frame is decoded once, so every band comes out of the one buffer.
-void copy_rect(const TileTask& t, const TileSpec& spec,
-               const std::byte* tile) noexcept
+void copy_rect(const FrameTask& t, const FrameSpec& spec,
+               const std::byte* frame) noexcept
 {
     const std::size_t bps       = spec.bytes_per_sample;
-    const std::size_t src_pitch = static_cast<std::size_t>(t.tile_w) * bps;
+    const std::size_t src_pitch = static_cast<std::size_t>(t.frame_width) * bps;
 
     for (std::uint32_t k = 0; k < t.plane_count; ++k) {
         copy_one_plane(t, bps, src_pitch,
-                       tile + static_cast<std::size_t>(t.planes[k]) * t.plane_bytes,
+                       frame + static_cast<std::size_t>(t.planes[k]) * t.plane_bytes,
                        t.dst + static_cast<std::int64_t>(k) * t.band_space);
     }
 }
@@ -115,7 +115,7 @@ void say(std::string& out, const char* fmt, ...) noexcept
     try { out = std::string(buf); } catch (...) { out.clear(); }
 }
 
-rumi_status execute_task(const TileTask& t, const TileSpec& spec,
+rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
                          std::string& msg) noexcept
 {
     char img[24] = "";
@@ -148,26 +148,26 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec,
         return RUMI_ERR_IO;
     }
 
-    // Full tile decodes into the output, a partial one into scratch for
+    // A complete spatial frame decodes into the output, a partial one into scratch for
     // copy_rect. Numeric decode needs element-width alignment, which both hold.
-    std::byte* tile = t.direct;
-    if (!tile) {
-        if (ws.scratch.size() < spec.tile_bytes) {
+    std::byte* frame = t.direct;
+    if (!frame) {
+        if (ws.scratch.size() < spec.frame_bytes) {
             try {
-                ws.scratch.resize(spec.tile_bytes);
+                ws.scratch.resize(spec.frame_bytes);
             } catch (const std::bad_alloc&) {
-                say(msg, "rumi: out of memory growing tile scratch");
+                say(msg, "rumi: out of memory growing frame scratch");
                 return RUMI_ERR_OOM;
             }
         }
-        tile = ws.scratch.data();
+        frame = ws.scratch.data();
     }
 
-    // One frame per tile, one numeric output. Type, width and size are checked
-    // below against this tile's real size.
+    // One numeric output per frame. Type, width and size are checked below
+    // against this frame's real decoded size.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
-        ws.dctx, &info, tile, t.tile_bytes,
+        ws.dctx, &info, frame, t.frame_bytes,
         ws.compressed.data(), t.compressed_size);
 
     if (ZL_isError(rep)) {
@@ -185,18 +185,18 @@ rumi_status execute_task(const TileTask& t, const TileSpec& spec,
     }
     if (info.type != ZL_Type_numeric ||
         info.fixedWidth != spec.bytes_per_sample ||
-        info.decompressedByteSize != t.tile_bytes) {
-        say(msg, "rumi: unexpected tile output (type %u, width %u, size %llu; "
+        info.decompressedByteSize != t.frame_bytes) {
+        say(msg, "rumi: unexpected frame output (type %u, width %u, size %llu; "
             "expected numeric width %u, size %llu)%s",
             static_cast<unsigned>(info.type),
             static_cast<unsigned>(info.fixedWidth),
             static_cast<unsigned long long>(info.decompressedByteSize),
             static_cast<unsigned>(spec.bytes_per_sample),
-            static_cast<unsigned long long>(t.tile_bytes), img);
+            static_cast<unsigned long long>(t.frame_bytes), img);
         return RUMI_ERR_DECODE;
     }
 
-    if (!t.direct) copy_rect(t, spec, tile);
+    if (!t.direct) copy_rect(t, spec, frame);
     return RUMI_OK;
 }
 
@@ -220,7 +220,7 @@ bool Executor::run(const Plan& plan) const
     std::atomic<int> st{RUMI_OK};
     std::mutex       first;
 
-    const auto run_one = [&st, &first, this, &plan](const TileTask& t) {
+    const auto run_one = [&st, &first, this, &plan](const FrameTask& t) {
         if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
         std::string msg;
         const rumi_status r = execute_task(t, plan.spec, msg);
@@ -236,7 +236,7 @@ bool Executor::run(const Plan& plan) const
 
     if (pool_ != nullptr && plan.tasks.size() > 1) {
         // Submit one drain job per usable worker, not one std::function per
-        // tile. The atomic index keeps differently sized frames balanced while
+        // frame. The atomic index keeps differently sized frames balanced while
         // bounding queue allocations and mutex traffic by the thread count.
         std::atomic<std::size_t> next{0};
         const auto drain = [&] {
@@ -255,7 +255,7 @@ bool Executor::run(const Plan& plan) const
         }
         batch.wait();
     } else {
-        for (const TileTask& t : plan.tasks) {
+        for (const FrameTask& t : plan.tasks) {
             run_one(t);
             if (st.load(std::memory_order_relaxed) != RUMI_OK) break;
         }

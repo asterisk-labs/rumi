@@ -62,9 +62,9 @@ enum class ParseError {
     invalid_frame_unit,
     invalid_dimensions,
     blob_size_mismatch,
-    tile_count_overflow,
-    tile_size_overflow,
-    non_positive_tile_byte_count,
+    frame_count_overflow,
+    frame_size_overflow,
+    non_positive_frame_byte_count,
     offset_overflow,
     invalid_count_bits,
     non_canonical_counts,
@@ -73,12 +73,12 @@ enum class ParseError {
 
 [[nodiscard]] std::string_view describe(ParseError e) noexcept;
 
-// Where the profile puts the tile data, from the shape alone. The tag set never
+// Where the profile puts the frame data, from the shape alone. The tag set never
 // changes, so the only thing to add up is the values too big to sit inside
-// their own IFD entry. Writers place the tiles here, readers seek here, and
+// their own IFD entry. Writers place the frames here, readers seek here, and
 // nothing stores it.
 [[nodiscard]] std::uint64_t derived_base_offset(std::uint32_t bands,
-                                                std::uint64_t tiles) noexcept;
+                                                std::uint64_t frames) noexcept;
 
 // The two header fields that describe the packing, and the size of the region
 // they describe. One implementation so the two write paths cannot drift.
@@ -104,40 +104,40 @@ struct Header {
     std::uint8_t  bits_per_sample{};
     std::uint8_t  sample_format{};
     std::uint8_t  frame_unit{};
-    std::uint64_t base_tiles_offset{};
+    std::uint64_t base_frame_offset{};
 
     std::uint32_t tiles_across{};
     std::uint32_t tiles_down{};
-    std::uint32_t tile_count{};
+    std::uint32_t frame_count{};
     std::size_t   bytes_per_sample{};
-    std::size_t   max_tile_size{};
+    std::size_t   max_frame_size{};
     rumi_dtype    dtype{RUMI_DT_UNKNOWN};
 
-    std::vector<std::uint32_t> tile_byte_counts;
-    std::vector<std::uint64_t> tile_offsets;
+    std::vector<std::uint32_t> frame_byte_counts;
+    std::vector<std::uint64_t> frame_offsets;
 
-    [[nodiscard]] std::uint64_t tile_offset(std::uint32_t i) const noexcept {
-        return tile_offsets[i];
+    [[nodiscard]] std::uint64_t frame_offset(std::uint32_t i) const noexcept {
+        return frame_offsets[i];
     }
 
-    // Byte just past the last tile. The file must be at least this large.
+    // Byte just past the last frame. The file must be at least this large.
     [[nodiscard]] std::uint64_t data_end() const noexcept {
-        return tile_offsets.empty()
-             ? base_tiles_offset
-             : tile_offsets.back() + tile_byte_counts.back();
+        return frame_offsets.empty()
+             ? base_frame_offset
+             : frame_offsets.back() + frame_byte_counts.back();
     }
 
     // Cell frames hold every band, so band is ignored there and the index is
     // the grid position alone.
-    [[nodiscard]] std::uint32_t tile_index(std::uint32_t row,
-                                           std::uint32_t col,
-                                           std::uint32_t band) const noexcept {
+    [[nodiscard]] std::uint32_t frame_index(std::uint32_t row,
+                                            std::uint32_t col,
+                                            std::uint32_t band) const noexcept {
         const std::uint32_t spatial = row * tiles_across + col;
         return frame_unit == 0 ? spatial * samples_per_pixel + band : spatial;
     }
 };
 
-// Allocates the tile arrays, so not noexcept. Format errors use ParseError.
+// Allocates the frame arrays, so not noexcept. Format errors use ParseError.
 [[nodiscard]] std::expected<Header, ParseError>
 parse_blob(std::span<const std::byte> blob);
 
@@ -163,7 +163,7 @@ struct Range {
     std::uint64_t length;
 };
 
-// Where tile bytes come from. read() runs on every worker at once, so an
+// Where frame bytes come from. read() runs on every worker at once, so an
 // implementation has to be safe under concurrent calls.
 class Source {
 public:
@@ -219,25 +219,24 @@ private:
 
 // Plan / Executor
 
-struct TileSpec {
+struct FrameSpec {
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint8_t  bytes_per_sample;
-    std::size_t   tile_bytes;  // full tile size, the scratch bound; a tile's
-                               // real size is in TileTask::tile_bytes
+    std::size_t   frame_bytes;  // largest decoded frame, the scratch bound;
+                                // each task carries its actual edge size
 };
 
-// One tile, single band. When direct is set the tile decompresses straight into
-// the output; otherwise it lands in scratch and the w x h rect is copied to dst
-// with dst_pitch per row and dst_pixel_stride per pixel. All positions are in
-// the result buffer, never the disk layout. tile_w and tile_bytes are this
-// tile's real width and decoded size, smaller than a full tile at the edges.
-struct TileTask {
+// One compressed frame. When direct is set it decompresses straight into the
+// output; otherwise it lands in scratch and the w x h rect is copied to dst.
+// All positions are in the result buffer, never the disk layout. frame_width
+// and frame_bytes carry the actual edge dimensions, not the nominal tile size.
+struct FrameTask {
     Source*       source;
     std::uint64_t offset;
     std::uint32_t compressed_size;
-    std::uint32_t tile_w;
-    std::size_t   tile_bytes;
+    std::uint32_t frame_width;
+    std::size_t   frame_bytes;
     std::size_t   plane_bytes;
     std::byte*    direct;
     std::byte*    dst;
@@ -255,9 +254,9 @@ struct TileTask {
 };
 
 struct Plan {
-    std::vector<TileTask> tasks;
-    TileSpec              spec;
-    // Backs TileTask::planes, one entry per requested band.
+    std::vector<FrameTask> tasks;
+    FrameSpec              spec;
+    // Backs FrameTask::planes, one entry per requested band.
     std::vector<std::uint32_t> plane_index;
 };
 
@@ -278,9 +277,9 @@ private:
     mutable rumi_status status_{RUMI_OK};
 };
 
-[[nodiscard]] TileSpec make_tile_spec(const Header& h) noexcept;
+[[nodiscard]] FrameSpec make_frame_spec(const Header& h) noexcept;
 
-// Maps a window/band/stride request onto TileTasks. Callers validate the
+// Maps a window/band/stride request onto FrameTasks. Callers validate the
 // window and band indices (1-based) beforehand. The reader is shared by every
 // task and must outlive the run.
 [[nodiscard]] Plan
@@ -318,10 +317,11 @@ compile_layout(std::string_view pattern,
 // Threads
 
 // The count a read takes when it names none. Process-wide, seeded from
-// RUMI_NUM_THREADS. Once the pool exists its size is the answer and set is a
-// no-op, since resizing means joining workers with frames in flight. Both
-// return the count in effect after the call, so a caller sees a refused set. A
-// forked child starts a new process-owned setting and pool.
+// RUMI_NUM_THREADS. The first parallel read pins that count while it constructs
+// the pool; a later set is a no-op because resizing would mean joining workers
+// with frames in flight. Both return the process state after the call, so a
+// caller sees a refused set. A forked child starts a new process-owned setting
+// and pool.
 int set_num_threads(int n) noexcept;
 [[nodiscard]] int num_threads() noexcept;
 
@@ -333,12 +333,12 @@ int set_num_threads(int n) noexcept;
 // without changing the read_window error type. Defaults to RUMI_ERR_IO.
 [[nodiscard]] rumi_status take_read_status() noexcept;
 
-// Rejects a header whose tiles run past the end of the source, a truncated file
-// or a blob with inflated byte counts, before any tile buffer is allocated.
+// Rejects a header whose frames run past the end of the source, a truncated file
+// or a blob with inflated byte counts, before any frame buffer is allocated.
 [[nodiscard]] std::expected<void, std::string>
 check_data_fits(const Header& h, const Source& src);
 
-// The byte ranges a window needs, in tile order. Arithmetic over the header
+// The byte ranges a window needs, in frame order. Arithmetic over the header
 // alone, no I/O, so a caller can fetch just these and pass them to a
 // MemorySource.
 [[nodiscard]] std::vector<Range>
@@ -420,14 +420,14 @@ struct WriteDesc {
 };
 
 // Writes the BigTIFF and returns the sidecar blob for it. frames are the
-// compressed tiles in frame order, row then column then sample, sample
-// innermost, which is also the order they land in the file.
+// compressed payloads in frame order. For tile frames the order is row,
+// column, sample with sample innermost; cell frames are row then column.
 [[nodiscard]] std::expected<std::vector<std::byte>, std::string>
 write_file(const char* path, const WriteDesc& desc,
            const unsigned char* const* frames, const std::size_t* sizes,
            std::size_t frame_count) noexcept;
 
-// Where the tile data would start for this description, without writing. Builds
+// Where the frame data would start for this description, without writing. Builds
 // the geo tags to measure them, same as write_file.
 [[nodiscard]] std::expected<std::uint64_t, std::string>
 base_offset(const WriteDesc& desc) noexcept;

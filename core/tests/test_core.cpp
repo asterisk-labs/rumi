@@ -5,11 +5,21 @@
 #include "rumi/thread_pool.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <new>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
+
+#ifndef _WIN32
+#  include <csignal>
+#  include <sys/wait.h>
+#  include <unistd.h>
+#endif
 
 namespace {
 
@@ -81,7 +91,9 @@ const double ROTATED[6]  = {30.0, 5.0, 500000.0, 5.0, -30.0, 8000000.0};
 
 std::vector<std::byte> make_blob(std::uint32_t w, std::uint32_t h,
                                  std::uint16_t tile, std::uint16_t bands,
-                                 const std::vector<std::uint32_t>& counts)
+                                 const std::vector<std::uint32_t>& counts,
+                                 std::uint8_t bits = 16,
+                                 std::uint8_t sample_format = 1)
 {
     const rumi::CountPacking cp = rumi::plan_counts(counts);
 
@@ -94,8 +106,8 @@ std::vector<std::byte> make_blob(std::uint32_t w, std::uint32_t h,
     bh.tile_width        = tile;
     bh.tile_length       = tile;
     bh.samples_per_pixel = bands;
-    bh.bits_per_sample   = 16;
-    bh.sample_format     = 1;
+    bh.bits_per_sample   = bits;
+    bh.sample_format     = sample_format;
     bh.count_min         = cp.min;
     bh.count_bits        = cp.bits;
     std::memcpy(blob.data(), &bh, rumi::HEADER_SIZE);
@@ -145,14 +157,16 @@ void test_georeferencing_does_not_change_the_size()
     }
 }
 
-void test_base_offset_rejects_a_bad_tile_size()
+void test_base_offset_accepts_unaligned_tile_sizes()
 {
-    CASE("tile dimensions must be a multiple of 16")
-    for (std::uint16_t bad : {std::uint16_t(0), std::uint16_t(8),
-                              std::uint16_t(17), std::uint16_t(100)}) {
-        OK(!rumi::base_offset(desc_of(64, 64, bad, 1, nullptr, 0)).has_value());
+    CASE("tile dimensions need no TIFF alignment")
+    OK(!rumi::base_offset(desc_of(64, 64, 0, 1, nullptr, 0)).has_value());
+    for (std::uint16_t good : {std::uint16_t(1), std::uint16_t(8),
+                               std::uint16_t(17), std::uint16_t(100),
+                               std::uint16_t(65535)}) {
+        OK(rumi::base_offset(
+            desc_of(64, 64, good, 1, nullptr, 0)).has_value());
     }
-    OK(rumi::base_offset(desc_of(64, 64, 16, 1, nullptr, 0)).has_value());
 }
 
 void test_geokeys()
@@ -204,30 +218,39 @@ void test_parse_blob()
     if (h) {
         EQ(h->tiles_across, 2u);
         EQ(h->tiles_down, 2u);
-        EQ(h->tile_count, 4u);
+        EQ(h->frame_count, 4u);
         EQ(h->bytes_per_sample, std::size_t(2));
-        EQ(h->base_tiles_offset, rumi::derived_base_offset(1, 4));
+        EQ(h->base_frame_offset, rumi::derived_base_offset(1, 4));
     }
 
     CASE("offsets are a prefix sum from the base")
     if (h) {
-        EQ(h->tile_offset(0), std::uint64_t(460));
-        EQ(h->tile_offset(1), std::uint64_t(470));
-        EQ(h->tile_offset(2), std::uint64_t(490));
-        EQ(h->tile_offset(3), std::uint64_t(520));
+        EQ(h->frame_offset(0), std::uint64_t(460));
+        EQ(h->frame_offset(1), std::uint64_t(470));
+        EQ(h->frame_offset(2), std::uint64_t(490));
+        EQ(h->frame_offset(3), std::uint64_t(520));
         EQ(h->data_end(), std::uint64_t(560));
     }
 
-    CASE("the tile index walks row major with the band innermost")
+    CASE("the frame index walks row major with the band innermost")
     auto multi = rumi::parse_blob(make_blob(64, 32, 16, 3,
                                             std::vector<std::uint32_t>(24, 5)));
     OK(multi.has_value());
     if (multi) {
         EQ(multi->tiles_across, 4u);
-        EQ(multi->tile_index(0, 0, 0), 0u);
-        EQ(multi->tile_index(0, 0, 2), 2u);
-        EQ(multi->tile_index(0, 1, 0), 3u);
-        EQ(multi->tile_index(1, 0, 0), 12u);
+        EQ(multi->frame_index(0, 0, 0), 0u);
+        EQ(multi->frame_index(0, 0, 2), 2u);
+        EQ(multi->frame_index(0, 1, 0), 3u);
+        EQ(multi->frame_index(1, 0, 0), 12u);
+    }
+
+    CASE("sub-byte frames use padded decoded storage at any tile size")
+    auto subbyte = rumi::parse_blob(make_blob(
+        17, 13, 5, 1, std::vector<std::uint32_t>(12, 5), 4, 1));
+    OK(subbyte.has_value());
+    if (subbyte) {
+        EQ(subbyte->bytes_per_sample, std::size_t(1));
+        EQ(subbyte->max_frame_size, std::size_t(25));
     }
 
     CASE("a malformed blob is refused")
@@ -281,7 +304,7 @@ void test_count_packing()
     CASE("counts survive every width from 0 to 32")
     std::uint64_t rng = 20260813;
     for (int bits = 0; bits <= 32; ++bits) {
-        // 96 tiles is a 4 x 4 grid over 6 bands, and 96 * bits crosses every
+        // 96 frames is a 4 x 4 grid over 6 bands, and 96 * bits crosses every
         // alignment the packer can land on.
         std::vector<std::uint32_t> counts(96);
         // The width comes from the top bit of the largest residual, so a
@@ -305,7 +328,7 @@ void test_count_packing()
 
         auto h = rumi::parse_blob(blob);
         OK(h.has_value());
-        if (h) OK(h->tile_byte_counts == counts);
+        if (h) OK(h->frame_byte_counts == counts);
     }
 
     CASE("equal counts need no bits and no bytes")
@@ -314,16 +337,16 @@ void test_count_packing()
     auto fh = rumi::parse_blob(flat);
     OK(fh.has_value());
     if (fh) {
-        EQ(fh->tile_byte_counts[3], 7u);
-        EQ(fh->tile_offset(3), rumi::derived_base_offset(1, 4) + 21);
+        EQ(fh->frame_byte_counts[3], 7u);
+        EQ(fh->frame_offset(3), rumi::derived_base_offset(1, 4) + 21);
     }
 
-    CASE("a single tile is always the flat case")
+    CASE("a single frame is always the flat case")
     auto one = make_blob(16, 16, 16, 1, {1234});
     EQ(one.size(), rumi::HEADER_SIZE);
     auto oh = rumi::parse_blob(one);
     OK(oh.has_value());
-    if (oh) EQ(oh->tile_byte_counts[0], 1234u);
+    if (oh) EQ(oh->frame_byte_counts[0], 1234u);
 
     CASE("the same counts always give the same bytes")
     const std::vector<std::uint32_t> twice{9, 400000, 17, 250};
@@ -381,9 +404,9 @@ void test_count_packing()
     OK(cp.has_value());
     if (cp) {
         EQ(cp->frame_unit, std::uint8_t(1));
-        EQ(cp->tile_count, 4u);
-        EQ(cp->tile_index(1, 1, 0), 3u);
-        EQ(cp->tile_index(1, 1, 2), 3u);   // band is ignored for cell frames
+        EQ(cp->frame_count, 4u);
+        EQ(cp->frame_index(1, 1, 0), 3u);
+        EQ(cp->frame_index(1, 1, 2), 3u);   // band is ignored for cell frames
     }
 
     CASE("a count of zero is refused whichever side it comes from")
@@ -434,8 +457,8 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     OK(ph.has_value());
     if (!ph) return;
 
-    OK(ph->tile_count == n);
-    for (std::size_t i = 0; i < n; ++i) OK(ph->tile_byte_counts[i] == sizes[i]);
+    OK(ph->frame_count == n);
+    for (std::size_t i = 0; i < n; ++i) OK(ph->frame_byte_counts[i] == sizes[i]);
 
     // the offsets it rebuilt must be where the bytes actually landed
     std::FILE* f = std::fopen(path, "rb");
@@ -443,7 +466,7 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     if (!f) return;
     for (std::size_t i = 0; i < n; ++i) {
         std::vector<unsigned char> got(sizes[i]);
-        std::fseek(f, (long)ph->tile_offset((std::uint32_t)i), SEEK_SET);
+        std::fseek(f, (long)ph->frame_offset((std::uint32_t)i), SEEK_SET);
         OK(std::fread(got.data(), 1, sizes[i], f) == sizes[i]);
         OK(got == payload[i]);
     }
@@ -477,7 +500,7 @@ void test_plan_ranges()
     auto r = rumi::plan_ranges(*h, one_band, 0, 16, 0, 16);
     EQ(r.size(), std::size_t(1));
     if (!r.empty()) {
-        EQ(r[0].offset, h->tile_offset(h->tile_index(0, 0, 0)));
+        EQ(r[0].offset, h->frame_offset(h->frame_index(0, 0, 0)));
         EQ(r[0].length, std::uint64_t(100));
     }
 
@@ -487,7 +510,7 @@ void test_plan_ranges()
     const int both[] = {1, 2};
     EQ(rumi::plan_ranges(*h, both, 8, 16, 8, 16).size(), std::size_t(8));
 
-    CASE("the whole image asks for every tile")
+    CASE("the whole image asks for every frame")
     EQ(rumi::plan_ranges(*h, both, 0, 64, 0, 64).size(), std::size_t(32));
 }
 
@@ -529,6 +552,24 @@ void test_dtype_table()
     }
     OK(rumi::sample_to_dtype(1, 3) == RUMI_DT_UNKNOWN);
     OK(rumi::sample_to_dtype(99, 8) == RUMI_DT_UNKNOWN);
+    EQ(rumi::dtype_size(RUMI_DT_UINT4), std::size_t(1));
+}
+
+void test_subbyte_dlpack_is_marked_padded()
+{
+    CASE("DLPack marks padded sub-byte storage and refuses a legacy wrapper")
+    void* data = std::malloc(3);
+    const std::int64_t shape[] = {3};
+    DLManagedTensorVersioned* tensor =
+        rumi::build_dlpack(data, RUMI_DT_UINT4, shape, 1);
+    OK(tensor != nullptr);
+    if (!tensor) {
+        std::free(data);
+        return;
+    }
+    OK((tensor->flags & DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED) != 0);
+    OK(rumi_dlpack_legacy(tensor) == nullptr);
+    rumi_dlpack_free(tensor);
 }
 
 // No read here builds the pool, so this sees the count while it is still free
@@ -545,6 +586,114 @@ void test_thread_count()
     EQ(rumi::set_num_threads(1 << 20), 1024);
     EQ(rumi::num_threads(), 1024);
     EQ(rumi::set_num_threads(1), 1);
+}
+
+void test_failed_pool_construction_releases_the_count()
+{
+    CASE("a failed pool construction releases its thread count")
+    EQ(rumi::set_num_threads(4), 4);
+    bool threw = false;
+    try {
+        (void) rumi::global_thread_pool(
+            [] { return rumi::detail::reserve_thread_count(0); },
+            [](unsigned n) { rumi::detail::rollback_thread_count(n); },
+            [](unsigned) -> rumi::ThreadPool* { throw std::bad_alloc{}; });
+    } catch (const std::bad_alloc&) {
+        threw = true;
+    }
+    OK(threw);
+    EQ(rumi::global_thread_pool_size(), 0u);
+    // A permanent PINNED bit would reject this change and return four.
+    EQ(rumi::set_num_threads(2), 2);
+}
+
+#if !defined(_WIN32) && !defined(RUMI_TSAN)
+void test_fork_ignores_an_inherited_construction_lock()
+{
+    CASE("a forked child never touches the parent's construction mutex")
+    rumi::detail::PoolSlot& slot = rumi::detail::process_pool_slot();
+    std::atomic<bool> locked{false};
+    std::atomic<bool> release{false};
+    std::thread blocker([&] {
+        std::lock_guard guard(slot.make);
+        locked.store(true, std::memory_order_release);
+        while (!release.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+    });
+    while (!locked.load(std::memory_order_acquire)) std::this_thread::yield();
+
+    const pid_t child = ::fork();
+    if (child == 0) {
+        rumi::ThreadPool* pool = rumi::global_thread_pool(
+            [] { return rumi::detail::reserve_thread_count(2); },
+            [](unsigned n) { rumi::detail::rollback_thread_count(n); });
+        const bool ok = pool != nullptr
+                     && rumi::global_thread_pool_size() == 2;
+        ::_exit(ok ? 0 : 1);
+    }
+
+    bool exited = child < 0;
+    int status = 0;
+    const auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::seconds(10);
+    while (child > 0 && std::chrono::steady_clock::now() < deadline) {
+        const pid_t done = ::waitpid(child, &status, WNOHANG);
+        if (done == child) {
+            exited = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (child > 0 && !exited) {
+        (void) ::kill(child, SIGKILL);
+        (void) ::waitpid(child, &status, 0);
+    }
+    release.store(true, std::memory_order_release);
+    blocker.join();
+
+    OK(child > 0);
+    OK(exited);
+    if (child > 0 && exited) {
+        OK(WIFEXITED(status));
+        if (WIFEXITED(status)) EQ(WEXITSTATUS(status), 0);
+    }
+}
+#endif
+
+void test_concurrent_global_pool_construction()
+{
+    CASE("concurrent callers publish one process-global pool")
+    constexpr int callers = 16;
+    EQ(rumi::set_num_threads(4), 4);
+
+    std::atomic<int> ready{0};
+    std::atomic<bool> go{false};
+    std::vector<rumi::ThreadPool*> seen(callers);
+    std::vector<std::thread> threads;
+    threads.reserve(callers);
+    for (int i = 0; i < callers; ++i) {
+        threads.emplace_back([&, i] {
+            ready.fetch_add(1, std::memory_order_acq_rel);
+            while (!go.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            seen[i] = rumi::global_thread_pool(
+                [] { return rumi::detail::reserve_thread_count(0); },
+                [](unsigned n) { rumi::detail::rollback_thread_count(n); });
+        });
+    }
+    while (ready.load(std::memory_order_acquire) != callers) {
+        std::this_thread::yield();
+    }
+    go.store(true, std::memory_order_release);
+    for (std::thread& thread : threads) thread.join();
+
+    OK(seen[0] != nullptr);
+    for (rumi::ThreadPool* pool : seen) OK(pool == seen[0]);
+    EQ(rumi::global_thread_pool_size(), 4u);
+    EQ(rumi::num_threads(), 4);
+    EQ(rumi::set_num_threads(2), 4);
 }
 
 void test_thread_pool_batches()
@@ -570,7 +719,7 @@ int main()
 {
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();
-    test_base_offset_rejects_a_bad_tile_size();
+    test_base_offset_accepts_unaligned_tile_sizes();
     test_geokeys();
     test_parse_blob();
     test_count_packing();
@@ -578,8 +727,15 @@ int main()
     test_plan_ranges();
     test_plan_ranges_c_api_rejects_invalid_requests();
     test_dtype_table();
+    test_subbyte_dlpack_is_marked_padded();
     test_thread_pool_batches();
+    test_failed_pool_construction_releases_the_count();
+#if !defined(_WIN32) && !defined(RUMI_TSAN)
+    test_fork_ignores_an_inherited_construction_lock();
+#endif
     test_thread_count();
+    // Last: this creates the one process-global pool and pins its count.
+    test_concurrent_global_pool_construction();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;

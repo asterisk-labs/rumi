@@ -70,11 +70,11 @@ RUMI_API void rumi_free(void* ptr);
 // The count a read takes when it passes num_threads <= 0. Process-wide, seeded
 // from RUMI_NUM_THREADS, an integer or ALL_CPUS. Values are clamped to 1..1024.
 // Set it before the first read with multiple frames that asks for more than one
-// thread: after that the pool exists, its size is the answer and a set is
-// refused, since resizing means joining workers with frames in flight. Both
-// return the count in effect after the call, so a caller sees a refusal by
-// comparing. A forked child owns a new setting and pool, seeded again from its
-// environment; it never inherits the parent's thread budget.
+// thread: that read pins the count while constructing the pool, and a later set
+// is refused because resizing would mean joining workers with frames in flight.
+// Both return the process state after the call, so a caller sees a refusal by
+// comparing. A forked child does not inherit the pinned state or pool; it seeds
+// a new setting from its environment, which defaults to 1 when unset.
 RUMI_API int rumi_set_num_threads(int n);
 RUMI_API int rumi_get_num_threads(void);
 
@@ -137,7 +137,7 @@ typedef struct {
     uint8_t  frame_unit;
     uint32_t tiles_across;
     uint32_t tiles_down;
-    uint64_t base_tiles_offset;
+    uint64_t base_frame_offset;
     rumi_dtype dtype;
 } rumi_header;
 
@@ -183,7 +183,7 @@ rumi_spec_header(const rumi_spec* spec, rumi_header* out);
 
 // Sources.
 
-// Where tile bytes come from. A source is opened once and shared by every read
+// Where frame bytes come from. A source is opened once and shared by every read
 // against it; reads are safe to issue concurrently.
 typedef struct rumi_source rumi_source;
 
@@ -274,8 +274,9 @@ RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
 // Wraps a versioned tensor as the legacy DLManagedTensor, for a consumer that
 // asks for no version or one below 1.0. Takes ownership of t, whose deleter the
-// wrapper calls in its own. Release an unconsumed wrapper with
-// rumi_dlpack_legacy_free, never rumi_dlpack_free.
+// wrapper calls in its own. Returns NULL without taking ownership when t uses
+// padded sub-byte storage, which DLPack 0.x cannot describe. Release an
+// unconsumed wrapper with rumi_dlpack_legacy_free, never rumi_dlpack_free.
 RUMI_API DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 
 RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
@@ -315,7 +316,7 @@ rumi_write(const char*                 path,
            unsigned char**             out_blob,
            size_t*                     out_size);
 
-// Where the tile data would start for this description, without writing.
+// Where the frame data would start for this description, without writing.
 RUMI_API rumi_status
 rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 

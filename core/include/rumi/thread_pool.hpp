@@ -155,34 +155,71 @@ using pid_type = ::pid_t;
 inline pid_type current_pid() noexcept { return ::getpid(); }
 #endif
 
-// The pool sits behind a pointer so a forked child can walk away from it.
-struct GlobalPool {
+// Every process that touches the pool installs its own slot. The mutex belongs
+// to the slot, not to the registry: after fork the child replaces the inherited
+// slot before it can touch a mutex that another parent thread may have held.
+// The inherited slot leaks in the child on purpose; destroying its pool would
+// try to join workers that fork did not preserve.
+struct PoolSlot {
+    explicit PoolSlot(pid_type pid) noexcept : owner(pid) {}
+
+    ~PoolSlot()
+    {
+        delete live.exchange(nullptr, std::memory_order_acq_rel);
+    }
+
+    const pid_type          owner;
     std::atomic<ThreadPool*> live{nullptr};
     std::atomic<unsigned>    threads{0};
-    std::atomic<pid_type>    owner{0};
     std::mutex               make;
 };
 
-// Joins the pool at exit, as a plain static instance would have. One inherited
-// across a fork is left alone: its workers are gone and join() would hang.
-struct PoolReaper {
-    GlobalPool& g;
+struct GlobalPool {
+    std::atomic<PoolSlot*> current{nullptr};
 
-    ~PoolReaper()
+    ~GlobalPool()
     {
-        if (g.owner.load(std::memory_order_acquire) == current_pid()) {
-            delete g.live.exchange(nullptr, std::memory_order_acq_rel);
-        }
+        PoolSlot* slot = current.load(std::memory_order_acquire);
+        if (slot != nullptr && slot->owner == current_pid()) delete slot;
     }
 };
 
-inline GlobalPool& global_pool()
+// An inline object avoids a function-local static guard. Such a guard could
+// itself be inherited mid-initialisation by a child.
+constinit inline GlobalPool g_global_pool;
+static_assert(std::atomic<PoolSlot*>::is_always_lock_free,
+              "post-fork pool registry must not hide a library mutex");
+
+inline PoolSlot* current_pool_slot() noexcept
 {
-    static GlobalPool g;
-    static PoolReaper reaper{g};  // built after g, so destroyed before it
-    (void) reaper;
-    return g;
+    PoolSlot* slot = g_global_pool.current.load(std::memory_order_acquire);
+    return slot != nullptr && slot->owner == current_pid() ? slot : nullptr;
 }
+
+inline PoolSlot& process_pool_slot()
+{
+    if (PoolSlot* slot = current_pool_slot()) return *slot;
+
+    const pid_type pid = current_pid();
+    auto* fresh = new PoolSlot(pid);
+    PoolSlot* seen = g_global_pool.current.load(std::memory_order_acquire);
+    for (;;) {
+        if (seen != nullptr && seen->owner == pid) {
+            delete fresh;
+            return *seen;
+        }
+        if (g_global_pool.current.compare_exchange_weak(
+                seen, fresh, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            return *fresh;
+        }
+    }
+}
+
+// Thread-count reservation lives in read.cpp; these internal hooks let pool
+// construction keep reservation and rollback under PoolSlot::make.
+int reserve_thread_count(int requested) noexcept;
+void rollback_thread_count(unsigned threads) noexcept;
 
 }  // namespace detail
 
@@ -192,32 +229,53 @@ inline GlobalPool& global_pool()
 // real syscall, glibc dropped its cache in 2.25.
 inline unsigned global_thread_pool_size() noexcept
 {
-    detail::GlobalPool& g = detail::global_pool();
-    if (g.live.load(std::memory_order_acquire) == nullptr) return 0;
-    if (g.owner.load(std::memory_order_acquire) != detail::current_pid()) return 0;
-    return g.threads.load(std::memory_order_acquire);
+    detail::PoolSlot* slot = detail::current_pool_slot();
+    if (slot == nullptr ||
+        slot->live.load(std::memory_order_acquire) == nullptr) {
+        return 0;
+    }
+    return slot->threads.load(std::memory_order_acquire);
 }
 
-// Sized on first use: the first caller's thread count wins, later callers share
-// it regardless of what they ask for. A child that inherited a pool across
-// fork() builds its own, because fork() keeps only the calling thread and every
-// wait() on the inherited one would hang. The old pool leaks on purpose, since
-// its destructor would join workers that no longer exist.
-inline ThreadPool& global_thread_pool(unsigned threads)
+// Build under the current process's mutex. reserve_count runs only after the
+// mutex is held, so a failed constructor can roll its reservation back before
+// another builder advances. Once live is published, every caller shares it.
+// A forked child first installs a fresh slot and therefore never locks the
+// inherited mutex or waits on inherited workers.
+template <typename ReserveCount, typename RollbackCount, typename MakePool>
+inline ThreadPool* global_thread_pool(ReserveCount&& reserve_count,
+                                      RollbackCount&& rollback_count,
+                                      MakePool&& make_pool)
 {
-    detail::GlobalPool& g = detail::global_pool();
-    if (global_thread_pool_size() != 0) {
-        return *g.live.load(std::memory_order_acquire);
-    }
+    detail::PoolSlot& slot = detail::process_pool_slot();
+    if (ThreadPool* live = slot.live.load(std::memory_order_acquire)) return live;
 
-    std::lock_guard lock(g.make);
-    if (global_thread_pool_size() == 0) {
-        auto* pool = new ThreadPool(threads);
-        g.threads.store(threads, std::memory_order_release);
-        g.owner.store(detail::current_pid(), std::memory_order_release);
-        g.live.store(pool, std::memory_order_release);
+    std::lock_guard lock(slot.make);
+    if (ThreadPool* live = slot.live.load(std::memory_order_acquire)) return live;
+
+    const unsigned threads = static_cast<unsigned>(reserve_count());
+    if (threads <= 1) return nullptr;
+
+    ThreadPool* pool = nullptr;
+    try {
+        pool = make_pool(threads);
+    } catch (...) {
+        rollback_count(threads);
+        throw;
     }
-    return *g.live.load(std::memory_order_acquire);
+    slot.threads.store(threads, std::memory_order_relaxed);
+    slot.live.store(pool, std::memory_order_release);
+    return pool;
+}
+
+template <typename ReserveCount, typename RollbackCount>
+inline ThreadPool* global_thread_pool(ReserveCount&& reserve_count,
+                                      RollbackCount&& rollback_count)
+{
+    return global_thread_pool(
+        std::forward<ReserveCount>(reserve_count),
+        std::forward<RollbackCount>(rollback_count),
+        [](unsigned threads) { return new ThreadPool(threads); });
 }
 
 }  // namespace rumi

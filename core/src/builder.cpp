@@ -281,14 +281,6 @@ build_blob_from_file(const char* path) noexcept
     if (tw > 65535 || tl > 65535) return err("tile dimension exceeds uint16");
     if (iw > 0xFFFFFFFFu || ih > 0xFFFFFFFFu) return err("image dimension exceeds uint32");
 
-    // Profile gates.
-    if (tw % 16 || tl % 16) {
-        return err("TIFF requires tile dimensions to be a multiple of 16; "
-                   "file has %llux%llu",
-                   static_cast<unsigned long long>(tw),
-                   static_cast<unsigned long long>(tl));
-    }
-
     // SampleFormat defaults to 1. All bands share one depth and one format.
     auto bits_e = array(258, spp); if (!bits_e) return std::unexpected(bits_e.error());
     const auto& bits = *bits_e;
@@ -372,37 +364,38 @@ build_blob_from_file(const char* path) noexcept
                    (unsigned long long)model);
     }
 
-    const std::uint64_t tpp = static_cast<std::uint64_t>(tiles_across) * tiles_down;
-    if (tpp > std::numeric_limits<std::uint64_t>::max() / spp) {
-        return err("tile count overflows uint64");
+    const std::uint64_t grid_positions =
+        static_cast<std::uint64_t>(tiles_across) * tiles_down;
+    if (grid_positions > std::numeric_limits<std::uint64_t>::max() / spp) {
+        return err("frame count overflows uint64");
     }
-    const std::uint64_t tile_frames = tpp * spp;
+    const std::uint64_t tile_frames = grid_positions * spp;
 
     // No tag carries the frame unit, so the entry count of TileOffsets is what
-    // names it. tpp means cell, tpp * spp means tile. With one band the two are
-    // equal and the layouts are identical, so tile is the reading.
+    // names it. grid_positions means cell, grid_positions * spp means tile.
+    // With one band the two are equal, so tile is the canonical reading.
     const Entry* offs_entry = find(324);
     std::uint8_t frame_unit;
     if (offs_entry->count == tile_frames) frame_unit = 0;
-    else if (offs_entry->count == tpp)    frame_unit = 1;
+    else if (offs_entry->count == grid_positions) frame_unit = 1;
     else {
         return err("TileOffsets has %llu entries, expected %llu for tile frames "
                    "or %llu for cell frames",
                    static_cast<unsigned long long>(offs_entry->count),
                    static_cast<unsigned long long>(tile_frames),
-                   static_cast<unsigned long long>(tpp));
+                   static_cast<unsigned long long>(grid_positions));
     }
 
-    const std::uint64_t n_tiles = offs_entry->count;
-    if (n_tiles > 0xFFFFFFFFu) {
+    const std::uint64_t n_frames = offs_entry->count;
+    if (n_frames > 0xFFFFFFFFu) {
         return err("frame count overflows uint32: %llu",
-                   static_cast<unsigned long long>(n_tiles));
+                   static_cast<unsigned long long>(n_frames));
     }
 
-    if (find(325)->count != n_tiles) {
+    if (find(325)->count != n_frames) {
         return err("TileByteCounts has %llu entries, expected %llu",
                    static_cast<unsigned long long>(find(325)->count),
-                   static_cast<unsigned long long>(n_tiles));
+                   static_cast<unsigned long long>(n_frames));
     }
 
     // Every external value begins immediately after the preceding one, in the
@@ -429,17 +422,17 @@ build_blob_from_file(const char* path) noexcept
         cursor += padded;
     }
 
-    auto offs_e = array(324, n_tiles); if (!offs_e) return std::unexpected(offs_e.error());
-    auto cnts_e = array(325, n_tiles); if (!cnts_e) return std::unexpected(cnts_e.error());
+    auto offs_e = array(324, n_frames); if (!offs_e) return std::unexpected(offs_e.error());
+    auto cnts_e = array(325, n_frames); if (!cnts_e) return std::unexpected(cnts_e.error());
     const auto& offs = *offs_e;
     const auto& cnts = *cnts_e;
 
     // Both tags run in frame-index order, which is also the physical order, so
     // a contiguous walk over them proves the layout is tile-interleaved.
-    std::vector<std::uint32_t> counts(static_cast<std::size_t>(n_tiles));
+    std::vector<std::uint32_t> counts(static_cast<std::size_t>(n_frames));
     std::uint64_t base    = offs[0];
     std::uint64_t running = base;
-    for (std::uint64_t i = 0; i < n_tiles; ++i) {
+    for (std::uint64_t i = 0; i < n_frames; ++i) {
         const std::uint64_t off = offs[static_cast<std::size_t>(i)];
         const std::uint64_t cnt = cnts[static_cast<std::size_t>(i)];
         if (cnt == 0) {
@@ -465,13 +458,13 @@ build_blob_from_file(const char* path) noexcept
         running += cnt;
     }
 
-    if (base != derived_base_offset(static_cast<std::uint32_t>(spp), n_tiles)) {
-        return err("tile data starts at %llu, the profile puts it at %llu; "
+    if (base != derived_base_offset(static_cast<std::uint32_t>(spp), n_frames)) {
+        return err("frame data starts at %llu, the profile puts it at %llu; "
                    "the file has padding or a value out of place",
                    static_cast<unsigned long long>(base),
                    static_cast<unsigned long long>(
                        derived_base_offset(static_cast<std::uint32_t>(spp),
-                                           n_tiles)));
+                                           n_frames)));
     }
 
     // The frames are the tail of the file, so the last offset plus its count is

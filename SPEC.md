@@ -2,7 +2,7 @@
 
 - Specification 0.1.0
 - Status Draft
-- Date 2026-08-13
+- Date 2026-08-15
 - License GPLv3
 
 rumi is a raster file format with a predictable, GeoTIFF-inspired layout and a compact external **binary header**. The restricted file profile makes it possible for the header to contain everything needed to locate any frame directly, without first opening or parsing the rumi file. This makes access stateless, even across millions of files. See the [File profile](#file-profile) section for the full set of restrictions.
@@ -349,7 +349,7 @@ The raster dimensions in pixels. These match `ImageWidth` and `ImageLength` in t
 
 The nominal tile dimensions in pixels. These match `TileWidth` and `TileLength` in the IFD.
 
-Each value MUST be at least `16` and MUST be a multiple of `16`. Tiles need not be square. A tile dimension MAY exceed the corresponding image dimension, in which case the grid holds a single position.
+Each value MUST be between `1` and `65535`, the range of its `uint16` field. No alignment or multiple-of-16 restriction applies. Tiles need not be square. A tile dimension MAY exceed the corresponding image dimension, in which case the grid holds a single position.
 
 The grid size follows from these and the image dimensions, as defined in [Frame index](#frame-index).
 

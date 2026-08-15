@@ -1,5 +1,5 @@
 /* Single source of truth for rumi's element types, one row per type. The enum,
- * the (sample_format, bits) pair, the byte size and the DLPack code are
+ * the wire encoding and DLPack code are
  * generated from here, so add a type by adding a row. CODE is the wire value,
  * append only. RUMI_DT_UNKNOWN = 0 has no row, it ships with the enum. */
 

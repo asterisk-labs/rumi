@@ -137,6 +137,11 @@ if(RUMI_BUILD_TESTS)
     enable_testing()
     add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})
     target_link_libraries(rumi_tests PRIVATE rumi_config)
+    if(RUMI_SANITIZE STREQUAL "thread")
+        # TSAN deliberately aborts when a multi-threaded child creates threads;
+        # Linux's unsanitized job owns the fork regression instead.
+        target_compile_definitions(rumi_tests PRIVATE RUMI_TSAN)
+    endif()
     add_test(NAME core COMMAND rumi_tests)
 endif()
 
