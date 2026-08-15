@@ -84,7 +84,11 @@ def sample_encoding(dtype) -> tuple[int, int]:
 
 
 def dtype_code(dtype) -> int:
-    return _TO_CODE[np.dtype(dtype).type]
+    resolved = np.dtype(dtype)
+    try:
+        return _TO_CODE[resolved.type]
+    except KeyError:
+        raise TypeError(f"dtype {resolved} is not supported by rumi") from None
 
 
 def name(rumi_dtype: int) -> str:

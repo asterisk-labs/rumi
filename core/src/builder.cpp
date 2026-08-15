@@ -122,14 +122,18 @@ build_blob_from_file(const char* path) noexcept
     }
     std::uint64_t ifd_offset;
     std::memcpy(&ifd_offset, hdr + 8, 8);
+    if (ifd_offset != 16) {
+        return err("rumi requires the IFD at byte 16; file puts it at %llu",
+                   static_cast<unsigned long long>(ifd_offset));
+    }
 
     // Single IFD only, so the next-IFD trailer must be zero.
     std::uint64_t n_entries;
     if (!read_at(fp, ifd_offset, &n_entries, 8)) {
         return err("could not read the IFD entry count");
     }
-    if (n_entries == 0 || n_entries > 4096) {
-        return err("implausible IFD entry count %llu",
+    if (n_entries != 11) {
+        return err("rumi requires exactly 11 IFD tags; file has %llu",
                    static_cast<unsigned long long>(n_entries));
     }
 
@@ -167,17 +171,32 @@ build_blob_from_file(const char* path) noexcept
         return nullptr;
     };
 
-    static constexpr std::uint16_t ALLOWED[] = {
-        256, 257, 258, 277, 322, 323, 324, 325, 339, 34264, 34735,
+    struct Required { std::uint16_t tag, type; };
+    static constexpr Required REQUIRED[] = {
+        {256, 4}, {257, 4}, {258, 3}, {277, 3}, {322, 3}, {323, 3},
+        {324, 16}, {325, 4}, {339, 3}, {34264, 12}, {34735, 3},
     };
-    for (const Entry& e : entries) {
-        bool ok = false;
-        for (std::uint16_t t : ALLOWED) if (e.tag == t) { ok = true; break; }
-        if (!ok) return err("rumi allows 11 tags and this file has tag %u",
-                            e.tag);
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].tag != REQUIRED[i].tag) {
+            return err("IFD entry %zu is tag %u, expected tag %u in rising order",
+                       i, entries[i].tag, REQUIRED[i].tag);
+        }
+        if (entries[i].type != REQUIRED[i].type) {
+            return err("tag %u has TIFF type %u, expected %u",
+                       entries[i].tag, entries[i].type, REQUIRED[i].type);
+        }
     }
-    for (std::uint16_t t : ALLOWED) {
-        if (find(t) == nullptr) return err("required tag %u is missing", t);
+
+    for (std::size_t i : {std::size_t(0), std::size_t(1), std::size_t(3),
+                          std::size_t(4), std::size_t(5)}) {
+        if (entries[i].count != 1) {
+            return err("tag %u has %llu values, expected 1", entries[i].tag,
+                       static_cast<unsigned long long>(entries[i].count));
+        }
+    }
+    if (entries[9].count != 16 || entries[10].count != 16) {
+        return err("the transformation and GeoKey directory must each have "
+                   "16 values");
     }
 
     // First element of a scalar integer tag, or the default if absent.
@@ -354,19 +373,23 @@ build_blob_from_file(const char* path) noexcept
     }
 
     const std::uint64_t tpp = static_cast<std::uint64_t>(tiles_across) * tiles_down;
+    if (tpp > std::numeric_limits<std::uint64_t>::max() / spp) {
+        return err("tile count overflows uint64");
+    }
+    const std::uint64_t tile_frames = tpp * spp;
 
     // No tag carries the frame unit, so the entry count of TileOffsets is what
     // names it. tpp means cell, tpp * spp means tile. With one band the two are
     // equal and the layouts are identical, so tile is the reading.
     const Entry* offs_entry = find(324);
     std::uint8_t frame_unit;
-    if (offs_entry->count == tpp * spp)   frame_unit = 0;
+    if (offs_entry->count == tile_frames) frame_unit = 0;
     else if (offs_entry->count == tpp)    frame_unit = 1;
     else {
         return err("TileOffsets has %llu entries, expected %llu for tile frames "
                    "or %llu for cell frames",
                    static_cast<unsigned long long>(offs_entry->count),
-                   static_cast<unsigned long long>(tpp * spp),
+                   static_cast<unsigned long long>(tile_frames),
                    static_cast<unsigned long long>(tpp));
     }
 
@@ -374,6 +397,36 @@ build_blob_from_file(const char* path) noexcept
     if (n_tiles > 0xFFFFFFFFu) {
         return err("frame count overflows uint32: %llu",
                    static_cast<unsigned long long>(n_tiles));
+    }
+
+    if (find(325)->count != n_tiles) {
+        return err("TileByteCounts has %llu entries, expected %llu",
+                   static_cast<unsigned long long>(find(325)->count),
+                   static_cast<unsigned long long>(n_tiles));
+    }
+
+    // Every external value begins immediately after the preceding one, in the
+    // same rising tag order as the IFD. All counts are known and bounded now.
+    std::uint64_t cursor = 16 + 8 + 20 * 11 + 8;
+    for (const Entry& e : entries) {
+        const std::uint64_t ts = type_size(e.type);
+        if (e.count > std::numeric_limits<std::uint64_t>::max() / ts) {
+            return err("tag %u byte size overflows uint64", e.tag);
+        }
+        const std::uint64_t total = e.count * ts;
+        if (total <= 8) continue;
+        std::uint64_t at;
+        std::memcpy(&at, e.value, 8);
+        if (at != cursor) {
+            return err("tag %u external value starts at %llu, expected %llu",
+                       e.tag, static_cast<unsigned long long>(at),
+                       static_cast<unsigned long long>(cursor));
+        }
+        const std::uint64_t padded = total + (total & 1);
+        if (cursor > std::numeric_limits<std::uint64_t>::max() - padded) {
+            return err("external value offsets overflow uint64");
+        }
+        cursor += padded;
     }
 
     auto offs_e = array(324, n_tiles); if (!offs_e) return std::unexpected(offs_e.error());
@@ -406,6 +459,9 @@ build_blob_from_file(const char* path) noexcept
                        static_cast<unsigned long long>(off));
         }
         counts[static_cast<std::size_t>(i)] = static_cast<std::uint32_t>(cnt);
+        if (running > std::numeric_limits<std::uint64_t>::max() - cnt) {
+            return err("frame offsets overflow uint64");
+        }
         running += cnt;
     }
 

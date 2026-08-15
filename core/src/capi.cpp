@@ -5,6 +5,7 @@
 #include <cstring>
 #include <exception>
 #include <initializer_list>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -262,12 +263,32 @@ rumi_plan_ranges(const rumi_spec* spec,
             set_error("rumi_plan_ranges: null argument");
             return RUMI_ERR_INVALID;
         }
+        if ((bands == nullptr) != (n_bands == 0)) {
+            set_error("bands and n_bands must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
         const auto& h = spec->h;
         const auto picked = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        for (int band : picked) {
+            if (band < 1 || band > h.samples_per_pixel) {
+                set_error("band out of range");
+                return RUMI_ERR_INVALID;
+            }
+        }
+        if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
+            static_cast<std::int64_t>(x_off) + x_size > h.image_width ||
+            static_cast<std::int64_t>(y_off) + y_size > h.image_length) {
+            set_error("requested window out of bounds");
+            return RUMI_ERR_INVALID;
+        }
         auto ranges = rumi::plan_ranges(h, std::span<const int>(picked),
                                         y_off, y_size, x_off, x_size);
 
         const size_t n = ranges.size();
+        if (n > std::numeric_limits<size_t>::max() / sizeof(rumi_range)) {
+            set_error("range array size overflows size_t");
+            return RUMI_ERR_OOM;
+        }
         auto* buf = static_cast<rumi_range*>(
             std::malloc(n ? n * sizeof(rumi_range) : 1));
         if (!buf) {

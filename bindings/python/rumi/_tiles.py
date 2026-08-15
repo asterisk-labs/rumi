@@ -1,5 +1,6 @@
 import numpy as np
 
+from ._dtype import dtype_code
 from ._repr import _human, frame_html, frame_text
 
 _HEAD, _HEAD_TAIL = 5, 10  # rows either side of the gap, and when to cut
@@ -119,6 +120,14 @@ class FrameTable:
         self.tile_size = t = int(tile_size)
         self.bands = int(bands)
         self.dtype = np.dtype(dtype)
+        dtype_code(self.dtype)
+        if self.image_width <= 0 or self.image_length <= 0:
+            raise ValueError(
+                f"image dimensions must be positive, got "
+                f"{self.image_width}x{self.image_length}"
+            )
+        if self.bands <= 0:
+            raise ValueError(f"bands must be positive, got {self.bands}")
         if t < 16 or t % 16:
             raise ValueError(f"tile_size must be a multiple of 16, got {t}")
 
@@ -376,6 +385,8 @@ class FrameTable:
 
 
 def _frame_bytes(v, i):
+    if isinstance(v, (int, np.integer)):
+        raise TypeError(f"frame {i} must be bytes-like, got {type(v).__name__}")
     buf = bytes(v)
     # Caught on assignment rather than at write time, so the traceback lands in
     # the loop that produced it. A zero-length payload is not a legal tile.

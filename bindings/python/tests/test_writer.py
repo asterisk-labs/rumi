@@ -348,6 +348,26 @@ def test_empty_payload(tmp_path):
         write_frames(tmp_path / "a.tif", frames, tf)
 
 
+@pytest.mark.parametrize("shape", [(0, 16, 16), (1, 0, 16), (1, 16, 0)])
+def test_frame_dimensions_must_be_positive(shape):
+    with pytest.raises(ValueError, match="positive"):
+        rumi.frames(np.empty(shape, np.uint8), 16)
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, object, "S1"])
+def test_frames_reject_unsupported_dtypes(dtype):
+    with pytest.raises(TypeError, match="not supported"):
+        rumi.frames(np.zeros((1, 16, 16), dtype=dtype), 16)
+
+
+def test_compressed_frames_must_be_bytes_like():
+    tf = make_frame()
+    with pytest.raises(TypeError, match="bytes-like"):
+        tf[0].compressed = 5
+    with pytest.raises(TypeError, match="bytes-like"):
+        tf["compressed"] = [5, *tf["compressed"][1:]]
+
+
 def test_transform_needs_crs(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="together"):

@@ -124,7 +124,7 @@ def build_tiff(entries, tiles, bands=1, pad_before_tiles=0):
                  else raw.ljust(8, b"\x00"))
         out += struct.pack("<HHQ", tag, type_, len(vals)) + field
     out += struct.pack("<Q", 0)
-    for tag, (type_, _vals) in ordered:
+    for tag, (_type, _vals) in ordered:
         if tag in external:
             raw = packed[tag]
             out += raw + b"\x00" * (len(raw) & 1)
@@ -481,6 +481,38 @@ def test_an_extra_tag_is_rejected(tmp_path, valid_file):
     _rejects(tmp_path, entries, tiles, "tag")
 
 
+def test_tags_with_the_wrong_tiff_type_are_rejected(tmp_path, valid_file):
+    _path, entries, tiles = valid_file
+    entries = dict(entries)
+    entries[256] = (SHORT, [70])
+    _rejects(tmp_path, entries, tiles, "type")
+
+
+def test_tags_out_of_rising_order_are_rejected(tmp_path, valid_file):
+    _path, entries, tiles = valid_file
+    blob = bytearray(build_tiff(entries, tiles, bands=2))
+    first = IFD_OFFSET + 8
+    a = bytes(blob[first:first + 20])
+    blob[first:first + 20] = blob[first + 20:first + 40]
+    blob[first + 20:first + 40] = a
+    path = tmp_path / "bad-order.tif"
+    path.write_bytes(blob)
+    with pytest.raises(ValueError, match="order"):
+        rumi.RumiHeader.from_path(path)
+
+
+def test_external_values_out_of_place_are_rejected(tmp_path, valid_file):
+    _path, entries, tiles = valid_file
+    blob = bytearray(build_tiff(entries, tiles, bands=2))
+    transform_entry = IFD_OFFSET + 8 + TAGS.index(34264) * 20
+    (at,) = struct.unpack_from("<Q", blob, transform_entry + 12)
+    struct.pack_into("<Q", blob, transform_entry + 12, at + 8)
+    path = tmp_path / "bad-placement.tif"
+    path.write_bytes(blob)
+    with pytest.raises(ValueError, match="expected"):
+        rumi.RumiHeader.from_path(path)
+
+
 def test_a_missing_geo_tag_is_rejected(tmp_path, valid_file):
     _p, entries, tiles = valid_file
     for tag in GEO:
@@ -510,6 +542,11 @@ def test_a_tile_size_off_the_grid_is_rejected(tmp_path):
     tiles = [b"x" * 8] * 4
     entries = spec_entries(40, 40, 20, 1, tiles)
     _rejects(tmp_path, entries, tiles, "16", bands=1)
+
+
+def test_an_overflowing_tile_frame_count_is_rejected(tmp_path):
+    entries = spec_entries(0xFFFFFFFF, 0xFFFFFFFF, 16, 256, [])
+    _rejects(tmp_path, entries, [], "overflows", bands=256)
 
 
 def test_an_undefined_crs_file_is_accepted(tmp_path):

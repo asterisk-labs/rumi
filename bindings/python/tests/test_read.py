@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import rumi
-from rumi._ffi import ffi, lib, _Spec
+from rumi._ffi import _Spec, ffi, lib
 
 geozl = pytest.importorskip("geozl")
 

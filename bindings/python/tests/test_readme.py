@@ -46,7 +46,9 @@ def test_a_readme_block_runs(index, tmp_path, monkeypatch):
         "np": np,
         "geozl": geozl,
         "rumi": rumi,
-        "arr": np.random.randint(0, 4096, (4, 1024, 1024), dtype=np.uint16),
+        "arr": np.random.default_rng(0).integers(
+            0, 4096, (4, 1024, 1024), dtype=np.uint16
+        ),
     }
     exec(compile(blocks()[index], f"README.md block {index}", "exec"), env)
 

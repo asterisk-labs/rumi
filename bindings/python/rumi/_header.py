@@ -1,7 +1,8 @@
 import numpy as np
 
-from ._dtype import name as dtype_name, numpy_dtype
-from ._ffi import PathLike, _Spec, _header_from_file
+from ._dtype import name as dtype_name
+from ._dtype import numpy_dtype
+from ._ffi import PathLike, _header_from_file, _Spec
 from ._repr import header_html, header_text
 
 

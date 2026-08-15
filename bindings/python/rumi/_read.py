@@ -3,8 +3,7 @@ import os
 from collections.abc import Sequence
 
 from ._dtype import name as dtype_name
-from ._ffi import (PathLike, _check, _header_from_file, _Source, _Spec,
-                   ffi, lib)
+from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
 
 Axis = tuple[int, int] | list[int] | None
 

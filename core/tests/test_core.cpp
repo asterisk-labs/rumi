@@ -489,6 +489,31 @@ void test_plan_ranges()
     EQ(rumi::plan_ranges(*h, both, 0, 64, 0, 64).size(), std::size_t(32));
 }
 
+void test_plan_ranges_c_api_rejects_invalid_requests()
+{
+    CASE("the range C API rejects invalid bands and windows")
+    auto blob = make_blob(64, 64, 16, 2,
+                          std::vector<std::uint32_t>(32, 100));
+    rumi_spec* spec = nullptr;
+    EQ(rumi_spec_parse(reinterpret_cast<const unsigned char*>(blob.data()),
+                       blob.size(), &spec), RUMI_OK);
+    if (!spec) return;
+
+    rumi_range* ranges = nullptr;
+    std::size_t count = 0;
+    const int bad_band[] = {999};
+    EQ(rumi_plan_ranges(spec, bad_band, 1, 0, 1, 0, 1,
+                        &ranges, &count), RUMI_ERR_INVALID);
+    EQ(rumi_plan_ranges(spec, nullptr, 0, -1, 1, 0, 1,
+                        &ranges, &count), RUMI_ERR_INVALID);
+    EQ(rumi_plan_ranges(spec, nullptr, 0, 0, 65, 0, 64,
+                        &ranges, &count), RUMI_ERR_INVALID);
+    EQ(rumi_plan_ranges(spec, bad_band, 0, 0, 1, 0, 1,
+                        &ranges, &count), RUMI_ERR_INVALID);
+
+    rumi_spec_destroy(spec);
+}
+
 void test_dtype_table()
 {
     CASE("every dtype round trips through its sample encoding")
@@ -517,6 +542,7 @@ int main()
     test_count_packing();
     test_write_then_read_back();
     test_plan_ranges();
+    test_plan_ranges_c_api_rejects_invalid_requests();
     test_dtype_table();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);
