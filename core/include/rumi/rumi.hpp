@@ -238,9 +238,7 @@ struct TileTask {
     std::uint32_t compressed_size;
     std::uint32_t tile_w;
     std::size_t   tile_bytes;
-    // Byte offset of this band's plane inside the decoded frame. Zero for a
-    // tile frame, band * plane_bytes for a cell frame.
-    std::size_t   src_plane;
+    std::size_t   plane_bytes;
     std::byte*    direct;
     std::byte*    dst;
     std::uint32_t src_x;
@@ -249,12 +247,18 @@ struct TileTask {
     std::uint32_t h;
     std::size_t   dst_pitch;
     std::size_t   dst_pixel_stride;
+    // Bands this task serves. Plane planes[k] goes to dst + k * band_space.
+    const std::uint32_t* planes;
+    std::uint32_t        plane_count;
+    std::int64_t         band_space;
     std::uint32_t image;  // 1-based n in a stack read, 0 for a single image
 };
 
 struct Plan {
     std::vector<TileTask> tasks;
     TileSpec              spec;
+    // Backs TileTask::planes, one entry per requested band.
+    std::vector<std::uint32_t> plane_index;
 };
 
 class Executor {

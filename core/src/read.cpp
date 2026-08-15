@@ -214,10 +214,19 @@ Plan build_plan(const Header& h, Source* source,
     // checked per tile, since edge tiles are narrower.
     const bool one_sample_stride = pixel_space == static_cast<std::int64_t>(bps);
 
+    // A cell frame holds every band, so one task per grid position. A tile
+    // frame holds one band, so one task per band.
+    const bool cell = h.frame_unit == 1;
+
     Plan plan;
     plan.spec = make_tile_spec(h);
+    plan.plane_index.resize(static_cast<std::size_t>(band_count));
+    for (int i = 0; i < band_count; ++i) {
+        plan.plane_index[static_cast<std::size_t>(i)] =
+            cell ? static_cast<std::uint32_t>(bands[i] - 1) : 0u;
+    }
     plan.tasks.reserve(static_cast<std::size_t>(tx_max - tx_min) *
-                       (ty_max - ty_min) * band_count);
+                       (ty_max - ty_min) * (cell ? 1 : band_count));
 
     for (int ty = ty_min; ty < ty_max; ++ty) {
         for (int tx = tx_min; tx < tx_max; ++tx) {
@@ -242,14 +251,13 @@ Plan build_plan(const Header& h, Source* source,
 
             const std::size_t plane_bytes = static_cast<std::size_t>(ex_w)
                                           * static_cast<std::size_t>(ex_h) * bps;
-            // A cell frame decodes to every band at once, so the whole frame
-            // lands in scratch and each band is copied out of its plane.
-            const bool cell = h.frame_unit == 1;
             const std::size_t tile_bytes = cell
                 ? plane_bytes * h.samples_per_pixel : plane_bytes;
 
-            for (int i = 0; i < band_count; ++i) {
-                const auto band = static_cast<std::uint32_t>(bands[i] - 1);
+            const int steps = cell ? 1 : band_count;
+            for (int i = 0; i < steps; ++i) {
+                const auto band = static_cast<std::uint32_t>(
+                    cell ? 0 : bands[i] - 1);
                 const std::uint32_t idx = h.tile_index(
                     static_cast<std::uint32_t>(ty),
                     static_cast<std::uint32_t>(tx),
@@ -258,7 +266,7 @@ Plan build_plan(const Header& h, Source* source,
                 std::byte* dst = data
                     + static_cast<std::int64_t>(iy0 - y_off) * line_space
                     + static_cast<std::int64_t>(ix0 - x_off) * pixel_space
-                    + static_cast<std::int64_t>(i)          * band_space;
+                    + static_cast<std::int64_t>(cell ? 0 : i) * band_space;
 
                 TileTask task{};
                 task.source          = source;
@@ -266,7 +274,11 @@ Plan build_plan(const Header& h, Source* source,
                 task.compressed_size = h.tile_byte_counts[idx];
                 task.tile_w          = static_cast<std::uint32_t>(ex_w);
                 task.tile_bytes      = tile_bytes;
-                task.src_plane       = cell ? plane_bytes * band : 0;
+                task.plane_bytes     = plane_bytes;
+                task.planes          = plan.plane_index.data();
+                task.plane_count     = static_cast<std::uint32_t>(
+                    cell ? band_count : 1);
+                task.band_space      = band_space;
                 if (direct && !cell) {
                     task.direct = dst;
                 } else {
@@ -296,13 +308,18 @@ plan_ranges(const Header& h, std::span<const int> bands,
     const std::uint32_t c0 = static_cast<std::uint32_t>(x_off) / h.tile_width;
     const std::uint32_t c1 = static_cast<std::uint32_t>(x_off + x_size - 1) / h.tile_width;
 
+    // One range per frame, and a cell frame carries every band.
+    const bool cell = h.frame_unit == 1;
+    const std::size_t per_pos = cell ? 1 : bands.size();
+
     std::vector<Range> out;
-    out.reserve(std::size_t(r1 - r0 + 1) * (c1 - c0 + 1) * bands.size());
+    out.reserve(std::size_t(r1 - r0 + 1) * (c1 - c0 + 1) * per_pos);
     for (std::uint32_t row = r0; row <= r1; ++row) {
         for (std::uint32_t col = c0; col <= c1; ++col) {
-            for (int b : bands) {
-                const std::uint32_t i =
-                    h.tile_index(row, col, static_cast<std::uint32_t>(b - 1));
+            for (std::size_t k = 0; k < per_pos; ++k) {
+                const auto band = static_cast<std::uint32_t>(
+                    cell ? 0 : bands[k] - 1);
+                const std::uint32_t i = h.tile_index(row, col, band);
                 out.push_back({h.tile_offsets[i], h.tile_byte_counts[i]});
             }
         }
@@ -435,7 +452,13 @@ read_stack(std::span<Source* const> sources,
                               static_cast<std::int64_t>(layout.sx) * bps,
                               static_cast<std::int64_t>(layout.sy) * bps,
                               static_cast<std::int64_t>(layout.sb) * bps);
-        for (TileTask& t : sub.tasks) t.image = static_cast<std::uint32_t>(n_index[k]);
+        // sub dies at the end of the loop, so repoint at the merged plan's
+        // copy. Every image shares the band request.
+        if (plan.plane_index.empty()) plan.plane_index = sub.plane_index;
+        for (TileTask& t : sub.tasks) {
+            t.image  = static_cast<std::uint32_t>(n_index[k]);
+            t.planes = plan.plane_index.data();
+        }
         plan.tasks.insert(plan.tasks.end(),
                           std::make_move_iterator(sub.tasks.begin()),
                           std::make_move_iterator(sub.tasks.end()));

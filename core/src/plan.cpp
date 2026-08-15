@@ -46,34 +46,44 @@ WorkerState& worker_state() noexcept
 
 // A one-sample pixel stride is a contiguous row, a larger one has another
 // axis inner, so copy pixel by pixel. src_pitch is the tile's real width.
-void copy_rect(const TileTask& t, const TileSpec& spec,
-               const std::byte* tile) noexcept
+void copy_one_plane(const TileTask& t, std::size_t bps, std::size_t src_pitch,
+                    const std::byte* plane, std::byte* dst) noexcept
 {
-    const std::size_t bps       = spec.bytes_per_sample;
-    const std::size_t src_pitch = static_cast<std::size_t>(t.tile_w) * bps;
-    tile += t.src_plane;
-
     if (t.dst_pixel_stride == bps) {
         const std::size_t row_bytes = static_cast<std::size_t>(t.w) * bps;
         for (std::uint32_t row = 0; row < t.h; ++row) {
-            const std::byte* src = tile
+            const std::byte* src = plane
                 + static_cast<std::size_t>(t.src_y + row) * src_pitch
                 + static_cast<std::size_t>(t.src_x) * bps;
-            std::memcpy(t.dst + static_cast<std::size_t>(row) * t.dst_pitch,
+            std::memcpy(dst + static_cast<std::size_t>(row) * t.dst_pitch,
                         src, row_bytes);
         }
         return;
     }
 
     for (std::uint32_t row = 0; row < t.h; ++row) {
-        const std::byte* src = tile
+        const std::byte* src = plane
             + static_cast<std::size_t>(t.src_y + row) * src_pitch
             + static_cast<std::size_t>(t.src_x) * bps;
-        std::byte* dst = t.dst + static_cast<std::size_t>(row) * t.dst_pitch;
+        std::byte* out = dst + static_cast<std::size_t>(row) * t.dst_pitch;
         for (std::uint32_t col = 0; col < t.w; ++col) {
-            std::memcpy(dst + static_cast<std::size_t>(col) * t.dst_pixel_stride,
+            std::memcpy(out + static_cast<std::size_t>(col) * t.dst_pixel_stride,
                         src + static_cast<std::size_t>(col) * bps, bps);
         }
+    }
+}
+
+// The frame is decoded once, so every band comes out of the one buffer.
+void copy_rect(const TileTask& t, const TileSpec& spec,
+               const std::byte* tile) noexcept
+{
+    const std::size_t bps       = spec.bytes_per_sample;
+    const std::size_t src_pitch = static_cast<std::size_t>(t.tile_w) * bps;
+
+    for (std::uint32_t k = 0; k < t.plane_count; ++k) {
+        copy_one_plane(t, bps, src_pitch,
+                       tile + static_cast<std::size_t>(t.planes[k]) * t.plane_bytes,
+                       t.dst + static_cast<std::int64_t>(k) * t.band_space);
     }
 }
 

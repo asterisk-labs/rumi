@@ -151,3 +151,91 @@ def test_fetching_only_the_planned_ranges_is_enough(image):
     assert fetched < len(blob) / 4
     assert np.array_equal(rumi.read(bytes(sparse), header, **window),
                           rumi.read(path, header, **window))
+
+
+@pytest.fixture(scope="module")
+def cell_image(tmp_path_factory):
+    """The same scene with one frame per grid position."""
+    rng = np.random.default_rng(1)
+    data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
+    tf = rumi.frames(data, 32, unit="cell")
+    graphs = {}
+    for t in tf:
+        g = graphs.get(t.data.shape)
+        if g is None:
+            g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
+        t.compressed = geozl.compress(t.data, graph=g)
+    path = tmp_path_factory.mktemp("cell") / "img.tif"
+    path, header = rumi.write(path, tf)
+    return str(path), header, data
+
+
+def test_a_cell_file_round_trips(cell_image):
+    path, header, data = cell_image
+    assert np.array_equal(rumi.read(path, header), data)
+
+
+@pytest.mark.parametrize("bands", [[0], [4], [0, 4], [4, 3, 2, 1, 0], [2, 2],
+                                   [0, 0, 3], [0, 1, 2, 3, 4]])
+def test_a_cell_read_keeps_the_band_order_asked_for(cell_image, bands):
+    """One frame holds every band, so the order comes from how the planes are
+    handed out."""
+    path, header, data = cell_image
+    assert np.array_equal(rumi.read(path, header, b=bands), data[bands])
+
+
+@pytest.mark.parametrize("bands", [[0], [3, 1], [0, 1, 2, 3, 4]])
+def test_a_cell_window_matches_a_tile_window(tmp_path, bands):
+    """Two ways to store one image, so a window reads the same from either."""
+    rng = np.random.default_rng(2)
+    data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
+    out = {}
+    for unit in ("tile", "cell"):
+        tf = rumi.frames(data, 32, unit=unit)
+        graphs = {}
+        for t in tf:
+            g = graphs.get(t.data.shape)
+            if g is None:
+                g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
+            t.compressed = geozl.compress(t.data, graph=g)
+        path, header = rumi.write(tmp_path / f"{unit}.tif", tf)
+        out[unit] = np.asarray(
+            rumi.read(str(path), header, b=bands, y=(30, 70), x=(20, 90)))
+    assert np.array_equal(out["tile"], out["cell"])
+    assert np.array_equal(out["cell"], data[bands, 30:70, 20:90])
+
+
+def test_a_cell_read_decodes_each_frame_once(cell_image):
+    """A cell read must not scale with the bands asked for. It did: the plan
+    made one task per band and each decoded the whole frame."""
+    path, header, _data = cell_image
+    one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
+    all_five = plan(header, bands=[0, 1, 2, 3, 4], y=(0, 100), x=(0, 130))
+    assert len(one) == len(all_five)
+
+
+def test_a_tile_read_still_asks_per_band(image):
+    """A tile frame holds one band, so tile reads do scale."""
+    _path, header, _data = image
+    one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
+    both = plan(header, bands=[0, 2], y=(0, 100), x=(0, 130))
+    assert len(both) == 2 * len(one)
+
+
+def test_a_cell_stack_round_trips(tmp_path):
+    """A stack merges one plan per image."""
+    rng = np.random.default_rng(3)
+    base = rng.integers(0, 3000, (4, 64, 64)).astype(np.uint16)
+    paths, headers, cubes = [], [], []
+    for i in range(3):
+        cube = (base + i * 100).astype(np.uint16)
+        tf = rumi.frames(cube, 32, unit="cell")
+        for t in tf:
+            t.compressed = geozl.compress(t.data,
+                                          graph=geozl.graph(t.data, GRAPH))
+        path, header = rumi.write(tmp_path / f"s{i}.tif", tf)
+        paths.append(str(path))
+        headers.append(header)
+        cubes.append(cube)
+    got = np.asarray(rumi.read(paths, headers, b=[3, 0]))
+    assert np.array_equal(got, np.stack([c[[3, 0]] for c in cubes]))
