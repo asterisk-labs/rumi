@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: normal
+            sanitize: ""
+            cc: gcc
+            cxx: g++
+          - name: tsan
+            sanitize: thread
+            cc: clang
+            cxx: clang++
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Init OpenZL dependencies
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: build
+          create-args: >-
+            cmake
+            ninja
+      - name: Configure
+        shell: bash -el {0}
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: >-
+          cmake -S core -B core/build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DRUMI_BUILD_TESTS=ON
+          -DRUMI_SANITIZE=${{ matrix.sanitize }}
+      - name: Build
+        shell: bash -el {0}
+        run: cmake --build core/build-ci --parallel
+      - name: Test
+        shell: bash -el {0}
+        run: ctest --test-dir core/build-ci --output-on-failure
+
+  python-linux:
+    name: Python threads (Linux, fork)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Init OpenZL dependencies
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: bindings/python/pyproject.toml
+      - name: Install build and test dependencies
+        run: |
+          python -m pip install --upgrade pip cmake ninja
+          python -m pip install numpy cffi pytest "geozl>=0.12"
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+      - name: Build and stage librumi
+        run: make lib
+      - name: Run the Python suite
+        env:
+          PYTHONPATH: bindings/python
+        run: python -m pytest bindings/python/tests -q

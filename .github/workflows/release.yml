@@ -180,7 +180,9 @@ jobs:
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install pytest
+          # geozl is imported at module scope by the writer and thread suites.
+          # Installing it here prevents a green release job from skipping both.
+          python -m pip install pytest "geozl>=0.12"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v4
@@ -229,7 +231,8 @@ jobs:
           source /tmp/clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install pytest
+          # Keep the wheel test representative of the documented write path.
+          python -m pip install pytest "geozl>=0.12"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v4
