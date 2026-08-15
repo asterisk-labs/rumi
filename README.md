@@ -12,7 +12,7 @@
 
 rumi is a predictable raster format for machine-learning datasets. It reads complete images or small windows directly into NumPy, PyTorch, JAX, and TensorFlow.
 
-Unlike GeoTIFF, rumi allows only one layout. Every frame is independently compressed with [OpenZL](https://github.com/facebook/openzl), so a reader can jump directly to the pixels it needs without scanning the rest of the file.
+rumi fixes one predictable container profile. A frame can hold one band tile or all bands in a cell, and every frame is independently compressed with [OpenZL](https://github.com/facebook/openzl), so a reader can jump directly to the pixels it needs.
 
 rumi files use the `.rumi` extension. The exact binary layout is defined in the [format specification](SPEC.md).
 
@@ -90,7 +90,7 @@ rumi.set_num_threads(8)
 image = rumi.read(path, header)
 ```
 
-The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_CPUS`. A child created with `fork()` starts with its own rumi setting and pool, so it does not inherit a parallel pool from its parent.
+The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_CPUS`. A child created with `fork()` never uses the parent's pool: it evaluates the environment again and defaults to one thread when the variable is unset. If your training environment exports a larger value globally, call `rumi.set_num_threads(1)` in `worker_init_fn` before the first read.
 
 ## Current limits
 

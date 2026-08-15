@@ -17,10 +17,10 @@ text{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-se
 <line class="rule" x1="24" y1="290" x2="656" y2="290"/>
 <text class="t" x="36" y="66">tile</text>
 <text class="s" x="36" y="84">T × T</text>
-<text class="s" x="36" y="100" opacity=".85">one OpenZL frame</text>
+<text class="s" x="36" y="100" opacity=".85">one-band frame</text>
 <text class="t" x="252" y="66">cell</text>
 <text class="s" x="252" y="84">B × T × T</text>
-<text class="s" x="252" y="100" opacity=".85">contiguous on disk</text>
+<text class="s" x="252" y="100" opacity=".85">multi-band frame</text>
 <text class="t" x="468" y="66">Image</text>
 <text class="s" x="468" y="84">(B, Y, X)</text>
 <text class="s" x="468" y="100" opacity=".85">one rumi file</text>
