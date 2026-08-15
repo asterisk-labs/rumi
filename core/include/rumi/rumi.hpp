@@ -315,6 +315,17 @@ compile_layout(std::string_view pattern,
                std::int64_t y, std::int64_t x);
 
 
+// Threads
+
+// The count a read takes when it names none. Process-wide, seeded from
+// RUMI_NUM_THREADS. Once the pool exists its size is the answer and set is a
+// no-op, since resizing means joining workers with frames in flight. Both
+// return the count in effect after the call, so a caller sees a refused set. A
+// forked child starts a new process-owned setting and pool.
+int set_num_threads(int n) noexcept;
+[[nodiscard]] int num_threads() noexcept;
+
+
 // Stateless read
 
 // Refines the status of the most recent read_window or read_stack call on the
@@ -335,7 +346,9 @@ plan_ranges(const Header& h, std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size);
 
 // Plans the window, runs it, and returns. bands are 1-based, dst must be
-// aligned to bytes_per_sample, num_threads > 1 uses the process-global pool.
+// aligned to bytes_per_sample. num_threads <= 0 takes the process-wide count,
+// 1 stays on the calling thread and never builds the pool, more asks for that
+// many and gets the pool's size if one already exists.
 [[nodiscard]] std::expected<void, std::string>
 read_window(Source& src, const Header& h,
             std::span<const int> bands,

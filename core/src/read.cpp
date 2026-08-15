@@ -2,14 +2,18 @@
 #include "rumi/thread_pool.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <cerrno>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <expected>
 #include <iterator>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -65,13 +69,163 @@ validate_request(const Header& h, std::span<const int> bands,
     return {};
 }
 
+constexpr int MAX_THREADS = 1024;
+
 int clamp_threads(int n) noexcept
 {
-    constexpr int MAX_THREADS = 1024;
     return n < 1 ? 1 : (n > MAX_THREADS ? MAX_THREADS : n);
 }
 
+// An integer, or ALL_CPUS as GDAL_NUM_THREADS spells it. Anything else is 1.
+int env_threads() noexcept
+{
+    const char* s = std::getenv("RUMI_NUM_THREADS");
+    if (!s || !*s) return 1;
+    if (std::strcmp(s, "ALL_CPUS") == 0) {
+        const unsigned n = std::thread::hardware_concurrency();
+        if (n == 0) return 1;
+        return n > static_cast<unsigned>(MAX_THREADS)
+            ? MAX_THREADS : static_cast<int>(n);
+    }
+    errno = 0;
+    char* end = nullptr;
+    const long n = std::strtol(s, &end, 10);
+    if (errno == ERANGE || end == s || *end != '\0') return 1;
+    if (n < 1) return 1;
+    return n > MAX_THREADS ? MAX_THREADS : static_cast<int>(n);
+}
+
+// One atomic word keeps the owner PID, count and pinned bit coherent. A child
+// after fork sees a different PID and seeds a new process-local setting instead
+// of inheriting the parent's EDA budget. The low 31 bits hold the count, which
+// is capped far below that; bit 31 means a live pool has claimed the count.
+constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
+constexpr std::uint32_t PINNED       = 0x80000000u;
+
+std::atomic<std::uint64_t> g_thread_state{0};
+static_assert(decltype(g_thread_state)::is_always_lock_free,
+              "post-fork thread state must not hide a library mutex");
+
+std::uint32_t pid_key() noexcept
+{
+    static_assert(sizeof(detail::pid_type) <= sizeof(std::uint32_t));
+    return static_cast<std::uint32_t>(detail::current_pid());
+}
+
+std::uint64_t pack_thread_state(std::uint32_t pid, int threads,
+                                bool pinned) noexcept
+{
+    const std::uint32_t low = static_cast<std::uint32_t>(threads)
+                            | (pinned ? PINNED : 0u);
+    return (static_cast<std::uint64_t>(pid) << 32) | low;
+}
+
+int state_threads(std::uint64_t state) noexcept
+{
+    return static_cast<int>(static_cast<std::uint32_t>(state) & THREADS_MASK);
+}
+
+bool state_pinned(std::uint64_t state) noexcept
+{
+    return (static_cast<std::uint32_t>(state) & PINNED) != 0;
+}
+
+bool state_owned_by(std::uint64_t state, std::uint32_t pid) noexcept
+{
+    return static_cast<std::uint32_t>(state >> 32) == pid
+        && state_threads(state) != 0;
+}
+
+// Returns a setting owned by this process, seeding from the environment when
+// this is the first query here or the first query after fork.
+std::uint64_t process_thread_state() noexcept
+{
+    const std::uint32_t pid = pid_key();
+    std::uint64_t state = g_thread_state.load(std::memory_order_acquire);
+    while (!state_owned_by(state, pid)) {
+        const std::uint64_t seed = pack_thread_state(pid, env_threads(), false);
+        if (g_thread_state.compare_exchange_weak(
+                state, seed, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            return seed;
+        }
+    }
+    return state;
+}
+
+// Atomically fixes the count for the first parallel read. A default read
+// (requested <= 0) takes the most recent process setting; an explicit C API
+// request names the count it is trying to pin. Once pinned, every caller gets
+// the winner instead of racing a setter against pool construction.
+int pin_num_threads(int requested) noexcept
+{
+    const std::uint32_t pid = pid_key();
+    std::uint64_t state = process_thread_state();
+    for (;;) {
+        if (!state_owned_by(state, pid)) {
+            state = process_thread_state();
+            continue;
+        }
+        if (state_pinned(state)) return state_threads(state);
+
+        const int want = requested > 0
+            ? clamp_threads(requested) : state_threads(state);
+        // Serial is never pinned: no pool exists, so a later EDA setter is
+        // still free to choose a parallel count.
+        if (want <= 1) return want;
+        const std::uint64_t pinned = pack_thread_state(pid, want, true);
+        if (g_thread_state.compare_exchange_weak(
+                state, pinned, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            return want;
+        }
+    }
+}
+
+// A read that names no count takes the process-wide one. 1 stays on the calling
+// thread and never builds the pool, which is what keeps a worker that asks for
+// one from fixing the size for the whole process.
+ThreadPool* pool_for(int requested, std::size_t tasks)
+{
+    if (requested == 1) return nullptr;
+
+    // Do not build and pin a pool that the executor cannot use. Preserve an
+    // explicit C API request as the process setting for a later, larger read.
+    if (tasks <= 1) {
+        if (requested > 1) (void) set_num_threads(requested);
+        return nullptr;
+    }
+
+    const int want = pin_num_threads(requested);
+    if (want <= 1) return nullptr;
+    return &global_thread_pool(static_cast<unsigned>(want));
+}
+
 }  // namespace
+
+
+int set_num_threads(int n) noexcept
+{
+    const int want = clamp_threads(n);
+    const std::uint32_t pid = pid_key();
+    std::uint64_t state = g_thread_state.load(std::memory_order_acquire);
+    for (;;) {
+        if (state_owned_by(state, pid) && state_pinned(state)) {
+            return state_threads(state);
+        }
+        const std::uint64_t desired = pack_thread_state(pid, want, false);
+        if (g_thread_state.compare_exchange_weak(
+                state, desired, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            return want;
+        }
+    }
+}
+
+int num_threads() noexcept
+{
+    return state_threads(process_thread_state());
+}
 
 
 rumi_status take_read_status() noexcept
@@ -350,12 +504,6 @@ read_window(Source& src, const Header& h,
         return ok;
     }
 
-    ThreadPool* pool = nullptr;
-    if (clamp_threads(num_threads) > 1) {
-        pool = &global_thread_pool(
-            static_cast<unsigned>(clamp_threads(num_threads)));
-    }
-
     const std::size_t bps = h.bytes_per_sample;
     Plan plan = build_plan(h, &src,
                            x_off, y_off, x_size, y_size, dst, bands,
@@ -363,6 +511,7 @@ read_window(Source& src, const Header& h,
                            static_cast<std::int64_t>(layout.sy) * bps,
                            static_cast<std::int64_t>(layout.sb) * bps);
 
+    ThreadPool* pool = pool_for(num_threads, plan.tasks.size());
     Executor exec(pool);
     if (!exec.run(plan)) {
         g_read_status = exec.status();
@@ -426,12 +575,6 @@ read_stack(std::span<Source* const> sources,
         return err("sub-byte types support only a full-image read for now");
     }
 
-    ThreadPool* pool = nullptr;
-    if (clamp_threads(num_threads) > 1) {
-        pool = &global_thread_pool(
-            static_cast<unsigned>(clamp_threads(num_threads)));
-    }
-
     const std::size_t bps      = ref.bytes_per_sample;
     const std::size_t n_stride = static_cast<std::size_t>(layout.sn) * bps;
 
@@ -464,6 +607,7 @@ read_stack(std::span<Source* const> sources,
                           std::make_move_iterator(sub.tasks.end()));
     }
 
+    ThreadPool* pool = pool_for(num_threads, plan.tasks.size());
     Executor exec(pool);
     if (!exec.run(plan)) {
         g_read_status = exec.status();
