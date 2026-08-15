@@ -129,9 +129,8 @@ inline void ThreadPool::Batch::submit(std::function<void()> job)
             if (--pending_ == 0) done_.notify_all();
         });
     } catch (...) {
-        // Keep pending_ honest. The Batch destructor waits for jobs already
-        // accepted by the pool, so their capture of this remains valid while
-        // the submit exception unwinds the caller.
+        // Restore pending_ when enqueue rejects the job. The destructor still
+        // waits for previously accepted jobs.
         std::lock_guard lock(mutex_);
         if (--pending_ == 0) done_.notify_all();
         throw;
@@ -155,11 +154,8 @@ using pid_type = ::pid_t;
 inline pid_type current_pid() noexcept { return ::getpid(); }
 #endif
 
-// Every process that touches the pool installs its own slot. The mutex belongs
-// to the slot, not to the registry: after fork the child replaces the inherited
-// slot before it can touch a mutex that another parent thread may have held.
-// The inherited slot leaks in the child on purpose; destroying its pool would
-// try to join workers that fork did not preserve.
+// A child replaces the inherited slot before touching its mutex. The inherited
+// pool is not destroyed because its workers no longer exist after fork.
 struct PoolSlot {
     explicit PoolSlot(pid_type pid) noexcept : owner(pid) {}
 
@@ -184,8 +180,7 @@ struct GlobalPool {
     }
 };
 
-// An inline object avoids a function-local static guard. Such a guard could
-// itself be inherited mid-initialisation by a child.
+// Avoid a function-local static guard that could be inherited during setup.
 constinit inline GlobalPool g_global_pool;
 static_assert(std::atomic<PoolSlot*>::is_always_lock_free,
               "post-fork pool registry must not hide a library mutex");
@@ -216,17 +211,14 @@ inline PoolSlot& process_pool_slot()
     }
 }
 
-// Thread-count reservation lives in read.cpp; these internal hooks let pool
-// construction keep reservation and rollback under PoolSlot::make.
+// Implemented in read.cpp and exposed here for deterministic pool tests.
 int reserve_thread_count(int requested) noexcept;
 void rollback_thread_count(unsigned threads) noexcept;
 
 }  // namespace detail
 
 
-// The size of the pool this process owns, 0 when there is none: never built, or
-// built before a fork and left behind. getpid() is the whole test, and it is a
-// real syscall, glibc dropped its cache in 2.25.
+// Size of the current process's pool, or 0 when none exists.
 inline unsigned global_thread_pool_size() noexcept
 {
     detail::PoolSlot* slot = detail::current_pool_slot();
@@ -237,11 +229,8 @@ inline unsigned global_thread_pool_size() noexcept
     return slot->threads.load(std::memory_order_acquire);
 }
 
-// Build under the current process's mutex. reserve_count runs only after the
-// mutex is held, so a failed constructor can roll its reservation back before
-// another builder advances. Once live is published, every caller shares it.
-// A forked child first installs a fresh slot and therefore never locks the
-// inherited mutex or waits on inherited workers.
+// Serialize construction per process. Reserve while locked, roll back on
+// failure, and publish the pool only after construction succeeds.
 template <typename ReserveCount, typename RollbackCount, typename MakePool>
 inline ThreadPool* global_thread_pool(ReserveCount&& reserve_count,
                                       RollbackCount&& rollback_count,

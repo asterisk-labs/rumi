@@ -114,7 +114,7 @@ build_blob_from_file(const char* path) noexcept
                    "(rewrite with BIGTIFF=YES)");
     }
     if (version != 43) {
-        return err("not a TIFF file (bad version word %u)", version);
+        return err("invalid rumi container (bad version word %u)", version);
     }
     const unsigned off_size = hdr[4] | (static_cast<unsigned>(hdr[5]) << 8);
     if (off_size != 8) {

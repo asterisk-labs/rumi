@@ -67,14 +67,10 @@ RUMI_API void rumi_free(void* ptr);
 
 // Threads.
 
-// The count a read takes when it passes num_threads <= 0. Process-wide, seeded
-// from RUMI_NUM_THREADS, an integer or ALL_CPUS. Values are clamped to 1..1024.
-// Set it before the first read with multiple frames that asks for more than one
-// thread: that read pins the count while constructing the pool, and a later set
-// is refused because resizing would mean joining workers with frames in flight.
-// Both return the process state after the call, so a caller sees a refusal by
-// comparing. A forked child does not inherit the pinned state or pool; it seeds
-// a new setting from its environment, which defaults to 1 when unset.
+// Process-wide default for reads with num_threads <= 0. RUMI_NUM_THREADS seeds
+// it with an integer or ALL_CPUS; values are clamped to 1..1024. The first
+// parallel read pins the count. A forked child initializes its own setting.
+// Both functions return the count in effect.
 RUMI_API int rumi_set_num_threads(int n);
 RUMI_API int rumi_get_num_threads(void);
 
@@ -97,9 +93,7 @@ rumi_index_file(const char*     path,
 // form (the complex integers). Never a real DLPack code.
 #define RUMI_DL_NONE 255
 
-// The dtype set is defined once in rumi_dtypes.def. The enum and the
-// descriptor table below are generated from it, so a new type is one row and
-// nothing here drifts. RUMI_DT_UNKNOWN = 0 has no row.
+// Generated from rumi_dtypes.def. RUMI_DT_UNKNOWN = 0 has no row.
 typedef enum {
     RUMI_DT_UNKNOWN = 0,
 #define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \
@@ -198,7 +192,7 @@ rumi_source_memory(const void* data, size_t size, rumi_source** out);
 
 RUMI_API void rumi_source_free(rumi_source* src);
 
-// The byte ranges a window needs, in tile order, so a caller can fetch exactly
+// The byte ranges a window needs, in frame-index order, so a caller can fetch
 // those and read the result back through a memory source. Pure arithmetic over
 // the header, no I/O. *out is caller-owned, released with rumi_free.
 typedef struct { uint64_t offset; uint64_t length; } rumi_range;
@@ -210,7 +204,7 @@ rumi_plan_ranges(const rumi_spec* spec,
                  rumi_range** out, size_t* out_count);
 
 
-// Stateless read.
+// Read.
 
 // Reads the window from src. bands holds
 // 1-based indices in output order, NULL with n_bands = 0 means all bands in
@@ -272,11 +266,9 @@ rumi_read_stack_dlpack(rumi_source* const*     sources,
 // deleter, so a consumer and an unconsumed capsule free through one path.
 RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
-// Wraps a versioned tensor as the legacy DLManagedTensor, for a consumer that
-// asks for no version or one below 1.0. Takes ownership of t, whose deleter the
-// wrapper calls in its own. Returns NULL without taking ownership when t uses
-// padded sub-byte storage, which DLPack 0.x cannot describe. Release an
-// unconsumed wrapper with rumi_dlpack_legacy_free, never rumi_dlpack_free.
+// Wraps a versioned tensor for a DLPack 0.x consumer. Returns NULL without
+// taking ownership for padded sub-byte storage. Otherwise the wrapper owns t;
+// release it with rumi_dlpack_legacy_free.
 RUMI_API DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 
 RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
@@ -323,14 +315,9 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 
 // Geo keys.
 
-// Builds the GeoTIFF CRS tags from an EPSG code. Three keys, no projection
-// database: the code is the reference and every reader resolves it from its own
-// EPSG tables. pixel_is_point selects the raster type, 0 area, non-zero point.
-// On success each out buffer is caller-owned and released with rumi_free,
-// holding the raw little-endian tag payload for GeoKeyDirectory (SHORT),
-// GeoDoubleParams (DOUBLE) and GeoAsciiParams (ASCII). The last two come back
-// NULL with size 0, which an EPSG code never needs. On failure the out-pointers
-// are untouched.
+// Builds the fixed GeoKeyDirectory from an EPSG code. pixel_is_point selects
+// PixelIsArea (0) or PixelIsPoint (non-zero). The directory is caller-owned and
+// released with rumi_free; out_dbl and out_ascii are NULL with size 0.
 RUMI_API rumi_status
 rumi_geokeys(uint32_t        epsg,
              int             pixel_is_point,

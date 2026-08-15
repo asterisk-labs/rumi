@@ -221,8 +221,7 @@ plan(const WriteDesc& d, const Grid& g,
     const std::uint64_t ifd_size = 8 + 20 * l.entries.size() + 8;
     l.base = place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
 
-    // Nothing in the format caps this now that the blob does not carry it.
-    // The cap is this writer's, which builds the whole header in memory.
+    // This writer builds the header in memory and caps its size at uint32.
     if (l.base > 0xFFFFFFFFu)
         return err("the header would be %llu bytes, past what this writer builds",
                    static_cast<unsigned long long>(l.base));
@@ -265,7 +264,7 @@ try {
         if (!frames[i])
             return err("frame %zu is null", i);
         if (sizes[i] == 0)
-            return err("frame %zu has an empty payload, rumi forbids sparse frames", i);
+            return err("frame %zu has an empty payload", i);
         if (sizes[i] > 0xFFFFFFFFu)
             return err("frame %zu is %zu bytes, over the uint32 the header holds",
                        i, sizes[i]);
@@ -281,8 +280,7 @@ try {
     auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
 
-    // Frame data is one contiguous run in frame order, so the offsets fall out
-    // of the sizes and only their permutation reaches the tag.
+    // Build TileOffsets from frame sizes in frame-index order.
     std::vector<std::uint64_t> offsets(n);
     std::uint64_t running = l->base;
     for (std::size_t i = 0; i < n; ++i) {
@@ -346,13 +344,10 @@ try {
     bh.samples_per_pixel = spp;
     bh.bits_per_sample   = g->bits;
     bh.sample_format     = g->sample_format;
-    // With one band a cell frame holds exactly what a tile frame holds, so the
-    // two files are byte for byte the same and the count cannot tell them
-    // apart. Pin the blob to tile so a rebuild from the file matches it.
+    // Tile and cell units are identical for one band; canonicalize to tile.
     bh.frame_unit        = spp == 1 ? 0 : d.frame_unit;
 
-    // place_external walks the entries it is about to write. Readers use the
-    // closed form and never see them. Nothing else checks that the two agree.
+    // Verify the writer layout against the reader's closed form.
     if (l->base != derived_base_offset(spp, n)) {
         return err("laid the frames at %llu, the profile puts them at %llu",
                    static_cast<unsigned long long>(l->base),

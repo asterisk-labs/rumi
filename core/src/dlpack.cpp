@@ -27,9 +27,7 @@ extern "C" void rumi_dlpack_legacy_free(DLManagedTensor* self)
 extern "C" DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t)
 {
     if (!t) return nullptr;
-    // DLPack 0.x has no flag that tells a consumer a sub-byte value occupies a
-    // full byte. Passing it on would make the consumer interpret padded bytes
-    // as a packed bitstream.
+    // DLPack 0.x cannot describe padded sub-byte storage.
     if (t->flags & DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED) return nullptr;
     auto* self = static_cast<DLManagedTensor*>(
         std::malloc(sizeof(DLManagedTensor)));

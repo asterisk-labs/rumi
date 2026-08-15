@@ -157,9 +157,9 @@ void test_georeferencing_does_not_change_the_size()
     }
 }
 
-void test_base_offset_accepts_unaligned_tile_sizes()
+void test_base_offset_accepts_valid_tile_sizes()
 {
-    CASE("tile dimensions need no TIFF alignment")
+    CASE("tile dimensions accept positive uint16 values")
     OK(!rumi::base_offset(desc_of(64, 64, 0, 1, nullptr, 0)).has_value());
     for (std::uint16_t good : {std::uint16_t(1), std::uint16_t(8),
                                std::uint16_t(17), std::uint16_t(100),
@@ -719,7 +719,7 @@ int main()
 {
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();
-    test_base_offset_accepts_unaligned_tile_sizes();
+    test_base_offset_accepts_valid_tile_sizes();
     test_geokeys();
     test_parse_blob();
     test_count_packing();

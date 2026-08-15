@@ -103,8 +103,7 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
     return RUMI_DT_UNKNOWN;
 }
 
-// Decoded numeric storage width. OpenZL pads a logical sub-byte sample to one
-// byte, the same representation the reader exports through DLPack.
+// Decoded width; OpenZL stores each sub-byte sample in one byte.
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
     std::size_t n = 0;
@@ -182,9 +181,7 @@ parse_blob(std::span<const std::byte> blob)
     }
     h.frame_count = static_cast<std::uint32_t>(frame_count_u64);
 
-    // OpenZL's numeric output has a whole-byte fixedWidth. Sub-byte logical
-    // dtypes therefore decode padded, one byte per sample; DLPack advertises
-    // that representation with its sub-byte-padded flag.
+    // Sub-byte samples decode to one byte each.
     const auto frame_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width)
                                * static_cast<std::uint64_t>(bh.tile_length)
                                * static_cast<std::uint64_t>(h.bytes_per_sample)

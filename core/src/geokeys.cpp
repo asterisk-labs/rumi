@@ -96,8 +96,7 @@ try {
     const bool undefined  = epsg == 0;
     const bool geographic = !undefined && is_geographic(epsg);
     if (!undefined && !geographic && !is_projected(epsg))
-        return err("EPSG:%u is not a projected or geographic CRS. rumi stores "
-                   "the CRS as an EPSG code and nothing else.", epsg);
+        return err("EPSG:%u is not a projected or geographic CRS", epsg);
 
     std::uint16_t model = MODEL_UNDEFINED;
     std::uint16_t crs_key = GEOGRAPHIC_TYPE;

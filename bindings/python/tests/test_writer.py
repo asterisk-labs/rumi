@@ -309,9 +309,8 @@ def test_sample_format(tmp_path, dtype):
     assert values(entries[258], "H") == [np.dtype(dtype).itemsize * 8]
 
 
-# Digests of the whole file. The writer is deterministic, so a change here is a
-# change to the bytes on disk. Regenerate deliberately, never to make a test
-# pass. Last regenerated when the IFD went from 12 tags to 11.
+# Digests of complete files. Update them only for an intentional format change.
+# Last regenerated when the IFD went from 12 tags to 11.
 GOLDEN = {
     "plain": "7a6818bd71b3fbb5579ce4c7e07833cd2509555d3cee179ea260697929ad6a11",
     "north_up": "5077418d91f271d316f91fb50859d3693332237e7239a5fb91cdfc314e9aa5e9",
@@ -346,7 +345,7 @@ def test_empty_payload(tmp_path):
     tf = make_frame()
     frames = list(tf["compressed"])
     frames[3] = b""
-    with pytest.raises(ValueError, match="sparse"):
+    with pytest.raises(ValueError, match="empty payload"):
         write_frames(tmp_path / "a.rumi", frames, tf)
 
 

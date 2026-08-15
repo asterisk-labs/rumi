@@ -379,7 +379,7 @@ rumi_spec_header(const rumi_spec* spec, rumi_header* out)
 }
 
 
-// Stateless read.
+// Read.
 
 extern "C" rumi_status
 rumi_read(rumi_source* src, const rumi_spec* spec,

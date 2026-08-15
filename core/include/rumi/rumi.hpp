@@ -73,10 +73,7 @@ enum class ParseError {
 
 [[nodiscard]] std::string_view describe(ParseError e) noexcept;
 
-// Where the profile puts the frame data, from the shape alone. The tag set never
-// changes, so the only thing to add up is the values too big to sit inside
-// their own IFD entry. Writers place the frames here, readers seek here, and
-// nothing stores it.
+// Start of frame data in the fixed IFD layout.
 [[nodiscard]] std::uint64_t derived_base_offset(std::uint32_t bands,
                                                 std::uint64_t frames) noexcept;
 
@@ -316,17 +313,13 @@ compile_layout(std::string_view pattern,
 
 // Threads
 
-// The count a read takes when it names none. Process-wide, seeded from
-// RUMI_NUM_THREADS. The first parallel read pins that count while it constructs
-// the pool; a later set is a no-op because resizing would mean joining workers
-// with frames in flight. Both return the process state after the call, so a
-// caller sees a refused set. A forked child starts a new process-owned setting
-// and pool.
+// Process-wide default, seeded from RUMI_NUM_THREADS. The first parallel read
+// pins the count. A forked child initializes its own setting and pool.
 int set_num_threads(int n) noexcept;
 [[nodiscard]] int num_threads() noexcept;
 
 
-// Stateless read
+// Read
 
 // Refines the status of the most recent read_window or read_stack call on the
 // calling thread, then resets it. Lets the C ABI return a precise rumi_status
@@ -381,17 +374,14 @@ build_blob_from_file(const char* path) noexcept;
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;
 
-// The three GeoTIFF CRS tag payloads, raw little-endian, ready to embed.
-// double_params and ascii_params are empty when the CRS needs neither.
+// GeoTIFF key payloads. The fixed EPSG profile uses only directory.
 struct GeoKeys {
     std::vector<std::byte> directory;      // GeoKeyDirectory, SHORT
     std::vector<std::byte> double_params;  // GeoDoubleParams, DOUBLE
     std::vector<std::byte> ascii_params;   // GeoAsciiParams, ASCII
 };
 
-// Encodes an EPSG code as GeoTIFF keys. The code is the reference, so three
-// keys carry it and a reader resolves the rest from its own EPSG tables. A CRS
-// no code names is passed as raw keys instead, see WriteDesc::keys.
+// Encodes an EPSG code in the fixed GeoKeyDirectory profile.
 [[nodiscard]] std::expected<GeoKeys, std::string>
 build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept;
 
@@ -427,8 +417,7 @@ write_file(const char* path, const WriteDesc& desc,
            const unsigned char* const* frames, const std::size_t* sizes,
            std::size_t frame_count) noexcept;
 
-// Where the frame data would start for this description, without writing. Builds
-// the geo tags to measure them, same as write_file.
+// Start of frame data for this description, without writing a file.
 [[nodiscard]] std::expected<std::uint64_t, std::string>
 base_offset(const WriteDesc& desc) noexcept;
 

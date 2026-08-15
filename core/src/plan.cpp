@@ -148,8 +148,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         return RUMI_ERR_IO;
     }
 
-    // A complete spatial frame decodes into the output, a partial one into scratch for
-    // copy_rect. Numeric decode needs element-width alignment, which both hold.
+    // Complete frames decode into the output; partial frames use scratch.
     std::byte* frame = t.direct;
     if (!frame) {
         if (ws.scratch.size() < spec.frame_bytes) {
@@ -163,8 +162,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         frame = ws.scratch.data();
     }
 
-    // One numeric output per frame. Type, width and size are checked below
-    // against this frame's real decoded size.
+    // Validate the decoded numeric output before copying it.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
         ws.dctx, &info, frame, t.frame_bytes,

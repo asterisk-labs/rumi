@@ -7,7 +7,7 @@ string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" RUMI_VERSION_NUMERIC
 
 project(rumi
     VERSION     ${RUMI_VERSION_NUMERIC}
-    DESCRIPTION "A predictable raster format for AI training data"
+    DESCRIPTION "A GeoTIFF-inspired raster format for AI training data"
     LANGUAGES   CXX C
 )
 
@@ -138,8 +138,7 @@ if(RUMI_BUILD_TESTS)
     add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})
     target_link_libraries(rumi_tests PRIVATE rumi_config)
     if(RUMI_SANITIZE STREQUAL "thread")
-        # TSAN deliberately aborts when a multi-threaded child creates threads;
-        # Linux's unsanitized job owns the fork regression instead.
+        # TSAN cannot run the post-fork thread-creation test.
         target_compile_definitions(rumi_tests PRIVATE RUMI_TSAN)
     endif()
     add_test(NAME core COMMAND rumi_tests)

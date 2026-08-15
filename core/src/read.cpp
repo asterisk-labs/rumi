@@ -95,11 +95,7 @@ int env_threads() noexcept
     return n > MAX_THREADS ? MAX_THREADS : static_cast<int>(n);
 }
 
-// One atomic word keeps the owner PID, count and pinned bit coherent. A child
-// after fork sees a different PID and seeds a new process-local setting instead
-// of inheriting the parent's EDA budget. The low 31 bits hold the count, which
-// is capped far below that; bit 31 means a parallel read reserved the count.
-// A failed pool construction clears that reservation before another build.
+// Pack PID, count and pinned state so a child can reseed them atomically.
 constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
 constexpr std::uint32_t PINNED       = 0x80000000u;
 
@@ -137,8 +133,7 @@ bool state_owned_by(std::uint64_t state, std::uint32_t pid) noexcept
         && state_threads(state) != 0;
 }
 
-// Returns a setting owned by this process, seeding from the environment when
-// this is the first query here or the first query after fork.
+// Seed this process from the environment on first use and after fork.
 std::uint64_t process_thread_state() noexcept
 {
     const std::uint32_t pid = pid_key();
@@ -154,10 +149,7 @@ std::uint64_t process_thread_state() noexcept
     return state;
 }
 
-// Atomically fixes the count for the first parallel read. A default read
-// (requested <= 0) takes the most recent process setting; an explicit C API
-// request names the count it is trying to pin. Once pinned, every caller gets
-// the winner instead of racing a setter against pool construction.
+// Atomically reserve the count for the first parallel read.
 int pin_num_threads(int requested) noexcept
 {
     const std::uint32_t pid = pid_key();
@@ -171,8 +163,7 @@ int pin_num_threads(int requested) noexcept
 
         const int want = requested > 0
             ? clamp_threads(requested) : state_threads(state);
-        // Serial is never pinned: no pool exists, so a later EDA setter is
-        // still free to choose a parallel count.
+        // A serial request does not create a pool or pin the count.
         if (want <= 1) return want;
         const std::uint64_t pinned = pack_thread_state(pid, want, true);
         if (g_thread_state.compare_exchange_weak(
@@ -183,8 +174,7 @@ int pin_num_threads(int requested) noexcept
     }
 }
 
-// Called while the process-owned pool mutex is still held. No other builder
-// can publish a pool between a constructor failure and this rollback.
+// PoolSlot::make remains locked during rollback.
 void rollback_pin_num_threads(unsigned threads) noexcept
 {
     const std::uint32_t pid = pid_key();
@@ -197,15 +187,11 @@ void rollback_pin_num_threads(unsigned threads) noexcept
         std::memory_order_acquire);
 }
 
-// A read that names no count takes the process-wide one. 1 stays on the calling
-// thread and never builds the pool, which is what keeps a worker that asks for
-// one from fixing the size for the whole process.
 ThreadPool* pool_for(int requested, std::size_t tasks)
 {
     if (requested == 1) return nullptr;
 
-    // Do not build and pin a pool that the executor cannot use. Preserve an
-    // explicit C API request as the process setting for a later, larger read.
+    // Keep an explicit count as the process default even when this read has one task.
     if (tasks <= 1) {
         if (requested > 1) (void) set_num_threads(requested);
         return nullptr;
