@@ -120,6 +120,35 @@ a {
   z-index: 1000;
 }
 
+.site-back {
+  position: fixed;
+  top: 14px;
+  left: 16px;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  color: #fffc;
+  border: 1px solid #fff2;
+  border-radius: 999px;
+  background: #111a;
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-back:hover,
+.site-back:focus-visible {
+  color: #fff;
+  background: #111d;
+}
+
+.is-embedded .site-back {
+  display: none;
+}
+
 .nav {
   position: fixed;
   bottom: 12px;

@@ -1,6 +1,7 @@
 # rumi site
 
-Static landing page, no build step. Open `index.html` or serve the folder:
+`docs/` is the source of the rumi website. Open `index.html` or serve the
+folder while editing the shell and views:
 
 ```bash
 python -m http.server 8000
@@ -22,8 +23,29 @@ assets/js/
 assets/svg/           project marks and icons, one file each
 ```
 
-`why`, `spec` and `documentation` are placeholders. Replace the contents of their
-template and nothing in the shell changes.
+The `spec` template contains marked regions that the docs builder replaces with
+HTML generated from the repository's `SPEC.md`. The source file keeps a short
+fallback so the route still makes sense when `docs/index.html` is opened
+directly.
+
+The `deck` navigation link opens the short rumi presentation directly. The
+`documentation` route contains a lightweight placeholder while its content is
+being prepared. The deploy build mounts the root `deck/` and `img/` directories
+below the docs website so the presentation uses the same source assets.
+
+## Build
+
+Install the pinned Markdown renderer once, then build the exact Pages artifact:
+
+```bash
+python -m pip install -r docs/requirements.txt
+make docs
+python -m http.server 8000 --directory _site
+```
+
+`_site/` is disposable output and is ignored by Git. GitHub Actions performs
+the same build for every branch or tag push and every pull request; only pushes
+to `main` (and manual runs) deploy it to GitHub Pages.
 
 ## Notes
 

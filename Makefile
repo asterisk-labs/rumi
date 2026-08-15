@@ -6,6 +6,7 @@
 # make r          build the R binding (skips until bindings/r exists)
 # make sync       validate VERSION; write R DESCRIPTION if present
 # make install    cmake --install into PREFIX (/usr/local)
+# make docs       render SPEC.md into a deployable copy of docs/
 # make clean      remove all build output, caches and generated files
 # make submodules fetch or update geozl (and OpenZL under it)
 
@@ -41,7 +42,7 @@ CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
-.PHONY: all build configure lib stage-lib python test ctest r sync \
+.PHONY: all build configure lib stage-lib python test ctest docs r sync \
         install submodules clean help
 
 all: python
@@ -105,6 +106,11 @@ ctest: $(GEOZL)/core/CMakeLists.txt
 	cmake --build $(BUILD_DIR)-tests --target rumi_tests
 	$(BUILD_DIR)-tests/rumi_tests
 
+# Static GitHub Pages website. docs/ is the source; _site is only the staged
+# artifact. Install the one pinned dependency from docs/requirements.txt first.
+docs:
+	$(PYTHON) tools/build_docs.py --output _site --clean
+
 # R binding. Skips cleanly until bindings/r exists.
 r:
 	@if [ ! -d $(R_DIR) ]; then \
@@ -136,7 +142,7 @@ install: build
 
 clean:
 	rm -rf $(BUILD_DIR) $(BUILD_DIR)-tests $(STAGE_DIR)
-	rm -rf $(PY_DIR)/build $(PY_DIR)/*.egg-info .pytest_cache
+	rm -rf $(PY_DIR)/build $(PY_DIR)/*.egg-info .pytest_cache _site
 	rm -f $(PY_LIB_DIR)/librumi* $(PY_LIB_DIR)/rumi*.dll
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 	find . -type f -name '*.pyc' -delete
@@ -146,6 +152,7 @@ help:
 	@echo "make build      build librumi only"
 	@echo "make lib        build and stage the shared lib next to the binding (CI entry)"
 	@echo "make test       build, install, then pytest"
+	@echo "make docs       render SPEC.md into a deployable copy of docs/"
 	@echo "make r          build the R binding (skips until $(R_DIR) exists)"
 	@echo "make sync       validate VERSION; write R DESCRIPTION if present"
 	@echo "make install    cmake --install into PREFIX ($(PREFIX))"

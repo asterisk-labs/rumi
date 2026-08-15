@@ -314,4 +314,14 @@
     width: 34px;
     height: 34px;
   }
+
+  .nav {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0;
+  }
+
+  .nav a {
+    font-size: 10px;
+  }
 }

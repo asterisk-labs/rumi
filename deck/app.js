@@ -82,6 +82,11 @@
   var touchX = 0;
 
   if (deck) {
+    deck.addEventListener('click', function (event) {
+      if (event.target.closest('a, button')) return;
+      next();
+    });
+
     deck.addEventListener('touchstart', function (e) {
       touchX = e.touches[0].clientX;
     }, { passive: true });

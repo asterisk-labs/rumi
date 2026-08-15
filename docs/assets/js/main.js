@@ -58,6 +58,7 @@
     });
 
     wireCopyButton();
+    rumi.flow(document.getElementById('rumi-flow'));
   });
 
   rumi.backdrop(document.getElementById("backdrop"));

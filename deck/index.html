@@ -3,16 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rumi — a GeoTIFF profile for AI4EO</title>
+  <title>rumi — a GeoTIFF-inspired format for AI4EO</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
   <script defer src="app.js"></script>
 </head>
 <body>
   <div class="progress" id="progress"></div>
 
+  <a class="site-back" href="../" aria-label="Back to the rumi website">
+    <span aria-hidden="true">&#8592;</span> rumi
+  </a>
+
   <script>
+    if (new URLSearchParams(window.location.search).has("embed")) {
+      document.documentElement.classList.add("is-embedded");
+    }
+
     window.DECK = {
       assetBase: "../img/",
       project_logo: "rumi-white.svg",
@@ -68,7 +76,7 @@
       <div class="section-kicker">02</div>
       <h1>The approach</h1>
       <p class="section-subtitle">
-        Still a GeoTIFF on the outside. Predictable on the inside.
+        Inspired by GeoTIFF. Predictable by design.
       </p>
       <div class="section-bar"><span></span><span></span><span></span></div>
     </section>
