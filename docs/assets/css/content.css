@@ -49,6 +49,7 @@
 }
 
 .install {
+  position: relative;
   width: min(100%, 510px);
   min-height: 52px;
   margin-top: 28px;

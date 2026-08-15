@@ -175,7 +175,7 @@
         mint
       );
       label(
-        'RUMI HEADER',
+        'rumi header',
         headerPanel.x + (compact ? 8 : 12),
         headerPanel.y + (compact ? 17 : 21),
         mint,
@@ -294,7 +294,7 @@
       var activeStage = progress < 0.28 ? 0 : progress < 0.62 ? 1 : 2;
       var stages = compact
         ? ['REQUEST', 'LOCATE', 'FETCH']
-        : ['01  REQUEST FRAME', '02  LOCATE FROM RUMI HEADER', '03  FETCH OPENZL FRAME'];
+        : ['01  REQUEST FRAME', '02  LOCATE FROM rumi header', '03  FETCH OPENZL FRAME'];
       var stageWidth = (measuredWidth - pad * 2) / stages.length;
       stages.forEach(function (stage, index) {
         label(

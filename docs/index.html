@@ -23,29 +23,28 @@
 
 <div class="page">
   <header class="masthead">
-    <a class="wordmark" href="#/" aria-label="rumi home">
-      <img src="assets/svg/rumi-mark.svg" alt="" width="40" height="40">
-      <span>rumi</span>
+    <a class="lockup" href="#/" aria-label="rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
     </a>
-
-    <nav class="nav" aria-label="Primary navigation">
-      <a href="#/why">why?</a>
-      <a href="#/spec">spec</a>
-      <a href="deck/">deck</a>
-      <a href="#/documentation">documentation</a>
-    </nav>
 
     <div class="offsite" aria-label="Project links">
       <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="rumi on GitHub" rel="noopener noreferrer">
-        <img src="assets/svg/github.svg" alt="" width="18" height="18">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
       </a>
       <a href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="rumi on PyPI" rel="noopener noreferrer">
-        <img src="assets/svg/pypi.svg" alt="" width="18" height="18">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
       </a>
       <a href="https://asterisk.coop/geozl/" title="geozl" aria-label="geozl, the codec rumi compresses with" rel="noopener noreferrer">
-        <img src="assets/svg/geozl.svg" alt="" width="18" height="18">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="4" height="4"></rect><rect x="11" y="1" width="4" height="4"></rect><rect x="1" y="11" width="4" height="4"></rect><rect x="11" y="11" width="4" height="4"></rect><rect x="12" y="12" width="2" height="2" fill="currentColor" stroke="none"></rect></svg>
       </a>
     </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#/documentation">Docs</a>
+      <a href="#/spec">Spec</a>
+      <a href="deck/">Deck</a>
+    </nav>
   </header>
 
   <main id="view"></main>
@@ -69,7 +68,7 @@
       <h1 id="hero-title">Built for <span>deep learning.</span></h1>
 
       <p class="hero-summary">
-        The rumi header maps every frame to its byte range for direct reads.
+        Stateless frame access. The external rumi header contains everything needed to locate a frame without parsing the raster file.
       </p>
 
       <div class="install" data-copy-root>

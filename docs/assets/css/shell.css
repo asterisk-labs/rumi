@@ -54,113 +54,122 @@
   min-height: 100vh;
   min-height: 100svh;
   margin-inline: auto;
-  padding: max(18px, env(safe-area-inset-top)) var(--pad-inline) max(16px, env(safe-area-inset-bottom));
+  padding: env(safe-area-inset-top) var(--pad-inline) max(16px, env(safe-area-inset-bottom));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: clamp(18px, 3vh, 32px);
 }
 
 .masthead {
+  position: relative;
+  z-index: 3;
   min-width: 0;
-  min-height: 46px;
+  min-height: 74px;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 24px;
+  padding: 16px clamp(20px, 4vw, 56px);
+  border-bottom: 1px solid var(--edge);
+  color: var(--dim);
 }
 
-.wordmark {
+.lockup {
+  justify-self: start;
   width: max-content;
   display: inline-flex;
   align-items: center;
-  gap: 11px;
-  border-radius: 0;
+  gap: 10px;
+  color: var(--ink);
 }
 
-.wordmark img {
-  width: 40px;
-  height: 40px;
-  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.3));
+.lockup .marksvg {
+  width: 38px;
+  height: auto;
+  flex: 0 0 auto;
+  opacity: 0.9;
 }
 
-.wordmark span {
+.lockup .wm-sm {
   font-size: 22px;
   font-weight: 650;
+  line-height: 1;
   letter-spacing: -0.045em;
 }
 
-/* no container. the active route is marked by a rule under the word, which
-   also gives the nav the same easing as the view transition. */
-
 .nav {
-  justify-self: center;
+  justify-self: end;
   display: flex;
   align-items: center;
-  gap: clamp(18px, 2.4vw, 30px);
+  justify-content: flex-end;
+  gap: clamp(14px, 2.1vw, 30px);
 }
 
 .nav a {
   position: relative;
-  padding: 6px 0;
+  padding: 8px 0;
   color: var(--dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1;
+  letter-spacing: 0.035em;
   transition: color 200ms ease;
 }
 
 .nav a::after {
-  content: "";
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
-  height: 2px;
+  height: 1px;
+  content: "";
   background: currentColor;
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1), background-color 200ms ease;
+  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.nav a:hover {
+.nav a:hover,
+.nav a:focus-visible {
   color: var(--ink-soft);
 }
 
-.nav a:hover::after {
-  transform: scaleX(1);
-}
-
-.nav a[aria-current="page"] {
-  color: var(--ink);
-}
-
-.nav a[aria-current="page"]::after {
-  background: var(--violet);
+.nav a:hover::after,
+.nav a:focus-visible::after {
   transform: scaleX(1);
 }
 
 .offsite {
-  justify-self: end;
+  justify-self: center;
   display: flex;
   align-items: center;
   gap: 7px;
 }
 
 .offsite a {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: 0;
   transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 
-.offsite img {
-  width: 17px;
-  height: 17px;
+.offsite svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   opacity: 0.62;
   transition: opacity 160ms ease;
+}
+
+.offsite .github {
+  fill: currentColor;
+  stroke: none;
 }
 
 .offsite a:hover,
@@ -170,8 +179,8 @@
   background: var(--panel-soft);
 }
 
-.offsite a:hover img,
-.offsite a:focus-visible img {
+.offsite a:hover svg,
+.offsite a:focus-visible svg {
   opacity: 1;
 }
 
@@ -286,13 +295,24 @@
 
   .masthead {
     grid-template-columns: 1fr auto;
-    row-gap: 14px;
+    row-gap: 8px;
+    padding-inline: 18px;
+  }
+
+  .offsite {
+    justify-self: end;
   }
 
   .nav {
     grid-column: 1 / -1;
     grid-row: 2;
-    justify-self: start;
+    justify-self: stretch;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .nav a {
+    font-size: 9px;
   }
 }
 
@@ -301,27 +321,20 @@
     padding-inline: 18px;
   }
 
-  .wordmark img {
-    width: 36px;
-    height: 36px;
-  }
-
-  .wordmark span {
-    font-size: 20px;
-  }
-
-  .offsite a {
+  .lockup .marksvg {
     width: 34px;
-    height: 34px;
+  }
+
+  .lockup .wm-sm {
+    font-size: 20px;
   }
 
   .nav {
     width: 100%;
-    justify-content: space-between;
-    gap: 0;
+    gap: 10px;
   }
 
   .nav a {
-    font-size: 10px;
+    font-size: 9px;
   }
 }
