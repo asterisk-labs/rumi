@@ -21,6 +21,10 @@ namespace {
 
 thread_local std::string g_last_error;
 
+struct FreeDeleter {
+    void operator()(void* ptr) const noexcept { std::free(ptr); }
+};
+
 // Move-assign, not assign(): the in-place form pulls a symbol from a newer
 // libstdc++ and raises the platform tag of the wheel.
 void set_error(std::string_view msg) noexcept
@@ -88,6 +92,18 @@ extern "C" void rumi_clear_error(void)
 extern "C" void rumi_free(void* ptr)
 {
     std::free(ptr);
+}
+
+// Threads.
+
+extern "C" int rumi_set_num_threads(int n)
+{
+    return rumi::set_num_threads(n);
+}
+
+extern "C" int rumi_get_num_threads(void)
+{
+    return rumi::num_threads();
 }
 
 // Indexing.
@@ -582,7 +598,8 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
             return RUMI_ERR_INVALID;
         }
 
-        auto* buffer = static_cast<std::byte*>(std::malloc(need ? need : 1));
+        std::unique_ptr<std::byte, FreeDeleter> buffer(
+            static_cast<std::byte*>(std::malloc(need ? need : 1)));
         if (!buffer) {
             set_error("could not allocate the read buffer");
             return RUMI_ERR_OOM;
@@ -590,8 +607,8 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
 
         auto r = rumi::read_window(*src->impl, h, std::span<const int>(picked),
                                    y_off, y_size, x_off, x_size,
-                                   *plan, buffer, num_threads);
-        return finish_dlpack(buffer, r, h, *plan, out);
+                                   *plan, buffer.get(), num_threads);
+        return finish_dlpack(buffer.release(), r, h, *plan, out);
     });
 }
 
@@ -660,7 +677,8 @@ rumi_read_stack_dlpack(rumi_source* const* sources,
             srcs.push_back(sources[i]->impl.get());
         }
 
-        auto* buffer = static_cast<std::byte*>(std::malloc(need ? need : 1));
+        std::unique_ptr<std::byte, FreeDeleter> buffer(
+            static_cast<std::byte*>(std::malloc(need ? need : 1)));
         if (!buffer) {
             set_error("could not allocate the read buffer");
             return RUMI_ERR_OOM;
@@ -672,8 +690,8 @@ rumi_read_stack_dlpack(rumi_source* const* sources,
             std::span<const int>(picked_n),
             std::span<const int>(picked_b),
             y_off, y_size, x_off, x_size,
-            *plan, buffer, num_threads);
-        return finish_dlpack(buffer, r, h, *plan, out);
+            *plan, buffer.get(), num_threads);
+        return finish_dlpack(buffer.release(), r, h, *plan, out);
     });
 }
 

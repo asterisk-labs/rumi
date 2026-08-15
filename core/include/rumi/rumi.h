@@ -65,6 +65,20 @@ RUMI_API void rumi_clear_error(void);
 RUMI_API void rumi_free(void* ptr);
 
 
+// Threads.
+
+// The count a read takes when it passes num_threads <= 0. Process-wide, seeded
+// from RUMI_NUM_THREADS, an integer or ALL_CPUS. Values are clamped to 1..1024.
+// Set it before the first read with multiple frames that asks for more than one
+// thread: after that the pool exists, its size is the answer and a set is
+// refused, since resizing means joining workers with frames in flight. Both
+// return the count in effect after the call, so a caller sees a refusal by
+// comparing. A forked child owns a new setting and pool, seeded again from its
+// environment; it never inherits the parent's thread budget.
+RUMI_API int rumi_set_num_threads(int n);
+RUMI_API int rumi_get_num_threads(void);
+
+
 // Data paths.
 
 // Indexing.
@@ -201,8 +215,9 @@ rumi_plan_ranges(const rumi_spec* spec,
 // Reads the window from src. bands holds
 // 1-based indices in output order, NULL with n_bands = 0 means all bands in
 // file order. pattern NULL is shorthand for "b y x". dst must be aligned to
-// the sample size and dst_size is checked up front. num_threads > 1 uses the
-// process-global pool (sized on first use).
+// the sample size and dst_size is checked up front. num_threads <= 0 takes the
+// process-wide count, 1 stays on the calling thread and builds no pool, more
+// asks for that many and gets the pool's size if one already exists.
 RUMI_API rumi_status
 rumi_read(rumi_source*     src,
           const rumi_spec* spec,

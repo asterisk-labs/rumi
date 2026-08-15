@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
+from ._threads import resolve as _resolve_threads
 
 Axis = tuple[int, int] | list[int] | None
 
@@ -246,7 +247,7 @@ def read(source: PathLike | bytes | Sequence[PathLike | bytes],
          n: Axis = None, b: Axis = None,
          y: tuple[int, int] | None = None,
          x: tuple[int, int] | None = None,
-         num_threads: int = 1):
+         num_threads: int | None = None):
     """Read a rumi image, or a stack of them.
 
     source is a local path, or the file's bytes when you already hold them.
@@ -257,17 +258,23 @@ def read(source: PathLike | bytes | Sequence[PathLike | bytes],
 
     framework picks the return type ("numpy", "torch", "jax", "tensorflow"),
     or None for the zero-copy RumiArray. Stateless, opens and closes each call.
+
+    num_threads defaults to the process-wide count, which is 1 unless
+    set_num_threads or RUMI_NUM_THREADS says otherwise. 1 always reads on the
+    calling thread. A larger number sets the process-wide count on its way
+    through, and warns if the pool already exists at another size.
     """
+    threads = _resolve_threads(num_threads)
     if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):
         if n is not None:
             raise ValueError("n applies to a stack; pass a list of sources")
         raw = header if header is not None else _header_of(source)
-        arr = _read_one(_Source(source), _Spec(raw), pattern, b, y, x, num_threads)
+        arr = _read_one(_Source(source), _Spec(raw), pattern, b, y, x, threads)
         return _to_framework(arr, framework)
 
     sources = list(source)
     raws = header if header is not None else [_header_of(s) for s in sources]
     specs = [_Spec(r) for r in raws]
     arr = _read_stack([_Source(s) for s in sources], specs,
-                      pattern, n, b, y, x, num_threads)
+                      pattern, n, b, y, x, threads)
     return _to_framework(arr, framework)

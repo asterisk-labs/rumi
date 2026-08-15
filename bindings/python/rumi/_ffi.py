@@ -61,6 +61,9 @@ int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void        rumi_free(void* ptr);
 
+int rumi_set_num_threads(int n);
+int rumi_get_num_threads(void);
+
 size_t rumi_dtype_table(const rumi_dtype_info** out);
 
 rumi_status
