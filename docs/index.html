@@ -66,10 +66,10 @@
     <div class="hero-copy">
       <p class="eyebrow">GeoTIFF-inspired raster format</p>
 
-      <h1 id="hero-title">Built for <span>deep learning.</span></h1>
+      <h1 id="hero-title">Scale<span class="hero-line">block by <span class="hero-highlight">block</span>.</span></h1>
 
       <p class="hero-summary">
-        Stateless frame access. The external rumi header contains everything needed to locate a frame without parsing the raster file.
+        Each block is an independent <strong class="hero-summary-highlight">OpenZL frame</strong> in a strict, GeoTIFF-inspired layout that scales from one image to millions.
       </p>
 
       <div class="install" data-copy-root>
@@ -96,14 +96,6 @@
     <p class="visually-hidden" id="reader-live" aria-live="polite"></p>
   </section>
 
-</template>
-
-<template id="view-why">
-  <section class="stub" aria-labelledby="why-title">
-    <span class="stub-kicker">rumi / why?</span>
-    <h1 id="why-title">Scale starts at the frame.</h1>
-    <p>rumi places independent OpenZL frames in a strict, GeoTIFF-inspired layout that scales from one image to millions.</p>
-  </section>
 </template>
 
 <template id="view-spec">
