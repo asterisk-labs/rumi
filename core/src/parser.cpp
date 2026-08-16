@@ -21,6 +21,7 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::blob_size_mismatch:           return "blob size does not match frame count";
         case ParseError::frame_count_overflow:          return "frame count overflows uint32";
         case ParseError::frame_size_overflow:           return "frame byte size overflows size_t";
+        case ParseError::index_too_large:               return "expanded frame index exceeds safety limit";
         case ParseError::non_positive_frame_byte_count: return "frame byte count is zero";
         case ParseError::invalid_frame_unit:           return "frame_unit is neither tile nor cell";
         case ParseError::invalid_count_bits:           return "count_bits above 32";
@@ -204,6 +205,30 @@ parse_blob(std::span<const std::byte> blob)
     }
 
     h.base_frame_offset = derived_base_offset(bh.samples_per_pixel, h.frame_count);
+
+    // Two expanded vectors cost 12 bytes per frame. Bound their combined
+    // allocation: the external header is untrusted and a constant-count blob
+    // can otherwise describe billions of frames in only 28 bytes. Constant
+    // counts need no vectors and retain O(1) direct access through arithmetic.
+    constexpr std::uint64_t bytes_per_index = sizeof(std::uint32_t)
+                                              + sizeof(std::uint64_t);
+    const bool index_too_large = std::uint64_t(h.frame_count)
+                               > MAX_PARSED_INDEX_BYTES / bytes_per_index;
+    if (index_too_large) {
+        if (bh.count_bits != 0) {
+            return std::unexpected(ParseError::index_too_large);
+        }
+        if (bh.count_min == 0) {
+            return std::unexpected(ParseError::non_positive_frame_byte_count);
+        }
+        if (std::uint64_t(h.frame_count)
+            > (std::numeric_limits<std::uint64_t>::max()
+               - h.base_frame_offset) / bh.count_min) {
+            return std::unexpected(ParseError::offset_overflow);
+        }
+        h.constant_frame_byte_count = bh.count_min;
+        return h;
+    }
 
     const auto* packed = reinterpret_cast<const unsigned char*>(blob.data())
                        + HEADER_SIZE;

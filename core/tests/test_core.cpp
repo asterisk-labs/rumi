@@ -270,6 +270,63 @@ void test_parse_blob()
 
     OK(!rumi::parse_blob(make_blob(32, 32, 16, 1, {1, 0, 3, 4})).has_value());
     OK(!rumi::parse_blob(std::span<const std::byte>{}).has_value());
+
+    CASE("constant counts cannot amplify a tiny blob into a huge allocation")
+    rumi::BlobHeader constant{};
+    constant.magic             = rumi::MAGIC;
+    constant.version           = rumi::VERSION;
+    constant.image_width       = 385896268;  // minimized fuzz regression
+    constant.image_length      = 262144;
+    constant.tile_width        = 11567;
+    constant.tile_length       = 55040;
+    constant.samples_per_pixel = 11016;
+    constant.bits_per_sample   = 1;
+    constant.sample_format     = 1;
+    constant.count_min         = 65536;
+    std::vector<std::byte> tiny(rumi::HEADER_SIZE);
+    std::memcpy(tiny.data(), &constant, rumi::HEADER_SIZE);
+    auto compact = rumi::parse_blob(tiny);
+    OK(compact.has_value());
+    if (compact) {
+        OK(compact->frame_count > 500000000u);
+        OK(compact->frame_byte_counts.empty());
+        OK(compact->frame_offsets.empty());
+        EQ(compact->frame_byte_count(123), 65536u);
+        EQ(compact->frame_offset(123),
+           compact->base_frame_offset + std::uint64_t(123) * 65536);
+        const int first_band[] = {1};
+        const auto ranges = rumi::plan_ranges(*compact, first_band,
+                                               0, 1, 0, 1);
+        EQ(ranges.size(), std::size_t(1));
+        if (!ranges.empty()) {
+            EQ(ranges[0].offset, compact->base_frame_offset);
+            EQ(ranges[0].length, std::uint64_t(65536));
+        }
+    }
+
+    CASE("a variable-count index is bounded before allocating")
+    constexpr std::uint32_t too_many = static_cast<std::uint32_t>(
+        rumi::MAX_PARSED_INDEX_BYTES
+        / (sizeof(std::uint32_t) + sizeof(std::uint64_t)) + 1);
+    rumi::BlobHeader variable{};
+    variable.magic             = rumi::MAGIC;
+    variable.version           = rumi::VERSION;
+    variable.image_width       = too_many;
+    variable.image_length      = 1;
+    variable.tile_width        = 1;
+    variable.tile_length       = 1;
+    variable.samples_per_pixel = 1;
+    variable.bits_per_sample   = 8;
+    variable.sample_format     = 1;
+    variable.count_min         = 1;
+    variable.count_bits        = 1;
+    std::vector<std::byte> bounded(
+        rumi::HEADER_SIZE + (std::size_t(too_many) + 7) / 8);
+    std::memcpy(bounded.data(), &variable, rumi::HEADER_SIZE);
+    bounded[rumi::HEADER_SIZE] = std::byte{1};
+    auto rejected = rumi::parse_blob(bounded);
+    OK(!rejected.has_value());
+    if (!rejected) OK(rejected.error() == rumi::ParseError::index_too_large);
 }
 
 // An independent unpacker. If it and the parser agree, the packing is right.

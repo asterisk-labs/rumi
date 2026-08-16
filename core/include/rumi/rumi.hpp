@@ -21,6 +21,7 @@ class ThreadPool;
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 28;
+inline constexpr std::size_t   MAX_PARSED_INDEX_BYTES = 64u << 20;
 
 // The OpenZL frame format version.
 [[nodiscard]] int openzl_format_version() noexcept;
@@ -64,6 +65,7 @@ enum class ParseError {
     blob_size_mismatch,
     frame_count_overflow,
     frame_size_overflow,
+    index_too_large,
     non_positive_frame_byte_count,
     offset_overflow,
     invalid_count_bits,
@@ -112,16 +114,30 @@ struct Header {
 
     std::vector<std::uint32_t> frame_byte_counts;
     std::vector<std::uint64_t> frame_offsets;
+    // A very large constant-count header stays compact instead of expanding a
+    // few untrusted bytes into gigabytes of index vectors.
+    std::uint32_t constant_frame_byte_count{};
+
+    [[nodiscard]] std::uint32_t
+    frame_byte_count(std::uint32_t i) const noexcept {
+        return constant_frame_byte_count != 0
+             ? constant_frame_byte_count : frame_byte_counts[i];
+    }
 
     [[nodiscard]] std::uint64_t frame_offset(std::uint32_t i) const noexcept {
-        return frame_offsets[i];
+        return constant_frame_byte_count != 0
+             ? base_frame_offset + std::uint64_t(i) * constant_frame_byte_count
+             : frame_offsets[i];
     }
 
     // Byte just past the last frame. The file must be at least this large.
     [[nodiscard]] std::uint64_t data_end() const noexcept {
-        return frame_offsets.empty()
+        return constant_frame_byte_count != 0
              ? base_frame_offset
-             : frame_offsets.back() + frame_byte_counts.back();
+               + std::uint64_t(frame_count) * constant_frame_byte_count
+             : (frame_offsets.empty()
+                ? base_frame_offset
+                : frame_offsets.back() + frame_byte_counts.back());
     }
 
     // Cell frames hold every band, so band is ignored there and the index is

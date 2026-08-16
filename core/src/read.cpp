@@ -441,7 +441,7 @@ Plan build_plan(const Header& h, Source* source,
                 FrameTask task{};
                 task.source          = source;
                 task.offset          = h.frame_offset(idx);
-                task.compressed_size = h.frame_byte_counts[idx];
+                task.compressed_size = h.frame_byte_count(idx);
                 task.frame_width     = static_cast<std::uint32_t>(ex_w);
                 task.frame_bytes     = frame_bytes;
                 task.plane_bytes     = plane_bytes;
@@ -490,7 +490,7 @@ plan_ranges(const Header& h, std::span<const int> bands,
                 const auto band = static_cast<std::uint32_t>(
                     cell ? 0 : bands[k] - 1);
                 const std::uint32_t i = h.frame_index(row, col, band);
-                out.push_back({h.frame_offsets[i], h.frame_byte_counts[i]});
+                out.push_back({h.frame_offset(i), h.frame_byte_count(i)});
             }
         }
     }
