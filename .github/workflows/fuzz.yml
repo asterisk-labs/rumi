@@ -26,10 +26,17 @@ permissions:
 jobs:
   fuzz:
     runs-on: ubuntu-24.04
+    env:
+      CLANG: /usr/bin/clang-19
+      CLANGXX: /usr/bin/clang++-19
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - name: Install fuzz toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-19 libclang-rt-19-dev
       - name: Init OpenZL dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
@@ -40,14 +47,20 @@ jobs:
           path: fuzz/corpus
           key: rumi-fuzz-corpus-${{ github.run_id }}
           restore-keys: rumi-fuzz-corpus-
+      - name: Check C++23 toolchain
+        run: |
+          "$CLANG" --version
+          "$CLANGXX" --version
+          printf '#include <expected>\nint main() { std::expected<int, int> value(1); return *value; }\n' |
+            "$CLANGXX" -std=c++23 -x c++ -fsyntax-only -
       - name: Replay saved inputs
         if: github.event_name == 'push' || github.event_name == 'pull_request'
-        run: make fuzz-replay CLANG=clang
+        run: make fuzz-replay
       - name: Run fuzzers
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           FUZZ_TIME: '420'
-        run: make fuzz-check CLANG=clang
+        run: make fuzz-check
       - name: Save corpora
         if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@v6

@@ -121,12 +121,13 @@ ifeq ($(UNAME),Darwin)
 else
   CLANG ?= clang
 endif
+CLANGXX ?= $(CLANG)++
 
 fuzz-build: $(GEOZL)/core/CMakeLists.txt
 	cmake -S $(CORE) -B core/build-fuzz -G $(GEN) \
 	  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DRUMI_BUILD_FUZZERS=ON \
 	  -DRUMI_SANITIZE=address,undefined \
-	  -DCMAKE_C_COMPILER=$(CLANG) -DCMAKE_CXX_COMPILER=$(CLANG)++
+	  -DCMAKE_C_COMPILER=$(CLANG) -DCMAKE_CXX_COMPILER=$(CLANGXX)
 	cmake --build core/build-fuzz --target rumi_header_fuzzer rumi_index_fuzzer
 
 fuzz-seed:
