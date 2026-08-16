@@ -19,6 +19,7 @@ rumi files use the `.rumi` extension. The exact binary layout is defined in the 
 <p align="center">
   <img src="img/rumi-index.svg" alt="rumi index" width="720"/>
 </p>
+<p align="center"><sub>rumi has one canonical structure. That simplicity makes it easier to optimize.</sub></p>
 
 ## Install
 

@@ -1,0 +1,116 @@
+/* The hero reader: one rumi image as four isometric band planes. Only the
+   frames under the read window are lit, and they rise out of their slab. */
+
+.reader {
+  min-width: 0;
+  margin: 0;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.reader:focus-visible {
+  outline: 1px solid var(--mint);
+  outline-offset: 8px;
+}
+
+.reader svg {
+  width: 100%;
+  max-width: 470px;
+  height: auto;
+  display: block;
+  margin-inline: auto;
+  font-family: var(--mono);
+  overflow: visible;
+}
+
+/* the slab a plane sits on, and the plane's own floor */
+.rd-slab {
+  fill: rgba(145, 242, 188, 0.05);
+  stroke: rgba(145, 242, 188, 0.14);
+}
+
+.rd-plane {
+  fill: rgba(17, 23, 33, 0.55);
+  stroke: rgba(145, 242, 188, 0.24);
+}
+
+.rd-c0 { --tone: var(--mint); }
+.rd-c1 { --tone: #8b6bff; }
+.rd-c2 { --tone: var(--gold); }
+.rd-c3 { --tone: var(--ember); }
+
+/* the delay is per band, so the planes never move as one rigid block */
+.rd-tile {
+  fill: var(--tone);
+  fill-opacity: 0.44;
+  transition: fill-opacity 160ms ease, transform 190ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  transition-delay: calc(var(--b) * 55ms);
+}
+
+.rd-tile.is-read {
+  fill-opacity: 0.95;
+  transform: translateY(-8px);
+}
+
+.rd-codec {
+  fill: var(--tone);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.rd-frame-size {
+  fill: var(--dim);
+  font-size: 9.5px;
+}
+
+.rd-band-label {
+  fill: var(--faint);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.rd-key {
+  fill: var(--faint);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.rd-value {
+  fill: var(--mint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rd-cost {
+  fill: var(--ink-soft);
+  font-size: 12px;
+}
+
+/* the hint retires once the reader has been used */
+.rd-hint {
+  fill: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  animation: rd-hint 2.6s ease-in-out infinite;
+}
+
+.is-touched .rd-hint {
+  opacity: 0;
+  animation: none;
+  transition: opacity 400ms ease;
+}
+
+@keyframes rd-hint {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-tile { transition: none; }
+  .rd-tile.is-read { transform: none; fill-opacity: 1; }
+  .rd-hint { animation: none; opacity: 0.7; }
+}
+
+@media (max-width: 860px) {
+  .reader svg { margin-inline: 0; }
+}

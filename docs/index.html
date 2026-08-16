@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/shell.css">
 <link rel="stylesheet" href="assets/css/content.css">
+<link rel="stylesheet" href="assets/css/diagram.css">
 </head>
 
 <body>
@@ -75,8 +76,8 @@
         <span class="install-label">Install</span>
         <div class="install-command">
           <span class="prompt" aria-hidden="true">$</span>
-          <code>pip install "rumi-eo[write]"</code>
-          <button class="copy-command" type="button" data-copy="pip install &quot;rumi-eo[write]&quot;" aria-label="Copy install command">
+          <code>pip install rumi-eo</code>
+          <button class="copy-command" type="button" data-copy="pip install rumi-eo" aria-label="Copy install command">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M8 8h10v10H8z"></path>
               <path d="M6 15H4V4h11v2"></path>
@@ -89,17 +90,19 @@
 
     </div>
 
-    <figure class="rumi-flow" role="img" aria-label="A user query selects a catalog row whose rumi header locates the requested byte range in its file.">
-      <canvas id="rumi-flow" aria-hidden="true"></canvas>
+    <figure class="reader" id="reader" tabindex="0" role="img"
+      aria-label="One rumi image as four isometric planes of tiles, one per band. A read window covers one tile position, so four of the hundred frames are decoded. Move the window with the pointer or arrow keys.">
     </figure>
+    <p class="visually-hidden" id="reader-live" aria-live="polite"></p>
   </section>
+
 </template>
 
 <template id="view-why">
   <section class="stub" aria-labelledby="why-title">
     <span class="stub-kicker">rumi / why?</span>
-    <h1 id="why-title">why?</h1>
-    <p>Content goes here.</p>
+    <h1 id="why-title">Scale starts at the frame.</h1>
+    <p>rumi places independent OpenZL frames in a strict, GeoTIFF-inspired layout that scales from one image to millions.</p>
   </section>
 </template>
 
@@ -158,7 +161,7 @@
 
 <script src="assets/js/backdrop.js"></script>
 <script src="assets/js/router.js"></script>
-<script src="assets/js/flow.js"></script>
+<script src="assets/js/reader.js"></script>
 <script src="assets/js/main.js"></script>
 </body>
 </html>
