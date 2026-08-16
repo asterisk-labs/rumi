@@ -4,6 +4,13 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" RUMI_VERSION_FULL)
 string(STRIP "${RUMI_VERSION_FULL}" RUMI_VERSION_FULL)
 string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" RUMI_VERSION_NUMERIC
     "${RUMI_VERSION_FULL}")
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/rumi/rumi.h"
+    RUMI_API_VERSION_LINE REGEX "^#define RUMI_API_VERSION [0-9]+$")
+if(NOT RUMI_API_VERSION_LINE)
+    message(FATAL_ERROR "rumi.h has no numeric RUMI_API_VERSION")
+endif()
+string(REGEX REPLACE ".*RUMI_API_VERSION ([0-9]+).*" "\\1"
+    RUMI_API_VERSION "${RUMI_API_VERSION_LINE}")
 
 project(rumi
     VERSION     ${RUMI_VERSION_NUMERIC}
@@ -13,6 +20,8 @@ project(rumi
 
 option(RUMI_BUILD_SHARED_LIB  "Build standalone librumi for direct link"          OFF)
 option(RUMI_BUILD_TESTS       "Build the C++ component tests"                     OFF)
+option(RUMI_BUILD_FUZZERS     "Build libFuzzer harnesses (requires Clang)"         OFF)
+option(RUMI_WERROR            "Treat warnings in rumi C++ as errors"              OFF)
 
 # geozl owns OpenZL and brings it in transitively, so rumi vendors geozl only.
 # The VERSION file sits one level up, so the submodule at the repo root is one
@@ -95,6 +104,12 @@ target_compile_options(rumi_config INTERFACE
     $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
     $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4 /permissive->
 )
+if(RUMI_WERROR)
+    target_compile_options(rumi_config INTERFACE
+        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Werror>
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX>
+    )
+endif()
 
 # A sanitizer applies to every target through this interface. It has to be on
 # both the compile and the link line.
@@ -111,7 +126,7 @@ if(RUMI_BUILD_SHARED_LIB)
     target_link_libraries(rumi PUBLIC rumi_config)
     set_target_properties(rumi PROPERTIES
         VERSION   ${PROJECT_VERSION}
-        SOVERSION ${PROJECT_VERSION_MAJOR}
+        SOVERSION ${RUMI_API_VERSION}
     )
 
     install(TARGETS rumi
@@ -144,11 +159,29 @@ if(RUMI_BUILD_TESTS)
     add_test(NAME core COMMAND rumi_tests)
 endif()
 
+if(RUMI_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "RUMI_BUILD_FUZZERS requires Clang/libFuzzer")
+    endif()
+    foreach(surface IN ITEMS header index)
+        add_executable(rumi_${surface}_fuzzer
+            ${CMAKE_CURRENT_SOURCE_DIR}/../fuzz/${surface}_fuzzer.cpp
+            ${RUMI_SOURCES})
+        target_link_libraries(rumi_${surface}_fuzzer PRIVATE rumi_config)
+        target_compile_options(rumi_${surface}_fuzzer PRIVATE
+            -fsanitize=fuzzer-no-link)
+        target_link_options(rumi_${surface}_fuzzer PRIVATE -fsanitize=fuzzer)
+    endforeach()
+endif()
+
 message(STATUS "")
 message(STATUS "rumi ${RUMI_VERSION_FULL}")
+message(STATUS "  C API version:   ${RUMI_API_VERSION}")
 message(STATUS "  geozl:          ${RUMI_GEOZL_DIR}")
 message(STATUS "  OpenZL:         via geozl")
 message(STATUS "  Standalone lib: ${RUMI_BUILD_SHARED_LIB}")
 message(STATUS "  Tests:          ${RUMI_BUILD_TESTS}")
+message(STATUS "  Fuzzers:        ${RUMI_BUILD_FUZZERS}")
+message(STATUS "  Warnings error: ${RUMI_WERROR}")
 message(STATUS "  Sanitize:       ${RUMI_SANITIZE}")
 message(STATUS "")

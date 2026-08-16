@@ -94,13 +94,16 @@ The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_C
 
 ## Current limits
 
-- rumi is currently alpha software.
+- rumi is beta software. Version 0.15 is its first compatibility baseline.
 - A CRS must be an EPSG code, or be omitted.
 - Sources are local paths or bytes already in memory; object-storage URLs are not read directly yet.
 
 ## Learn more
 
 - [Format specification](SPEC.md)
+- [Changelog](CHANGELOG.md)
+- [Compatibility policy](COMPATIBILITY.md)
+- [Security policy](SECURITY.md)
 - [Ten-minute notebook](examples/rumi-demo.ipynb)
 - [Issue tracker](https://github.com/asterisk-labs/rumi/issues)
 

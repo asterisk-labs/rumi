@@ -1,0 +1,15 @@
+RUMI
+Copyright (c) 2026, Asterisk Labs
+Licensed under the GNU General Public License version 3, see LICENSE.
+
+`librumi` statically links:
+
+  GeoZL 0.13.1            BSD 3-Clause     licenses/LICENSE.GeoZL
+  OpenZL 0.2.0            BSD 3-Clause     licenses/LICENSE.OpenZL
+  Zstandard 1.5.7         BSD 3-Clause     licenses/LICENSE.Zstandard
+  LZ4 1.10.0 (lib only)   BSD 2-Clause     licenses/LICENSE.LZ4
+
+Only LZ4's BSD-licensed `lib` directory is built.
+
+Python wheels include these license texts under `dist-info/licenses/`; native
+archives use `licenses/`.

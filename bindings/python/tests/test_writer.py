@@ -9,7 +9,6 @@ import struct
 
 import numpy as np
 import pytest
-
 import rumi
 from rumi import FrameTable
 from rumi._write import header_bytes, write_frames

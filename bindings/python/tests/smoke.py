@@ -10,8 +10,8 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-
 import rumi
+from rumi._ffi import ffi, lib
 
 CRS = 32630
 TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
@@ -19,6 +19,16 @@ TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
 
 def main() -> int:
     print("rumi", rumi.__version__)
+    if lib.rumi_api_version() != 2:
+        print(f"::error::librumi C API is {lib.rumi_api_version()}, expected 2")
+        return 1
+    native_version = ffi.string(lib.rumi_version_string()).decode("ascii")
+    if native_version != rumi.__version__:
+        print(
+            f"::error::wheel metadata is {rumi.__version__}, "
+            f"but librumi is {native_version}"
+        )
+        return 1
 
     tf = rumi.frames(np.zeros((2, 40, 70), np.uint16), 16)
     tf["compressed"] = [bytes([i % 251]) * (8 + i) for i in range(len(tf))]

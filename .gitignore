@@ -61,6 +61,8 @@ desktop.ini
 
 # misc
 *.log
+fuzz/corpus/
+fuzz/out/
 
 
 # test data

@@ -6,7 +6,6 @@ of a buffer, and plan_ranges has to name exactly the bytes that window touches.
 
 import numpy as np
 import pytest
-
 import rumi
 from rumi._ffi import _Spec, ffi, lib
 

@@ -1,0 +1,69 @@
+name: Fuzz
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'fuzz/**'
+      - 'extern/geozl'
+      - 'Makefile'
+      - '.github/workflows/fuzz.yml'
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'fuzz/**'
+      - 'extern/geozl'
+      - 'Makefile'
+      - '.github/workflows/fuzz.yml'
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Init OpenZL dependencies
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
+      - name: Restore corpora
+        uses: actions/cache/restore@v6
+        with:
+          path: fuzz/corpus
+          key: rumi-fuzz-corpus-${{ github.run_id }}
+          restore-keys: rumi-fuzz-corpus-
+      - name: Replay saved inputs
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        run: make fuzz-replay CLANG=clang
+      - name: Run fuzzers
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          FUZZ_TIME: '420'
+        run: make fuzz-check CLANG=clang
+      - name: Save corpora
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: actions/cache/save@v6
+        with:
+          path: fuzz/corpus
+          key: rumi-fuzz-corpus-${{ github.run_id }}
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-findings
+          path: |
+            fuzz/out/report.txt
+            fuzz/out/*.log
+            fuzz/out/crash-*
+            fuzz/out/oom-*
+            fuzz/out/leak-*
+            fuzz/out/timeout-*
+          if-no-files-found: warn
