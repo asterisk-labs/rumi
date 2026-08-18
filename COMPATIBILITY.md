@@ -1,12 +1,12 @@
 # Compatibility
 
-RUMI 0.15 is the current format baseline. Readers in the 0.15 series will keep
-opening canonical files and external headers written by 0.15.0. The experimental
-0.14 format and earlier versions are incompatible.
+RUMI 0.16 is the current compatibility baseline. Readers from 0.16 onward will
+keep opening canonical files written by 0.16.0. Earlier versions are not
+supported.
 
 ## APIs
 
-The public C source API is stable from 0.15. The binary ABI is not stable before
+The public C source API is stable from 0.16. The binary ABI is not stable before
 1.0, so C applications should be recompiled after an update. ABI changes also
 increment `RUMI_API_VERSION` and the shared-library SONAME.
 
@@ -15,5 +15,5 @@ contain a breaking change; it will be called out in the changelog.
 
 ## GeoZL and OpenZL
 
-RUMI 0.15.x includes GeoZL 0.13.1 and OpenZL 0.2.0. Python writing accepts
-GeoZL 0.13.x.
+RUMI 0.16.x uses GeoZL 0.14.x as its frame compatibility baseline and includes
+OpenZL 0.2.0. Python writing requires GeoZL 0.14.x.

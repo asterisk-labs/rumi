@@ -4,6 +4,30 @@ User-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-18
+
+### Breaking
+
+- RUMI 0.16 establishes a new compatibility baseline. Files written by earlier
+  releases are not supported.
+
+### Changed
+
+- Updated GeoZL to 0.14.0. Python writing now requires
+  `geozl>=0.14.0,<0.15`.
+- GeoZL 0.14.0 changes the integer `quant_linear` encoding. Frames now store
+  grid indices instead of reconstructed values. The grid and error bound stay
+  the same, but compressed bytes, sizes, checksums, and content-addressed keys
+  may change. Lossless frames are unaffected.
+- `LOG:...,STORE=INDEX` now returns an error for integer input instead of being
+  silently ignored.
+
+### Added
+
+- GeoZL 0.14.0 adds the `pfor` lossless terminal, available in write recipes as
+  `planar>zigzag>pfor`. It also adds `STORE=INDEX` support for `quant_sqrt` on
+  integer input.
+
 ## [0.15.0] - 2026-08-16
 
 ### Breaking
@@ -72,7 +96,8 @@ User-visible changes are recorded here.
 - RUMI reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/asterisk-labs/rumi/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/asterisk-labs/rumi/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/asterisk-labs/rumi/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/asterisk-labs/rumi/compare/v0.12.0...v0.13.0

@@ -94,7 +94,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           python -m pip install --upgrade pip cmake ninja
-          python -m pip install numpy cffi pytest ruff "geozl>=0.13.1,<0.14"
+          python -m pip install numpy cffi pytest ruff "geozl>=0.14.0,<0.15"
       - name: Install PyTorch for fork integration
         if: matrix.python == '3.12'
         run: >-

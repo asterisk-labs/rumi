@@ -132,7 +132,7 @@ jobs:
           source /tmp/rumi-wheel-test/bin/activate
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install -q pytest "geozl>=0.13.1,<0.14"
+          python -m pip install -q pytest "geozl>=0.14.0,<0.15"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v7
@@ -176,7 +176,7 @@ jobs:
           source /tmp/rumi-wheel-test/bin/activate
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install -q pytest "geozl>=0.13.1,<0.14"
+          python -m pip install -q pytest "geozl>=0.14.0,<0.15"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@v7
