@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="270"
+     viewBox="0 0 760 270" role="img" aria-labelledby="title desc">
+  <title id="title">What frame_unit controls</title>
+  <desc id="desc">For tile storage, row, column, band, and time select the
+  frame, which decodes to height and width. For cell storage, only row and
+  column select the frame; band and time become decoded axes placed before or
+  after the adjacent height and width axes.</desc>
+  <style>
+    svg {
+      --ink: #1f2328;
+      --muted: #59636e;
+      --rule: #d1d9e0;
+      --accent: #4a2be8;
+      --soft: #f1edff;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --ink: #e6edf3;
+        --muted: #9198a1;
+        --rule: #3d444d;
+        --accent: #8b7cff;
+        --soft: #272345;
+      }
+    }
+    text {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
+        sans-serif;
+      fill: var(--ink);
+    }
+    .mono {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+    .heading {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      fill: var(--muted);
+    }
+    .mode { font-size: 14px; font-weight: 600; }
+    .label { font-size: 12px; fill: var(--muted); }
+    .axis { font-size: 16px; }
+    .index-box {
+      fill: none;
+      stroke: var(--rule);
+      stroke-width: 1;
+    }
+    .axis-box {
+      fill: var(--soft);
+      stroke: var(--accent);
+      stroke-width: 1.3;
+    }
+    .optional-box {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 1.1;
+      stroke-dasharray: 4 3;
+    }
+    .frame {
+      fill: none;
+      stroke: var(--muted);
+      stroke-width: 1.2;
+      stroke-dasharray: 5 4;
+    }
+    .arrow {
+      fill: none;
+      stroke: var(--muted);
+      stroke-width: 1.4;
+      marker-end: url(#arrowhead);
+    }
+    .rule { stroke: var(--rule); stroke-width: 1; }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7"
+            refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="var(--muted)"/>
+    </marker>
+  </defs>
+
+  <text class="heading" x="225" y="27" text-anchor="middle">FRAME INDEX</text>
+  <text class="heading" x="555" y="27" text-anchor="middle">DECODED FRAME</text>
+
+  <!-- Tile storage. -->
+  <text class="mode" x="32" y="77">TILE</text>
+  <g transform="translate(145 49)">
+    <rect class="index-box" x="0" y="0" width="54" height="42" rx="3"/>
+    <rect class="index-box" x="58" y="0" width="54" height="42" rx="3"/>
+    <rect class="index-box" x="116" y="0" width="42" height="42" rx="3"/>
+    <rect class="index-box" x="162" y="0" width="42" height="42" rx="3"/>
+    <text class="mono label" x="27" y="26" text-anchor="middle">row</text>
+    <text class="mono label" x="85" y="26" text-anchor="middle">col</text>
+    <text class="mono axis" x="137" y="27" text-anchor="middle">b</text>
+    <text class="mono axis" x="183" y="27" text-anchor="middle">t</text>
+  </g>
+  <path class="arrow" d="M371 70 H423"/>
+  <rect class="frame" x="445" y="42" width="250" height="56" rx="5"/>
+  <rect class="axis-box" x="511" y="49" width="54" height="42" rx="3"/>
+  <rect class="axis-box" x="569" y="49" width="54" height="42" rx="3"/>
+  <text class="mono axis" x="538" y="76" text-anchor="middle">h</text>
+  <text class="mono axis" x="596" y="76" text-anchor="middle">w</text>
+  <text class="label" x="570" y="116" text-anchor="middle">b and t stay outside</text>
+
+  <line class="rule" x1="32" y1="137" x2="728" y2="137"/>
+
+  <!-- Cell storage. -->
+  <text class="mode" x="32" y="184">CELL</text>
+  <g transform="translate(192 156)">
+    <rect class="index-box" x="0" y="0" width="54" height="42" rx="3"/>
+    <rect class="index-box" x="58" y="0" width="54" height="42" rx="3"/>
+    <text class="mono label" x="27" y="26" text-anchor="middle">row</text>
+    <text class="mono label" x="85" y="26" text-anchor="middle">col</text>
+  </g>
+  <path class="arrow" d="M326 177 H378"/>
+  <rect class="frame" x="400" y="149" width="328" height="56" rx="5"/>
+  <rect class="optional-box" x="410" y="156" width="86" height="42" rx="3"/>
+  <rect class="axis-box" x="500" y="156" width="54" height="42" rx="3"/>
+  <rect class="axis-box" x="558" y="156" width="54" height="42" rx="3"/>
+  <rect class="optional-box" x="616" y="156" width="102" height="42" rx="3"/>
+  <text class="mono label" x="453" y="181" text-anchor="middle">b, t</text>
+  <text class="mono axis" x="527" y="183" text-anchor="middle">h</text>
+  <text class="mono axis" x="585" y="183" text-anchor="middle">w</text>
+  <text class="mono label" x="667" y="181" text-anchor="middle">b, t</text>
+  <text class="label" x="564" y="224" text-anchor="middle">
+    each b or t axis appears once, on either side of h w
+  </text>
+  <text class="label" x="564" y="246" text-anchor="middle">
+    omit an axis when its length is 1
+  </text>
+</svg>
