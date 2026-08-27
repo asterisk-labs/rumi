@@ -81,6 +81,15 @@ RUMI_API int rumi_get_num_threads(void);
 
 // On success *out_blob is *out_size bytes owned by the caller, released
 // with rumi_free. On failure the out-pointers are left untouched.
+//
+// A file records how many frames it holds, not the order of the axes inside
+// one, and with more than one band frame_unit 1 and 2 both give one frame per
+// grid position. The blob returned therefore always says 1, and reading a file
+// written as 2 with it gives the wrong samples and no error.
+//
+// Carry the blob rumi_write returned. A caller that knows the layout by other
+// means owns *out_blob and may set byte 22, the frame_unit field, before
+// handing it to rumi_spec_parse; the byte layout is normative in SPEC.md.
 RUMI_API rumi_status
 rumi_index_file(const char*     path,
                 unsigned char** out_blob,
@@ -128,6 +137,7 @@ typedef struct {
     uint16_t samples_per_pixel;
     uint8_t  bits_per_sample;
     uint8_t  sample_format;
+    // The frame's axis order: 0 is (h w), 1 is (b h w), 2 is (h w b).
     uint8_t  frame_unit;
     uint32_t tiles_across;
     uint32_t tiles_down;
@@ -157,6 +167,73 @@ RUMI_API rumi_status
 rumi_compile_layout(const char*  pattern,
                     int64_t n, int64_t b, int64_t y, int64_t x,
                     rumi_layout* out);
+
+
+// Frames.
+//
+// Everything a caller needs to cut an array into frames rumi will accept. The
+// library never touches the caller's array: it answers what to cut, in what
+// order, and in what shape, and the caller does the cutting. A binding that
+// uses these needs no knowledge of the format beyond them.
+
+// Axis roles a compiled pattern reports. H and W are the tile-local spatial
+// axes; Y and X are the image axes a pattern splits into a grid axis and one
+// of those.
+typedef enum {
+    RUMI_AXIS_BAND = 0,
+    RUMI_AXIS_Y    = 1,
+    RUMI_AXIS_X    = 2,
+    RUMI_AXIS_H    = 3,
+    RUMI_AXIS_W    = 4
+} rumi_axis;
+
+#define RUMI_MAX_AXES 4
+
+// input holds the role of each of the caller's axes, in its own order, so a
+// binding knows how to reach canonical order. frame holds the roles inside one
+// frame, in order. frame_unit is what rumi_write_desc wants.
+typedef struct {
+    uint8_t frame_unit;
+    uint8_t input[RUMI_MAX_AXES];
+    int     input_ndim;
+    uint8_t frame[RUMI_MAX_AXES];
+    int     frame_ndim;
+} rumi_frame_pattern;
+
+// Compiles "b (row h) (col w) -> row col (b h w)". The left names the input,
+// a parenthesised pair splits an axis into a grid axis and a tile-local one,
+// and the trailing group on the right is the frame. Unlike einops the split is
+// a division with a ceiling, so an image need not divide evenly by the tile.
+RUMI_API rumi_status
+rumi_compile_frame_pattern(const char* pattern, rumi_frame_pattern* out);
+
+// The frame's axis order for a unit, such as "b h w". NULL names no layout.
+// The string is static and outlives the call.
+RUMI_API const char* rumi_unit_name(uint8_t unit);
+
+// The unit an axis order names.
+RUMI_API rumi_status rumi_unit_from_name(const char* name, uint8_t* out);
+
+// Non-zero when a frame holds one band, so the frame index walks bands too.
+RUMI_API int rumi_unit_indexes_bands(uint8_t unit);
+
+// Where frame `index` sits and the shape it must arrive in. dims is in the
+// layout's own axis order, so a caller permutes its cut to match.
+typedef struct {
+    uint32_t row, col, band, h, w;
+    int64_t  dims[RUMI_MAX_AXES];
+    int      ndim;
+} rumi_frame_at;
+
+// The grid and the frame count for a description. Any out-pointer may be NULL.
+RUMI_API rumi_status
+rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
+                 uint16_t bands, uint32_t* out_across, uint32_t* out_down,
+                 uint64_t* out_frames);
+
+RUMI_API rumi_status
+rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
+              uint16_t bands, uint64_t index, rumi_frame_at* out);
 
 
 // Spec.
@@ -289,15 +366,20 @@ typedef struct {
     const double* transform;
     uint32_t      epsg;
     int           pixel_is_point;
-    // 0 is tile, one band at one grid position. 1 is cell, every band at one
-    // grid position, which lets a graph model the correlation between bands.
+    // The frame's axis order. 0 is (h w), one band at one grid position. 1 is
+    // (b h w) and 2 is (h w b), both every band at one grid position, which
+    // lets a graph model the correlation between bands. The two differ in what
+    // sits next to what: (b h w) keeps each band a plane, (h w b) keeps a
+    // pixel's bands together. With one band all three are the same bytes and
+    // the writer records 0.
     uint8_t       frame_unit;
 } rumi_write_desc;
 
 // Writes the file and hands back its header blob, *out_size bytes owned by the
 // caller and released with rumi_free. frames holds frame_count compressed
-// frames in frame-index order, sizes one length each. For tile frames that is
-// row, column, sample with sample innermost; for cell frames, row then column.
+// frames in frame-index order, sizes one length each; rumi_frame_count and
+// rumi_frame_locate give that order and the shape each frame must have had, so
+// a caller never has to derive either.
 // On failure the file is removed and the out-pointers are left untouched.
 RUMI_API rumi_status
 rumi_write(const char*                 path,

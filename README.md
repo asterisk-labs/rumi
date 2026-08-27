@@ -39,7 +39,9 @@ Requires Python 3.11+. Wheels are available for Linux x86-64 and macOS arm64.
 
 ## Write and read an image
 
-rumi expects arrays in `(bands, rows, columns)` order. Writing has three steps: split the array into frames, compress each frame with `geozl`, and write the file.
+Writing has three steps: split the array into frames, compress each frame with `geozl`, and write the file.
+
+The split is written as a pattern. It names the axes of your array, cuts the spatial ones into a grid, and says what one frame holds.
 
 ```python
 import geozl
@@ -51,7 +53,7 @@ image = np.random.default_rng(0).integers(
 )
 
 # 1. Split the image into frames.
-frames = rumi.frames(image, tile_size=512)
+frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
 
 # 2. Compress every frame.
 for frame in frames:
@@ -68,11 +70,31 @@ result = rumi.read(path, header)
 chip = rumi.read(path, header, b=[0, 3], y=(0, 512), x=(0, 512))
 ```
 
+## Frame layouts
+
+The trailing group of the pattern is the frame, and its axis order decides what `geozl` can model and what a read can reach without touching the rest.
+
+```python
+"b (row h) (col w) -> row col (b h w)"   # every band, band planar
+"b (row h) (col w) -> row col (h w b)"   # every band, the pixel's spectrum contiguous
+"b (row h) (col w) -> row col b (h w)"   # one band per frame
+```
+
+Only `b` is reserved, so the names a split introduces are yours. The left side names your array, so an input in `(rows, columns, bands)` order needs no transpose first:
+
+```python
+frames = rumi.frames(image, "(row h) (col w) b -> row col (b h w)", tile_size=512)
+```
+
+Unlike einops, the split does not require the image to divide evenly. Edge frames are simply smaller.
+
 The header is a small binary index. Store it next to the file path in Parquet or another catalog and pass both values to `rumi.read`. If you omit it, rumi can rebuild it from a local file:
 
 ```python
 result = rumi.read("scene.rumi")
 ```
+
+The file names its own frame layout, so a rebuilt header reads the same samples as the one `write` returned. Keeping the header only saves the parse.
 
 ## PyTorch
 
@@ -95,7 +117,7 @@ The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_C
 
 ## Current limits
 
-- rumi is beta software. Version 0.15 is its first compatibility baseline.
+- rumi is beta software. Version 0.17 is its current compatibility baseline.
 - A CRS must be an EPSG code, or be omitted.
 - Sources are local paths or bytes already in memory; object-storage URLs are not read directly yet.
 
@@ -104,6 +126,7 @@ The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_C
 - [Format specification](SPEC.md)
 - [Changelog](CHANGELOG.md)
 - [Compatibility policy](COMPATIBILITY.md)
+- [Design notes](WHATWELEARN.md)
 - [Security policy](SECURITY.md)
 - [Ten-minute notebook](examples/rumi-demo.ipynb)
 - [Issue tracker](https://github.com/asterisk-labs/rumi/issues)

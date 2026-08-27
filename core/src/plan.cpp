@@ -45,17 +45,19 @@ WorkerState& worker_state() noexcept
     return ws;
 }
 
-// A one-sample pixel stride is a contiguous row, a larger one has another
-// axis inner, so copy pixel by pixel. src_pitch is the frame's real width.
+// A one-sample pixel stride on both sides is a contiguous row, a larger one
+// has another axis inner, so copy pixel by pixel. src_pitch is the frame's real
+// width, in whatever stride its layout gives a pixel.
 void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
                     const std::byte* plane, std::byte* dst) noexcept
 {
-    if (t.dst_pixel_stride == bps) {
+    const std::size_t sps = t.src_pixel_stride;
+    if (t.dst_pixel_stride == bps && sps == bps) {
         const std::size_t row_bytes = static_cast<std::size_t>(t.w) * bps;
         for (std::uint32_t row = 0; row < t.h; ++row) {
             const std::byte* src = plane
                 + static_cast<std::size_t>(t.src_y + row) * src_pitch
-                + static_cast<std::size_t>(t.src_x) * bps;
+                + static_cast<std::size_t>(t.src_x) * sps;
             std::memcpy(dst + static_cast<std::size_t>(row) * t.dst_pitch,
                         src, row_bytes);
         }
@@ -65,11 +67,11 @@ void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
     for (std::uint32_t row = 0; row < t.h; ++row) {
         const std::byte* src = plane
             + static_cast<std::size_t>(t.src_y + row) * src_pitch
-            + static_cast<std::size_t>(t.src_x) * bps;
+            + static_cast<std::size_t>(t.src_x) * sps;
         std::byte* out = dst + static_cast<std::size_t>(row) * t.dst_pitch;
         for (std::uint32_t col = 0; col < t.w; ++col) {
             std::memcpy(out + static_cast<std::size_t>(col) * t.dst_pixel_stride,
-                        src + static_cast<std::size_t>(col) * bps, bps);
+                        src + static_cast<std::size_t>(col) * sps, bps);
         }
     }
 }
@@ -79,7 +81,8 @@ void copy_rect(const FrameTask& t, const FrameSpec& spec,
                const std::byte* frame) noexcept
 {
     const std::size_t bps       = spec.bytes_per_sample;
-    const std::size_t src_pitch = static_cast<std::size_t>(t.frame_width) * bps;
+    const std::size_t src_pitch = static_cast<std::size_t>(t.frame_width)
+                                * t.src_pixel_stride;
 
     for (std::uint32_t k = 0; k < t.plane_count; ++k) {
         copy_one_plane(t, bps, src_pitch,

@@ -3,6 +3,7 @@ import numpy as np
 from ._dtype import name as dtype_name
 from ._dtype import numpy_dtype
 from ._ffi import PathLike, _header_from_file, _Spec
+from ._pattern import layout_name, unit_indexes_bands
 from ._repr import header_html, header_text
 
 
@@ -28,14 +29,15 @@ class RumiHeader:
 
     @property
     def frame_unit(self) -> str:
-        """Return ``"tile"`` or ``"cell"``."""
-        return "tile" if self._fields.frame_unit == 0 else "cell"
+        """Return the frame's axis order, such as ``"b h w"``."""
+        return layout_name(self._fields.frame_unit)
 
     @property
     def frames(self) -> int:
         """Return the total frame count."""
         h = self._fields
-        per = h.samples_per_pixel if h.frame_unit == 0 else 1
+        per = (h.samples_per_pixel
+               if unit_indexes_bands(h.frame_unit) else 1)
         return int(h.tiles_across * h.tiles_down * per)
 
     def to_dict(self) -> dict:
@@ -66,7 +68,8 @@ class RumiHeader:
                 "dtype": dtype_name(h.dtype),
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
-                "unit": self.frame_unit,
+                "layout": self.frame_unit,
+                "tiled": unit_indexes_bands(h.frame_unit),
                 "frames": self.frames,
                 "codec": "OpenZL",
             }

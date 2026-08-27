@@ -167,6 +167,101 @@ rumi_compile_layout(const char* pattern,
 }
 
 
+extern "C" rumi_status
+rumi_compile_frame_pattern(const char* pattern, rumi_frame_pattern* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!pattern || !out) {
+            set_error("rumi_compile_frame_pattern: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto p = rumi::compile_frame_pattern(pattern);
+        if (!p) {
+            set_error(p.error());
+            return RUMI_ERR_INVALID;
+        }
+        std::memset(out, 0, sizeof(*out));
+        out->frame_unit = p->frame_unit;
+        out->input_ndim = static_cast<int>(p->input_ndim);
+        out->frame_ndim = static_cast<int>(p->frame_ndim);
+        for (std::size_t i = 0; i < p->input_ndim; ++i) out->input[i] = p->input[i];
+        for (std::size_t i = 0; i < p->frame_ndim; ++i) out->frame[i] = p->frame[i];
+        return RUMI_OK;
+    });
+}
+
+extern "C" const char* rumi_unit_name(uint8_t unit)
+{
+    const std::string_view n = rumi::unit_name(unit);
+    return n.empty() ? nullptr : n.data();
+}
+
+extern "C" rumi_status rumi_unit_from_name(const char* name, uint8_t* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!name || !out) {
+            set_error("rumi_unit_from_name: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto u = rumi::unit_from_name(name);
+        if (!u) {
+            set_error(u.error());
+            return RUMI_ERR_INVALID;
+        }
+        *out = *u;
+        return RUMI_OK;
+    });
+}
+
+extern "C" int rumi_unit_indexes_bands(uint8_t unit)
+{
+    return rumi::unit_is_defined(unit) && rumi::unit_indexes_bands(unit) ? 1 : 0;
+}
+
+extern "C" rumi_status
+rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
+                 uint16_t bands, uint32_t* out_across, uint32_t* out_down,
+                 uint64_t* out_frames)
+{
+    return capi_call([&]() -> rumi_status {
+        std::uint32_t across = 0, down = 0;
+        auto n = rumi::frame_geometry(unit, width, length, tile, bands,
+                                      &across, &down);
+        if (!n) {
+            set_error(n.error());
+            return RUMI_ERR_INVALID;
+        }
+        if (out_across) *out_across = across;
+        if (out_down)   *out_down   = down;
+        if (out_frames) *out_frames = *n;
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
+              uint16_t bands, uint64_t index, rumi_frame_at* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_frame_locate: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto at = rumi::frame_at_index(unit, width, length, tile, bands, index);
+        if (!at) {
+            set_error(at.error());
+            return RUMI_ERR_INVALID;
+        }
+        std::memset(out, 0, sizeof(*out));
+        out->row  = at->row;  out->col = at->col; out->band = at->band;
+        out->h    = at->h;    out->w   = at->w;
+        out->ndim = static_cast<int>(at->ndim);
+        for (std::size_t i = 0; i < at->ndim; ++i) out->dims[i] = at->dims[i];
+        return RUMI_OK;
+    });
+}
+
+
 namespace {
 
 // Overflow-checked size_t product of the requested read extents.

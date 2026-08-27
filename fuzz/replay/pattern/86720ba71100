@@ -1,0 +1,1 @@
+b (row h) (col w) -> row col (b w h)

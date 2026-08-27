@@ -136,13 +136,13 @@ def _cells(r):
 
 def _meta(f):
     """Label and value for the summary block, in both reprs."""
-    tiled = f.get("unit", "tile") == "tile"
-    grid = (f"{f['across']} \u00d7 {f['down']} \u00d7 {f['b']}" if tiled
+    grid = (f"{f['across']} \u00d7 {f['down']} \u00d7 {f['b']}" if f["tiled"]
             else f"{f['across']} \u00d7 {f['down']}")
     out = [("dtype", f["dtype"]),
            ("tile", f"{f['t']} \u00d7 {f['t']}"),
            ("grid", grid),
-           ("frames", f"{f['n']:,}")]
+           ("frames", f"{f['n']:,}"),
+           ("layout", f["layout"])]
     if f["done"]:
         out.append(("bytes", f"{_human(f['nbytes'])} ({f['ratio']:.1f}\u00d7)"))
     return out

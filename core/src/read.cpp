@@ -384,9 +384,10 @@ Plan build_plan(const Header& h, Source* source,
     // checked per tile, since edge tiles are narrower.
     const bool one_sample_stride = pixel_space == static_cast<std::int64_t>(bps);
 
-    // A cell frame holds every band, so one task per grid position. A tile
+    // A frame holding every band gives one task per grid position; a tile
     // frame holds one band, so one task per band.
-    const bool cell = h.frame_unit == 1;
+    const bool cell   = !unit_indexes_bands(h.frame_unit);
+    const bool chunky = unit_is_chunky(h.frame_unit);
 
     Plan plan;
     plan.spec = make_frame_spec(h);
@@ -419,10 +420,15 @@ Plan build_plan(const Header& h, Source* source,
                 line_space == static_cast<std::int64_t>(ex_w)
                             * static_cast<std::int64_t>(bps);
 
-            const std::size_t plane_bytes = static_cast<std::size_t>(ex_w)
-                                          * static_cast<std::size_t>(ex_h) * bps;
+            const std::size_t area_bytes = static_cast<std::size_t>(ex_w)
+                                         * static_cast<std::size_t>(ex_h) * bps;
             const std::size_t frame_bytes = cell
-                ? plane_bytes * h.samples_per_pixel : plane_bytes;
+                ? area_bytes * h.samples_per_pixel : area_bytes;
+            // In (h w b) the bands sit inside the pixel, so the step to the
+            // next band is one sample and the step along x carries them all.
+            const std::size_t plane_bytes = chunky ? bps : area_bytes;
+            const std::size_t src_pixel_stride =
+                chunky ? bps * h.samples_per_pixel : bps;
 
             const int steps = cell ? 1 : band_count;
             for (int i = 0; i < steps; ++i) {
@@ -445,6 +451,7 @@ Plan build_plan(const Header& h, Source* source,
                 task.frame_width     = static_cast<std::uint32_t>(ex_w);
                 task.frame_bytes     = frame_bytes;
                 task.plane_bytes     = plane_bytes;
+                task.src_pixel_stride = src_pixel_stride;
                 task.planes          = plan.plane_index.data();
                 task.plane_count     = static_cast<std::uint32_t>(
                     cell ? band_count : 1);
@@ -478,8 +485,8 @@ plan_ranges(const Header& h, std::span<const int> bands,
     const std::uint32_t c0 = static_cast<std::uint32_t>(x_off) / h.tile_width;
     const std::uint32_t c1 = static_cast<std::uint32_t>(x_off + x_size - 1) / h.tile_width;
 
-    // One range per frame, and a cell frame carries every band.
-    const bool cell = h.frame_unit == 1;
+    // One range per frame, and a frame holding every band needs only one.
+    const bool cell = !unit_indexes_bands(h.frame_unit);
     const std::size_t per_pos = cell ? 1 : bands.size();
 
     std::vector<Range> out;
@@ -570,6 +577,21 @@ read_stack(std::span<Source* const> sources,
         }
         if (h.dtype != ref.dtype) {
             return errf("image %zu: dtype mismatch", i + 1);
+        }
+        // The merged plan carries one frame spec and one plane index, both
+        // taken from the reference. A frame holding one band decodes to a
+        // different size and selects planes differently from one holding every
+        // band, so mixing the two would size the scratch from the wrong image.
+        if (unit_indexes_bands(h.frame_unit)
+            != unit_indexes_bands(ref.frame_unit)) {
+            return errf("image %zu: frame layout mismatch, %s against %s; a "
+                        "stack cannot mix frames holding one band with frames "
+                        "holding every band",
+                        i + 1,
+                        unit_indexes_bands(h.frame_unit) ? "one band"
+                                                         : "every band",
+                        unit_indexes_bands(ref.frame_unit) ? "one band"
+                                                           : "every band");
         }
     }
 

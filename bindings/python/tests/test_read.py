@@ -13,13 +13,17 @@ geozl = pytest.importorskip("geozl")
 
 GRAPH = "planar>zigzag>zstd"
 
+PATTERNS = {"tile": "b (row h) (col w) -> row col b (h w)",
+            "cell": "b (row h) (col w) -> row col (b h w)",
+            "chunky": "b (row h) (col w) -> row col (h w b)"}
+
 
 @pytest.fixture(scope="module")
 def image(tmp_path_factory):
     """A small scene written once, with edge tiles."""
     rng = np.random.default_rng(0)
     data = rng.integers(0, 3000, (3, 100, 130)).astype(np.uint16)
-    tf = rumi.frames(data, 32)
+    tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 32)
     graphs = {}
     for t in tf:
         g = graphs.get(t.data.shape)
@@ -157,7 +161,7 @@ def cell_image(tmp_path_factory):
     """The same scene with one frame per grid position."""
     rng = np.random.default_rng(1)
     data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
-    tf = rumi.frames(data, 32, unit="cell")
+    tf = rumi.frames(data, "b (row h) (col w) -> row col (b h w)", 32)
     graphs = {}
     for t in tf:
         g = graphs.get(t.data.shape)
@@ -184,13 +188,13 @@ def test_a_cell_read_keeps_the_band_order_asked_for(cell_image, bands):
 
 
 @pytest.mark.parametrize("bands", [[0], [3, 1], [0, 1, 2, 3, 4]])
-def test_a_cell_window_matches_a_tile_window(tmp_path, bands):
-    """Two ways to store one image, so a window reads the same from either."""
+def test_every_layout_reads_the_same_window(tmp_path, bands):
+    """Three ways to store one image, so a window reads the same from any."""
     rng = np.random.default_rng(2)
     data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
     out = {}
-    for unit in ("tile", "cell"):
-        tf = rumi.frames(data, 32, unit=unit)
+    for unit, pattern in PATTERNS.items():
+        tf = rumi.frames(data, pattern, 32)
         graphs = {}
         for t in tf:
             g = graphs.get(t.data.shape)
@@ -200,8 +204,69 @@ def test_a_cell_window_matches_a_tile_window(tmp_path, bands):
         path, header = rumi.write(tmp_path / f"{unit}.rumi", tf)
         out[unit] = np.asarray(
             rumi.read(str(path), header, b=bands, y=(30, 70), x=(20, 90)))
-    assert np.array_equal(out["tile"], out["cell"])
-    assert np.array_equal(out["cell"], data[bands, 30:70, 20:90])
+    want = data[bands, 30:70, 20:90]
+    for unit, got in out.items():
+        assert np.array_equal(got, want), unit
+
+
+def test_a_chunky_frame_holds_the_pixel_spectrum(tmp_path):
+    """(h w b) puts the bands inside the pixel, so the frame is (h, w, B) and
+    the file still reads back as (B, Y, X)."""
+    rng = np.random.default_rng(3)
+    data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
+    tf = rumi.frames(data, PATTERNS["chunky"], 32)
+    assert tf[0].data.shape == (32, 32, 4)
+    assert tf[-1].data.shape == (6, 26, 4)          # the corner, cut to bounds
+    for t in tf:
+        t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
+    path, header = rumi.write(tmp_path / "chunky.rumi", tf)
+    assert rumi.RumiHeader(header).frame_unit == "h w b"
+    assert np.array_equal(rumi.read(str(path), header), data)
+
+
+def _write(tmp_path, name, data, unit, tile=16):
+    tf = rumi.frames(data, PATTERNS[unit], tile)
+    for t in tf:
+        t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
+    path, header = rumi.write(tmp_path / f"{name}.rumi", tf)
+    return str(path), header
+
+
+@pytest.mark.parametrize("unit", list(PATTERNS))
+def test_a_file_names_its_own_layout(tmp_path, unit):
+    """PlanarConfiguration carries the axis order, so a file read without its
+    header decodes the same samples as one read with it."""
+    rng = np.random.default_rng(5)
+    data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
+    path, header = _write(tmp_path, unit, data, unit, tile=32)
+    assert np.array_equal(rumi.read(path, header), data)
+    assert np.array_equal(rumi.read(path), data)
+    assert (rumi.RumiHeader.from_path(path).frame_unit
+            == rumi.RumiHeader(header).frame_unit)
+
+
+def test_a_stack_needs_no_headers(tmp_path):
+    """Every file names its own layout, so a mixed stack reads from the paths
+    alone."""
+    rng = np.random.default_rng(6)
+    data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
+    paths = [_write(tmp_path, u, data, u, tile=32)[0] for u in ("cell", "chunky")]
+    got = np.asarray(rumi.read(paths))
+    assert np.array_equal(got[0], data) and np.array_equal(got[1], data)
+
+
+def test_a_chunky_read_decodes_each_frame_once(tmp_path):
+    """Like a planar cell frame, one task per grid position however many bands
+    are asked for."""
+    rng = np.random.default_rng(4)
+    data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
+    tf = rumi.frames(data, PATTERNS["chunky"], 32)
+    for t in tf:
+        t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
+    _path, header = rumi.write(tmp_path / "chunky.rumi", tf)
+    one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
+    all_five = plan(header, bands=[0, 1, 2, 3, 4], y=(0, 100), x=(0, 130))
+    assert len(one) == len(all_five) == len(tf)
 
 
 def test_a_cell_read_decodes_each_frame_once(cell_image):
@@ -228,7 +293,7 @@ def test_a_cell_stack_round_trips(tmp_path):
     paths, headers, cubes = [], [], []
     for i in range(3):
         cube = (base + i * 100).astype(np.uint16)
-        tf = rumi.frames(cube, 32, unit="cell")
+        tf = rumi.frames(cube, "b (row h) (col w) -> row col (b h w)", 32)
         for t in tf:
             t.compressed = geozl.compress(t.data,
                                           graph=geozl.graph(t.data, GRAPH))

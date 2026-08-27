@@ -4,6 +4,63 @@ User-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-24
+
+### Breaking
+
+- RUMI 0.17 establishes a new compatibility baseline. Files written by earlier
+  releases are not supported.
+
+- The fixed IFD gains `PlanarConfiguration` and is now 12 tags and 256 bytes.
+  `base_frame_offset` is `272 + external`.
+
+- `rumi.frames` takes a pattern instead of `unit`. The pattern names the input's
+  axes, cuts the spatial ones into a grid, and says what one frame holds:
+
+      rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
+
+  `unit="tile"` becomes `-> row col b (h w)` and `unit="cell"` becomes
+  `-> row col (b h w)`. `RumiHeader.frame_unit` now returns the frame's axis
+  order, such as `"b h w"`, rather than `"tile"` or `"cell"`.
+
+### Added
+
+- A third frame layout, `h w b`, which puts a pixel's bands contiguous instead
+  of keeping each band a plane. It holds the same samples as `b h w` and gives
+  the same frame count; what changes is which axis a predictor walks, and
+  therefore what compresses.
+- `PlanarConfiguration` records the frame's axis order in the file, so a file
+  names its own layout and reads correctly from the path alone.
+- The pattern's left side names the input, so an array in `(Y, X, B)` order no
+  longer has to be transposed before writing.
+- Only `b` is reserved, so the names a split introduces are the caller's.
+- The C API answers everything a binding needs to cut an array into frames, so
+  no binding has to reimplement the format: `rumi_compile_frame_pattern` parses
+  the pattern, `rumi_unit_name` and `rumi_unit_from_name` name a layout,
+  `rumi_unit_indexes_bands` says whether the index walks bands, and
+  `rumi_frame_count` and `rumi_frame_locate` give the grid, the wire order and
+  the shape each frame must arrive in. The library never touches the caller's
+  array: it says what to cut, and the caller cuts.
+
+### Changed
+
+- The frame pattern is parsed in the core rather than in the Python binding, so
+  the grammar, the layouts rumi defines and the arithmetic that places a frame
+  have one definition. The Python binding keeps only naming and its own table
+  ergonomics, and its grammar tests moved to the core suite alongside a new
+  `pattern` fuzz target.
+- `frame_unit` in the header blob names the frame's axis order, not only what
+  the frame holds. The decoded shape is now normative. Specification 0.3.0.
+- Unlike einops, the split does not require the image to divide evenly by the
+  tile size. Edge frames are simply smaller, as they always were.
+
+### Fixed
+
+- A stack mixing frames that hold one band with frames that hold every band
+  could read past the end of the decode scratch and crash. The merged plan
+  carries one frame spec, taken from the first image, while each task declared
+  its own larger size. It is now rejected with a message naming the mismatch.
+
 ## [0.16.0] - 2026-08-18
 
 ### Breaking
@@ -96,7 +153,8 @@ User-visible changes are recorded here.
 - RUMI reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/asterisk-labs/rumi/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/asterisk-labs/rumi/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/asterisk-labs/rumi/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/asterisk-labs/rumi/compare/v0.13.0...v0.14.0

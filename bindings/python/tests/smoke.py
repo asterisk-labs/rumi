@@ -30,7 +30,7 @@ def main() -> int:
         )
         return 1
 
-    tf = rumi.frames(np.zeros((2, 40, 70), np.uint16), 16)
+    tf = rumi.frames(np.zeros((2, 40, 70), np.uint16), "b (row h) (col w) -> row col b (h w)", 16)
     tf["compressed"] = [bytes([i % 251]) * (8 + i) for i in range(len(tf))]
 
     with tempfile.TemporaryDirectory() as d:

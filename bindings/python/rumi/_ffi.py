@@ -69,6 +69,35 @@ size_t rumi_dtype_table(const rumi_dtype_info** out);
 rumi_status
 rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size);
 
+typedef struct {
+    uint8_t frame_unit;
+    uint8_t input[4];
+    int     input_ndim;
+    uint8_t frame[4];
+    int     frame_ndim;
+} rumi_frame_pattern;
+
+typedef struct {
+    uint32_t row, col, band, h, w;
+    int64_t  dims[4];
+    int      ndim;
+} rumi_frame_at;
+
+rumi_status rumi_compile_frame_pattern(const char* pattern,
+                                       rumi_frame_pattern* out);
+const char* rumi_unit_name(uint8_t unit);
+rumi_status rumi_unit_from_name(const char* name, uint8_t* out);
+int         rumi_unit_indexes_bands(uint8_t unit);
+
+rumi_status
+rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
+                 uint16_t bands, uint32_t* out_across, uint32_t* out_down,
+                 uint64_t* out_frames);
+
+rumi_status
+rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
+                  uint16_t bands, uint64_t index, rumi_frame_at* out);
+
 rumi_status
 rumi_compile_layout(const char* pattern,
                     int64_t n, int64_t b, int64_t y, int64_t x,

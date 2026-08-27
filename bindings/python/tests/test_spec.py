@@ -17,13 +17,14 @@ from rumi._write import header_bytes, write_frames
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
 TYPE_SIZE = {ASCII: 1, SHORT: 2, LONG: 4, DOUBLE: 8, LONG8: 8}
 
-TAGS = (256, 257, 258, 277, 322, 323, 324, 325, 339, 34264, 34735)
+TAGS = (256, 257, 258, 277, 322, 323, 324, 325, 339, 34264, 34735,
+        65000)
 GEO = (34264, 34735)
 FORBIDDEN_GEO = (33550, 33922, 34736, 34737)
 
 IFD_OFFSET = 16
-IFD_SIZE = 8 + 20 * len(TAGS) + 8          # 236
-BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 252
+IFD_SIZE = 8 + 20 * len(TAGS) + 8          # 256
+BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 272
 
 MODEL, RASTER, GEOGRAPHIC, PROJECTED = 1024, 1025, 2048, 3072
 UTM18S = 32718
@@ -47,7 +48,7 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16):
     tiles of equal size."""
     n = int(np.prod(shape[1:]))
     arr = np.arange(shape[0] * n, dtype=dtype).reshape(shape)
-    tf = FrameTable.from_array(arr, tile_size=tile_size)
+    tf = FrameTable.from_array(arr, "b (row h) (col w) -> row col b (h w)", tile_size)
     tf["compressed"] = [bytes([i % 251]) * (7 + 3 * i) for i in range(len(tf))]
     return tf
 
@@ -134,7 +135,7 @@ def build_tiff(entries, tiles, bands=1, pad_before_tiles=0):
 
 
 def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
-                 epsg=UTM18S, model=1, transform=NORTH_UP):
+                 epsg=UTM18S, model=1, transform=NORTH_UP, unit=0):
     """A tag set a compliant file would carry."""
     t = transform
     matrix = [t[0], t[1], 0.0, t[2],
@@ -153,12 +154,13 @@ def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
         325: (LONG, [len(t) for t in tiles]),
         339: (SHORT, [fmt] * bands),
         34264: (DOUBLE, matrix), 34735: (SHORT, directory),
+        65000: (SHORT, [unit]),
     }
 
 
 # Fixed IFD
 
-def test_the_tag_set_is_exactly_the_eleven(tmp_path):
+def test_the_tag_set_is_exactly_the_twelve(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
@@ -192,7 +194,7 @@ def test_the_ifd_starts_at_sixteen_and_is_one(tmp_path):
     assert next_ifd == 0
 
 
-def test_the_ifd_is_always_316_bytes(tmp_path):
+def test_the_ifd_is_always_256_bytes(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
@@ -419,14 +421,14 @@ def test_there_is_no_header_size_parameter(tmp_path):
 @pytest.mark.parametrize("size", [1, 8, 17, 24, 100, 65535])
 def test_tile_size_accepts_positive_uint16_values(size):
     arr = np.zeros((1, 64, 64), np.uint16)
-    assert rumi.frames(arr, size).tile_size == size
+    assert rumi.frames(arr, "b (row h) (col w) -> row col b (h w)", size).tile_size == size
 
 
 @pytest.mark.parametrize("bad", [0, -1, 65536])
 def test_tile_size_must_fit_its_uint16_field(bad):
     arr = np.zeros((1, 64, 64), np.uint16)
     with pytest.raises(ValueError, match="65535"):
-        rumi.frames(arr, bad)
+        rumi.frames(arr, "b (row h) (col w) -> row col b (h w)", bad)
 
 
 def test_a_crs_needs_a_transform(tmp_path):
@@ -579,7 +581,7 @@ def test_pixels_survive_the_round_trip(tmp_path):
     geozl = pytest.importorskip("geozl")
     rng = np.random.default_rng(0)
     data = rng.integers(0, 3000, (3, 100, 130)).astype(np.uint16)
-    tf = rumi.frames(data, 32)
+    tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 32)
     graphs = {}
     for t in tf:
         g = graphs.setdefault(t.data.shape,

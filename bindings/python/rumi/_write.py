@@ -37,7 +37,7 @@ def _desc(tf, transform, crs, pixel_is_point):
     d.samples_per_pixel = tf.bands
     d.dtype = dtype_code(tf.dtype)
     d.pixel_is_point = 1 if pixel_is_point else 0
-    d.frame_unit = 0 if tf.unit == "tile" else 1
+    d.frame_unit = tf.pattern.frame_unit
 
     if transform is None:
         d.transform = ffi.NULL

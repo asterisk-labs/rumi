@@ -132,8 +132,8 @@ build_blob_from_file(const char* path) noexcept
     if (!read_at(fp, ifd_offset, &n_entries, 8)) {
         return err("could not read the IFD entry count");
     }
-    if (n_entries != 11) {
-        return err("rumi requires exactly 11 IFD tags; file has %llu",
+    if (n_entries != 12) {
+        return err("rumi requires exactly 12 IFD tags; file has %llu",
                    static_cast<unsigned long long>(n_entries));
     }
 
@@ -175,6 +175,7 @@ build_blob_from_file(const char* path) noexcept
     static constexpr Required REQUIRED[] = {
         {256, 4}, {257, 4}, {258, 3}, {277, 3}, {322, 3}, {323, 3},
         {324, 16}, {325, 4}, {339, 3}, {34264, 12}, {34735, 3},
+        {TAG_FRAME_UNIT, 3},
     };
     for (std::size_t i = 0; i < entries.size(); ++i) {
         if (entries[i].tag != REQUIRED[i].tag) {
@@ -188,7 +189,7 @@ build_blob_from_file(const char* path) noexcept
     }
 
     for (std::size_t i : {std::size_t(0), std::size_t(1), std::size_t(3),
-                          std::size_t(4), std::size_t(5)}) {
+                          std::size_t(4), std::size_t(5), std::size_t(11)}) {
         if (entries[i].count != 1) {
             return err("tag %u has %llu values, expected 1", entries[i].tag,
                        static_cast<unsigned long long>(entries[i].count));
@@ -371,19 +372,25 @@ build_blob_from_file(const char* path) noexcept
     }
     const std::uint64_t tile_frames = grid_positions * spp;
 
-    // No tag carries the frame unit, so the entry count of TileOffsets is what
-    // names it. grid_positions means cell, grid_positions * spp means tile.
-    // With one band the two are equal, so tile is the canonical reading.
+    // The layout tag names the frame unit outright, so a file is readable
+    // without its blob. The entry count of TileOffsets says the same thing
+    // about the band axis from the other side, and must agree.
+    auto unit_e = scalar(TAG_FRAME_UNIT, FRAME_TILE);
+    if (!unit_e) return std::unexpected(unit_e.error());
+    if (*unit_e > 0xFF || !unit_is_defined(static_cast<std::uint8_t>(*unit_e))) {
+        return err("frame_unit is %llu, which names no frame layout",
+                   static_cast<unsigned long long>(*unit_e));
+    }
+    const auto frame_unit = static_cast<std::uint8_t>(*unit_e);
+
     const Entry* offs_entry = find(324);
-    std::uint8_t frame_unit;
-    if (offs_entry->count == tile_frames) frame_unit = 0;
-    else if (offs_entry->count == grid_positions) frame_unit = 1;
-    else {
-        return err("TileOffsets has %llu entries, expected %llu for tile frames "
-                   "or %llu for cell frames",
+    const std::uint64_t want_frames =
+        unit_indexes_bands(frame_unit) ? tile_frames : grid_positions;
+    if (offs_entry->count != want_frames) {
+        return err("TileOffsets has %llu entries, but frame_unit %u wants %llu",
                    static_cast<unsigned long long>(offs_entry->count),
-                   static_cast<unsigned long long>(tile_frames),
-                   static_cast<unsigned long long>(grid_positions));
+                   unsigned(frame_unit),
+                   static_cast<unsigned long long>(want_frames));
     }
 
     const std::uint64_t n_frames = offs_entry->count;
@@ -400,7 +407,7 @@ build_blob_from_file(const char* path) noexcept
 
     // Every external value begins immediately after the preceding one, in the
     // same rising tag order as the IFD. All counts are known and bounded now.
-    std::uint64_t cursor = 16 + 8 + 20 * 11 + 8;
+    std::uint64_t cursor = 16 + 8 + 20 * IFD_TAGS + 8;
     for (const Entry& e : entries) {
         const std::uint64_t ts = type_size(e.type);
         if (e.count > std::numeric_limits<std::uint64_t>::max() / ts) {

@@ -27,7 +27,7 @@ def image(tmp_path_factory):
     """Enough tiles that a parallel read has something to spread."""
     rng = np.random.default_rng(0)
     data = rng.integers(0, 3000, (2, 160, 160)).astype(np.uint16)
-    tf = rumi.frames(data, 32)
+    tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 32)
     graphs = {}
     for t in tf:
         g = graphs.get(t.data.shape)

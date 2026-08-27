@@ -174,8 +174,8 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
         return err("tile_size must be at least 1");
     if (d.samples_per_pixel == 0)
         return err("samples_per_pixel must be at least 1");
-    if (d.frame_unit > 1)
-        return err("frame_unit must be 0 (tile) or 1 (cell), got %u",
+    if (!unit_is_defined(d.frame_unit))
+        return err("frame_unit must be 0 (h w), 1 (b h w) or 2 (h w b), got %u",
                    unsigned(d.frame_unit));
     if ((d.transform == nullptr) != (d.epsg == 0))
         return err("transform and a CRS must be given together");
@@ -188,7 +188,9 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
     g.down   = 1 + (d.image_length - 1) / d.tile_size;
     // A tile frame holds one band, a cell frame holds every band.
     g.frames = std::uint64_t(g.across) * g.down
-             * (d.frame_unit == 0 ? d.samples_per_pixel : 1);
+             * (unit_indexes_bands(effective_unit(d.frame_unit,
+                                                  d.samples_per_pixel))
+                ? d.samples_per_pixel : 1);
     if (g.frames > 0xFFFFFFFFu)
         return err("frame count overflows uint32: %llu",
                    static_cast<unsigned long long>(g.frames));
@@ -217,6 +219,11 @@ plan(const WriteDesc& d, const Grid& g,
     l.entries.insert(l.entries.end(),
                      std::make_move_iterator(geo->begin()),
                      std::make_move_iterator(geo->end()));
+
+    // Private, so it sorts last. The file names its own layout with it.
+    l.entries.push_back(pack(TAG_FRAME_UNIT, T_SHORT,
+        {static_cast<std::uint16_t>(
+            effective_unit(d.frame_unit, d.samples_per_pixel))}));
 
     const std::uint64_t ifd_size = 8 + 20 * l.entries.size() + 8;
     l.base = place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
@@ -345,7 +352,7 @@ try {
     bh.bits_per_sample   = g->bits;
     bh.sample_format     = g->sample_format;
     // Tile and cell units are identical for one band; canonicalize to tile.
-    bh.frame_unit        = spp == 1 ? 0 : d.frame_unit;
+    bh.frame_unit        = effective_unit(d.frame_unit, spp);
 
     // Verify the writer layout against the reader's closed form.
     if (l->base != derived_base_offset(spp, n)) {

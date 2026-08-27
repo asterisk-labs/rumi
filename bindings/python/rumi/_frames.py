@@ -1,18 +1,18 @@
 import numpy as np
 
 from ._dtype import dtype_code
+from ._pattern import AXES, COLUMN, GRID_COLUMNS, compile_pattern, frame_at, frame_count
 from ._repr import _human, frame_html, frame_text
 
 _HEAD, _HEAD_TAIL = 5, 10  # rows either side of the gap, and when to cut
 _MAX_CELLS = 24            # past this the drawn face bins, one cell per block
-_TILE_COLS = ("tile", "cell", "data", "compressed")
-_CELL_COLS = ("cell", "data", "compressed")
-_DIMS = ("band", "row", "col")  # indexable dimension columns
-UNITS = ("tile", "cell")
+_PAYLOAD_COLS = ("data", "compressed")
 
-# What a column name may not be, since attach() puts one on Frame.
-_RESERVED = (frozenset(_TILE_COLS) | frozenset(_DIMS)
-             | {"index", "shape", "unit"})
+# What a column name may not be, since attach() puts one on Frame. Every name a
+# table can carry at any layout, so the guard does not depend on this one.
+_RESERVED = frozenset(
+    {"tile", "cell", "index", "shape", "unit", "pattern"}
+    | set(_PAYLOAD_COLS) | set(GRID_COLUMNS) | {COLUMN[a] for a in AXES})
 
 
 class Frame:
@@ -91,24 +91,22 @@ class Frame:
 class FrameTable:
     """Frames in wire order, one row per frame.
 
-    A tile frame holds one band at one grid position and the order is
-    (row, col, band), band innermost. A cell frame holds every band at one
-    grid position and the order is (row, col).
+    The pattern says what a frame holds and how its axes are ordered. Frames
+    are always tile-interleaved: the grid is walked row-major, and a band that
+    the frame does not hold is the innermost index axis.
 
     Indexing returns Frame views that update the table.
     """
 
     __slots__ = ("_data", "_comp", "_size", "_band", "_row", "_col", "_extra",
                  "image_width", "image_length", "tile_size", "bands", "dtype",
-                 "unit")
+                 "pattern")
 
-    dims = _DIMS
 
     def __init__(self, data, *, image_width, image_length, tile_size, bands,
-                 dtype, unit="tile"):
-        if unit not in UNITS:
-            raise ValueError(f"unit must be one of {UNITS}, got {unit!r}")
-        self.unit = unit
+                 dtype, pattern):
+        self.pattern = (pattern if not isinstance(pattern, str)
+                        else compile_pattern(pattern))
         self.image_width = int(image_width)
         self.image_length = int(image_length)
         self.tile_size = t = int(tile_size)
@@ -126,29 +124,29 @@ class FrameTable:
             raise ValueError(f"tile_size must be in [1, 65535], got {t}")
 
         self._data = list(data)
-        positions = self.tiles_across * self.tiles_down
-        n = positions * self.bands if unit == "tile" else positions
+        n = self._geometry()[2]
         if len(self._data) != n:
             raise ValueError(
-                f"expected {n} {unit} frames for this grid, "
-                f"got {len(self._data)}")
+                f"expected {n} ({' '.join(self.pattern.frame_axes)}) frames "
+                f"for this grid, got {len(self._data)}")
 
-        i = np.arange(n)
-        if unit == "tile":
-            pos, self._band = np.divmod(i, self.bands)
-        else:
-            pos, self._band = i, None
-        self._row, self._col = np.divmod(pos, self.tiles_across)
+        indexed = self.pattern.bands_are_indexed
+        self._row = np.empty(n, np.int64)
+        self._col = np.empty(n, np.int64)
+        self._band = np.empty(n, np.int64) if indexed else None
 
-        # Every frame is checked against the shape its grid position implies,
-        # which also says it is the frame it claims to be, not merely that they
-        # all measure the same.
+        # Every frame is checked against the shape the core says its position
+        # implies, which also says it is the frame it claims to be, not merely
+        # that they all measure the same.
         for k, a in enumerate(self._data):
-            want = self._expected_shape(int(self._row[k]), int(self._col[k]))
-            if a.shape != want:
+            at = self._at(k)
+            self._row[k], self._col[k] = at.row, at.col
+            if indexed:
+                self._band[k] = at.band
+            if a.shape != at.dims:
                 raise ValueError(
-                    f"frame {k} at row {self._row[k]} col {self._col[k]} is "
-                    f"{a.shape}, the grid says {want}")
+                    f"frame {k} at row {at.row} col {at.col} is "
+                    f"{a.shape}, the grid says {at.dims}")
             if a.dtype != self.dtype:
                 raise ValueError(
                     f"frame {k} is {a.dtype}, the table is {self.dtype}")
@@ -158,52 +156,68 @@ class FrameTable:
         self._extra = {}
 
     @classmethod
-    def from_array(cls, arr, tile_size=512, *, unit="tile"):
-        """Cut a ``(B, Y, X)`` array into frames clipped to image bounds."""
+    def from_array(cls, arr, pattern, tile_size=512):
+        """Cut an array into frames clipped to image bounds.
+
+        The pattern names the input's axes, so it need not arrive as (B, Y, X).
+        """
+        p = pattern if not isinstance(pattern, str) else compile_pattern(pattern)
         arr = np.asarray(arr)
-        if arr.ndim != 3:
-            raise ValueError(f"expected (B, Y, X), got shape {arr.shape}")
-        if unit not in UNITS:
-            raise ValueError(f"unit must be one of {UNITS}, got {unit!r}")
+        if arr.ndim != len(p.input_axes):
+            raise ValueError(
+                f"the pattern names {len(p.input_axes)} axes "
+                f"({' '.join(p.input_axes)}), got shape {arr.shape}")
         t = int(tile_size)
         if not 1 <= t <= 65535:
             raise ValueError(f"tile_size must be in [1, 65535], got {tile_size}")
 
+        # Slice in canonical order whatever order the caller holds. A
+        # transpose of the whole array is a view; only the cut copies.
+        arr = np.transpose(
+            arr, [p.input_axes.index(a) for a in p.canonical_input])
         b, y, x = arr.shape
-        down, across = -(-y // t), -(-x // t)
+        canon = p.canonical_axes
+        order = [canon.index(a) for a in p.frame_axes]
+        indexed = p.bands_are_indexed
+        n = frame_count(p.frame_unit, x, y, t, b)[2]
 
-        # ascontiguousarray gives each frame a tight buffer, which is what
-        # geozl compresses.
-        def cut(ty, tx, band):
-            box = (slice(None) if band is None else band,
-                   slice(ty * t, min(ty * t + t, y)),
-                   slice(tx * t, min(tx * t + t, x)))
-            return np.ascontiguousarray(arr[box])
-
-        if unit == "tile":
-            # Wire order is (row, col, band), band innermost.
-            data = [cut(ty, tx, k) for ty in range(down)
-                    for tx in range(across) for k in range(b)]
-        else:
-            data = [cut(ty, tx, None) for ty in range(down)
-                    for tx in range(across)]
+        # The core says where every frame sits and in what order, so the wire
+        # order is not rebuilt here. ascontiguousarray gives each frame a tight
+        # buffer, which is what geozl compresses.
+        data = []
+        for k in range(n):
+            at = frame_at(p.frame_unit, x, y, t, b, k)
+            ys = slice(at.row * t, at.row * t + at.h)
+            xs = slice(at.col * t, at.col * t + at.w)
+            cut = (arr[at.band, ys, xs] if indexed
+                   else arr[:, ys, xs].transpose(order))
+            data.append(np.ascontiguousarray(cut))
 
         return cls(data, image_width=x, image_length=y, tile_size=t, bands=b,
-                   dtype=arr.dtype, unit=unit)
+                   dtype=arr.dtype, pattern=p)
 
-    def _expected_shape(self, row, col):
-        t = self.tile_size
-        hw = (min(t, self.image_length - row * t),
-              min(t, self.image_width - col * t))
-        return hw if self.unit == "tile" else (self.bands, *hw)
+    def _geometry(self):
+        """Grid and frame count, from the core."""
+        return frame_count(self.pattern.frame_unit, self.image_width,
+                           self.image_length, self.tile_size, self.bands)
+
+    def _at(self, index):
+        """Where one frame sits, from the core."""
+        return frame_at(self.pattern.frame_unit, self.image_width,
+                        self.image_length, self.tile_size, self.bands, index)
+
+    @property
+    def dims(self):
+        """Column names for the axes the frame index walks."""
+        return self.pattern.index_columns
 
     @property
     def tiles_across(self):
-        return -(-self.image_width // self.tile_size)
+        return self._geometry()[0]
 
     @property
     def tiles_down(self):
-        return -(-self.image_length // self.tile_size)
+        return self._geometry()[1]
 
     @property
     def cells(self):
@@ -321,7 +335,8 @@ class FrameTable:
         return {"b": self.bands, "y": self.image_length, "x": self.image_width,
                 "t": self.tile_size, "across": self.tiles_across,
                 "down": self.tiles_down, "n": len(self._data),
-                "unit": self.unit,
+                "layout": str(self.pattern),
+                "tiled": self.pattern.bands_are_indexed,
                 "done": self.done, "dtype": str(self.dtype), "nbytes": nbytes,
                 "ratio": raw / nbytes if nbytes else 0.0}
 
@@ -338,7 +353,10 @@ class FrameTable:
     @property
     def columns(self):
         """Return the columns shown by the representation."""
-        return _TILE_COLS if self.unit == "tile" else _CELL_COLS
+        # A frame that does not hold every band needs a label naming which,
+        # so the table shows a per-frame column as well as the grid position.
+        named = ("tile", "cell") if self.pattern.bands_are_indexed else ("cell",)
+        return (*named, *_PAYLOAD_COLS)
 
     def __repr__(self):
         return frame_text(self._facts(), self._rows(), self.columns)
@@ -351,7 +369,7 @@ class FrameTable:
     def _states(self):
         """Return the binned completion state used by the grid preview."""
         across, down = self.tiles_across, self.tiles_down
-        per = self.bands if self.unit == "tile" else 1
+        per = self.bands if self.pattern.bands_are_indexed else 1
         step = max(1, -(-max(across, down) // _MAX_CELLS))
         ny, nx = -(-down // step), -(-across // step)
 
@@ -376,10 +394,18 @@ def _frame_bytes(v, i):
     return buf
 
 
-def frames(arr, tile_size=512, *, unit="tile"):
-    """Cut a ``(B, Y, X)`` array into a FrameTable.
+def frames(arr, pattern, tile_size=512):
+    """Cut an array into a FrameTable.
 
-    ``unit="tile"`` creates 2D frames; ``unit="cell"`` creates ``(B, h, w)``
-    frames.
+    The pattern reads ``input -> output``. A parenthesised pair on the left
+    splits an axis into a grid axis and a tile-local one; the trailing group on
+    the right is the frame.
+
+        "b (row h) (col w) -> row col (b h w)"    every band, band planar
+        "b (row h) (col w) -> row col (h w b)"    every band, band chunky
+        "b (row h) (col w) -> row col b (h w)"    one band per frame
+
+    Only ``b`` is reserved, so the split names are yours. See ``_pattern`` for
+    the grammar and what it refuses.
     """
-    return FrameTable.from_array(arr, tile_size, unit=unit)
+    return FrameTable.from_array(arr, pattern, tile_size)

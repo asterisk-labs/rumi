@@ -18,6 +18,10 @@ TYPE_SIZE = {ASCII: 1, SHORT: 2, LONG: 4, DOUBLE: 8, LONG8: 8}
 
 TILE_OFFSETS, TILE_BYTE_COUNTS = 324, 325
 
+TILE = "b (row h) (col w) -> row col b (h w)"
+CELL = "b (row h) (col w) -> row col (b h w)"
+CHUNKY = "b (row h) (col w) -> row col (h w b)"
+
 UTM18S = 32718
 # The writer reads transform as rasterio's Affine order, (xres, rowrot,
 # xorigin, colrot, yres, yorigin), not GDAL's geotransform order.
@@ -25,12 +29,13 @@ NORTH_UP = (30.0, 0.0, 500000.0, 0.0, -30.0, 8000000.0)
 ROTATED = (30.0, 5.0, 500000.0, 5.0, -30.0, 8000000.0)
 
 
-def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16, unit="tile"):
+def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
+               pattern=TILE):
     """A frame whose payloads are all different sizes, so a permutation bug in
     the offset table cannot hide behind equal-length tiles."""
     n = np.prod(shape[1:])
     arr = np.arange(shape[0] * n, dtype=dtype).reshape(shape)
-    tf = FrameTable.from_array(arr, tile_size=tile_size, unit=unit)
+    tf = FrameTable.from_array(arr, pattern, tile_size)
     tf["compressed"] = [bytes([i % 251]) * (7 + 3 * i) for i in range(len(tf))]
     return tf
 
@@ -89,9 +94,11 @@ def test_tag_set(tmp_path):
     entries = read_ifd(path)[0]
 
     assert set(entries) == {256, 257, 258, 277, 322, 323, 324, 325, 339,
-                            34264, 34735}
+                            34264, 34735, 65000}
     # rumi is not TIFF/GeoTIFF: these compatibility fields do not exist.
     assert {259, 262, 284}.isdisjoint(entries)  # compression/photo/planar
+    # 65000 is rumi's own, and carries the frame's axis order.
+    assert values(entries[65000], "H") == [0]   # this table is (h w)
     assert values(entries[256], "I") == [tf.image_width]
     assert values(entries[257], "I") == [tf.image_length]
     assert values(entries[258], "H") == [16] * tf.bands
@@ -282,15 +289,27 @@ def test_edge_tiles(tmp_path):
     h = rumi.RumiHeader(blob).to_dict()
     assert h["height"] == 257 and h["width"] == 256
     assert h["frames"] == len(tf)
-    assert h["frame_unit"] == "tile"
+    assert h["frame_unit"] == "h w"
+
+
+def test_the_file_names_its_own_layout(tmp_path):
+    """PlanarConfiguration carries the axis order, so a header rebuilt from the
+    file alone matches the one the writer returned."""
+    for pattern, want in ((TILE, "h w"), (CELL, "b h w"), (CHUNKY, "h w b")):
+        tf = make_frame(shape=(3, 40, 40), tile_size=16, pattern=pattern)
+        path, header = rumi.write(tmp_path / "a.rumi", tf)
+        assert rumi.RumiHeader(header).frame_unit == want
+        assert rumi.RumiHeader.from_path(path).frame_unit == want
+        assert rumi.RumiHeader.from_path(path).to_dict() == \
+            rumi.RumiHeader(header).to_dict()
 
 
 def test_cell_frame_count(tmp_path):
     """A cell frame holds every band, so the grid alone gives the count."""
-    tf = make_frame(shape=(3, 257, 256), tile_size=128, unit="cell")
+    tf = make_frame(shape=(3, 257, 256), tile_size=128, pattern=CELL)
     _path, blob = rumi.write(tmp_path / "a.rumi", tf)
     h = rumi.RumiHeader(blob).to_dict()
-    assert h["frame_unit"] == "cell"
+    assert h["frame_unit"] == "b h w"
     assert h["frames"] == len(tf) == h["tiles_across"] * h["tiles_down"]
 
 
@@ -309,12 +328,12 @@ def test_sample_format(tmp_path, dtype):
 
 
 # Digests of complete files. Update them only for an intentional format change.
-# Last regenerated when the IFD went from 12 tags to 11.
+# Last regenerated when the layout tag joined the fixed IFD.
 GOLDEN = {
-    "plain": "7a6818bd71b3fbb5579ce4c7e07833cd2509555d3cee179ea260697929ad6a11",
-    "north_up": "5077418d91f271d316f91fb50859d3693332237e7239a5fb91cdfc314e9aa5e9",
-    "rotated": "42afc0fb931b839e9c7f4e821cbd84960482f9d9d1236fd088b59d398948b124",
-    "point": "fbbac06cc59555cea0a3454a69b2c43d60d3d070978b29ebce98ce31ab8e4dc9",
+    "plain": "bc5bc64c9b895cbee038ca95d558d3b64e38a3270acfa3b0a4566754d88ead96",
+    "north_up": "9755c794fb4937f2e04afcdd12b1cb8bd3f387dd5f904ad4871e1e01a7b17104",
+    "rotated": "8a1abec684a74a19d01e541dc52aa6cb17d6213e14ad37081fad0e05a7a0a8b0",
+    "point": "46aa0e6d8d666ed38edd318109aee87c8fd4a2cf3444e37a4463ea7d47ba25ba",
 }
 
 CASES = {
@@ -351,13 +370,13 @@ def test_empty_payload(tmp_path):
 @pytest.mark.parametrize("shape", [(0, 16, 16), (1, 0, 16), (1, 16, 0)])
 def test_frame_dimensions_must_be_positive(shape):
     with pytest.raises(ValueError, match="positive"):
-        rumi.frames(np.empty(shape, np.uint8), 16)
+        rumi.frames(np.empty(shape, np.uint8), "b (row h) (col w) -> row col b (h w)", 16)
 
 
 @pytest.mark.parametrize("dtype", [np.bool_, object, "S1"])
 def test_frames_reject_unsupported_dtypes(dtype):
     with pytest.raises(TypeError, match="not supported"):
-        rumi.frames(np.zeros((1, 16, 16), dtype=dtype), 16)
+        rumi.frames(np.zeros((1, 16, 16), dtype=dtype), "b (row h) (col w) -> row col b (h w)", 16)
 
 
 def test_compressed_frames_must_be_bytes_like():

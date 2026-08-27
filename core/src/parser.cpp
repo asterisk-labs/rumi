@@ -23,7 +23,7 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::frame_size_overflow:           return "frame byte size overflows size_t";
         case ParseError::index_too_large:               return "expanded frame index exceeds safety limit";
         case ParseError::non_positive_frame_byte_count: return "frame byte count is zero";
-        case ParseError::invalid_frame_unit:           return "frame_unit is neither tile nor cell";
+        case ParseError::invalid_frame_unit:           return "frame_unit names no frame layout";
         case ParseError::invalid_count_bits:           return "count_bits above 32";
         case ParseError::non_canonical_counts:         return "frame byte counts are not packed canonically";
         case ParseError::count_overflow:               return "frame byte count does not fit in uint32";
@@ -39,7 +39,7 @@ std::uint64_t derived_base_offset(std::uint32_t bands,
     if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
     if (frames >= 2) external += 8 * frames;               // 324
     if (frames >= 3) external += 4 * frames;               // 325
-    return 16 + (8 + 20 * 11 + 8) + external;
+    return 16 + (8 + 20 * IFD_TAGS + 8) + external;
 }
 
 CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept
@@ -141,7 +141,7 @@ parse_blob(std::span<const std::byte> blob)
     if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
     }
-    if (bh.frame_unit > 1) {
+    if (!unit_is_defined(bh.frame_unit)) {
         return std::unexpected(ParseError::invalid_frame_unit);
     }
 
@@ -174,7 +174,7 @@ parse_blob(std::span<const std::byte> blob)
     // A tile frame holds one band, a cell frame holds every band.
     const auto frame_count_u64 = static_cast<std::uint64_t>(h.tiles_across)
                                * static_cast<std::uint64_t>(h.tiles_down)
-                               * (bh.frame_unit == 0
+                               * (unit_indexes_bands(bh.frame_unit)
                                   ? static_cast<std::uint64_t>(bh.samples_per_pixel)
                                   : 1u);
     if (frame_count_u64 > std::numeric_limits<std::uint32_t>::max()) {
@@ -186,7 +186,7 @@ parse_blob(std::span<const std::byte> blob)
     const auto frame_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width)
                                * static_cast<std::uint64_t>(bh.tile_length)
                                * static_cast<std::uint64_t>(h.bytes_per_sample)
-                               * (bh.frame_unit == 0
+                               * (unit_indexes_bands(bh.frame_unit)
                                   ? 1u
                                   : static_cast<std::uint64_t>(bh.samples_per_pixel));
     if (frame_bytes_u64 > std::numeric_limits<std::size_t>::max()) {

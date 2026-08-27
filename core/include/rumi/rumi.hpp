@@ -4,6 +4,7 @@
 
 #include <cstdio>
 
+#include <array>
 #include <cstdint>
 #include <cstddef>
 #include <expected>
@@ -21,6 +22,8 @@ class ThreadPool;
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 28;
+// The fixed IFD is exactly this many tags, so its size never varies.
+inline constexpr std::uint64_t IFD_TAGS    = 12;
 inline constexpr std::size_t   MAX_PARSED_INDEX_BYTES = 64u << 20;
 
 // The OpenZL frame format version.
@@ -41,8 +44,9 @@ struct BlobHeader {
     // For complex formats (5, 6) this holds the summed component widths.
     std::uint8_t  bits_per_sample;
     std::uint8_t  sample_format;
-    // 0 is tile, one band at one grid position. 1 is cell, every band at one
-    // grid position. Together with the image shape it fixes the frame count.
+    // The frame's axis order. 0 is (h w), one band at one grid position. 1 is
+    // (b h w) and 2 is (h w b), both every band at one grid position. Together
+    // with the image shape it fixes the frame count.
     std::uint8_t  frame_unit;
     // Counts are stored as count_min plus a count_bits wide residual, packed
     // with no alignment.
@@ -53,6 +57,85 @@ struct BlobHeader {
 
 static_assert(sizeof(BlobHeader) == HEADER_SIZE);
 static_assert(std::is_trivially_copyable_v<BlobHeader>);
+
+// The axes a pattern names. A frame always holds the tile, H then W; Y and X
+// are the image axes a pattern splits into a grid axis and a tile-local one.
+enum Axis : std::uint8_t {
+    AXIS_BAND = 0,
+    AXIS_Y    = 1,
+    AXIS_X    = 2,
+    AXIS_H    = 3,
+    AXIS_W    = 4,
+};
+
+inline constexpr std::size_t MAX_AXES = 4;
+
+// The one block every frame holds.
+inline constexpr std::array<std::uint8_t, 2> TILE_AXES{ AXIS_H, AXIS_W };
+
+// Axes a frame may hold besides the tile, in the order they are packed into
+// frame_unit. Time joins this list and nothing above it moves.
+inline constexpr std::array<std::uint8_t, 1> FRAME_AXES{ AXIS_BAND };
+
+// frame_unit packs where each axis a frame may hold sits relative to the tile,
+// two bits each: absent means the frame does not hold it, so the frame index
+// walks it instead. With only the band axis that gives 0 for (h w), 1 for
+// (b h w) and 2 for (h w b), and every bit above stays clear until a second
+// axis needs one. Adding an axis is adding a shift, not renumbering these.
+inline constexpr std::uint8_t AXIS_ABSENT = 0;
+inline constexpr std::uint8_t AXIS_BEFORE = 1;  // ahead of the tile
+inline constexpr std::uint8_t AXIS_AFTER  = 2;  // behind it
+inline constexpr std::uint8_t AXIS_MASK   = 0x3;
+inline constexpr int          AXIS_BITS   = 2;
+inline constexpr int          BAND_SHIFT  = 0 * AXIS_BITS;
+// Every bit an axis claims. Anything outside names no layout.
+inline constexpr std::uint8_t UNIT_BITS   =
+    static_cast<std::uint8_t>((1u << (FRAME_AXES.size() * AXIS_BITS)) - 1u);
+
+enum FrameUnit : std::uint8_t {
+    FRAME_TILE   = AXIS_ABSENT << BAND_SHIFT,  // (h w)
+    FRAME_PLANAR = AXIS_BEFORE << BAND_SHIFT,  // (b h w)
+    FRAME_CHUNKY = AXIS_AFTER  << BAND_SHIFT,  // (h w b)
+};
+
+[[nodiscard]] constexpr std::uint8_t band_position(std::uint8_t u) noexcept {
+    return (u >> BAND_SHIFT) & AXIS_MASK;
+}
+
+// A frame that does not hold the band axis holds one band, so the frame index
+// walks bands as well.
+[[nodiscard]] constexpr bool unit_indexes_bands(std::uint8_t u) noexcept {
+    return band_position(u) == AXIS_ABSENT;
+}
+
+// A chunky frame interleaves the bands of a pixel, so it has no band planes.
+[[nodiscard]] constexpr bool unit_is_chunky(std::uint8_t u) noexcept {
+    return band_position(u) == AXIS_AFTER;
+}
+
+// Every field names a position and no bit is left over.
+[[nodiscard]] constexpr bool unit_is_defined(std::uint8_t u) noexcept {
+    return (u & ~UNIT_BITS) == 0 && band_position(u) != AXIS_MASK;
+}
+
+// The frame's axis order for a unit, such as "b h w". Empty names no layout.
+[[nodiscard]] std::string_view unit_name(std::uint8_t unit) noexcept;
+
+// The unit an axis order names, or an error naming what rumi does define.
+[[nodiscard]] std::expected<std::uint8_t, std::string>
+unit_from_name(std::string_view name);
+
+// The IFD tag that carries frame_unit, so a bare file names its own layout.
+// TIFF leaves 65000 and above private, and rumi accepts only its own fixed set
+// of tags anyway.
+inline constexpr std::uint16_t TAG_FRAME_UNIT = 65000;
+
+// With one band every layout holds the same bytes, so a writer records the tile
+// unit and every reader agrees without asking which it was.
+[[nodiscard]] constexpr std::uint8_t
+effective_unit(std::uint8_t u, std::uint16_t spp) noexcept {
+    return spp == 1 ? FRAME_TILE : u;
+}
 
 enum class ParseError {
     blob_too_short,
@@ -140,13 +223,14 @@ struct Header {
                 : frame_offsets.back() + frame_byte_counts.back());
     }
 
-    // Cell frames hold every band, so band is ignored there and the index is
-    // the grid position alone.
+    // A frame that holds every band ignores band, so the index is the grid
+    // position alone.
     [[nodiscard]] std::uint32_t frame_index(std::uint32_t row,
                                             std::uint32_t col,
                                             std::uint32_t band) const noexcept {
         const std::uint32_t spatial = row * tiles_across + col;
-        return frame_unit == 0 ? spatial * samples_per_pixel + band : spatial;
+        return unit_indexes_bands(frame_unit)
+             ? spatial * samples_per_pixel + band : spatial;
     }
 };
 
@@ -242,6 +326,8 @@ struct FrameSpec {
 
 // One compressed frame. When direct is set it decompresses straight into the
 // output; otherwise it lands in scratch and the w x h rect is copied to dst.
+// plane_bytes is the step from one band to the next, which is a whole plane in
+// (b h w) and a single sample in (h w b).
 // All positions are in the result buffer, never the disk layout. frame_width
 // and frame_bytes carry the actual edge dimensions, not the nominal tile size.
 struct FrameTask {
@@ -259,6 +345,9 @@ struct FrameTask {
     std::uint32_t h;
     std::size_t   dst_pitch;
     std::size_t   dst_pixel_stride;
+    // Bytes between one sample and the next along x inside the frame. Equal to
+    // the sample size unless a chunky frame puts the bands there.
+    std::size_t   src_pixel_stride;
     // Bands this task serves. Plane planes[k] goes to dst + k * band_space.
     const std::uint32_t* planes;
     std::uint32_t        plane_count;
@@ -309,6 +398,39 @@ build_plan(const Header& h, Source* source,
 // strides, scaled by bytes_per_sample at read time. native means the block is
 // already plain (n, b, y, x) C-contiguous so a binding adopts it without a
 // copy.
+// A compiled frame pattern. input holds the role of each of the caller's axes
+// in its own order, so a binding knows how to reach canonical order; frame
+// holds the roles inside one frame, in order.
+struct FramePattern {
+    std::uint8_t                       frame_unit{};
+    std::array<std::uint8_t, MAX_AXES> input{};
+    std::size_t                        input_ndim{};
+    std::array<std::uint8_t, MAX_AXES> frame{};
+    std::size_t                        frame_ndim{};
+};
+
+// Parses "b (row h) (col w) -> row col (b h w)". Allocates, so not noexcept.
+[[nodiscard]] std::expected<FramePattern, std::string>
+compile_frame_pattern(std::string_view pattern);
+
+// Everything a caller needs to cut frame `index` out of its own array: where
+// the frame sits, how far the tile reaches, and the shape it must arrive in.
+struct FrameAt {
+    std::uint32_t                      row{}, col{}, band{}, h{}, w{};
+    std::array<std::int64_t, MAX_AXES> dims{};
+    std::size_t                        ndim{};
+};
+
+[[nodiscard]] std::expected<FrameAt, std::string>
+frame_at_index(std::uint8_t unit, std::uint32_t width, std::uint32_t length,
+               std::uint16_t tile, std::uint16_t bands, std::uint64_t index);
+
+// Grid and frame count for a description, the same arithmetic the writer uses.
+[[nodiscard]] std::expected<std::uint64_t, std::string>
+frame_geometry(std::uint8_t unit, std::uint32_t width, std::uint32_t length,
+               std::uint16_t tile, std::uint16_t bands,
+               std::uint32_t* across, std::uint32_t* down);
+
 struct LayoutPlan {
     std::vector<std::int64_t> shape;
     std::int64_t              sn{};
