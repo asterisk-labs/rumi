@@ -679,7 +679,7 @@ reader MUST reject any other value.
 
 #### version
 
-The current binary format version is `3`. A reader that implements version `3`
+The current binary format version is `1`. A reader that implements version `1`
 MUST reject any other value.
 
 #### image_width, image_length and time_count
