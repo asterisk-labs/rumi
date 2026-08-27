@@ -17,12 +17,13 @@ The format has the following properties:
   OpenZL frame.
 - **Predictable layout.** Files with the same band and frame counts begin their
   frame data at the same byte.
-- **Time coordinates.** Stores instants or interval boundaries in a compact
-  trailer when the time axis is labelled.
+- **Time coordinates.** Stores instants or intervals in a compact trailer when
+  the time axis is labelled.
 - **Canonical structure.** Restricts the file to one fixed IFD, one frame order,
   and contiguous frame data.
 - **Fixed-size georeferencing.** Stores an EPSG CRS and affine transform in a
-  160-byte GeoTIFF block, with a defined value for ungeoreferenced rasters.
+  160-byte block derived from GeoTIFF tags, with a defined value for
+  ungeoreferenced rasters.
 
 The filename extension for the format is `.rumi`.
 
@@ -46,6 +47,13 @@ Unless a section says otherwise, all integer arithmetic used to validate or
 derive sizes, counts, and offsets is exact. A reader MUST reject an input when a
 required result cannot be represented by its implementation.
 
+All multi-byte numeric values defined by rumi are little-endian. This includes
+the file header, directory entries and values, decoded sample components, the
+time trailer, and the external header blob. OpenZL defines the bytes inside a
+compressed frame; after decoding, each multi-byte sample component is
+little-endian. An API may convert decoded samples to the host's native byte
+order.
+
 ## Data model
 
 rumi uses the following data model.
@@ -65,21 +73,21 @@ rumi uses the following data model.
 width. `h` and `w` denote the actual dimensions of a tile; they may be smaller
 than the nominal tile dimensions at the image boundary.
 
-`time_count` is the number of time steps in a Cube. Their coordinates are
-defined in [Time coordinates](#time-coordinates).
+The coordinates of a Cube's time steps are defined in
+[Time coordinates](#time-coordinates).
 
 Collections are represented outside the file, for example by a catalogue of
 rumi files. Their representation is out of scope.
 
 ## Frames
 
-A frame is rumi's unit of compression and random access. Each frame is a
-self-contained OpenZL frame that carries its own graph and codec parameters;
-neither is stored in the IFD or external header. Its decoded shape and sample
-order are specified by [`frame_unit`](#frame_unit).
+`tile` and `cell` belong to the logical raster model. A frame is the physical
+unit of compression and random access. Each frame is a self-contained OpenZL
+frame that carries its own graph and codec parameters; neither is stored in the
+IFD or external header. Its decoded shape and sample order are specified by
+[`frame_unit`](#frame_unit).
 
-`tile` and `cell` belong to the logical raster model. A `frame` is the physical
-unit of compression and storage. A frame MUST contain exactly one of:
+A frame MUST contain exactly one of:
 
 - one tile for one `(b, t)` pair at one tile location; or
 - one cell at one tile location.
@@ -91,20 +99,26 @@ unit of compression and storage. A frame MUST contain exactly one of:
 `frame_unit` selects one of the decoded layouts below. `b`, `t`, `h`, and `w`
 mean band, time, height, and width. The rightmost axis changes fastest.
 
-| frame_unit | decoded frame | frame order at each tile location |
-| ---------- | ------------- | --------------------------------- |
-| `0`        | `h w`         | `b`, then `t`                    |
-| `1`        | `b h w`       | —                                |
-| `2`        | `h w b`       | —                                |
-| `3`        | `b t h w`     | —                                |
-| `4`        | `t b h w`     | —                                |
-| `5`        | `b h w t`     | —                                |
-| `6`        | `t h w b`     | —                                |
-| `7`        | `h w b t`     | —                                |
-| `8`        | `h w t b`     | —                                |
-| `9`        | `h w`         | `t`, then `b`                    |
-| `10`       | `t h w`       | —                                |
-| `11`       | `h w t`       | —                                |
+| frame_unit | decoded frame      | valid when                          |
+| ---------- | ------------------ | ----------------------------------- |
+| `0`        | `h w`              | any `B` and `T`                     |
+| `1`        | `b h w` or `t h w` | exactly one of `B`, `T` exceeds `1` |
+| `2`        | `h w b` or `h w t` | exactly one of `B`, `T` exceeds `1` |
+| `3`        | `b t h w`          | `B > 1` and `T > 1`                 |
+| `4`        | `t b h w`          | `B > 1` and `T > 1`                 |
+| `5`        | `b h w t`          | `B > 1` and `T > 1`                 |
+| `6`        | `t h w b`          | `B > 1` and `T > 1`                 |
+| `7`        | `h w b t`          | `B > 1` and `T > 1`                 |
+| `8`        | `h w t b`          | `B > 1` and `T > 1`                 |
+| `9`        | `h w`              | `B > 1` and `T > 1`                 |
+
+Units `1` and `2` place one non-spatial axis around `h w`. That axis is `b` when
+`B > 1`, and `t` when `T > 1`.
+
+Units `0` and `9` differ only in the order the index walks the two axes at one
+tile location: `b` then `t` for `0`, `t` then `b` for `9`. That order is
+observable only when both `B` and `T` exceed `1`, which is why `9` is valid
+nowhere else.
 
 The diagram shows how the two frame types use the band and time axes. For a
 tile, `b` and `t` select the frame. For a cell, they are part of the decoded
@@ -115,19 +129,9 @@ frame.
 Within a decoded frame, `h w` MUST stay together and in that order.
 
 The registry is complete and append-only; existing values MUST NOT be
-reassigned. Not every registered value applies to every raster:
-
-| values | condition |
-| ------ | --------- |
-| `0`    | any `B` and `T`; required instead of `9` unless both exceed `1` |
-| `1`, `2` | `B > 1` and `T = 1` |
-| `3` through `8` | `B > 1` and `T > 1` |
-| `9` | `B > 1` and `T > 1` |
-| `10`, `11` | `B = 1` and `T > 1` |
-
-A reader MUST reject any `frame_unit` value or `(B, T)` combination not covered
-above. A valid `frame_unit` determines the decoded sample order and the number
-of frames `N`; it does not otherwise change the file structure.
+reassigned. A reader MUST reject any `frame_unit` value or `(B, T)` combination
+not listed above. A valid `frame_unit` determines the decoded sample order and
+the number of frames `N`; it does not otherwise change the file structure.
 
 #### Choosing a frame unit
 
@@ -140,24 +144,8 @@ An axis before `h w` is stored as contiguous planes. An axis after `h w` is
 interleaved within each pixel. When both axes precede `h w`, the axis next to
 `h w` varies between adjacent planes.
 
-| frame_unit | frame layout | use when |
-| ---------- | ------------ | -------- |
-| `0` | `h w` | independent band/time reads; time steps adjacent within each band |
-| `1` | `b h w` | planar bands in a multi-band Image |
-| `2` | `h w b` | pixel-interleaved bands in a multi-band Image |
-| `3` | `b t h w` | planar Cube; temporal correlation within each band |
-| `4` | `t b h w` | planar Cube; band correlation within each time step |
-| `5` | `b h w t` | planar bands; time steps interleaved per pixel |
-| `6` | `t h w b` | planar time steps; bands interleaved per pixel |
-| `7` | `h w b t` | both axes interleaved per pixel; time varies fastest |
-| `8` | `h w t b` | both axes interleaved per pixel; band varies fastest |
-| `9` | `h w` | independent band/time reads; bands adjacent within each time step |
-| `10` | `t h w` | planar time steps in a single-band Cube |
-| `11` | `h w t` | time steps interleaved per pixel in a single-band Cube |
-
-These are selection guidelines, not conformance requirements. Compression
-depends on the data and SHOULD be measured when more than one unit fits the
-access pattern.
+The best unit depends on the expected reads and the data. Compression SHOULD be
+measured when more than one unit fits the access pattern.
 
 ### Frame index
 
@@ -188,8 +176,6 @@ frame_unit 9:  frame_index = (spatial * T + t) * B + b
 N = g * B * T
 ```
 
-These formulas also apply when `B` or `T` is `1`.
-
 ### Validating frame_unit
 
 Tag `65000` stores `frame_unit` in the file. Its value MUST be registered and
@@ -212,10 +198,6 @@ does.
 Frames MUST be stored in increasing `frame_index` order. `TileOffsets` and
 `TileByteCounts` MUST use the same order.
 
-For units `0` and `9`, all band and time-step frames at one tile location come
-before any frame at the next tile location. A file that groups tile locations
-by band or time instead is invalid.
-
 This order allows the external header to reconstruct offsets with a prefix sum.
 A reader MUST reject a file whose `TileOffsets` do not match the reconstructed
 offsets in frame-index order.
@@ -223,8 +205,12 @@ offsets in frame-index order.
 ## Sample encodings
 
 `sample_format` gives the sample type and `bits_per_sample` its width in bits.
-For complex formats, `bits_per_sample` is the combined width of the real and
-imaginary components.
+Unsigned integers use ordinary binary representation, and signed integers use
+two's-complement representation. IEEE formats use the IEEE 754 binary16,
+binary32, or binary64 encoding named in the table.
+
+A complex sample stores two equal-width components: real first, then imaginary.
+For complex formats, `bits_per_sample` is their combined width.
 
 | sample_format | meaning                      |
 | ------------- | ---------------------------- |
@@ -263,12 +249,19 @@ Only the following pairs are valid:
 | 100           | 8               | float8 E4M3FN                                  |
 | 101           | 8               | float8 E5M2                                    |
 | 102           | 16              | bfloat16                                       |
-| 103           | 8               | float8 E8M0                                    |
-| 104           | 6               | float6 E2M3                                    |
-| 105           | 6               | float6 E3M2                                    |
-| 106           | 4               | float4 E2M1                                    |
+| 103           | 8               | float8 E8M0FNU                                 |
+| 104           | 6               | float6 E2M3FN                                  |
+| 105           | 6               | float6 E3M2FN                                  |
+| 106           | 4               | float4 E2M1FN                                  |
 
 A reader MUST reject any pair not listed above.
+
+`bfloat16` has one sign bit, eight exponent bits, and seven fraction bits, with
+the exponent and special values of IEEE binary32. `E4M3FN` and `E5M2` use the
+[ONNX float8 encodings](https://onnx.ai/onnx/technical/float8.html).
+`E8M0FNU`, `E2M3FN`, `E3M2FN`, and `E2M1FN` use the corresponding encodings in
+the [OCP Microscaling Formats (MX) Specification
+1.0](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf).
 
 All bands and time steps in a file MUST use the same pair.
 
@@ -291,20 +284,28 @@ bytes_per_sample = 1                       if bits_per_sample < 8
 decoded_frame_bytes = decoded_samples * bytes_per_sample
 ```
 
-An absent axis contributes a factor of one. A reader MUST compute
-`decoded_frame_bytes` with exact arithmetic and check it against its resource
-limit before allocating or decoding the frame.
+An absent axis contributes a factor of one. [Resource limits](#resource-limits)
+applies to `decoded_frame_bytes`.
+
+## Bit-packed arrays
+
+Time residuals and frame byte-count residuals use the same bit packing.
+
+Values are stored consecutively using `bits` bits each. Bit `j` of value `i`
+occupies bit position `i * bits + j`, with bits numbered from the least
+significant bit of each byte. For `n` values, the region is exactly
+`ceil(n * bits / 8)` bytes. Unused bits in the final byte MUST be zero.
+
+When `bits` is `0`, the region is empty and every value is zero.
 
 ## File profile
 
 A file is rumi compliant when all of the following hold.
 
-- It is a little-endian BigTIFF file with exactly one IFD.
+- It begins with the rumi file header and contains exactly one rumi IFD.
 - It is tiled and has no overviews, masks, strips, or auxiliary IFDs.
-- Its IFD appears before the frame data and contains exactly the tags listed in
-  [Fixed IFD](#fixed-ifd).
-- Its tag values and frame data use the placement defined in
-  [Fixed IFD](#fixed-ifd), without gaps or padding.
+- Its IFD precedes the frame data, and its tags, values, and frame placement
+  follow [Fixed IFD](#fixed-ifd), without gaps or padding.
 - Its sample encoding is listed in [Sample encodings](#sample-encodings).
 - Its georeferencing follows [Georeferencing](#georeferencing).
 - Each frame is a self-contained OpenZL frame.
@@ -312,8 +313,26 @@ A file is rumi compliant when all of the following hold.
   [Validating frame_unit](#validating-frame_unit).
 - Every frame is present, every byte count is greater than zero, and the frames
   form one contiguous run in frame-index order.
-- The time trailer begins immediately after the last frame, and the file ends
-  immediately after the trailer.
+- It ends with the trailer defined in [Time coordinates](#time-coordinates).
+
+## File header
+
+Every rumi file begins with this 16-byte header.
+
+| offset | size | type   | name       |
+| ------ | ---- | ------ | ---------- |
+| 0      | 4    | bytes  | magic      |
+| 4      | 2    | uint16 | version    |
+| 6      | 2    | uint16 | reserved   |
+| 8      | 8    | uint64 | ifd_offset |
+
+The magic bytes spell ASCII `RUMI`: `52 55 4D 49`. The current version is `1`,
+`reserved` is zero, and `ifd_offset` is `16`. A reader MUST reject any other
+value.
+
+The IFD uses the 20-byte entry layout and tag numbers derived from BigTIFF, but
+rumi defines its own tags, placement, and alignment. A rumi file is not a TIFF,
+BigTIFF, or GeoTIFF file.
 
 ## Fixed IFD
 
@@ -322,6 +341,20 @@ that validates the file or builds an external header from it MUST reject any
 other tag.
 
 `B` is `samples_per_pixel`, `T` is `time_count`, and `N` is the frame count.
+
+The IFD begins with the eight-byte entry count `13` and ends with an eight-byte
+zero offset for the next IFD. Each entry has this layout:
+
+| offset | size | type   | name            |
+| ------ | ---- | ------ | --------------- |
+| 0      | 2    | uint16 | tag             |
+| 2      | 2    | uint16 | type            |
+| 4      | 8    | uint64 | count           |
+| 12     | 8    | bytes  | value or offset |
+
+The type codes are `3` for `SHORT`, `4` for `LONG`, `12` for `DOUBLE`, and `16`
+for `LONG8`. These represent `uint16`, `uint32`, IEEE 754 binary64, and `uint64`,
+respectively.
 
 | tag   | name                   | type   | count |
 | ----- | ---------------------- | ------ | ----- |
@@ -341,8 +374,6 @@ other tag.
 
 Every file carries all 13 tags.
 
-`TimeCount` stores `T`, the number of time steps in the raster.
-
 `ImageWidth`, `ImageLength`, `TimeCount`, `TileWidth`, `TileLength`, and
 `SamplesPerPixel` MUST be greater than zero.
 
@@ -351,15 +382,17 @@ listed in [Sample encodings](#sample-encodings).
 
 ### Placement
 
-The IFD starts at byte `16`, immediately after the BigTIFF header. Its size is
+The IFD starts at byte `16`, immediately after the rumi file header. Its size is
 `8 + 20 * 13 + 8 = 276` bytes: an eight-byte entry count, 13 entries, and an
 eight-byte zero offset for the next IFD.
 
 Values of 8 bytes or less MUST be stored in the IFD entry. Larger values MUST
-follow the IFD in rising tag order, without gaps.
+follow the IFD in rising tag order, without gaps. Unused bytes in an inline
+value MUST be zero. For an external value, the last eight bytes of the entry
+store its `uint64` file offset.
 
-The frame data starts immediately after the last external value. Padding,
-alignment, and reserved bytes MUST NOT appear before it.
+The frame data starts immediately after the last external value. Padding or
+alignment bytes MUST NOT be inserted in the external area.
 
 ### Deriving base_frame_offset
 
@@ -460,23 +493,22 @@ and coordinate epochs.
 
 ## Time coordinates
 
-A rumi file ends with a time trailer. The trailer begins immediately after the
-last frame, and the file ends immediately after the trailer. Every file carries
-one.
-
-The external header does not contain time coordinates.
+Every rumi file ends with one time trailer. It begins immediately after the last
+frame, and the file ends immediately after it. The external header does not
+contain time coordinates.
 
 Let `C` be the number of coordinates stored in the trailer:
 
 ```text
 C = 0       when time_type is 0 (undefined)
 C = T       when time_type is 2 (instant)
-C = T + 1   when time_type is 1 (interval)
+C = 2 * T   when time_type is 1 (interval)
 ```
 
-For instants, `time(i)` is the coordinate of time step `i`. For intervals,
-time step `i` covers `[time(i), time(i+1))`. Storing `T + 1` boundaries makes
-the final interval explicit.
+For instants, `time(i)` is the coordinate of time step `i`.
+
+For intervals, time step `i` covers `[time(2i), time(2i + 1))`. Each step stores
+its own start and end, so intervals may leave gaps.
 
 ### Trailer fields
 
@@ -522,14 +554,23 @@ reject any other value.
 
 A reader MUST reject any other value.
 
-Instant coordinates MUST be non-decreasing. Interval boundaries MUST be
-strictly increasing.
+Instant coordinates MUST be non-decreasing.
+
+Interval coordinates MUST satisfy:
+
+```text
+time(2i) < time(2i + 1)         for 0 <= i < T
+time(2i + 1) <= time(2i + 2)    for 0 <= i < T - 1
+```
+
+Intervals may meet or leave gaps, but MUST NOT overlap.
 
 #### time_epoch, time_step and time_scale
 
-`time_scale` is the number of seconds represented by one coordinate unit. It
-MUST be greater than zero. A writer SHOULD use the largest whole-second unit
-that represents every coordinate exactly.
+`time_scale` is the number of seconds represented by one coordinate unit. For
+defined time, it MUST be `86400` when every instant or interval endpoint is an
+exact whole-day offset from `1970-01-01T00:00:00Z`; otherwise it MUST be `1`. A
+reader MUST reject any other value.
 
 Coordinate `time(i)` is a signed offset of `time(i) * time_scale` seconds from
 `1970-01-01T00:00:00Z`; negative values represent times before that epoch. rumi
@@ -546,10 +587,6 @@ time_step = round((time(C-1) - time(0)) / (C-1))  otherwise
 `round` chooses the nearest integer; exact halves round toward positive
 infinity.
 
-For this encoding, a regular axis is an arithmetic progression in integer
-`time_scale` units. A periodic axis with non-constant integer spacing still
-requires residuals.
-
 #### time_bits
 
 The number of bits used to encode each residual, as defined in
@@ -560,8 +597,8 @@ The number of bits used to encode each residual, as defined in
 After the 28-byte fixed part, the trailer stores the `C` coordinates as residuals
 against a straight line through `time_epoch` and `time_step`.
 
-A regular axis has zero residuals and requires no packed region. An irregular
-axis stores only its deviation from the prediction line.
+An axis whose coordinates lie on this line requires no packed region. Otherwise,
+the trailer stores their deviations from the line.
 
 #### Encoding
 
@@ -588,28 +625,23 @@ time_bits = bit_length(max(packed))
 A writer MUST use the minimum `time_bits` that represents the largest packed
 residual. `residual(0)` is always zero.
 
-A reader MUST reject a trailer whose decoded coordinates do not reproduce the
-recorded `time_epoch`, `time_step`, and minimum `time_bits`. Every decoded
-coordinate MUST fit in `int64` and satisfy the ordering required by `time_type`.
+A reader MUST reject a trailer unless `time_scale` satisfies the rule above and
+the decoded coordinates reproduce the recorded `time_epoch`, `time_step`, and
+minimum `time_bits`. Every decoded coordinate MUST fit in `int64` and satisfy
+the ordering required by `time_type`.
 
 #### Packing
 
-Residuals are packed consecutively using `time_bits` bits each. Bit `j` of
-`packed(i)` is stored at bit position `i * time_bits + j`, with bits numbered
-from the least significant bit of each byte. The packed region is exactly
-`ceil(C * time_bits / 8)` bytes. Unused bits in the final byte MUST be zero.
+The `C` packed values are stored as defined in
+[Bit-packed arrays](#bit-packed-arrays), at `time_bits` bits each.
 
 #### Decoding
 
 ```text
-lo          = i * time_bits
-packed(i)   = the time_bits bits starting at lo
 residual(i) = packed(i) >> 1              if packed(i) is even
               -((packed(i) >> 1) + 1)     otherwise
 time(i)     = time_epoch + i * time_step + residual(i)
 ```
-
-When `time_bits` is `0`, every residual is zero and the axis is exactly the line.
 
 ### Undefined time
 
@@ -712,19 +744,15 @@ The sample type and width, as defined in
 
 #### frame_unit
 
-The frame layout, as defined in [frame_unit](#frame_unit). A reader MUST reject
-an unknown value or one that is invalid for `B` and `T`.
-
-Together with the image shape, `frame_unit` determines `N`. Tag `65000` carries
-the same value inside the file.
+The frame layout, as defined in [frame_unit](#frame_unit). Together with the
+image shape it determines `N`. Tag `65000` carries the same value inside the
+file.
 
 #### count_min and count_bits
 
-`count_min` and `count_bits` define the encoding in
-[Frame byte counts](#frame-byte-counts).
-
-`count_min` is the smallest frame byte count. `count_bits` is the residual width
-and MUST be between `0` and `32`.
+The frame byte count encoding, as defined in
+[Frame byte counts](#frame-byte-counts). `count_bits` MUST be between `0` and
+`32`.
 
 ### Frame byte counts
 
@@ -746,41 +774,25 @@ count_bits = 0 if max(c) == count_min else bit_length(max(c) - count_min)
 A writer MUST use these values. A reader MUST reject a blob if `count_min` is
 not the minimum decoded count or `count_bits` is not the minimum required width.
 
-When all counts are equal, `count_bits` is `0` and no packed data follows the
-header. Every count is then `count_min`. A file with one frame always has
-`count_bits = 0`.
+A file with one frame always has `count_bits = 0`.
 
 #### Packing
 
-Residual `i` is
-
-```text
-residual[i] = c[i] - count_min
-```
-
-Residuals are packed consecutively using `count_bits` bits each. Bit `j` of
-`residual[i]` is stored at bit position `i * count_bits + j`, with bits numbered
-from the least significant bit of each byte.
-
-The packed region is exactly `ceil(N * count_bits / 8)` bytes. Unused bits in
-the final byte MUST be zero.
+The `N` residuals `c[i] - count_min` are stored as defined in
+[Bit-packed arrays](#bit-packed-arrays), at `count_bits` bits each.
 
 #### Decoding
 
 ```text
-lo          = i * count_bits
-residual[i] = the count_bits bits starting at lo
-c[i]        = count_min + residual[i]
+c[i] = count_min + residual[i]
 ```
-
-When `count_bits` is `0`, every count is `count_min`.
 
 Every reconstructed count MUST fit in `uint32`.
 
-### Matching the rumi file
+### Creating the header blob
 
-A header blob is valid for a rumi file only when every duplicated value
-matches:
+A writer or header builder MUST create the blob from the finalized rumi file.
+Every duplicated value MUST match:
 
 | header blob | rumi IFD |
 | ----------- | -------- |
@@ -795,10 +807,14 @@ matches:
 | `frame_unit` | `FrameUnit` |
 | `frame_byte_counts[i]` | `TileByteCounts[i]` |
 
-`frame_byte_counts` and `TileByteCounts` MUST each contain `N` entries. A reader
-MUST reject the pair if any comparison fails.
-[Offset reconstruction](#offset-reconstruction) defines the corresponding
-check against `TileOffsets`.
+`frame_byte_counts` and `TileByteCounts` MUST each contain `N` entries. The
+writer or header builder MUST NOT produce the blob if any comparison fails.
+
+This check happens when the blob is created. A stateless reader can then treat
+the blob as authoritative and does not need to read or compare the IFD,
+`TileOffsets`, `TileByteCounts`, the time trailer, or the total file size before
+reading a frame. How an application keeps a blob associated with its file is
+outside the scope of this specification.
 
 ### Offset reconstruction
 
@@ -812,9 +828,6 @@ offset[idx+1] = offset[idx] + frame_byte_counts[idx]
 
 Every reconstructed offset MUST fit in `uint64`.
 
-A reader MUST compare the reconstructed offsets with `TileOffsets` in
-frame-index order, without sorting either sequence.
-
 A reader passes `frame_byte_counts[idx]` bytes at `offset[idx]` to the OpenZL
 decoder.
 
@@ -824,8 +837,8 @@ The byte just past the last frame is where the time trailer begins.
 trailer_offset = offset[N-1] + frame_byte_counts[N-1]
 ```
 
-A reader MUST parse the trailer at `trailer_offset` and reject the file unless
-its size is exactly `trailer_offset + trailer_size`.
+`trailer_offset` can be used to read the time coordinates. Reading a frame does
+not require parsing the trailer.
 
 The offset of frame `k` can also be expressed as
 
