@@ -10,9 +10,7 @@
 # make clean      remove all build output, caches and generated files
 # make submodules fetch or update geozl (and OpenZL under it)
 
-# rumi build. `make help` lists the targets and the variables.
-# Vendors geozl as a submodule, fetched on first build. Nothing else is needed:
-# rumi links no system library beyond libc and the C++ runtime.
+# `make help` lists targets and configurable variables.
 
 PYTHON ?= python
 PREFIX ?= /usr/local
@@ -43,7 +41,7 @@ else
   LIBRUMI := librumi.so
 endif
 
-# RUMI_BUILD_SHARED_LIB is on because the Python binding dlopens that lib.
+# The Python binding loads the shared library at runtime.
 CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
@@ -54,7 +52,7 @@ CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 
 all: python
 
-# A fresh clone has an empty submodule, fetch it so a bare make works.
+# Initialize the geozl submodule on first build.
 $(GEOZL)/core/CMakeLists.txt:
 	git submodule update --init --recursive
 
@@ -70,9 +68,7 @@ configure: $(GEOZL)/core/CMakeLists.txt
 build: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR)
 
-# Stage the shared lib next to the binding, cffi loads it from there. One file,
-# under the plain soname: a wheel turns the version symlinks into full copies,
-# and nothing here resolves a soname anyway, cffi dlopens the path it finds.
+# Stage one shared-library file beside the CFFI binding.
 lib: build
 	@mkdir -p $(PY_LIB_DIR)
 	@rm -f $(PY_LIB_DIR)/librumi* $(PY_LIB_DIR)/rumi*.dll
@@ -96,8 +92,7 @@ python: lib
 	$(PYTHON) -m pip install -e $(PY_DIR) -q
 	$(PYTHON) -c "import rumi; print('rumi', rumi.__version__)"
 
-# geozl is what compresses, so the write path needs it installed even though
-# rumi never imports it.
+# Python tests use geozl to create compressed frame payloads.
 test: python
 	@$(PYTHON) -c 'import pytest' 2>/dev/null || { echo "pytest not installed"; exit 1; }
 	@$(PYTHON) -c 'import geozl' 2>/dev/null \
@@ -106,15 +101,14 @@ test: python
 	  rc=$$?; if [ $$rc -eq 5 ]; then echo "no tests collected"; \
 	  elif [ $$rc -ne 0 ]; then exit $$rc; fi
 
-# Its own build dir, so it never disturbs the lib staged for the binding.
+# Component tests use an independent build directory.
 ctest: $(GEOZL)/core/CMakeLists.txt
 	cmake -S $(CORE) -B $(BUILD_DIR)-tests -G $(GEN) \
 	  -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DRUMI_BUILD_TESTS=ON $(CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR)-tests --target rumi_tests
 	$(BUILD_DIR)-tests/rumi_tests
 
-# Apple Command Line Tools clang has no libFuzzer runtime. Prefer Homebrew LLVM
-# on macOS when it exists; Linux CI uses the system clang.
+# Prefer Homebrew LLVM on macOS because Apple clang omits libFuzzer.
 ifeq ($(UNAME),Darwin)
   BREW_LLVM := $(shell brew --prefix llvm 2>/dev/null)/bin/clang
   CLANG ?= $(if $(wildcard $(BREW_LLVM)),$(BREW_LLVM),clang)
@@ -128,7 +122,7 @@ fuzz-build: $(GEOZL)/core/CMakeLists.txt
 	  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DRUMI_BUILD_FUZZERS=ON \
 	  -DRUMI_SANITIZE=address,undefined \
 	  -DCMAKE_C_COMPILER=$(CLANG) -DCMAKE_CXX_COMPILER=$(CLANGXX)
-	cmake --build core/build-fuzz --target rumi_header_fuzzer rumi_index_fuzzer
+	cmake --build core/build-fuzz --target $(addsuffix _fuzzer,$(addprefix rumi_,$(FUZZ_TARGETS)))
 
 fuzz-seed:
 	@for t in $(FUZZ_TARGETS); do \
@@ -136,12 +130,13 @@ fuzz-seed:
 	  cp -a $(FUZZ_SEEDS)/$$t/. $(FUZZ_CORPUS)/$$t/; \
 	done
 
+# libc++ container annotations produce false positives while loading the corpus.
 fuzz: fuzz-build fuzz-seed
 	@mkdir -p $(FUZZ_OUT)
 	@for t in $(FUZZ_TARGETS); do \
 	  corpus=$(abspath $(FUZZ_CORPUS))/$$t; \
 	  echo "$$t fuzzer, $(FUZZ_TIME)s"; \
-	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=allocator_may_return_null=1 \
+	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=allocator_may_return_null=1:detect_container_overflow=0 \
 	    $(abspath core/build-fuzz)/rumi_$${t}_fuzzer $$corpus \
 	    -max_total_time=$(FUZZ_TIME) -max_len=65536 -jobs=$(FUZZ_JOBS) \
 	    -artifact_prefix=$(abspath $(FUZZ_OUT))/ > $$t.log 2>&1) || true; \
@@ -179,7 +174,7 @@ fuzz-replay: fuzz-build
 	  dirs=$$seeds; \
 	  test -n "$$(ls -A $$corpus 2>/dev/null)" && dirs="$$dirs $$corpus"; \
 	  echo "$$t replay"; \
-	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=allocator_may_return_null=1 \
+	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=allocator_may_return_null=1:detect_container_overflow=0 \
 	    $(abspath core/build-fuzz)/rumi_$${t}_fuzzer $$dirs \
 	    -runs=0 -max_len=65536 \
 	    -artifact_prefix=$(abspath $(FUZZ_OUT))/ > $$t.log 2>&1) \
@@ -192,8 +187,7 @@ clean-fuzz:
 	rm -rf $(FUZZ_OUT) $(FUZZ_CORPUS) core/build-fuzz
 	rm -f crash-* leak-* timeout-* oom-* fuzz-*.log
 
-# Static GitHub Pages website. docs/ is the source; _site is only the staged
-# artifact. Install the one pinned dependency from docs/requirements.txt first.
+# Build the static site from docs/ into the disposable _site directory.
 docs:
 	$(PYTHON) tools/build_docs.py --output _site --clean
 
@@ -208,8 +202,7 @@ r:
 	  R CMD build $(R_DIR); \
 	fi
 
-# Python and CMake read VERSION at build time, so only a hardcoded manifest
-# needs rewriting. That is R's DESCRIPTION, written here when bindings/r exists.
+# Python and CMake read VERSION directly; update R's manifest when present.
 sync:
 	@printf '%s' "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$$' \
 	  || { echo "VERSION '$(VERSION)' is not X.Y.Z[-prerelease]"; exit 1; }
