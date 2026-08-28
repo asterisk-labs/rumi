@@ -1,4 +1,4 @@
-"""The README's Python blocks, run as written"""
+"""Run the README's Python examples as written."""
 
 import pathlib
 import re
@@ -44,8 +44,7 @@ def test_a_readme_block_runs(index, tmp_path, monkeypatch):
 
 
 def test_the_quick_start_writes_a_file_that_reads_back(tmp_path, monkeypatch):
-    """The first block is the one a reader copies, so check what it leaves
-    behind rather than only that it ran."""
+    """Check the objects created by the introductory example."""
     monkeypatch.chdir(tmp_path)
     env = {"np": np, "geozl": geozl, "rumi": rumi}
     exec(compile(blocks()[0], "README.md quick start", "exec"), env)

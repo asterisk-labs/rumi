@@ -1,133 +1,158 @@
 # Changelog
 
-User-visible changes are recorded here.
+Notable user-visible changes are recorded here.
 
 ## [Unreleased]
+
+### Breaking
+
+- RUMI files now start with a 16-byte `RUMI` header instead of a BigTIFF
+  header. TIFF readers will no longer open them accidentally. The header size
+  and `base_frame_offset` are unchanged.
+- The C layout and read APIs now support time axes. Layout strides are keyed by
+  axis role, read functions accept time selections, and frame helpers receive
+  the time count and step.
+- `rumi_read`, `rumi_read_stack`, their DLPack variants, and `rumi.read` no
+  longer accept `num_threads`. Configure the process-wide pool with
+  `rumi_set_num_threads` or `rumi.set_num_threads` before the first parallel
+  read.
+- `rumi.read_time` now returns `Time(steps, kind)` instead of a bare list.
+
+### Added
+
+- Time-aware Cubes with shape `(T, B, Y, X)`. Patterns may use `t`,
+  `rumi.write` accepts `time=`, `rumi.read` accepts `t=`, and Cube stacks use
+  `(N, T, B, Y, X)` by default.
+- `RumiHeader.time_count` and `RumiHeader.index_order`.
+- `rumi_read_geo` and `rumi.read_geo` for reading the transform, EPSG code, and
+  pixel anchor stored in a file.
+- Windowed reads for padded sub-byte sample types.
+
+### Changed
+
+- `frame_unit` now selects one of ten registered axis layouts. Singleton band
+  and time axes are omitted, and the frame index preserves the layout's band
+  and time order.
+- `rumi.frames` no longer requires a band axis when the input has none.
+- Time coordinates cross the C API as POSIX seconds. The core selects the only
+  canonical storage scale: days for whole-day coordinates, seconds otherwise.
+- Format decisions and validation now live in the core. Bindings only convert
+  language-level values, selections, and array views.
+
+### Fixed
+
+- Time trailers now receive full canonical validation, including coordinate
+  order, prediction fields, residual padding, storage scale, and allocation
+  limits. Fractional seconds are rejected instead of truncated.
+- Time selections now report the selected shape. Large trailers use 64-bit
+  seeks, huge implicit selections are bounded, and sub-byte stacks decode
+  through the NumPy-backed path.
+- Frame-range planning now follows physical frame order, removes duplicates,
+  and avoids quadratic searches for large band counts.
+- Boolean arrays round-trip as the padded `binary` type. Sub-byte padding is
+  checked both before compression and after decoding.
+- Frame counts, decoded sizes, coordinate arrays, and planned ranges now use
+  checked arithmetic before allocation.
+- Georeferencing validation now enforces the complete transformation matrix,
+  canonical GeoKey entries, and the correct undefined-CRS model. Transforms
+  shorter than six coefficients are rejected.
+- The writer now removes partial files after any failure and rebuilds the
+  returned header from the file it wrote.
+- Header indexing now rejects truncated `SampleFormat` values, non-zero unused
+  bytes and bits, and other non-canonical encodings.
+- `rumi_spec_header` now reports `time_count`; the public C header, binding, and
+  loaded library are checked for version drift.
+- `FrameTable.attach` now repeats cell metadata across every band and time
+  frame. `Frame.band` and `Frame.tile` preserve their specific errors.
 
 ## [0.17.0] - 2026-08-24
 
 ### Breaking
 
-- RUMI 0.17 establishes a new compatibility baseline. Files written by earlier
-  releases are not supported.
-
-- The fixed IFD gains `PlanarConfiguration` and is now 12 tags and 256 bytes.
-  `base_frame_offset` is `272 + external`.
-
-- `rumi.frames` takes a pattern instead of `unit`. The pattern names the input's
-  axes, cuts the spatial ones into a grid, and says what one frame holds:
+- RUMI 0.17 establishes a new compatibility baseline. Earlier files are not
+  supported.
+- The fixed IFD has 13 tags and is 276 bytes. The external header is 32 bytes,
+  and `base_frame_offset` is `292 + external`.
+- `rumi.frames` takes an axis pattern instead of `unit`:
 
       rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
 
-  `unit="tile"` becomes `-> row col b (h w)` and `unit="cell"` becomes
-  `-> row col (b h w)`. `RumiHeader.frame_unit` now returns the frame's axis
-  order, such as `"b h w"`, rather than `"tile"` or `"cell"`.
+  `RumiHeader.frame_unit` returns an axis order such as `"b h w"` rather than
+  `"tile"` or `"cell"`.
 
 ### Added
 
-- A third frame layout, `h w b`, which puts a pixel's bands contiguous instead
-  of keeping each band a plane. It holds the same samples as `b h w` and gives
-  the same frame count; what changes is which axis a predictor walks, and
-  therefore what compresses.
-- `PlanarConfiguration` records the frame's axis order in the file, so a file
-  names its own layout and reads correctly from the path alone.
-- The pattern's left side names the input, so an array in `(Y, X, B)` order no
-  longer has to be transposed before writing.
-- Only `b` is reserved, so the names a split introduces are the caller's.
-- The C API answers everything a binding needs to cut an array into frames, so
-  no binding has to reimplement the format: `rumi_compile_frame_pattern` parses
-  the pattern, `rumi_unit_name` and `rumi_unit_from_name` name a layout,
-  `rumi_unit_indexes_bands` says whether the index walks bands, and
-  `rumi_frame_count` and `rumi_frame_locate` give the grid, the wire order and
-  the shape each frame must arrive in. The library never touches the caller's
-  array: it says what to cut, and the caller cuts.
+- Frame layouts `b h w`, `h w b`, and `h w`, including inputs whose axes are
+  not already ordered as `(B, Y, X)`.
+- Core APIs for compiling frame patterns, naming layouts, counting frames, and
+  locating each frame's position and decoded shape.
+- `TimeCount` and an undefined 28-byte time trailer. Version 0.17 writes one
+  unlabelled time step.
+- A configurable decoded-frame allocation limit, one GiB by default.
 
 ### Changed
 
-- The frame pattern is parsed in the core rather than in the Python binding, so
-  the grammar, the layouts rumi defines and the arithmetic that places a frame
-  have one definition. The Python binding keeps only naming and its own table
-  ergonomics, and its grammar tests moved to the core suite alongside a new
-  `pattern` fuzz target.
-- `frame_unit` in the header blob names the frame's axis order, not only what
-  the frame holds. The decoded shape is now normative. Specification 0.3.0.
-- Unlike einops, the split does not require the image to divide evenly by the
-  tile size. Edge frames are simply smaller, as they always were.
+- Frame-pattern parsing and frame placement moved from Python into the core.
+- Files record the complete frame axis order. Edge frames remain clipped when
+  image dimensions are not divisible by the tile size. Specification 0.3.0.
 
 ### Fixed
 
-- A stack mixing frames that hold one band with frames that hold every band
-  could read past the end of the decode scratch and crash. The merged plan
-  carries one frame spec, taken from the first image, while each task declared
-  its own larger size. It is now rejected with a message naming the mismatch.
+- Frame layouts are validated against their band count, and sub-byte samples
+  must have zero in every unused high bit.
+- Stacks with incompatible frame layouts are rejected instead of risking an
+  oversized scratch read.
 
 ## [0.16.0] - 2026-08-18
 
 ### Breaking
 
-- RUMI 0.16 establishes a new compatibility baseline. Files written by earlier
-  releases are not supported.
-
-### Changed
-
-- Updated GeoZL to 0.14.0. Python writing now requires
-  `geozl>=0.14.0,<0.15`.
-- GeoZL 0.14.0 changes the integer `quant_linear` encoding. Frames now store
-  grid indices instead of reconstructed values. The grid and error bound stay
-  the same, but compressed bytes, sizes, checksums, and content-addressed keys
-  may change. Lossless frames are unaffected.
-- `LOG:...,STORE=INDEX` now returns an error for integer input instead of being
-  silently ignored.
+- RUMI 0.16 establishes a new compatibility baseline. Earlier files are not
+  supported.
 
 ### Added
 
-- GeoZL 0.14.0 adds the `pfor` lossless terminal, available in write recipes as
-  `planar>zigzag>pfor`. It also adds `STORE=INDEX` support for `quant_sqrt` on
-  integer input.
+- GeoZL's `pfor` lossless terminal and integer `STORE=INDEX` support for
+  `quant_sqrt`.
+
+### Changed
+
+- GeoZL 0.14.0 is now required for Python writing
+  (`geozl>=0.14.0,<0.15`). Its integer `quant_linear` encoding may change
+  compressed bytes, sizes, checksums, and content-addressed keys. Lossless
+  frames are unaffected.
+- `LOG:...,STORE=INDEX` now rejects integer input instead of ignoring it.
 
 ## [0.15.0] - 2026-08-16
 
 ### Breaking
 
-- The external RUMI header now has a canonical 28-byte layout. Headers from
-  0.14 and earlier are incompatible.
-- The Python tile API is replaced by `Frame`, `FrameTable`, and `rumi.frames`.
-  RUMI files now use the `.rumi` extension.
-- The C API version and shared-library SONAME advance to 2 after changes to the
-  public header and write descriptor.
+- The external header has a canonical 28-byte layout; older headers are
+  incompatible.
+- `Frame`, `FrameTable`, and `rumi.frames` replace the Python tile API. Files
+  now use the `.rumi` extension.
+- The C API and shared-library SONAME advance to version 2.
 
 ### Added
 
-- Tile and cell frame layouts. Tile frames hold one band; cell frames hold all
-  bands at one grid position.
-- Read thread controls in C and Python, including `RUMI_NUM_THREADS` and
-  `ALL_CPUS`.
-- Stateless byte-range planning from the external RUMI header.
-- Format conformance, sanitizer, and fuzz coverage for headers, raster indexing,
-  and release artifacts.
-- Python 3.11 through 3.14 support.
-- The specification website and technical deck.
+- Tile and cell layouts, thread controls, stateless byte-range planning,
+  Python 3.11–3.14 support, and sanitizer/fuzz coverage.
 
 ### Changed
 
-- GeoZL is updated to 0.13.1. Python writing requires
-  `geozl>=0.13.1,<0.14`.
-- Parallel reads now share a bounded worker pool.
-- The project is now marked as beta.
+- GeoZL 0.13.1 is required for Python writing. Parallel reads share a bounded
+  worker pool, and the project is marked beta.
 
 ### Fixed
 
-- Forked data-loader workers start with a valid thread pool.
-- Cell frames are decoded once per grid position, not once per band.
-- Malformed and non-canonical files are rejected more consistently.
-- Constant frame counts stay compact. Variable-count indexes are bounded before
-  allocation.
+- Forked data-loader workers start with a valid pool, cell frames decode once
+  per grid position, and malformed or oversized indexes are rejected earlier.
 
 ## [0.14.0] - 2026-08-12
 
 ### Added
 
-- Independent C++ and Python format conformance tests.
+- Independent C++ and Python format-conformance tests.
 
 ### Changed
 
@@ -144,13 +169,12 @@ User-visible changes are recorded here.
 
 ### Added
 
-- A native BigTIFF writer and the high-level Python frame/write API.
-- Version-negotiated DLPack output and a single dtype table shared by C and
-  Python.
+- A native BigTIFF writer, the high-level Python frame/write API,
+  version-negotiated DLPack output, and a dtype table shared by C and Python.
 
 ### Changed
 
-- RUMI reads use positional I/O and validate payload bounds before allocation.
+- Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
 [Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.17.0...HEAD

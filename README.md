@@ -10,7 +10,7 @@
 
 <p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
-rumi is a GeoTIFF-inspired raster format for machine-learning datasets. It reads complete images or small windows directly into NumPy, PyTorch, JAX, and TensorFlow.
+rumi is a GeoTIFF-inspired raster format for machine-learning datasets. It stores an image `(B, Y, X)` or a time series `(T, B, Y, X)` in one file, and reads complete rasters or small windows directly into NumPy, PyTorch, JAX, and TensorFlow.
 
 rumi stores each image as independently compressed [OpenZL](https://github.com/facebook/openzl) frames. A read decodes only the frames it needs.
 
@@ -80,13 +80,52 @@ The trailing group of the pattern is the frame, and its axis order decides what 
 "b (row h) (col w) -> row col b (h w)"   # one band per frame
 ```
 
-Only `b` is reserved, so the names a split introduces are yours. The left side names your array, so an input in `(rows, columns, bands)` order needs no transpose first:
+Only `b` and `t` are reserved, so the names a split introduces are yours. The left side names your array, so an input in `(rows, columns, bands)` order needs no transpose first:
 
 ```python
 frames = rumi.frames(image, "(row h) (col w) b -> row col (b h w)", tile_size=512)
 ```
 
 Unlike einops, the split does not require the image to divide evenly. Edge frames are simply smaller.
+
+## Time series
+
+A `t` axis makes the file a cube. Nothing else about the API changes: the pattern names one more axis, and where you place it decides what the compressor may model.
+
+```python
+cube = np.random.default_rng(0).integers(
+    0, 4096, size=(6, 4, 512, 512), dtype=np.uint16
+)
+
+# One frame per tile holding every band and step, time varying between planes.
+frames = rumi.frames(cube, "t b (row h) (col w) -> row col (b t h w)", tile_size=256)
+for frame in frames:
+    graph = geozl.graph(frame.data, "planar>zigzag>zstd")
+    frame.compressed = geozl.compress(frame.data, graph=graph)
+
+path, header = rumi.write("series.rumi", frames, time=[
+    "2024-05-01", "2024-06-01", "2024-07-01",
+    "2024-08-01", "2024-09-01", "2024-10-01",
+])
+
+series = rumi.read(path, header)              # (6, 4, 512, 512)
+summer = rumi.read(path, header, t=[2, 3], b=[0])
+when = rumi.read_time(path)                   # Time(steps=[date(2024, 5, 1), ...],
+                                              #      kind='instant')
+where = rumi.read_geo(path)                   # Geo(None, None, False): this one
+                                              # was written without a CRS
+```
+
+## Georeferencing
+
+Pass an affine transform and an EPSG code together, or neither.
+
+```python
+transform = (10.0, 0.0, 300000.0, 0.0, -10.0, 8100000.0)
+path, header = rumi.write("utm.rumi", frames, transform=transform, crs=32718)
+```
+
+The transform is `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`. `crs` takes an `int`, an `"EPSG:32718"` string, or any object with a `to_epsg()`. Pass `pixel_is_point=True` to anchor a pixel at its centre rather than its top-left corner.
 
 The header is a small binary index. Store it next to the file path in Parquet or another catalog and pass both values to `rumi.read`. If you omit it, rumi can rebuild it from a local file:
 

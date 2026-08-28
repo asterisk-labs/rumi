@@ -1,9 +1,4 @@
-"""Post-install check for a built wheel, run against a clean venv.
-
-Writes a georeferenced file, reads its header back off disk, and reads a window
-out of the bytes in memory. That covers the writer, the CRS keys, both sources
-and the header round trip. Frame payloads are fake, nothing decodes them here.
-"""
+"""Post-install wheel check for writing, indexing, and both byte sources."""
 
 import sys
 import tempfile
@@ -11,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import rumi
-from rumi._ffi import ffi, lib
+from rumi._ffi import API_VERSION, ffi, lib
 
 CRS = 32630
 TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
@@ -19,8 +14,9 @@ TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
 
 def main() -> int:
     print("rumi", rumi.__version__)
-    if lib.rumi_api_version() != 2:
-        print(f"::error::librumi C API is {lib.rumi_api_version()}, expected 2")
+    if lib.rumi_api_version() != API_VERSION:
+        print(f"::error::librumi C API is {lib.rumi_api_version()}, "
+              f"the binding transcribes {API_VERSION}")
         return 1
     native_version = ffi.string(lib.rumi_version_string()).decode("ascii")
     if native_version != rumi.__version__:
