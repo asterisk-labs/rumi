@@ -1,9 +1,4 @@
-"""The process-wide thread count, and the pool behind it.
-
-Every case here turns on state that lives as long as the process, so each one
-runs in its own interpreter. The fork cases are the regressions that matter:
-they used to hang, and a hang is silent.
-"""
+"""Process-wide thread configuration, pool lifetime, and fork behavior."""
 
 import os
 import subprocess
@@ -24,7 +19,7 @@ needs_fork = pytest.mark.skipif(not hasattr(os, "fork"),
 
 @pytest.fixture(scope="module")
 def image(tmp_path_factory):
-    """Enough tiles that a parallel read has something to spread."""
+    """Create enough frames to exercise parallel decoding."""
     rng = np.random.default_rng(0)
     data = rng.integers(0, 3000, (2, 160, 160)).astype(np.uint16)
     tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 32)
@@ -40,7 +35,7 @@ def image(tmp_path_factory):
 
 
 def run(image, body, **env):
-    """Run body in a fresh interpreter and hand back what it printed."""
+    """Run code in a fresh interpreter and return stdout."""
     src = textwrap.dedent(f"""
         import os, sys, time, warnings
         import rumi
@@ -94,15 +89,7 @@ def test_python_rejects_an_invalid_count(bad):
 
 
 def test_a_serial_read_does_not_pin_the_count(image):
-    """The torch.utils.benchmark.Timer bug: one read at 1 used to fix the size
-    of the pool for the whole process."""
-    assert run(image, """
-        rumi.read(PATH, HDR, num_threads=1)
-        print(rumi.set_num_threads(4), rumi.get_num_threads())
-    """) == "4 4"
-
-
-def test_a_default_serial_read_does_not_pin_the_count(image):
+    """A serial read must not pin the future process-wide pool size."""
     assert run(image, """
         rumi.read(PATH, HDR)
         print(rumi.set_num_threads(4), rumi.get_num_threads())
@@ -111,7 +98,8 @@ def test_a_default_serial_read_does_not_pin_the_count(image):
 
 def test_the_pool_pins_the_count_and_a_later_set_warns(image):
     assert run(image, """
-        rumi.read(PATH, HDR, num_threads=4)
+        rumi.set_num_threads(4)
+        rumi.read(PATH, HDR)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             print(rumi.set_num_threads(2), len(caught))
@@ -129,8 +117,9 @@ def test_a_read_takes_the_process_count(image):
 def test_reads_agree_whatever_the_thread_count(image):
     assert run(image, """
         import numpy as np
-        one = rumi.read(PATH, HDR, num_threads=1)
-        many = rumi.read(PATH, HDR, num_threads=4)
+        one = rumi.read(PATH, HDR)          # serial: nothing is pinned yet
+        rumi.set_num_threads(4)
+        many = rumi.read(PATH, HDR)
         print(np.array_equal(one, many))
     """) == "True"
 
@@ -140,7 +129,7 @@ def test_concurrent_reads_share_the_pool_safely(image):
         import concurrent.futures
         import numpy as np
 
-        expected = rumi.read(PATH, HDR, num_threads=1)
+        expected = rumi.read(PATH, HDR)
         rumi.set_num_threads(4)
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             reads = list(executor.map(
@@ -151,14 +140,15 @@ def test_concurrent_reads_share_the_pool_safely(image):
 
 @needs_fork
 def test_a_child_reads_after_a_parallel_parent(image):
-    """fork() keeps only the calling thread, so the inherited pool has no
-    workers. The child has to build its own instead of waiting forever."""
+    """A forked child replaces the inherited pool before reading."""
     assert run(image, """
-        rumi.read(PATH, HDR, num_threads=4)
+        rumi.set_num_threads(4)
+        rumi.read(PATH, HDR)
         sys.stdout.flush()
         pid = os.fork()
         if pid == 0:
-            rumi.read(PATH, HDR, num_threads=4)
+            rumi.set_num_threads(4)
+            rumi.read(PATH, HDR)
             os._exit(0)
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
@@ -176,11 +166,10 @@ def test_a_child_reads_after_a_parallel_parent(image):
 
 @needs_fork
 def test_a_child_defaults_to_one_after_parent_eda(image):
-    """A DataLoader worker must not inherit the parent's notebook budget.
-    PyTorch makes its own intra-op pool serial in every worker; rumi has to do
-    the same independently because torch does not control third-party pools."""
+    """A DataLoader worker initializes its own rumi thread count."""
     assert run(image, """
-        rumi.read(PATH, HDR, num_threads=4)
+        rumi.set_num_threads(4)
+        rumi.read(PATH, HDR)
         sys.stdout.flush()
         pid = os.fork()
         if pid == 0:
@@ -210,7 +199,8 @@ def test_torch_dataloader_workers_stay_serial_after_parent_eda(image):
     assert run(image, """
         import torch
 
-        rumi.read(PATH, HDR, num_threads=4)
+        rumi.set_num_threads(4)
+        rumi.read(PATH, HDR)
 
         class Dataset(torch.utils.data.Dataset):
             def __len__(self):
@@ -229,10 +219,10 @@ def test_torch_dataloader_workers_stay_serial_after_parent_eda(image):
 
 @needs_fork
 def test_a_child_can_lower_the_count(image):
-    """What worker_init_fn does. The parent's pool does not survive the fork,
-    so nothing is pinned in the child and the request takes."""
+    """worker_init_fn can set the child process's rumi thread count."""
     assert run(image, """
-        rumi.read(PATH, HDR, num_threads=4)
+        rumi.set_num_threads(4)
+        rumi.read(PATH, HDR)
         sys.stdout.flush()
         pid = os.fork()
         if pid == 0:
