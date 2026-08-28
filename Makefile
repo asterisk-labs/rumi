@@ -2,6 +2,7 @@
 # make build      build librumi only
 # make lib        build and stage the shared lib next to the binding (CI entry)
 # make test       build, install, then pytest
+# make lint       run Ruff and mypy on the Python binding
 # make ctest      build and run the C++ component tests
 # make r          build the R binding (skips until bindings/r exists)
 # make sync       validate VERSION; write R DESCRIPTION if present
@@ -46,7 +47,7 @@ CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
-.PHONY: all build configure lib stage-lib python test ctest docs r sync \
+.PHONY: all build configure lib stage-lib python test lint ctest docs r sync \
         fuzz-build fuzz-seed fuzz fuzz-report fuzz-check fuzz-replay clean-fuzz \
         install submodules clean help
 
@@ -100,6 +101,14 @@ test: python
 	@$(PYTHON) -m pytest -q $(PY_DIR); \
 	  rc=$$?; if [ $$rc -eq 5 ]; then echo "no tests collected"; \
 	  elif [ $$rc -ne 0 ]; then exit $$rc; fi
+
+lint:
+	@$(PYTHON) -c 'import ruff' 2>/dev/null \
+	  || { echo "ruff not installed"; exit 1; }
+	@$(PYTHON) -c 'import mypy' 2>/dev/null \
+	  || { echo "mypy not installed"; exit 1; }
+	$(PYTHON) -m ruff check --config $(PY_DIR)/pyproject.toml $(PY_DIR)
+	$(PYTHON) -m mypy --config-file $(PY_DIR)/pyproject.toml $(PY_DIR)/rumi
 
 # Component tests use an independent build directory.
 ctest: $(GEOZL)/core/CMakeLists.txt
@@ -231,6 +240,7 @@ help:
 	@echo "make build      build librumi only"
 	@echo "make lib        build and stage the shared lib next to the binding (CI entry)"
 	@echo "make test       build, install, then pytest"
+	@echo "make lint       run Ruff and mypy on the Python binding"
 	@echo "make ctest      build and run the C++ component tests"
 	@echo "make fuzz-check build and run the libFuzzer harnesses"
 	@echo "make fuzz-replay replay the versioned and cached fuzz inputs"

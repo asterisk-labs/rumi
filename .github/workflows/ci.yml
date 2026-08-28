@@ -94,7 +94,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           python -m pip install --upgrade pip cmake ninja
-          python -m pip install numpy cffi pytest ruff ml_dtypes "geozl>=0.14.0,<0.15"
+          python -m pip install numpy cffi pytest ruff mypy ml_dtypes "geozl>=0.14.0,<0.15"
       - name: Install PyTorch for fork integration
         if: matrix.python == '3.12'
         run: >-
@@ -103,6 +103,6 @@ jobs:
         run: make python
       - name: Lint
         if: matrix.python == '3.12'
-        run: ruff check --config bindings/python/pyproject.toml bindings/python
+        run: make lint
       - name: Run the Python suite
         run: python -m pytest bindings/python/tests -q
