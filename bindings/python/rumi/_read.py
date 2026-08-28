@@ -1,4 +1,5 @@
 import ctypes
+import operator
 import os
 from collections.abc import Sequence
 
@@ -9,6 +10,7 @@ from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
 
 Axis = tuple[int, int] | list[int] | None
+Window = tuple[int, int, int, int] | None
 
 
 _pyapi = ctypes.pythonapi
@@ -167,6 +169,37 @@ def _resolve_window(sel: tuple[int, int] | None, name: str,
     raise TypeError(f"{name}: expected (start, stop) tuple")
 
 
+def _named_selectors(time: Axis, bands: Axis, window: Window,
+                     t: Axis, b: Axis,
+                     y: tuple[int, int] | None,
+                     x: tuple[int, int] | None):
+    """Map the descriptive read arguments to the original axis selectors."""
+    if time is not None and t is not None:
+        raise ValueError("use time or t, not both")
+    if bands is not None and b is not None:
+        raise ValueError("use bands or b, not both")
+    if window is not None and (y is not None or x is not None):
+        raise ValueError("use window or y/x, not both")
+
+    t = time if time is not None else t
+    b = bands if bands is not None else b
+    if window is None:
+        return t, b, y, x
+
+    if not isinstance(window, tuple) or len(window) != 4:
+        raise TypeError("window: expected (row, column, height, width) tuple")
+    try:
+        row, column, height, width = map(operator.index, window)
+    except TypeError:
+        raise TypeError("window: row, column, height and width must be integers") \
+            from None
+    if row < 0 or column < 0 or height <= 0 or width <= 0:
+        raise ValueError(
+            "window: row and column must be non-negative; height and width "
+            "must be positive")
+    return t, b, (row, row + height), (column, column + width)
+
+
 def _to_c(lst: list[int] | None):
     if lst is None:
         return ffi.NULL, 0
@@ -294,6 +327,7 @@ def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
 def read(source: PathLike | bytes | Sequence[PathLike | bytes],
          header: bytes | Sequence[bytes] | None = None, *,
          framework: str | None = "numpy", pattern: str | None = None,
+         time: Axis = None, bands: Axis = None, window: Window = None,
          n: Axis = None, t: Axis = None, b: Axis = None,
          y: tuple[int, int] | None = None,
          x: tuple[int, int] | None = None):
@@ -306,14 +340,18 @@ def read(source: PathLike | bytes | Sequence[PathLike | bytes],
     paths, where rumi rebuilds it from the file. A stack takes one header per
     source.
 
-    ``n``, ``t``, and ``b`` select image, time, and band indices. Each accepts a
-    list of indices or a half-open ``(start, stop)`` range. ``y`` and ``x``
-    select half-open spatial ranges. ``pattern`` controls the output axis order.
+    ``time`` and ``bands`` accept a list of indices or a half-open
+    ``(start, stop)`` range. ``window`` is ``(row, column, height, width)``.
+    Indices are zero-based. The shorter ``t``, ``b``, ``y``, and ``x`` names
+    remain available for compatibility. ``n`` selects images from a stack.
+    ``pattern`` controls the output axis order.
 
     ``framework`` selects NumPy, PyTorch, JAX, or TensorFlow. Pass ``None`` to
     receive a RumiArray instead. Reads use the process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
+    t, b, y, x = _named_selectors(time, bands, window, t, b, y, x)
+
     if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):
         if n is not None:
             raise ValueError("n applies to a stack; pass a list of sources")

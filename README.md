@@ -67,8 +67,10 @@ path, header = rumi.write("scene.rumi", frames)
 result = rumi.read(path, header)
 
 # Read bands 0 and 3 from a 512 x 512 window.
-chip = rumi.read(path, header, b=[0, 3], y=(0, 512), x=(0, 512))
+chip = rumi.read(path, header, bands=[0, 3], window=(0, 0, 512, 512))
 ```
+
+Selections are zero-based. A window is `(row, column, height, width)`.
 
 ## Frame layouts
 
@@ -109,7 +111,7 @@ path, header = rumi.write("series.rumi", frames, time=[
 ])
 
 series = rumi.read(path, header)              # (6, 4, 512, 512)
-summer = rumi.read(path, header, t=[2, 3], b=[0])
+summer = rumi.read(path, header, time=[2, 3], bands=[0])
 when = rumi.read_time(path)                   # Time(steps=[date(2024, 5, 1), ...],
                                               #      kind='instant')
 where = rumi.read_geo(path)                   # Geo(None, None, False): this one

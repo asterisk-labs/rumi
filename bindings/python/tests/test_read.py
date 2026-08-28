@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 import rumi
 from rumi._ffi import _Spec, ffi, lib
 
@@ -48,6 +49,45 @@ def test_both_sources_agree(image):
     window = dict(b=[0, 2], y=(10, 74), x=(30, 94))
     assert np.array_equal(rumi.read(path, header, **window),
                           rumi.read(blob, header, **window))
+
+
+def test_named_selection_matches_the_short_form(image):
+    path, header, _data = image
+    short = rumi.read(path, header, b=[0, 2], y=(10, 74), x=(30, 94))
+    named = rumi.read(path, header, bands=[0, 2],
+                      window=(10, 30, 64, 64))
+    assert np.array_equal(named, short)
+
+
+@pytest.mark.parametrize("kw, message", [
+    ({"time": [0], "t": [0]}, "use time or t"),
+    ({"bands": [0], "b": [0]}, "use bands or b"),
+    ({"window": (0, 0, 1, 1), "y": (0, 1)}, "use window or y/x"),
+    ({"window": (0, 0, 1, 1), "x": (0, 1)}, "use window or y/x"),
+])
+def test_named_and_short_selection_cannot_be_mixed(image, kw, message):
+    path, header, _data = image
+    with pytest.raises(ValueError, match=message):
+        rumi.read(path, header, **kw)
+
+
+@pytest.mark.parametrize("window, error", [
+    ((0, 0, 32), TypeError),
+    ([0, 0, 32, 32], TypeError),
+    ((0, 0, "32", 32), TypeError),
+    ((-1, 0, 32, 32), ValueError),
+    ((0, 0, 0, 32), ValueError),
+])
+def test_a_window_has_an_origin_and_positive_size(image, window, error):
+    path, header, _data = image
+    with pytest.raises(error, match="window"):
+        rumi.read(path, header, window=window)
+
+
+def test_a_named_window_stays_inside_the_image(image):
+    path, header, _data = image
+    with pytest.raises(ValueError, match="out of"):
+        rumi.read(path, header, window=(90, 120, 20, 20))
 
 
 def test_memoryview_and_bytearray(image):

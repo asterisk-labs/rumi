@@ -27,6 +27,7 @@ Notable user-visible changes are recorded here.
 - `rumi_read_geo` and `rumi.read_geo` for reading the transform, EPSG code, and
   pixel anchor stored in a file.
 - Windowed reads for padded sub-byte sample types.
+- `rumi.read` accepts the descriptive selectors `time`, `bands`, and `window`.
 
 ### Changed
 

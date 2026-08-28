@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 import rumi
 
 geozl = pytest.importorskip("geozl")
@@ -127,6 +128,14 @@ def test_a_selection_reaches_the_right_steps(name, tmp_path):
         assert np.array_equal(got, want), kw
 
 
+def test_named_selection_reaches_the_same_cube_window(tmp_path):
+    src = cube()
+    _tf, path, header = store(tmp_path, "planar")
+    got = rumi.read(path, header, time=(1, 3), bands=[2, 0],
+                    window=(4, 4, 16, 32))
+    assert np.array_equal(np.asarray(got), src[1:3][:, [2, 0], 4:20, 4:36])
+
+
 def test_a_step_out_of_range_is_refused(tmp_path):
     _tf, path, header = store(tmp_path, "planar")
     with pytest.raises(ValueError, match="out of"):
@@ -203,6 +212,11 @@ def test_a_stack_of_cubes_is_rank_five(tmp_path):
     assert np.array_equal(np.asarray(rumi.read(paths, heads)), want)
     got = rumi.read(paths, heads, n=[2, 0], t=[1])
     assert np.array_equal(np.asarray(got), want[[2, 0]][:, [1]])
+
+    named = rumi.read(paths, heads, n=[2, 0], time=[1], bands=[2, 0],
+                      window=(4, 4, 16, 32))
+    assert np.array_equal(np.asarray(named),
+                          want[[2, 0]][:, [1]][:, :, [2, 0], 4:20, 4:36])
 
 
 def test_the_table_names_the_axes_the_index_walks(tmp_path):
