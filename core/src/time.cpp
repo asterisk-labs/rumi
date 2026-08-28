@@ -12,6 +12,9 @@
 namespace rumi {
 namespace {
 
+// A prediction can overflow int64 before its residual brings it back in range.
+__extension__ typedef __int128 wide_int;
+
 std::unexpected<std::string> err(std::string msg)
 {
     return std::unexpected(std::move(msg));
@@ -45,12 +48,12 @@ std::expected<std::int64_t, std::string>
 slope_of(const std::vector<std::int64_t>& c)
 {
     if (c.size() < 2) return 0;
-    const auto span = static_cast<__int128>(c.back())
-                    - static_cast<__int128>(c.front());
-    const auto n    = static_cast<__int128>(c.size() - 1);
+    const auto span = static_cast<wide_int>(c.back())
+                    - static_cast<wide_int>(c.front());
+    const auto n    = static_cast<wide_int>(c.size() - 1);
     // Round to nearest with exact halves toward positive infinity.
-    __int128 q = span / n;
-    __int128 r = span - q * n;
+    wide_int q = span / n;
+    wide_int r = span - q * n;
     if (r < 0) { --q; r += n; }
     if (2 * r >= n) ++q;
     if (q > std::numeric_limits<std::int64_t>::max()
@@ -70,10 +73,10 @@ residuals_of(const std::vector<std::int64_t>& c, std::int64_t epoch,
     for (std::size_t i = 0; i < c.size(); ++i) {
         // Compute the prediction at wider precision; only the residual is
         // required to fit int64.
-        const __int128 predicted = static_cast<__int128>(epoch)
-                                 + static_cast<__int128>(i)
-                                 * static_cast<__int128>(step);
-        const __int128 residual = static_cast<__int128>(c[i]) - predicted;
+        const wide_int predicted = static_cast<wide_int>(epoch)
+                                 + static_cast<wide_int>(i)
+                                 * static_cast<wide_int>(step);
+        const wide_int residual = static_cast<wide_int>(c[i]) - predicted;
         if (residual > std::numeric_limits<std::int64_t>::max()
             || residual < std::numeric_limits<std::int64_t>::min()) {
             return errf("time residual %zu does not fit in int64", i);
@@ -266,10 +269,10 @@ decode_time(std::span<const std::byte> bytes, std::uint32_t time_count)
             }
         }
         const std::int64_t residual = unzigzag(packed);
-        const __int128 at = static_cast<__int128>(tt.time_epoch)
-                          + static_cast<__int128>(i)
-                          * static_cast<__int128>(tt.time_step)
-                          + static_cast<__int128>(residual);
+        const wide_int at = static_cast<wide_int>(tt.time_epoch)
+                          + static_cast<wide_int>(i)
+                          * static_cast<wide_int>(tt.time_step)
+                          + static_cast<wide_int>(residual);
         if (at > std::numeric_limits<std::int64_t>::max()
             || at < std::numeric_limits<std::int64_t>::min()) {
             return errf("time coordinate %zu does not fit in int64", i);

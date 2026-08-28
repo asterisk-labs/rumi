@@ -949,6 +949,7 @@ def test_georeferencing_fields_have_one_legal_shape(tmp_path, because, mutate):
 
 def test_a_decoded_sub_byte_frame_proves_its_padding(tmp_path):
     """Readers validate unused high bits after decoding sub-byte samples."""
+    pytest.importorskip("ml_dtypes")
     geozl = pytest.importorskip("geozl")
     for fill, ok in ((0x07, True), (0xF1, False)):
         buf = np.full((16, 16), fill, np.uint8)
@@ -983,6 +984,7 @@ def test_an_undefined_crs_carries_the_matrix_the_spec_fixes(tmp_path):
 
 def test_a_sub_byte_window_reads_like_any_other(tmp_path):
     """Sub-byte windows use the same byte-stride arithmetic as uint8."""
+    pytest.importorskip("ml_dtypes")
     geozl = pytest.importorskip("geozl")
     src = (np.arange(32 * 32, dtype=np.uint8) & 0x0F).reshape(32, 32)
     payloads = [geozl.compress(t, graph=geozl.graph(t, "planar>zigzag>zstd"))
@@ -1020,6 +1022,7 @@ def test_a_file_hands_back_the_georeferencing_it_was_given(tmp_path):
 
 def test_a_sub_byte_stack_reads_without_dlpack(tmp_path):
     """Sub-byte stacks use the materialized numpy read path."""
+    pytest.importorskip("ml_dtypes")
     geozl = pytest.importorskip("geozl")
     paths, headers, want = [], [], []
     for i in range(3):
