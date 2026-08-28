@@ -1,5 +1,6 @@
 from importlib.metadata import version
 
+from ._chunks import chunks
 from ._frames import Frame, FrameTable, frames
 from ._geo import Geo, read_geo
 from ._header import RumiHeader
@@ -11,6 +12,6 @@ from ._write import write
 
 __version__ = version("rumi-eo")
 
-__all__ = ["Frame", "FrameTable", "Geo", "RumiHeader", "Time", "frames",
+__all__ = ["Frame", "FrameTable", "Geo", "RumiHeader", "Time", "chunks", "frames",
            "get_num_threads", "read", "read_geo", "read_time",
            "set_num_threads", "write", "__version__"]

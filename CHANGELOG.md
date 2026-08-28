@@ -28,6 +28,7 @@ Notable user-visible changes are recorded here.
   pixel anchor stored in a file.
 - Windowed reads for padded sub-byte sample types.
 - `rumi.read` accepts the descriptive selectors `time`, `bands`, and `window`.
+- `rumi.chunks` builds lazy, tile-aligned read plans for training samples.
 
 ### Changed
 

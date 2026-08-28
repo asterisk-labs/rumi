@@ -82,6 +82,20 @@ The trailing group of the pattern is the frame, and its axis order decides what 
 "b (row h) (col w) -> row col b (h w)"   # one band per frame
 ```
 
+The last layout can produce tile-aligned training samples without opening the
+file first:
+
+```python
+chunks = rumi.chunks(
+    header, tiles=(2, 2), time=1, bands=[0, 1, 2], edge="drop"
+)
+sample = rumi.read(path, header, **chunks[i])
+```
+
+`tiles=1` means one tile per sample. `edge="clip"` keeps smaller border
+samples. Other frame layouts are rejected so a chunk never decodes a larger
+cell and discards part of it.
+
 Only `b` and `t` are reserved, so the names a split introduces are yours. The left side names your array, so an input in `(rows, columns, bands)` order needs no transpose first:
 
 ```python

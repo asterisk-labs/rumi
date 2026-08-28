@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 import rumi
 
 geozl = pytest.importorskip("geozl")
