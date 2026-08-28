@@ -10,8 +10,13 @@ _EDGE = "#633806"
 _counter = itertools.count()
 
 
-# At depth t the band slice is front-top-left -> front-top-right ->
-# front-bottom-right, each shifted by t*(33, -33).
+# Each band outline is shifted diagonally behind the raster face.
+def shape_of(f):
+    """The raster's shape as the reprs show it: a Cube leads with its steps."""
+    lead = f"{f['steps']}, " if f.get("steps", 1) > 1 else ""
+    return f"({lead}{f['b']}, {f['y']}, {f['x']})"
+
+
 def _sheet(t):
     dx, dy = 33 * t, -33 * t
     return (f'<polyline points="{55+dx},{72+dy} {145+dx},{72+dy} {145+dx},{185+dy}" '
@@ -85,7 +90,7 @@ def header_text(f):
         return "<rumi.RumiHeader (unreadable)>"
     tw, tl = f["tile"]
     return "\n".join([
-        f"<rumi.RumiHeader ({f['b']}, {f['y']}, {f['x']})>",
+        f"<rumi.RumiHeader {shape_of(f)}>",
         f"  dtype      : {f['dtype']}",
         f"  tile       : {tw} x {tl}",
         f"  frames     : {f['frames']}",
@@ -108,7 +113,7 @@ def header_html(f):
         f'<tr><td class="k">codec</td><td>{e(f["codec"])}</td></tr>'
     )
     meta = (f'<div><div class="hdr"><span class="cls">rumi.RumiHeader</span> '
-            f'<span class="dim">({f["b"]}, {f["y"]}, {f["x"]})</span></div>'
+            f'<span class="dim">{shape_of(f)}</span></div>'
             f'<table>{rows}</table></div>')
     return _wrap(f'<div class="box">{meta}'
                  f'<div class="g">{_header_cube(f["b"], f["x"], f["y"])}</div></div>')
@@ -136,7 +141,7 @@ def _cells(r):
 
 def _meta(f):
     """Label and value for the summary block, in both reprs."""
-    grid = (f"{f['across']} \u00d7 {f['down']} \u00d7 {f['b']}" if f["tiled"]
+    grid = (f"{f['across']} \u00d7 {f['down']} \u00d7 {f['per']}" if f["tiled"]
             else f"{f['across']} \u00d7 {f['down']}")
     out = [("dtype", f["dtype"]),
            ("tile", f"{f['t']} \u00d7 {f['t']}"),
@@ -157,7 +162,7 @@ def frame_text(f, rows, cols):
     table = ["  ".join(c[k].rjust(wide[k]) for k in range(ncol)).rstrip()
              for c in (head, *body)]
     pad = max(len(k) for k, _ in _meta(f))
-    return "\n".join([f"<rumi.FrameTable ({f['b']}, {f['y']}, {f['x']})>",
+    return "\n".join([f"<rumi.FrameTable {shape_of(f)}>",
                       *table, "",
                       *(f"  {k.ljust(pad)} : {v}" for k, v in _meta(f))])
 
@@ -217,7 +222,7 @@ def frame_html(f, rows, states, cols, fallback):
     summary = "".join(f'<tr><td class="k">{k}</td><td>{e(v)}</td></tr>'
                       for k, v in _meta(f))
     meta = (f'<div><div class="hdr"><span class="cls">rumi.FrameTable</span> '
-            f'<span class="dim">({f["b"]}, {f["y"]}, {f["x"]})</span></div>'
+            f'<span class="dim">{shape_of(f)}</span></div>'
             f'<table>{summary}</table></div>')
 
     span = len(cols) + 1

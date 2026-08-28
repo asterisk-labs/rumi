@@ -1,18 +1,4 @@
-"""Frame order, checked against the C rather than through it.
-
-The Python list order is the physical order of the file, and the C reaches a
-frame through frame_index. A disagreement between the two is invisible to every
-structural check: the offsets still reconstruct by prefix sum, the run is still
-contiguous, the file still validates. It just points at the wrong frame.
-
-So the identity of a frame is taken from the samples it actually holds, never
-from the table's own row, col and band, which are derived from the same index
-arithmetic that places it. A round trip would pass with two cancelling bugs.
-
-The last test goes further and spells the index out from the specification, so
-that a change made consistently on both sides, which a round trip cannot see,
-still fails here.
-"""
+"""Verify physical frame order against independent sample identities."""
 
 import numpy as np
 import pytest
@@ -35,7 +21,7 @@ def code(band, row, col):
 
 
 def scene():
-    """Every sample carries the identity of the frame it belongs to."""
+    """Return samples that identify their band and grid position."""
     b, y, x = SHAPE
     arr = np.empty(SHAPE, np.uint16)
     for band in range(b):
@@ -46,12 +32,12 @@ def scene():
 
 
 def payload(i, ident):
-    """Distinct in content and in length, so a permutation cannot hide."""
+    """Return a payload with a frame-specific prefix and length."""
     return ident.to_bytes(2, "little") + bytes([i % 251]) * (5 + 3 * i)
 
 
 def identify(frame, unit):
-    """What the frame holds, read off its samples."""
+    """Read the frame identity from its decoded samples."""
     return int(frame.data.flat[0] if unit == "tile" else frame.data[0].flat[0])
 
 
@@ -64,11 +50,12 @@ def build(unit, tmp_path):
 
 
 def one_range(header, band, row, col):
-    """The byte range the C reaches for one pixel of one band in one tile."""
+    """Return the planned range for one band and grid position."""
     spec = _Spec(header)
     out = ffi.new("rumi_range**")
     count = ffi.new("size_t*")
-    rc = lib.rumi_plan_ranges(spec.handle, ffi.new("int[]", [band + 1]), 1,
+    rc = lib.rumi_plan_ranges(spec.handle, ffi.NULL, 0,
+                              ffi.new("int[]", [band + 1]), 1,
                               row * TILE, 1, col * TILE, 1, out, count)
     assert rc == lib.RUMI_OK
     try:
@@ -80,7 +67,7 @@ def one_range(header, band, row, col):
 
 @pytest.mark.parametrize("unit", ["tile", "cell", "chunky"])
 def test_the_c_reaches_the_frame_that_holds_the_samples(unit, tmp_path):
-    """Every grid position and band, against what the file actually stores."""
+    """Match every planned frame with the identity stored in its payload."""
     _tf, _idents, path, header = build(unit, tmp_path)
     blob = path.read_bytes()
 
@@ -96,12 +83,13 @@ def test_the_c_reaches_the_frame_that_holds_the_samples(unit, tmp_path):
 
 @pytest.mark.parametrize("unit", ["tile", "cell", "chunky"])
 def test_the_list_order_is_the_physical_order(unit, tmp_path):
-    """The frames are the payloads concatenated, in the order the table holds
-    them, with nothing between."""
+    """Frame payloads are contiguous in FrameTable order."""
     tf, _idents, path, header = build(unit, tmp_path)
     base = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
+    payloads = b"".join(tf["compressed"])
     blob = path.read_bytes()
-    assert blob[base:] == b"".join(tf["compressed"])
+    # Frames form the contiguous region immediately before the time trailer.
+    assert blob[base:base + len(payloads)] == payloads
 
 
 @pytest.mark.parametrize("unit", ["tile", "cell", "chunky"])
@@ -113,19 +101,14 @@ def test_the_frame_count_matches_the_grid(unit, tmp_path):
 
 
 def spec_frame_index(row, col, band, unit):
-    """From the specification, not from the code under test.
-
-    A frame holding one band: all bands at one grid position come before the
-    next position. A frame holding every band: one per grid position.
-    """
+    """Compute the frame index directly from the specification."""
     spatial = row * ACROSS + col
     return spatial * BANDS + band if unit == "tile" else spatial
 
 
 @pytest.mark.parametrize("unit", ["tile", "cell", "chunky"])
 def test_the_index_is_the_one_the_spec_defines(unit, tmp_path):
-    """Writer and reader agreeing on a wrong order is invisible to a round
-    trip. The offsets are walked here against the spec's own arithmetic."""
+    """Check stored offsets against independently computed frame indices."""
     tf, _idents, path, header = build(unit, tmp_path)
     base = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
 

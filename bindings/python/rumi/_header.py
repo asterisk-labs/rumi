@@ -3,7 +3,7 @@ import numpy as np
 from ._dtype import name as dtype_name
 from ._dtype import numpy_dtype
 from ._ffi import PathLike, _header_from_file, _Spec
-from ._pattern import layout_name, unit_indexes_bands
+from ._pattern import frame_count, index_axes, layout_name
 from ._repr import header_html, header_text
 
 
@@ -19,9 +19,16 @@ class RumiHeader:
         return cls(_header_from_file(path))
 
     @property
-    def shape(self) -> tuple[int, int, int]:
+    def shape(self) -> tuple[int, ...]:
+        """An Image is (bands, height, width); a Cube leads with time."""
         h = self._fields
-        return (h.samples_per_pixel, h.image_length, h.image_width)
+        spatial = (int(h.samples_per_pixel), int(h.image_length),
+                   int(h.image_width))
+        return (int(h.time_count), *spatial) if h.time_count > 1 else spatial
+
+    @property
+    def time_count(self) -> int:
+        return int(self._fields.time_count)
 
     @property
     def dtype(self) -> type[np.generic]:
@@ -30,15 +37,21 @@ class RumiHeader:
     @property
     def frame_unit(self) -> str:
         """Return the frame's axis order, such as ``"b h w"``."""
-        return layout_name(self._fields.frame_unit)
+        h = self._fields
+        return layout_name(h.frame_unit, h.samples_per_pixel, h.time_count)
+
+    @property
+    def index_order(self) -> tuple[str, ...]:
+        """Return the axes the frame index walks, outermost first."""
+        h = self._fields
+        return index_axes(h.frame_unit, h.samples_per_pixel, h.time_count)
 
     @property
     def frames(self) -> int:
         """Return the total frame count."""
         h = self._fields
-        per = (h.samples_per_pixel
-               if unit_indexes_bands(h.frame_unit) else 1)
-        return int(h.tiles_across * h.tiles_down * per)
+        return frame_count(h.frame_unit, h.image_width, h.image_length,
+                           h.tile_width, h.samples_per_pixel, h.time_count)[2]
 
     def to_dict(self) -> dict:
         """Return JSON-serializable header metadata."""
@@ -46,6 +59,7 @@ class RumiHeader:
         return {
             "shape": list(self.shape),
             "bands": int(h.samples_per_pixel),
+            "time_count": int(h.time_count),
             "height": int(h.image_length),
             "width": int(h.image_width),
             "dtype": dtype_name(h.dtype),
@@ -53,6 +67,7 @@ class RumiHeader:
             "tiles_across": int(h.tiles_across),
             "tiles_down": int(h.tiles_down),
             "frame_unit": self.frame_unit,
+            "index_order": list(self.index_order),
             "frames": self.frames,
             "base_frame_offset": int(h.base_frame_offset),
             "codec": "OpenZL",
@@ -64,12 +79,14 @@ class RumiHeader:
             h = self._fields
             return {
                 "ok": True,
-                "b": h.samples_per_pixel, "y": h.image_length, "x": h.image_width,
+                "b": h.samples_per_pixel, "y": h.image_length,
+                "x": h.image_width, "steps": h.time_count,
                 "dtype": dtype_name(h.dtype),
                 "tile": (h.tile_width, h.tile_length),
                 "across": h.tiles_across, "down": h.tiles_down,
                 "layout": self.frame_unit,
-                "tiled": unit_indexes_bands(h.frame_unit),
+                "per": self.frames // (h.tiles_across * h.tiles_down),
+                "tiled": bool(self.index_order),
                 "frames": self.frames,
                 "codec": "OpenZL",
             }
