@@ -1,9 +1,4 @@
-"""Keep CFFI declarations and the public C source API from drifting.
-
-CFFI loads RUMI in ABI mode, so it cannot detect a copied signature that no
-longer matches the header. A mismatch can corrupt memory instead of raising a
-useful exception.
-"""
+"""Check that CFFI declarations match the public C ABI."""
 
 import ast
 import re
@@ -32,9 +27,9 @@ _TYPEDEF_BLOCK = re.compile(
     re.DOTALL,
 )
 
-# Public functions present when the C API becomes source-stable in 0.15. New
-# functions may be added, but these names and signatures remain available.
-_PUBLIC_API_0_15 = r"""
+# Public signatures covered by the ABI compatibility check. Update this list
+# only for an intentional API change.
+_PUBLIC_API = r"""
 int rumi_api_version(void);
 const char* rumi_version_string(void);
 int rumi_openzl_format_version(void);
@@ -46,8 +41,9 @@ int rumi_get_num_threads(void);
 rumi_status rumi_index_file(const char* path, unsigned char** out_blob,
                             size_t* out_size);
 size_t rumi_dtype_table(const rumi_dtype_info** out);
-rumi_status rumi_compile_layout(const char* pattern, int64_t n, int64_t b,
-                                int64_t y, int64_t x, rumi_layout* out);
+rumi_status rumi_compile_layout(const char* pattern, int64_t n, int64_t t,
+                                int64_t b, int64_t y, int64_t x,
+                                rumi_layout* out);
 rumi_status rumi_spec_parse(const unsigned char* blob, size_t blob_size,
                             rumi_spec** out);
 void rumi_spec_destroy(rumi_spec* spec);
@@ -56,31 +52,35 @@ rumi_status rumi_source_file(const char* path, rumi_source** out);
 rumi_status rumi_source_memory(const void* data, size_t size,
                                rumi_source** out);
 void rumi_source_free(rumi_source* src);
-rumi_status rumi_plan_ranges(const rumi_spec* spec, const int* bands,
+rumi_status rumi_plan_ranges(const rumi_spec* spec, const int* times,
+                             size_t n_times, const int* bands,
                              size_t n_bands, int y_off, int y_size, int x_off,
                              int x_size, rumi_range** out, size_t* out_count);
 rumi_status rumi_read(rumi_source* src, const rumi_spec* spec,
+                      const int* times, size_t n_times,
                       const int* bands, size_t n_bands, int y_off, int y_size,
                       int x_off, int x_size, const char* pattern,
-                      int num_threads, void* dst, size_t dst_size);
+                      void* dst, size_t dst_size);
 rumi_status rumi_read_stack(rumi_source* const* sources,
                             const rumi_spec* const* specs, size_t n_images,
-                            const int* n_index, size_t n_n, const int* bands,
+                            const int* n_index, size_t n_n,
+                            const int* times, size_t n_times, const int* bands,
                             size_t n_bands, int y_off, int y_size, int x_off,
-                            int x_size, const char* pattern, int num_threads,
+                            int x_size, const char* pattern,
                             void* dst, size_t dst_size);
 rumi_status rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
+                             const int* times, size_t n_times,
                              const int* bands, size_t n_bands, int y_off,
                              int y_size, int x_off, int x_size,
-                             const char* pattern, int num_threads,
+                             const char* pattern,
                              DLManagedTensorVersioned** out);
 rumi_status rumi_read_stack_dlpack(rumi_source* const* sources,
                                    const rumi_spec* const* specs,
                                    size_t n_images, const int* n_index,
-                                   size_t n_n, const int* bands,
+                                   size_t n_n, const int* times,
+                                   size_t n_times, const int* bands,
                                    size_t n_bands, int y_off, int y_size,
                                    int x_off, int x_size, const char* pattern,
-                                   int num_threads,
                                    DLManagedTensorVersioned** out);
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
 DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
@@ -90,13 +90,18 @@ rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
                        const size_t* sizes, size_t frame_count,
                        unsigned char** out_blob, size_t* out_size);
 rumi_status rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
+const char* rumi_axis_name(uint8_t axis);
+rumi_status rumi_check_samples(const void* data, size_t n_bytes,
+                               rumi_dtype dtype);
+rumi_status rumi_read_geo(const char* path, double* out_transform,
+                          uint32_t* out_epsg, int* out_pixel_is_point);
 rumi_status rumi_geokeys(uint32_t epsg, int pixel_is_point,
                          unsigned char** out_dir, size_t* out_dir_size,
                          unsigned char** out_dbl, size_t* out_dbl_size,
                          unsigned char** out_ascii, size_t* out_ascii_size);
 """
 
-_PUBLIC_TYPES_0_15 = r"""
+_PUBLIC_TYPES = r"""
 typedef enum {
     RUMI_OK = 0, RUMI_ERR_INVALID = 1, RUMI_ERR_IO = 2,
     RUMI_ERR_PARSE = 3, RUMI_ERR_FORMAT = 4, RUMI_ERR_DECODE = 5,
@@ -107,20 +112,22 @@ typedef struct {
     uint8_t dl_bits; const char* name;
 } rumi_dtype_info;
 typedef struct {
-    uint32_t image_width; uint32_t image_length; uint16_t tile_width;
+    uint32_t image_width; uint32_t image_length; uint32_t time_count;
+    uint16_t tile_width;
     uint16_t tile_length; uint16_t samples_per_pixel; uint8_t bits_per_sample;
     uint8_t sample_format; uint8_t frame_unit; uint32_t tiles_across;
     uint32_t tiles_down; uint64_t base_frame_offset; rumi_dtype dtype;
 } rumi_header;
 typedef struct {
-    int64_t shape[4]; int ndim; int64_t sn; int64_t sb; int64_t sy;
-    int64_t sx; int native;
+    int64_t shape[5]; int ndim; int64_t stride[5]; int native;
 } rumi_layout;
 typedef struct { uint64_t offset; uint64_t length; } rumi_range;
 typedef struct {
-    uint32_t image_width; uint32_t image_length; uint16_t tile_size;
+    uint32_t image_width; uint32_t image_length; uint32_t time_count;
+    uint16_t tile_size;
     uint16_t samples_per_pixel; rumi_dtype dtype; const double* transform;
     uint32_t epsg; int pixel_is_point; uint8_t frame_unit;
+    uint8_t time_type; const int64_t* time; uint64_t time_coords;
 } rumi_write_desc;
 """
 
@@ -233,7 +240,7 @@ def test_every_cdef_signature_matches_the_header(cdef_declarations,
 
 
 def test_cdef_public_types_match_the_header():
-    selected = set(_typedef_blocks(_PUBLIC_TYPES_0_15))
+    selected = set(_typedef_blocks(_PUBLIC_TYPES))
     header_types = _typedef_blocks(_HEADER.read_text())
     cdef_types = _typedef_blocks(_cdef_text())
     drift = [
@@ -244,9 +251,9 @@ def test_cdef_public_types_match_the_header():
     assert not drift, "cdef type layouts drifted from rumi.h:\n" + "\n".join(drift)
 
 
-def test_public_c_api_keeps_the_0_15_signatures(c_declarations):
-    baseline = _declarations(_PUBLIC_API_0_15)
-    assert len(baseline) == 28
+def test_public_c_api_matches_the_recorded_signatures(c_declarations):
+    baseline = _declarations(_PUBLIC_API)
+    assert len(baseline) == 31
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)
@@ -255,8 +262,8 @@ def test_public_c_api_keeps_the_0_15_signatures(c_declarations):
     assert not drift, "public C API changed:\n" + "\n".join(drift)
 
 
-def test_public_c_types_keep_the_0_15_layouts_and_values():
-    baseline = _typedef_blocks(_PUBLIC_TYPES_0_15)
+def test_public_c_types_match_the_recorded_layouts():
+    baseline = _typedef_blocks(_PUBLIC_TYPES)
     current = _typedef_blocks(_HEADER.read_text())
     assert len(baseline) == 6
     drift = [
@@ -266,12 +273,14 @@ def test_public_c_types_keep_the_0_15_layouts_and_values():
     ]
     assert not drift, "public C types changed:\n" + "\n".join(drift)
 
+    # Keep the binding's ABI version synchronized with the public header.
+    from rumi._ffi import API_VERSION
     api_version = re.search(r"^#define RUMI_API_VERSION\s+(\d+)$",
                             _HEADER.read_text(), re.MULTILINE)
-    assert api_version and api_version[1] == "2"
+    assert api_version and int(api_version[1]) == API_VERSION
 
 
-def test_dtype_codes_from_0_15_are_append_only():
+def test_dtype_codes_are_append_only():
     current = {"UNKNOWN": 0}
     for code, symbol in re.findall(
         r"RUMI_DTYPE\(\s*(\d+)\s*,\s*(\w+)", _DTYPES.read_text()

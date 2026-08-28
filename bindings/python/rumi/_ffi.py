@@ -4,6 +4,9 @@ from pathlib import Path
 
 from cffi import FFI
 
+# ABI version transcribed by the CFFI declarations below.
+API_VERSION = 1
+
 _CDEF = """
 typedef enum {
     RUMI_OK              = 0,
@@ -31,6 +34,7 @@ typedef struct {
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
+    uint32_t time_count;
     uint16_t tile_width;
     uint16_t tile_length;
     uint16_t samples_per_pixel;
@@ -44,12 +48,9 @@ typedef struct {
 } rumi_header;
 
 typedef struct {
-    int64_t shape[4];
+    int64_t shape[5];
     int     ndim;
-    int64_t sn;
-    int64_t sb;
-    int64_t sy;
-    int64_t sx;
+    int64_t stride[5];
     int     native;
 } rumi_layout;
 
@@ -61,6 +62,17 @@ int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void        rumi_free(void* ptr);
 
+rumi_status
+rumi_read_geo(const char* path, double* out_transform, uint32_t* out_epsg,
+              int* out_pixel_is_point);
+
+rumi_status
+rumi_read_time(const char* path, uint8_t* out_type, uint32_t* out_scale,
+               int64_t** out_time, size_t* out_count);
+
+uint64_t rumi_set_max_frame_bytes(uint64_t n);
+uint64_t rumi_get_max_frame_bytes(void);
+
 int rumi_set_num_threads(int n);
 int rumi_get_num_threads(void);
 
@@ -70,37 +82,52 @@ rumi_status
 rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size);
 
 typedef struct {
-    uint8_t frame_unit;
     uint8_t input[4];
     int     input_ndim;
     uint8_t frame[4];
     int     frame_ndim;
+    uint8_t index[2];
+    int     index_ndim;
 } rumi_frame_pattern;
 
 typedef struct {
-    uint32_t row, col, band, h, w;
+    uint32_t row, col, band, time, h, w;
     int64_t  dims[4];
+    uint8_t  perm[4];
     int      ndim;
 } rumi_frame_at;
 
 rumi_status rumi_compile_frame_pattern(const char* pattern,
                                        rumi_frame_pattern* out);
-const char* rumi_unit_name(uint8_t unit);
-rumi_status rumi_unit_from_name(const char* name, uint8_t* out);
-int         rumi_unit_indexes_bands(uint8_t unit);
+const char* rumi_axis_name(uint8_t axis);
+rumi_status rumi_check_samples(const void* data, size_t n_bytes,
+                               rumi_dtype dtype);
+rumi_status rumi_frame_unit(const rumi_frame_pattern* pattern, uint16_t bands,
+                            uint32_t times, uint8_t* out);
+rumi_status rumi_unit_name(uint8_t unit, uint16_t bands, uint32_t times,
+                           char* out, size_t out_size);
+rumi_status rumi_unit_index_axes(uint8_t unit, uint16_t bands, uint32_t times,
+                                 uint8_t* out, int* out_ndim);
+rumi_status rumi_unit_from_name(const char* name, uint16_t bands,
+                                uint32_t times, uint8_t* out);
+int         rumi_unit_indexes_bands(uint8_t unit, uint16_t bands,
+                                    uint32_t times);
 
 rumi_status
 rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-                 uint16_t bands, uint32_t* out_across, uint32_t* out_down,
-                 uint64_t* out_frames);
+                 uint16_t bands, uint32_t times, uint32_t* out_across,
+                 uint32_t* out_down, uint64_t* out_frames);
 
 rumi_status
 rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-                  uint16_t bands, uint64_t index, rumi_frame_at* out);
+                  uint16_t bands, uint32_t times, uint64_t index,
+                  rumi_frame_at* out);
+
+const char* rumi_default_pattern(size_t n_images, uint32_t times);
 
 rumi_status
 rumi_compile_layout(const char* pattern,
-                    int64_t n, int64_t b, int64_t y, int64_t x,
+                    int64_t n, int64_t t, int64_t b, int64_t y, int64_t x,
                     rumi_layout* out);
 
 rumi_status
@@ -123,27 +150,45 @@ void rumi_source_free(rumi_source* src);
 typedef struct { uint64_t offset; uint64_t length; } rumi_range;
 
 rumi_status
-rumi_plan_ranges(const rumi_spec* spec, const int* bands, size_t n_bands,
+rumi_plan_ranges(const rumi_spec* spec,
+                 const int* times, size_t n_times,
+                 const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
                  rumi_range** out, size_t* out_count);
 
 typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 
 rumi_status
+rumi_read(rumi_source* src, const rumi_spec* spec,
+          const int* times, size_t n_times,
+          const int* bands, size_t n_bands,
+          int y_off, int y_size, int x_off, int x_size,
+          const char* pattern, void* dst, size_t dst_size);
+
+rumi_status
 rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
+                 const int* times, size_t n_times,
                  const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
-                 const char* pattern, int num_threads,
-                 DLManagedTensorVersioned** out);
+                 const char* pattern, DLManagedTensorVersioned** out);
+
+rumi_status
+rumi_read_stack(rumi_source* const* sources,
+                const rumi_spec* const* specs, size_t n_images,
+                const int* n_index, size_t n_n,
+                const int* times, size_t n_times,
+                const int* bands, size_t n_bands,
+                int y_off, int y_size, int x_off, int x_size,
+                const char* pattern, void* dst, size_t dst_size);
 
 rumi_status
 rumi_read_stack_dlpack(rumi_source* const* sources,
                        const rumi_spec* const* specs, size_t n_images,
                        const int* n_index, size_t n_n,
+                       const int* times, size_t n_times,
                        const int* bands, size_t n_bands,
                        int y_off, int y_size, int x_off, int x_size,
-                       const char* pattern, int num_threads,
-                       DLManagedTensorVersioned** out);
+                       const char* pattern, DLManagedTensorVersioned** out);
 
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
@@ -156,6 +201,7 @@ void rumi_dlpack_legacy_free(DLManagedTensor* t);
 typedef struct {
     uint32_t      image_width;
     uint32_t      image_length;
+    uint32_t      time_count;
     uint16_t      tile_size;
     uint16_t      samples_per_pixel;
     rumi_dtype    dtype;
@@ -163,6 +209,9 @@ typedef struct {
     uint32_t      epsg;
     int           pixel_is_point;
     uint8_t       frame_unit;
+    uint8_t        time_type;
+    const int64_t* time;
+    uint64_t       time_coords;
 } rumi_write_desc;
 
 rumi_status
@@ -236,7 +285,7 @@ def _enc(path: PathLike) -> bytes:
 
 
 def _header_from_file(path: PathLike) -> bytes:
-    # the header C hands back, freed once copied into a Python bytes
+    # Copy the C-owned result before releasing it.
     out = ffi.new("unsigned char**")
     size = ffi.new("size_t*")
     _check(lib.rumi_index_file(_enc(path), out, size))
@@ -275,7 +324,7 @@ class _Spec:
         buf = ffi.from_buffer("unsigned char[]", header)
         out = ffi.new("rumi_spec**")
         _check(lib.rumi_spec_parse(buf, len(header), out))
-        # ffi.gc frees the handle whenever it goes away, even mid-__init__.
+        # Register ownership immediately so later initialization errors do not leak.
         self.handle = ffi.gc(out[0], lib.rumi_spec_destroy)
 
         fields = ffi.new("rumi_header*")
