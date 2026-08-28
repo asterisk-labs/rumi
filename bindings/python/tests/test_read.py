@@ -1,8 +1,4 @@
-"""The read path, over both sources.
-
-A window read has to give the same pixels whether the bytes came off disk or out
-of a buffer, and plan_ranges has to name exactly the bytes that window touches.
-"""
+"""Read paths for local files, memory buffers, windows, and stacks."""
 
 import numpy as np
 import pytest
@@ -96,7 +92,7 @@ def plan(header, *, bands=None, y=(0, 0), x=(0, 0)):
     n_b = 0 if bands is None else len(bands)
     out = ffi.new("rumi_range**")
     count = ffi.new("size_t*")
-    rc = lib.rumi_plan_ranges(spec.handle, b, n_b,
+    rc = lib.rumi_plan_ranges(spec.handle, ffi.NULL, 0, b, n_b,
                               y[0], y[1] - y[0], x[0], x[1] - x[0], out, count)
     assert rc == lib.RUMI_OK
     try:
@@ -137,8 +133,7 @@ def test_plan_ranges_points_at_real_frames(image):
 
 
 def test_fetching_only_the_planned_ranges_is_enough(image):
-    """The point of the header: a caller can fetch the tiles a window needs and
-    read the window back out of a buffer that is mostly holes."""
+    """Planned ranges are sufficient to read a window from sparse memory."""
     path, header, data = image
     blob = open(path, "rb").read()
     window = dict(b=[0], y=(0, 32), x=(0, 32))
@@ -158,7 +153,7 @@ def test_fetching_only_the_planned_ranges_is_enough(image):
 
 @pytest.fixture(scope="module")
 def cell_image(tmp_path_factory):
-    """The same scene with one frame per grid position."""
+    """Return the same scene with one cell frame per grid position."""
     rng = np.random.default_rng(1)
     data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
     tf = rumi.frames(data, "b (row h) (col w) -> row col (b h w)", 32)
@@ -181,15 +176,14 @@ def test_a_cell_file_round_trips(cell_image):
 @pytest.mark.parametrize("bands", [[0], [4], [0, 4], [4, 3, 2, 1, 0], [2, 2],
                                    [0, 0, 3], [0, 1, 2, 3, 4]])
 def test_a_cell_read_keeps_the_band_order_asked_for(cell_image, bands):
-    """One frame holds every band, so the order comes from how the planes are
-    handed out."""
+    """A cell frame preserves the requested band order."""
     path, header, data = cell_image
     assert np.array_equal(rumi.read(path, header, b=bands), data[bands])
 
 
 @pytest.mark.parametrize("bands", [[0], [3, 1], [0, 1, 2, 3, 4]])
 def test_every_layout_reads_the_same_window(tmp_path, bands):
-    """Three ways to store one image, so a window reads the same from any."""
+    """Every Image frame layout decodes to the same logical window."""
     rng = np.random.default_rng(2)
     data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
     out = {}
@@ -210,8 +204,7 @@ def test_every_layout_reads_the_same_window(tmp_path, bands):
 
 
 def test_a_chunky_frame_holds_the_pixel_spectrum(tmp_path):
-    """(h w b) puts the bands inside the pixel, so the frame is (h, w, B) and
-    the file still reads back as (B, Y, X)."""
+    """An ``h w b`` frame decodes to the logical ``B Y X`` Image."""
     rng = np.random.default_rng(3)
     data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
     tf = rumi.frames(data, PATTERNS["chunky"], 32)
@@ -234,8 +227,7 @@ def _write(tmp_path, name, data, unit, tile=16):
 
 @pytest.mark.parametrize("unit", list(PATTERNS))
 def test_a_file_names_its_own_layout(tmp_path, unit):
-    """PlanarConfiguration carries the axis order, so a file read without its
-    header decodes the same samples as one read with it."""
+    """FrameUnit preserves layout when the external header is rebuilt."""
     rng = np.random.default_rng(5)
     data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
     path, header = _write(tmp_path, unit, data, unit, tile=32)
@@ -246,8 +238,7 @@ def test_a_file_names_its_own_layout(tmp_path, unit):
 
 
 def test_a_stack_needs_no_headers(tmp_path):
-    """Every file names its own layout, so a mixed stack reads from the paths
-    alone."""
+    """A stack may rebuild headers for files with different frame layouts."""
     rng = np.random.default_rng(6)
     data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
     paths = [_write(tmp_path, u, data, u, tile=32)[0] for u in ("cell", "chunky")]
@@ -256,8 +247,7 @@ def test_a_stack_needs_no_headers(tmp_path):
 
 
 def test_a_chunky_read_decodes_each_frame_once(tmp_path):
-    """Like a planar cell frame, one task per grid position however many bands
-    are asked for."""
+    """Cell frames decode once per selected grid position."""
     rng = np.random.default_rng(4)
     data = rng.integers(0, 3000, (5, 100, 130)).astype(np.uint16)
     tf = rumi.frames(data, PATTERNS["chunky"], 32)
@@ -270,8 +260,7 @@ def test_a_chunky_read_decodes_each_frame_once(tmp_path):
 
 
 def test_a_cell_read_decodes_each_frame_once(cell_image):
-    """A cell read must not scale with the bands asked for. It did: the plan
-    made one task per band and each decoded the whole frame."""
+    """Selecting more bands from a cell must not duplicate decode tasks."""
     path, header, _data = cell_image
     one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
     all_five = plan(header, bands=[0, 1, 2, 3, 4], y=(0, 100), x=(0, 130))
@@ -279,7 +268,7 @@ def test_a_cell_read_decodes_each_frame_once(cell_image):
 
 
 def test_a_tile_read_still_asks_per_band(image):
-    """A tile frame holds one band, so tile reads do scale."""
+    """Tile layouts require one decode task per selected band."""
     _path, header, _data = image
     one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
     both = plan(header, bands=[0, 2], y=(0, 100), x=(0, 130))
@@ -287,7 +276,7 @@ def test_a_tile_read_still_asks_per_band(image):
 
 
 def test_a_cell_stack_round_trips(tmp_path):
-    """A stack merges one plan per image."""
+    """Stack reads merge one decode plan per selected image."""
     rng = np.random.default_rng(3)
     base = rng.integers(0, 3000, (4, 64, 64)).astype(np.uint16)
     paths, headers, cubes = [], [], []

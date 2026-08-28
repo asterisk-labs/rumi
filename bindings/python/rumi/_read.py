@@ -2,10 +2,11 @@ import ctypes
 import os
 from collections.abc import Sequence
 
-from ._dtype import is_subbyte
+import numpy as np
+
+from ._dtype import is_subbyte, numpy_dtype
 from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
-from ._threads import resolve as _resolve_threads
 
 Axis = tuple[int, int] | list[int] | None
 
@@ -28,7 +29,7 @@ _Destructor = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
 
 def _capsule_destructor(capsule):
-    # a still-valid name means no consumer took the tensor, so rumi frees
+    # A valid capsule name means ownership was never transferred to a consumer.
     try:
         cap = ctypes.c_void_p(capsule)
         if _PyCapsule_IsValid(cap, _VERSIONED_NAME):
@@ -45,12 +46,17 @@ _c_destructor = _Destructor(_capsule_destructor)
 
 
 class RumiArray:
-    """Zero-copy read result exposing the DLPack protocol."""
+    """Decoded samples with helpers for NumPy and tensor frameworks.
 
-    def __init__(self, tensor, shape, dtype_code):
+    Most results are exported without a copy through DLPack. Padded sub-byte
+    dtypes use a NumPy array because DLPack consumers cannot import them.
+    """
+
+    def __init__(self, tensor, shape, dtype_code, array=None):
         self._tensor = tensor
         self._shape = shape
         self._dtype_code = dtype_code
+        self._array = array
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -61,14 +67,16 @@ class RumiArray:
 
     def __dlpack__(self, *, stream=None, max_version=None,
                    dl_device=None, copy=None):
+        if self._array is not None:
+            raise BufferError(
+                "padded sub-byte dtypes cannot be exported through DLPack; "
+                "use numpy()")
         if self._tensor is None:
             raise RuntimeError("this RumiArray was already exported")
         if dl_device is not None and tuple(dl_device) != (1, 0):
             raise BufferError(f"rumi decodes on the CPU, not device {dl_device}")
 
-        # A consumer that names no version, or one before 1.0, gets the legacy
-        # capsule. Torch below 2.10 and tensorflow are in that group, and the
-        # versioned struct is a different shape, so the name alone is not it.
+        # Consumers that omit max_version receive a legacy DLPack capsule.
         tensor, name = self._tensor, _VERSIONED_NAME
         if max_version is None or tuple(max_version)[:1] < (1,):
             if is_subbyte(self._dtype_code):
@@ -85,7 +93,8 @@ class RumiArray:
         return capsule
 
     def numpy(self):
-        import numpy as np
+        if self._array is not None:
+            return self._array
         return np.from_dlpack(self)
 
     def torch(self):
@@ -101,6 +110,8 @@ class RumiArray:
         return tf_dlpack.from_dlpack(self.__dlpack__(max_version=(0, 8)))
 
     def __del__(self):
+        if self._array is not None:
+            return
         tensor = self._tensor
         if tensor is None:
             return
@@ -114,7 +125,6 @@ class RumiArray:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
 
 
-# framework=None hands back the zero-copy RumiArray; a name materializes it
 def _to_framework(arr: RumiArray, framework: str | None):
     if framework is None:
         return arr
@@ -125,7 +135,7 @@ def _to_framework(arr: RumiArray, framework: str | None):
     return fn()
 
 
-# convert to 1-based for the C API. None means all and passes through as NULL/0.
+# Convert Python indices to the C API's 1-based convention. NULL/0 means all.
 def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     if sel is None:
         return None
@@ -171,38 +181,63 @@ def _header_of(source) -> bytes:
     return _header_from_file(source)
 
 
+def _pattern_for(pattern: str | None, n_images: int, times: int) -> bytes:
+    """Use the requested output pattern, or the default for this shape."""
+    if pattern is not None:
+        return pattern.encode("ascii")
+    return ffi.string(lib.rumi_default_pattern(n_images, times))
+
+
+def _empty_subbyte(shape, dtype_code):
+    """Allocate the byte-padded NumPy result used by sub-byte dtypes."""
+    storage = np.empty(shape, np.uint8)
+    array = storage.view(numpy_dtype(dtype_code))
+    return storage, RumiArray(None, shape, dtype_code, array=array)
+
+
 def _read_one(src: _Source, spec: _Spec, pattern: str | None,
-              b: Axis, y: tuple[int, int] | None, x: tuple[int, int] | None,
-              num_threads: int) -> RumiArray:
+              t: Axis, b: Axis, y: tuple[int, int] | None,
+              x: tuple[int, int] | None) -> RumiArray:
     h = spec.fields
+    times = _resolve_axis(t, "t", h.time_count)
     bands = _resolve_axis(b, "b", h.samples_per_pixel)
     y_off, y_size = _resolve_window(y, "y", h.image_length)
     x_off, x_size = _resolve_window(x, "x", h.image_width)
 
     n_bands = len(bands) if bands is not None else h.samples_per_pixel
-    if pattern is None:
-        pattern = "b y x"
+    n_times = len(times) if times is not None else h.time_count
+    # The file controls which axes exist; selections only change their lengths.
+    output_pattern = _pattern_for(pattern, 1, h.time_count)
 
     layout = ffi.new("rumi_layout*")
     _check(lib.rumi_compile_layout(
-        pattern.encode("ascii"), 1, n_bands, y_size, x_size, layout
+        output_pattern, 1, n_times, n_bands, y_size, x_size, layout
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
 
+    times_c, n_times_c = _to_c(times)
     bands_c, n_bands_c = _to_c(bands)
+    if is_subbyte(spec.fields.dtype):
+        storage, result = _empty_subbyte(shape, spec.fields.dtype)
+        _check(lib.rumi_read(
+            src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
+            y_off, y_size, x_off, x_size, output_pattern,
+            ffi.cast("void*", storage.ctypes.data), storage.nbytes,
+        ))
+        return result
+
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_dlpack(
-        src.handle, spec.handle, bands_c, n_bands_c,
-        y_off, y_size, x_off, x_size,
-        pattern.encode("ascii"), num_threads, out,
+        src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
+        y_off, y_size, x_off, x_size, output_pattern, out,
     ))
     return RumiArray(out[0], shape, spec.fields.dtype)
 
 
 def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
-                pattern: str | None, n: Axis, b: Axis,
-                y: tuple[int, int] | None, x: tuple[int, int] | None,
-                num_threads: int) -> RumiArray:
+                pattern: str | None, n: Axis, t: Axis, b: Axis,
+                y: tuple[int, int] | None,
+                x: tuple[int, int] | None) -> RumiArray:
     sources = list(sources)
     specs = list(specs)
     if len(sources) != len(specs):
@@ -213,33 +248,45 @@ def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
         raise ValueError("read requires at least one image")
 
     h = specs[0].fields
-    n_sel = _resolve_axis(n, "n", len(specs))
+    images = _resolve_axis(n, "n", len(specs))
+    times = _resolve_axis(t, "t", h.time_count)
     bands = _resolve_axis(b, "b", h.samples_per_pixel)
     y_off, y_size = _resolve_window(y, "y", h.image_length)
     x_off, x_size = _resolve_window(x, "x", h.image_width)
 
-    n_count = len(n_sel) if n_sel is not None else len(specs)
+    image_count = len(images) if images is not None else len(specs)
     n_bands = len(bands) if bands is not None else h.samples_per_pixel
-    if pattern is None:
-        pattern = "n b y x" if n_count > 1 else "b y x"
+    n_times = len(times) if times is not None else h.time_count
+    output_pattern = _pattern_for(pattern, image_count, h.time_count)
 
     layout = ffi.new("rumi_layout*")
     _check(lib.rumi_compile_layout(
-        pattern.encode("ascii"), n_count, n_bands, y_size, x_size, layout
+        output_pattern, image_count, n_times, n_bands, y_size, x_size, layout
     ))
     shape = tuple(layout.shape[i] for i in range(layout.ndim))
 
     specs_arr = ffi.new("rumi_spec*[]", [s.handle for s in specs])
     srcs_arr = ffi.new("rumi_source*[]", [s.handle for s in sources])
 
-    n_c, n_count_c = _to_c(n_sel)
+    images_c, n_images_c = _to_c(images)
+    times_c, n_times_c = _to_c(times)
     bands_c, n_bands_c = _to_c(bands)
+
+    if is_subbyte(h.dtype):
+        storage, result = _empty_subbyte(shape, h.dtype)
+        _check(lib.rumi_read_stack(
+            srcs_arr, specs_arr, len(specs),
+            images_c, n_images_c, times_c, n_times_c, bands_c, n_bands_c,
+            y_off, y_size, x_off, x_size, output_pattern,
+            ffi.cast("void*", storage.ctypes.data), storage.nbytes,
+        ))
+        return result
+
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_stack_dlpack(
         srcs_arr, specs_arr, len(specs),
-        n_c, n_count_c, bands_c, n_bands_c,
-        y_off, y_size, x_off, x_size,
-        pattern.encode("ascii"), num_threads, out,
+        images_c, n_images_c, times_c, n_times_c, bands_c, n_bands_c,
+        y_off, y_size, x_off, x_size, output_pattern, out,
     ))
     return RumiArray(out[0], shape, specs[0].fields.dtype)
 
@@ -247,35 +294,36 @@ def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
 def read(source: PathLike | bytes | Sequence[PathLike | bytes],
          header: bytes | Sequence[bytes] | None = None, *,
          framework: str | None = "numpy", pattern: str | None = None,
-         n: Axis = None, b: Axis = None,
+         n: Axis = None, t: Axis = None, b: Axis = None,
          y: tuple[int, int] | None = None,
-         x: tuple[int, int] | None = None,
-         num_threads: int | None = None):
-    """Read a rumi image, or a stack of them.
+         x: tuple[int, int] | None = None):
+    """Read one rumi raster or a stack of compatible rasters.
 
-    source is a local path, or the file's bytes when you already hold them.
-    A list of either reads a stack.
+    ``source`` may be a local path or the file's bytes. Pass a sequence of
+    sources to read them as a stack.
 
-    header is the binary header returned by write. When omitted, it is rebuilt
-    from a local file path.
+    ``header`` is the value returned by ``write``. It can be omitted for local
+    paths, where rumi rebuilds it from the file. A stack takes one header per
+    source.
 
-    framework picks the return type ("numpy", "torch", "jax", "tensorflow"),
-    or None for the zero-copy RumiArray.
+    ``n``, ``t``, and ``b`` select image, time, and band indices. Each accepts a
+    list of indices or a half-open ``(start, stop)`` range. ``y`` and ``x``
+    select half-open spatial ranges. ``pattern`` controls the output axis order.
 
-    num_threads defaults to the process-wide setting. A value of 1 reads on the
-    calling thread; a larger value updates that setting.
+    ``framework`` selects NumPy, PyTorch, JAX, or TensorFlow. Pass ``None`` to
+    receive a RumiArray instead. Reads use the process-wide thread pool; call
+    ``set_num_threads`` before the first parallel read to set its size.
     """
-    threads = _resolve_threads(num_threads)
     if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):
         if n is not None:
             raise ValueError("n applies to a stack; pass a list of sources")
-        raw = header if header is not None else _header_of(source)
-        arr = _read_one(_Source(source), _Spec(raw), pattern, b, y, x, threads)
+        raw_header = header if header is not None else _header_of(source)
+        arr = _read_one(_Source(source), _Spec(raw_header), pattern, t, b, y, x)
         return _to_framework(arr, framework)
 
     sources = list(source)
-    raws = header if header is not None else [_header_of(s) for s in sources]
-    specs = [_Spec(r) for r in raws]
+    raw_headers = header if header is not None else [_header_of(s) for s in sources]
+    specs = [_Spec(raw) for raw in raw_headers]
     arr = _read_stack([_Source(s) for s in sources], specs,
-                      pattern, n, b, y, x, threads)
+                      pattern, n, t, b, y, x)
     return _to_framework(arr, framework)
