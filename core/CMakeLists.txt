@@ -23,14 +23,11 @@ option(RUMI_BUILD_TESTS       "Build the C++ component tests"                   
 option(RUMI_BUILD_FUZZERS     "Build libFuzzer harnesses (requires Clang)"         OFF)
 option(RUMI_WERROR            "Treat warnings in rumi C++ as errors"              OFF)
 
-# geozl owns OpenZL and brings it in transitively, so rumi vendors geozl only.
-# The VERSION file sits one level up, so the submodule at the repo root is one
-# level up from this file too.
+# geozl supplies OpenZL transitively from the repository root.
 set(RUMI_GEOZL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/geozl"
     CACHE PATH "Path to the geozl submodule source")
 
-# e.g. -DRUMI_SANITIZE=thread, or address,undefined. Empty = off. Use a
-# throwaway build dir for this, it's a sanitizer-only configuration.
+# Examples: -DRUMI_SANITIZE=thread or -DRUMI_SANITIZE=address,undefined.
 set(RUMI_SANITIZE "" CACHE STRING "Sanitizer to compile and link with")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -41,31 +38,24 @@ set(CMAKE_CXX_STANDARD              23)
 set(CMAKE_CXX_STANDARD_REQUIRED     ON)
 set(CMAKE_CXX_EXTENSIONS            OFF)
 
-# C stays enabled for the geozl sub-build, which is C and carries OpenZL. rumi
-# itself is C++ only.
+# geozl and OpenZL require C; rumi itself is C++.
 set(CMAKE_C_STANDARD                11)
 set(CMAKE_C_STANDARD_REQUIRED       ON)
 set(CMAKE_C_EXTENSIONS              OFF)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# compile_commands.json for clangd and friends, so the warnings show in editor.
+# Export compile_commands.json for editor tooling.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Hide everything by default; the surface is re-exported with RUMI_API. Keeps
-# the vendored OpenZL and its bundled zstd out of the dynamic symbol table, so
-# a host zstd in the same process cannot collide with ours.
+# Export only RUMI_API symbols. Vendored codec symbols remain private.
 set(CMAKE_CXX_VISIBILITY_PRESET     hidden)
 set(CMAKE_C_VISIBILITY_PRESET       hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 include(GNUInstallDirs)
 
-# geozl supplies the OpenZL frame codecs, including rumi's spatial transforms.
-# Vendored static so it folds into rumi with no extra runtime
-# dependency, and GEOZL_STATIC keeps its entry points from being re-exported.
-# geozl exposes OpenZL PUBLIC, so rumi links one OpenZL, the same one geozl
-# registers its decoders against.
+# Link geozl and OpenZL statically into rumi without exporting their APIs.
 set(BUILD_SHARED_LIBS OFF)
 set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
 add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
@@ -79,13 +69,12 @@ set(RUMI_SOURCES
     src/plan.cpp
     src/read.cpp
     src/pattern.cpp
+    src/time.cpp
     src/capi.cpp
     src/dlpack.cpp
 )
 
-# Compile and link settings shared by every target. rumi_config is internal,
-# linked PRIVATE, never installed, so the build defines here do not leak to
-# consumers of the installed library.
+# Internal compile and link settings shared by rumi targets.
 add_library(rumi_config INTERFACE)
 target_include_directories(rumi_config INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -98,8 +87,7 @@ target_compile_definitions(rumi_config INTERFACE
     RUMI_BUILD
     RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
 )
-# Warnings on rumi's own C++. geozl and OpenZL build with their own flags through
-# add_subdirectory, so this does not touch them.
+# Warning flags for rumi sources only.
 target_compile_options(rumi_config INTERFACE
     $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
     $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4 /permissive->
@@ -111,8 +99,7 @@ if(RUMI_WERROR)
     )
 endif()
 
-# A sanitizer applies to every target through this interface. It has to be on
-# both the compile and the link line.
+# Sanitizers must be enabled for both compilation and linking.
 if(RUMI_SANITIZE)
     target_compile_options(rumi_config INTERFACE
         -fsanitize=${RUMI_SANITIZE} -fno-omit-frame-pointer -g)
@@ -134,8 +121,7 @@ if(RUMI_BUILD_SHARED_LIB)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    # The C ABI is the installed surface: rumi.h plus the .def it expands and
-    # the dlpack header it includes. rumi.hpp is internal and stays out.
+    # Install the C ABI and its generated dtype and DLPack dependencies.
     install(FILES
         include/rumi/rumi.h
         include/rumi/rumi_dtypes.def
@@ -146,8 +132,7 @@ if(RUMI_BUILD_SHARED_LIB)
     )
 endif()
 
-# rumi.hpp is internal and its symbols are hidden, so the tests compile the
-# sources rather than link the shared lib.
+# Component tests compile internal sources directly.
 if(RUMI_BUILD_TESTS)
     enable_testing()
     add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})

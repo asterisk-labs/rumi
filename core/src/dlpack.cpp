@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 
-// data is separate; tensor, shape and strides share one allocation
+// Tensor metadata, shape, and strides share one allocation; data is separate.
 extern "C" void rumi_dlpack_free(DLManagedTensorVersioned* self)
 {
     if (!self) return;
@@ -14,8 +14,7 @@ extern "C" void rumi_dlpack_free(DLManagedTensorVersioned* self)
     std::free(self);
 }
 
-// The wrapper holds the versioned tensor in manager_ctx, so shape and strides
-// stay pointed at memory that outlives it.
+// manager_ctx owns the versioned tensor and its shape and stride storage.
 extern "C" void rumi_dlpack_legacy_free(DLManagedTensor* self)
 {
     if (!self) return;
@@ -47,10 +46,8 @@ constexpr DLDataType dt(unsigned code, unsigned bits) noexcept
                       static_cast<std::uint8_t>(bits), 1};
 }
 
-// The dl_code and dl_bits already live on each table row, the complex integers
-// carry RUMI_DL_NONE. Zero bits marks a type with no DLPack form, the caller's
-// unsupported path. The table stores the DLPack code straight, so no second
-// mapping to keep in step.
+// DLPack codes come directly from the dtype registry. RUMI_DL_NONE marks types
+// without a DLPack representation.
 DLDataType dtype_to_dlpack(rumi_dtype d) noexcept
 {
     std::size_t n = 0;

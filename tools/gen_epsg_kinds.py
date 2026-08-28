@@ -1,10 +1,8 @@
-"""Regenerates core/include/rumi/epsg_kinds.def from the EPSG registry.
+"""Regenerate ``core/include/rumi/epsg_kinds.def`` from the EPSG registry.
 
-Writing a CRS needs one bit per code, geographic or projected, since that picks
-GTModelType and which of GeographicType / ProjectedCSType carries the code.
-The number does not answer it. EPSG:4037 sits in the middle of the geographic
-block and is projected, and it is not alone. Hence a table, emitted as sorted
-closed ranges so it costs a few kilobytes and a binary search.
+rumi must distinguish geographic and projected CRSs to select the correct
+GeoKeys. EPSG code ranges are not sufficient for that classification, so this
+script emits the registry result as sorted closed ranges.
 
     pip install pyproj
     python tools/gen_epsg_kinds.py > core/include/rumi/epsg_kinds.def
@@ -43,8 +41,7 @@ def main():
       f" * EPSG via PROJ {__proj_version__}, "
       f"{datetime.now(UTC).date().isoformat()}.\n"
       " *\n"
-      " * Which kind of CRS each code names, as closed ranges. A code in\n"
-      " * neither table needs its GeoTIFF keys passed in directly. */\n\n")
+      " * Geographic and projected EPSG codes, stored as closed ranges. */\n\n")
 
     for name, codes in kinds.items():
         r = runs(codes)

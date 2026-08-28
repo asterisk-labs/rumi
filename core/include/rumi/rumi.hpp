@@ -21,16 +21,21 @@ class ThreadPool;
 
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
-inline constexpr std::size_t   HEADER_SIZE = 28;
-// The fixed IFD is exactly this many tags, so its size never varies.
-inline constexpr std::uint64_t IFD_TAGS    = 12;
+inline constexpr std::size_t   HEADER_SIZE = 32;
+// Number of entries in the fixed IFD.
+inline constexpr std::uint64_t IFD_TAGS    = 13;
+
+// File header constants. FILE_MAGIC is ASCII "RUMI" on the wire.
+inline constexpr std::uint32_t FILE_MAGIC   = 0x494D5552;
+inline constexpr std::uint16_t FILE_VERSION = 1;
+inline constexpr std::uint64_t IFD_OFFSET   = 16;
 inline constexpr std::size_t   MAX_PARSED_INDEX_BYTES = 64u << 20;
 
-// The OpenZL frame format version.
+// Maximum OpenZL frame format version accepted by the linked decoder.
 [[nodiscard]] int openzl_format_version() noexcept;
 
 
-// Blob format
+// External-header blob.
 
 #pragma pack(push, 1)
 struct BlobHeader {
@@ -38,18 +43,17 @@ struct BlobHeader {
     std::uint16_t version;
     std::uint32_t image_width;
     std::uint32_t image_length;
+    // Time steps. 1 is an Image, more is a Cube.
+    std::uint32_t time_count;
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint16_t samples_per_pixel;
     // For complex formats (5, 6) this holds the summed component widths.
     std::uint8_t  bits_per_sample;
     std::uint8_t  sample_format;
-    // The frame's axis order. 0 is (h w), one band at one grid position. 1 is
-    // (b h w) and 2 is (h w b), both every band at one grid position. Together
-    // with the image shape it fixes the frame count.
+    // Entry in the frame_unit registry. Its concrete axes depend on B and T.
     std::uint8_t  frame_unit;
-    // Counts are stored as count_min plus a count_bits wide residual, packed
-    // with no alignment.
+    // Counts are count_min plus packed count_bits-wide residuals.
     std::uint32_t count_min;
     std::uint8_t  count_bits;
 };
@@ -66,75 +70,262 @@ enum Axis : std::uint8_t {
     AXIS_X    = 2,
     AXIS_H    = 3,
     AXIS_W    = 4,
+    AXIS_TIME = 5,
 };
 
 inline constexpr std::size_t MAX_AXES = 4;
 
-// The one block every frame holds.
+// Spatial axes present in every decoded frame.
 inline constexpr std::array<std::uint8_t, 2> TILE_AXES{ AXIS_H, AXIS_W };
 
-// Axes a frame may hold besides the tile, in the order they are packed into
-// frame_unit. Time joins this list and nothing above it moves.
-inline constexpr std::array<std::uint8_t, 1> FRAME_AXES{ AXIS_BAND };
+// Optional non-spatial frame axes.
+inline constexpr std::array<std::uint8_t, 2> FRAME_AXES{ AXIS_BAND, AXIS_TIME };
 
-// frame_unit packs where each axis a frame may hold sits relative to the tile,
-// two bits each: absent means the frame does not hold it, so the frame index
-// walks it instead. With only the band axis that gives 0 for (h w), 1 for
-// (b h w) and 2 for (h w b), and every bit above stays clear until a second
-// axis needs one. Adding an axis is adding a shift, not renumbering these.
-inline constexpr std::uint8_t AXIS_ABSENT = 0;
-inline constexpr std::uint8_t AXIS_BEFORE = 1;  // ahead of the tile
-inline constexpr std::uint8_t AXIS_AFTER  = 2;  // behind it
-inline constexpr std::uint8_t AXIS_MASK   = 0x3;
-inline constexpr int          AXIS_BITS   = 2;
-inline constexpr int          BAND_SHIFT  = 0 * AXIS_BITS;
-// Every bit an axis claims. Anything outside names no layout.
-inline constexpr std::uint8_t UNIT_BITS   =
-    static_cast<std::uint8_t>((1u << (FRAME_AXES.size() * AXIS_BITS)) - 1u);
+// Placeholder for the only non-spatial axis whose extent exceeds one.
+inline constexpr std::uint8_t AXIS_ONE = 0xFE;
 
-enum FrameUnit : std::uint8_t {
-    FRAME_TILE   = AXIS_ABSENT << BAND_SHIFT,  // (h w)
-    FRAME_PLANAR = AXIS_BEFORE << BAND_SHIFT,  // (b h w)
-    FRAME_CHUNKY = AXIS_AFTER  << BAND_SHIFT,  // (h w b)
+// Append-only frame_unit registry. The array index is the stored value. Units
+// 0 and 9 have the same decoded shape but different b/t index order.
+struct UnitRow {
+    std::array<std::uint8_t, MAX_AXES> axes;
+    std::uint8_t                       ndim;
+    bool                               time_first;
 };
 
-[[nodiscard]] constexpr std::uint8_t band_position(std::uint8_t u) noexcept {
-    return (u >> BAND_SHIFT) & AXIS_MASK;
-}
+inline constexpr std::array<UnitRow, 10> UNIT_REGISTRY{{
+    {{AXIS_H, AXIS_W},                       2, false},  // 0  h w
+    {{AXIS_ONE, AXIS_H, AXIS_W},             3, false},  // 1  A h w
+    {{AXIS_H, AXIS_W, AXIS_ONE},             3, false},  // 2  h w A
+    {{AXIS_BAND, AXIS_TIME, AXIS_H, AXIS_W}, 4, false},  // 3  b t h w
+    {{AXIS_TIME, AXIS_BAND, AXIS_H, AXIS_W}, 4, false},  // 4  t b h w
+    {{AXIS_BAND, AXIS_H, AXIS_W, AXIS_TIME}, 4, false},  // 5  b h w t
+    {{AXIS_TIME, AXIS_H, AXIS_W, AXIS_BAND}, 4, false},  // 6  t h w b
+    {{AXIS_H, AXIS_W, AXIS_BAND, AXIS_TIME}, 4, false},  // 7  h w b t
+    {{AXIS_H, AXIS_W, AXIS_TIME, AXIS_BAND}, 4, false},  // 8  h w t b
+    {{AXIS_H, AXIS_W},                       2, true },  // 9  h w, t then b
+}};
 
-// A frame that does not hold the band axis holds one band, so the frame index
-// walks bands as well.
-[[nodiscard]] constexpr bool unit_indexes_bands(std::uint8_t u) noexcept {
-    return band_position(u) == AXIS_ABSENT;
-}
+enum FrameUnit : std::uint8_t {
+    FRAME_TILE   = 0,  // (h w)
+    FRAME_PLANAR = 1,  // non-spatial axis before h w
+    FRAME_CHUNKY = 2,  // non-spatial axis after h w
+};
 
-// A chunky frame interleaves the bands of a pixel, so it has no band planes.
-[[nodiscard]] constexpr bool unit_is_chunky(std::uint8_t u) noexcept {
-    return band_position(u) == AXIS_AFTER;
-}
-
-// Every field names a position and no bit is left over.
 [[nodiscard]] constexpr bool unit_is_defined(std::uint8_t u) noexcept {
-    return (u & ~UNIT_BITS) == 0 && band_position(u) != AXIS_MASK;
+    return u < UNIT_REGISTRY.size();
+}
+
+// Number of non-spatial axes with extent greater than one.
+[[nodiscard]] constexpr int
+axes_present(std::uint16_t bands, std::uint32_t times) noexcept {
+    return int(bands > 1) + int(times > 1);
+}
+
+// Validate a registry unit against the band and time extents.
+[[nodiscard]] constexpr bool
+unit_valid_for(std::uint8_t u, std::uint16_t bands, std::uint32_t times) noexcept {
+    if (!unit_is_defined(u) || bands == 0 || times == 0) return false;
+    const int have = axes_present(bands, times);
+    if (u == 0) return true;
+    if (u == 1 || u == 2) return have == 1;
+    return have == 2;
+}
+
+// Resolve a unit's decoded axes. Return zero when the unit is invalid.
+[[nodiscard]] constexpr std::size_t
+unit_axes(std::uint8_t u, std::uint16_t bands, std::uint32_t times,
+          std::array<std::uint8_t, MAX_AXES>& out) noexcept {
+    if (!unit_valid_for(u, bands, times)) return 0;
+    const UnitRow& row = UNIT_REGISTRY[u];
+    const std::uint8_t only = bands > 1 ? AXIS_BAND : AXIS_TIME;
+    for (std::size_t i = 0; i < row.ndim; ++i)
+        out[i] = row.axes[i] == AXIS_ONE ? only : row.axes[i];
+    return row.ndim;
+}
+
+[[nodiscard]] constexpr bool
+unit_holds(std::uint8_t u, std::uint8_t axis, std::uint16_t bands,
+           std::uint32_t times) noexcept {
+    std::array<std::uint8_t, MAX_AXES> a{};
+    const std::size_t n = unit_axes(u, bands, times, a);
+    for (std::size_t i = 0; i < n; ++i) if (a[i] == axis) return true;
+    return false;
+}
+
+// An axis is indexed when it is not contained in the frame.
+[[nodiscard]] constexpr bool
+unit_indexes_bands(std::uint8_t u, std::uint16_t bands,
+                   std::uint32_t times) noexcept {
+    return !unit_holds(u, AXIS_BAND, bands, times);
+}
+
+[[nodiscard]] constexpr bool
+unit_indexes_time(std::uint8_t u, std::uint16_t bands,
+                  std::uint32_t times) noexcept {
+    return !unit_holds(u, AXIS_TIME, bands, times);
+}
+
+// Multiply two uint64 values without overflow.
+[[nodiscard]] constexpr bool
+mul_ok(std::uint64_t a, std::uint64_t b, std::uint64_t* out) noexcept {
+    return !__builtin_mul_overflow(a, b, out);
+}
+
+// Compute frame count from the grid and indexed axes. Return false on overflow.
+[[nodiscard]] constexpr bool
+frame_count_of(std::uint8_t unit, std::uint64_t across, std::uint64_t down,
+               std::uint16_t bands, std::uint32_t times,
+               std::uint64_t* out) noexcept {
+    std::uint64_t n = 0;
+    if (__builtin_mul_overflow(across, down, &n)) return false;
+    if (unit_indexes_bands(unit, bands, times)) {
+        if (__builtin_mul_overflow(n, std::uint64_t(bands), &n)) return false;
+    }
+    if (unit_indexes_time(unit, bands, times)) {
+        if (__builtin_mul_overflow(n, std::uint64_t(times), &n)) return false;
+    }
+    *out = n;
+    return true;
+}
+
+// Sample stride along x in the decoded frame layout.
+[[nodiscard]] constexpr std::uint64_t
+unit_pixel_step(std::uint8_t u, std::uint16_t bands,
+                std::uint32_t times) noexcept {
+    std::array<std::uint8_t, MAX_AXES> a{};
+    const std::size_t n = unit_axes(u, bands, times, a);
+    std::uint64_t step = 1;
+    bool behind = false;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (a[i] == AXIS_W) { behind = true; continue; }
+        if (!behind || a[i] == AXIS_H) continue;
+        step *= a[i] == AXIS_BAND ? bands : times;
+    }
+    return step;
+}
+
+// Sample offset of one (band, time) plane in a C-contiguous decoded frame.
+[[nodiscard]] constexpr std::uint64_t
+unit_plane_offset(std::uint8_t u, std::uint16_t bands, std::uint32_t times,
+                  std::uint32_t band, std::uint32_t time,
+                  std::uint32_t h, std::uint32_t w) noexcept {
+    std::array<std::uint8_t, MAX_AXES> a{};
+    const std::size_t n = unit_axes(u, bands, times, a);
+    std::uint64_t stride = 1, off = 0;
+    for (std::size_t i = n; i-- > 0;) {
+        if (a[i] == AXIS_BAND) { off += std::uint64_t(band) * stride; stride *= bands; }
+        else if (a[i] == AXIS_TIME) { off += std::uint64_t(time) * stride; stride *= times; }
+        else stride *= (a[i] == AXIS_H ? h : w);
+    }
+    return off;
 }
 
 // The frame's axis order for a unit, such as "b h w". Empty names no layout.
-[[nodiscard]] std::string_view unit_name(std::uint8_t unit) noexcept;
+[[nodiscard]] std::string
+unit_name(std::uint8_t unit, std::uint16_t bands, std::uint32_t times);
 
-// The unit an axis order names, or an error naming what rumi does define.
+// The letter a pattern writes for an axis role, or an empty view.
+[[nodiscard]] std::string_view axis_name(std::uint8_t axis) noexcept;
+
+// Indexed axes from outermost to innermost, omitting singleton axes.
+[[nodiscard]] std::size_t
+unit_index_axes(std::uint8_t unit, std::uint16_t bands, std::uint32_t times,
+                std::array<std::uint8_t, 2>& out) noexcept;
+
+// Resolve an axis order to a frame unit.
 [[nodiscard]] std::expected<std::uint8_t, std::string>
-unit_from_name(std::string_view name);
+unit_from_name(std::string_view name, std::uint16_t bands, std::uint32_t times);
 
-// The IFD tag that carries frame_unit, so a bare file names its own layout.
-// TIFF leaves 65000 and above private, and rumi accepts only its own fixed set
-// of tags anyway.
+// Private IFD tag containing frame_unit.
 inline constexpr std::uint16_t TAG_FRAME_UNIT = 65000;
 
-// With one band every layout holds the same bytes, so a writer records the tile
-// unit and every reader agrees without asking which it was.
+// Private IFD tag containing time_count.
+inline constexpr std::uint16_t TAG_TIME_COUNT = 65001;
+
+
+// Every file ends with a time trailer; undefined time uses TIME_UNDEFINED.
+
+// TIME_MAGIC is ASCII "TIME" on the wire.
+inline constexpr std::uint32_t TIME_MAGIC   = 0x454D4954;
+inline constexpr std::uint16_t TIME_VERSION = 1;
+inline constexpr std::size_t   TRAILER_SIZE = 28;
+inline constexpr std::int64_t  TIME_DAY     = 86400;
+
+enum TimeType : std::uint8_t {
+    TIME_UNDEFINED = 0,
+    TIME_INTERVAL  = 1,
+    TIME_INSTANT   = 2,
+};
+
+#pragma pack(push, 1)
+struct TimeTrailer {
+    std::uint32_t magic;
+    std::uint16_t version;
+    std::uint8_t  time_type;
+    std::uint8_t  time_bits;
+    std::int64_t  time_epoch;
+    std::int64_t  time_step;
+    std::uint32_t time_scale;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(TimeTrailer) == TRAILER_SIZE);
+static_assert(std::is_trivially_copyable_v<TimeTrailer>);
+
+// Decoded time axis. scale converts each coordinate unit to POSIX seconds.
+struct TimeAxis {
+    std::uint8_t              type{TIME_UNDEFINED};
+    std::uint32_t             scale{1};
+    std::vector<std::int64_t> coords;
+};
+
+// Convert POSIX seconds to a time axis with the canonical storage scale.
+[[nodiscard]] std::expected<TimeAxis, std::string>
+axis_from_seconds(std::uint8_t type, std::span<const std::int64_t> seconds);
+
+// The trailer bytes for an axis, fixed part and packed residuals.
+[[nodiscard]] std::expected<std::vector<std::byte>, std::string>
+encode_time(const TimeAxis& axis, std::uint32_t time_count);
+
+// Decode and validate a trailer at the start of bytes.
+[[nodiscard]] std::expected<TimeAxis, std::string>
+decode_time(std::span<const std::byte> bytes, std::uint32_t time_count);
+
+// Read the time axis from a local rumi file.
+[[nodiscard]] std::expected<TimeAxis, std::string>
+read_time_from_file(const char* path);
+
+// Number of stored coordinates for T time steps.
+[[nodiscard]] constexpr std::uint64_t
+time_coord_count(std::uint8_t type, std::uint32_t t) noexcept {
+    return type == TIME_UNDEFINED ? 0
+         : type == TIME_INTERVAL  ? std::uint64_t(t) * 2
+                                  : std::uint64_t(t);
+}
+
+// Return the equivalent frame unit with singleton axes omitted.
 [[nodiscard]] constexpr std::uint8_t
-effective_unit(std::uint8_t u, std::uint16_t spp) noexcept {
-    return spp == 1 ? FRAME_TILE : u;
+effective_unit(std::uint8_t u, std::uint16_t bands, std::uint32_t times) noexcept {
+    if (!unit_is_defined(u) || unit_valid_for(u, bands, times)) return u;
+    std::array<std::uint8_t, MAX_AXES> want{};
+    std::size_t nw = 0;
+    const UnitRow& row = UNIT_REGISTRY[u];
+    const std::uint8_t only = bands > 1 ? AXIS_BAND : AXIS_TIME;
+    for (std::size_t i = 0; i < row.ndim; ++i) {
+        const std::uint8_t a = row.axes[i] == AXIS_ONE ? only : row.axes[i];
+        if ((a == AXIS_BAND && bands <= 1) || (a == AXIS_TIME && times <= 1))
+            continue;
+        want[nw++] = a;
+    }
+    for (std::uint8_t k = 0; k < UNIT_REGISTRY.size(); ++k) {
+        std::array<std::uint8_t, MAX_AXES> got{};
+        const std::size_t ng = unit_axes(k, bands, times, got);
+        if (ng != nw) continue;
+        bool same = true;
+        for (std::size_t i = 0; i < ng; ++i) same &= got[i] == want[i];
+        if (same) return k;
+    }
+    return u;
 }
 
 enum class ParseError {
@@ -148,6 +339,7 @@ enum class ParseError {
     blob_size_mismatch,
     frame_count_overflow,
     frame_size_overflow,
+    frame_too_large,
     index_too_large,
     non_positive_frame_byte_count,
     offset_overflow,
@@ -162,8 +354,7 @@ enum class ParseError {
 [[nodiscard]] std::uint64_t derived_base_offset(std::uint32_t bands,
                                                 std::uint64_t frames) noexcept;
 
-// The two header fields that describe the packing, and the size of the region
-// they describe. One implementation so the two write paths cannot drift.
+// Canonical count packing and packed-region size.
 struct CountPacking {
     std::uint32_t min;
     std::uint8_t  bits;
@@ -182,6 +373,7 @@ struct Header {
     std::uint32_t image_length{};
     std::uint16_t tile_width{};
     std::uint16_t tile_length{};
+    std::uint32_t time_count{};
     std::uint16_t samples_per_pixel{};
     std::uint8_t  bits_per_sample{};
     std::uint8_t  sample_format{};
@@ -197,8 +389,7 @@ struct Header {
 
     std::vector<std::uint32_t> frame_byte_counts;
     std::vector<std::uint64_t> frame_offsets;
-    // A very large constant-count header stays compact instead of expanding a
-    // few untrusted bytes into gigabytes of index vectors.
+    // Constant counts remain implicit to avoid per-frame index allocations.
     std::uint32_t constant_frame_byte_count{};
 
     [[nodiscard]] std::uint32_t
@@ -223,14 +414,22 @@ struct Header {
                 : frame_offsets.back() + frame_byte_counts.back());
     }
 
-    // A frame that holds every band ignores band, so the index is the grid
-    // position alone.
-    [[nodiscard]] std::uint32_t frame_index(std::uint32_t row,
+    // Grid position is outermost, followed by the indexed axes in unit order.
+    [[nodiscard]] std::uint64_t frame_index(std::uint32_t row,
                                             std::uint32_t col,
-                                            std::uint32_t band) const noexcept {
-        const std::uint32_t spatial = row * tiles_across + col;
-        return unit_indexes_bands(frame_unit)
-             ? spatial * samples_per_pixel + band : spatial;
+                                            std::uint32_t band,
+                                            std::uint32_t time) const noexcept {
+        std::uint64_t idx = std::uint64_t(row) * tiles_across + col;
+        const bool tf = UNIT_REGISTRY[frame_unit].time_first;
+        const std::uint8_t order[2] = { tf ? AXIS_TIME : AXIS_BAND,
+                                        tf ? AXIS_BAND : AXIS_TIME };
+        for (const std::uint8_t ax : order) {
+            if (unit_holds(frame_unit, ax, samples_per_pixel, time_count))
+                continue;
+            idx = ax == AXIS_BAND ? idx * samples_per_pixel + band
+                                  : idx * time_count + time;
+        }
+        return idx;
     }
 };
 
@@ -238,13 +437,11 @@ struct Header {
 [[nodiscard]] std::expected<Header, ParseError>
 parse_blob(std::span<const std::byte> blob);
 
-// The dtype table, generated from rumi_dtypes.def, and its length. The single
-// place the type set is enumerated. Every function below is a view over it.
+// Return the dtype registry generated from rumi_dtypes.def.
 [[nodiscard]] const rumi_dtype_info*
 dtype_table(std::size_t* count) noexcept;
 
-// The canonical (sample_format, bits) to rumi_dtype map, RUMI_DT_UNKNOWN when
-// the pair is not one rumi supports. This is the validity gate.
+// Resolve a sample encoding, or return RUMI_DT_UNKNOWN.
 [[nodiscard]] rumi_dtype
 sample_to_dtype(std::uint8_t sample_format,
                 std::uint8_t bits_per_sample) noexcept;
@@ -252,16 +449,15 @@ sample_to_dtype(std::uint8_t sample_format,
 [[nodiscard]] std::size_t dtype_size(rumi_dtype dt) noexcept;
 
 
-// Sources
+// Sources.
 
-// A byte range in the file, as plan_ranges reports them.
+// Compressed frame byte range.
 struct Range {
     std::uint64_t offset;
     std::uint64_t length;
 };
 
-// Where frame bytes come from. read() runs on every worker at once, so an
-// implementation has to be safe under concurrent calls.
+// Concurrent positional byte source.
 class Source {
 public:
     virtual ~Source() = default;
@@ -297,7 +493,7 @@ private:
     std::uint64_t size_{};
 };
 
-// A buffer the caller holds. Borrows, so the buffer has to outlive the source.
+// Borrowed memory buffer; the caller keeps it alive with the source.
 class MemorySource final : public Source {
 public:
     MemorySource(const void* data, std::size_t size) noexcept
@@ -314,29 +510,26 @@ private:
 };
 
 
-// Plan / Executor
+// Planning and decoding.
 
 struct FrameSpec {
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint8_t  bytes_per_sample;
-    std::size_t   frame_bytes;  // largest decoded frame, the scratch bound;
-                                // each task carries its actual edge size
+    // Logical sample width; unused high bits of padded samples must be zero.
+    std::uint8_t  bits_per_sample;
+    // Maximum decoded frame size used to allocate worker scratch buffers.
+    std::size_t   frame_bytes;
 };
 
-// One compressed frame. When direct is set it decompresses straight into the
-// output; otherwise it lands in scratch and the w x h rect is copied to dst.
-// plane_bytes is the step from one band to the next, which is a whole plane in
-// (b h w) and a single sample in (h w b).
-// All positions are in the result buffer, never the disk layout. frame_width
-// and frame_bytes carry the actual edge dimensions, not the nominal tile size.
+// Decode task for one compressed frame. Direct tasks target the output buffer;
+// other tasks decode to scratch before copying the requested rectangle.
 struct FrameTask {
     Source*       source;
     std::uint64_t offset;
     std::uint32_t compressed_size;
     std::uint32_t frame_width;
     std::size_t   frame_bytes;
-    std::size_t   plane_bytes;
     std::byte*    direct;
     std::byte*    dst;
     std::uint32_t src_x;
@@ -345,22 +538,32 @@ struct FrameTask {
     std::uint32_t h;
     std::size_t   dst_pitch;
     std::size_t   dst_pixel_stride;
-    // Bytes between one sample and the next along x inside the frame. Equal to
-    // the sample size unless a chunky frame puts the bands there.
+    // Bytes between adjacent x samples in the decoded frame.
     std::size_t   src_pixel_stride;
-    // Bands this task serves. Plane planes[k] goes to dst + k * band_space.
-    const std::uint32_t* planes;
-    std::uint32_t        plane_count;
-    std::int64_t         band_space;
+    // Source and destination offsets for each selected plane. offset_at points
+    // into Plan's backing vectors until bind_offsets assigns stable pointers.
+    const std::int64_t* src_offset;
+    const std::int64_t* dst_offset;
+    std::uint32_t       offset_at;
+    std::uint32_t       plane_count;
     std::uint32_t image;  // 1-based n in a stack read, 0 for a single image
 };
 
 struct Plan {
     std::vector<FrameTask> tasks;
     FrameSpec              spec;
-    // Backs FrameTask::planes, one entry per requested band.
-    std::vector<std::uint32_t> plane_index;
+    // Backing storage for FrameTask plane offsets.
+    std::vector<std::int64_t> src_offset;
+    std::vector<std::int64_t> dst_offset;
 };
+
+// Bind task pointers after the offset vectors stop growing.
+inline void bind_offsets(Plan& plan) noexcept {
+    for (FrameTask& t : plan.tasks) {
+        t.src_offset = plan.src_offset.data() + t.offset_at;
+        t.dst_offset = plan.dst_offset.data() + t.offset_at;
+    }
+}
 
 class Executor {
 public:
@@ -381,9 +584,7 @@ private:
 
 [[nodiscard]] FrameSpec make_frame_spec(const Header& h) noexcept;
 
-// Maps a window/band/stride request onto FrameTasks. Callers validate the
-// window and band indices (1-based) beforehand. The reader is shared by every
-// task and must outlive the run.
+// Build decode tasks for a validated window and 1-based band selection.
 [[nodiscard]] Plan
 build_plan(const Header& h, Source* source,
            int x_off, int y_off, int x_size, int y_size,
@@ -392,76 +593,88 @@ build_plan(const Header& h, Source* source,
            std::int64_t pixel_space, std::int64_t line_space, std::int64_t band_space);
 
 
-// Layout
+// Layout.
 
-// Output placement from compile_layout. sn/sb/sy/sx are per-axis element
-// strides, scaled by bytes_per_sample at read time. native means the block is
-// already plain (n, b, y, x) C-contiguous so a binding adopts it without a
-// copy.
-// A compiled frame pattern. input holds the role of each of the caller's axes
-// in its own order, so a binding knows how to reach canonical order; frame
-// holds the roles inside one frame, in order.
+// Compiled frame pattern. input and frame preserve their textual axis order;
+// index is outermost first. frame_unit_for resolves singleton extents.
 struct FramePattern {
-    std::uint8_t                       frame_unit{};
     std::array<std::uint8_t, MAX_AXES> input{};
     std::size_t                        input_ndim{};
     std::array<std::uint8_t, MAX_AXES> frame{};
     std::size_t                        frame_ndim{};
+    // The axes the frame index walks, outermost first.
+    std::array<std::uint8_t, 2>        index{};
+    std::size_t                        index_ndim{};
 };
 
 // Parses "b (row h) (col w) -> row col (b h w)". Allocates, so not noexcept.
 [[nodiscard]] std::expected<FramePattern, std::string>
 compile_frame_pattern(std::string_view pattern);
 
-// Everything a caller needs to cut frame `index` out of its own array: where
-// the frame sits, how far the tile reaches, and the shape it must arrive in.
+// Position, clipped shape, and input permutation for one frame index.
 struct FrameAt {
-    std::uint32_t                      row{}, col{}, band{}, h{}, w{};
+    std::uint32_t                      row{}, col{}, band{}, time{}, h{}, w{};
     std::array<std::int64_t, MAX_AXES> dims{};
+    // How to permute a cut taken in canonical order, the axes the frame holds
+    // in b then t order followed by h and w, into the layout's own order.
+    std::array<std::uint8_t, MAX_AXES> perm{};
     std::size_t                        ndim{};
 };
 
 [[nodiscard]] std::expected<FrameAt, std::string>
 frame_at_index(std::uint8_t unit, std::uint32_t width, std::uint32_t length,
-               std::uint16_t tile, std::uint16_t bands, std::uint64_t index);
+               std::uint16_t tile, std::uint16_t bands, std::uint32_t times,
+               std::uint64_t index);
 
 // Grid and frame count for a description, the same arithmetic the writer uses.
 [[nodiscard]] std::expected<std::uint64_t, std::string>
 frame_geometry(std::uint8_t unit, std::uint32_t width, std::uint32_t length,
-               std::uint16_t tile, std::uint16_t bands,
+               std::uint16_t tile, std::uint16_t bands, std::uint32_t times,
                std::uint32_t* across, std::uint32_t* down);
 
+// The registry value a compiled pattern names for a raster of this shape.
+[[nodiscard]] std::expected<std::uint8_t, std::string>
+frame_unit_for(const FramePattern& p, std::uint16_t bands, std::uint32_t times);
+
+// The axes a result may carry, in canonical order.
+enum OutAxis : std::size_t { OUT_N = 0, OUT_T = 1, OUT_B = 2, OUT_Y = 3, OUT_X = 4 };
+inline constexpr std::size_t OUT_NDIM = 5;
+
 struct LayoutPlan {
-    std::vector<std::int64_t> shape;
-    std::int64_t              sn{};
-    std::int64_t              sb{};
-    std::int64_t              sy{};
-    std::int64_t              sx{};
-    bool                      native{};
+    std::vector<std::int64_t>              shape;
+    std::array<std::int64_t, OUT_NDIM>     stride{};
+    bool                                   native{};
 };
 
-// Maps a pattern to per-axis strides for a read of size (n, b, y, x), the
-// post-selection extents. A single image uses n = 1 with no n in the pattern.
-// Whole-axis permute and merge only. Allocates, so not noexcept.
+// Compile output shape and element strides for post-selection extents
+// (n, t, b, y, x). Omitted axes must have extent one.
 [[nodiscard]] std::expected<LayoutPlan, std::string>
 compile_layout(std::string_view pattern,
-               std::int64_t n, std::int64_t b,
+               std::int64_t n, std::int64_t t, std::int64_t b,
                std::int64_t y, std::int64_t x);
 
 
-// Threads
+// Resource limits.
 
-// Process-wide default, seeded from RUMI_NUM_THREADS. The first parallel read
-// pins the count. A forked child initializes its own setting and pool.
+// Default maximum decoded frame allocation. This is an implementation resource
+// limit, not a format constraint. Passing zero to set_max_frame_bytes restores
+// this value.
+inline constexpr std::uint64_t DEFAULT_MAX_FRAME_BYTES = 1ull << 30;
+
+std::uint64_t set_max_frame_bytes(std::uint64_t n) noexcept;
+[[nodiscard]] std::uint64_t max_frame_bytes() noexcept;
+
+// Threads.
+
+// Process-wide read thread count. The first parallel read pins the value; a
+// forked child initializes its own value and pool.
 int set_num_threads(int n) noexcept;
 [[nodiscard]] int num_threads() noexcept;
 
 
-// Read
+// Reading.
 
-// Refines the status of the most recent read_window or read_stack call on the
-// calling thread, then resets it. Lets the C ABI return a precise rumi_status
-// without changing the read_window error type. Defaults to RUMI_ERR_IO.
+// Return and reset the detailed status of the latest read on this thread.
 [[nodiscard]] rumi_status take_read_status() noexcept;
 
 // Rejects a header whose frames run past the end of the source, a truncated file
@@ -469,42 +682,51 @@ int set_num_threads(int n) noexcept;
 [[nodiscard]] std::expected<void, std::string>
 check_data_fits(const Header& h, const Source& src);
 
-// The byte ranges a window needs, in frame order. Arithmetic over the header
-// alone, no I/O, so a caller can fetch just these and pass them to a
-// MemorySource.
+// Compute required ranges from the external header without I/O.
 [[nodiscard]] std::vector<Range>
-plan_ranges(const Header& h, std::span<const int> bands,
+plan_ranges(const Header& h, std::span<const int> times,
+            std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size);
 
-// Plans the window, runs it, and returns. bands are 1-based, dst must be
-// aligned to bytes_per_sample. num_threads <= 0 takes the process-wide count,
-// 1 stays on the calling thread and never builds the pool, more asks for that
-// many and gets the pool's size if one already exists.
+// Resource-bounded form of plan_ranges.
+[[nodiscard]] std::expected<std::vector<Range>, std::string>
+plan_ranges_checked(const Header& h, std::span<const int> times,
+                    std::span<const int> bands,
+                    int y_off, int y_size, int x_off, int x_size);
+
+// Read a validated window into dst. Band and time indices are 1-based.
+// num_threads <= 0 uses the process-wide count; 1 runs serially.
 [[nodiscard]] std::expected<void, std::string>
 read_window(Source& src, const Header& h,
-            std::span<const int> bands,
+            std::span<const int> times, std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
-            const LayoutPlan& layout, std::byte* dst,
-            int num_threads);
+            const LayoutPlan& layout, std::byte* dst);
 
 // Validates that every header shares grid, tile size, band count and dtype,
-// then reads each selected asset (n_index, 1-based) into its layout.sn slice
-// of dst.
+// then reads each selected asset (n_index, 1-based) into its OUT_N slice of
+// dst.
 [[nodiscard]] std::expected<void, std::string>
 read_stack(std::span<Source* const> sources,
            std::span<const Header* const> headers,
            std::span<const int> n_index,
-           std::span<const int> bands,
+           std::span<const int> times, std::span<const int> bands,
            int y_off, int y_size, int x_off, int x_size,
-           const LayoutPlan& layout, std::byte* dst,
-           int num_threads);
+           const LayoutPlan& layout, std::byte* dst);
 
 
-// Builder
+// Indexing.
 
-// Stays noexcept. Its large allocations are wrapped and reported as a string.
+// Georeferencing parsed while indexing a file.
+struct FileGeo {
+    double        transform[6]{};   // x_res, row_rot, x_origin, col_rot, y_res, y_origin
+    std::uint32_t epsg{};           // 0 when the file records no CRS
+    bool          pixel_is_point{};
+};
+
+// Validate a file and build its external header. Optionally return its
+// georeferencing.
 [[nodiscard]] std::expected<std::vector<std::byte>, std::string>
-build_blob_from_file(const char* path) noexcept;
+build_blob_from_file(const char* path, FileGeo* geo = nullptr) noexcept;
 
 // Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned, malloc'd data
 // that the tensor deleter frees. nullptr when the dtype has no DLPack code.
@@ -512,7 +734,7 @@ build_blob_from_file(const char* path) noexcept;
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;
 
-// GeoTIFF key payloads. The fixed EPSG profile uses only directory.
+// GeoKey payloads. rumi's fixed EPSG profile uses only directory.
 struct GeoKeys {
     std::vector<std::byte> directory;      // GeoKeyDirectory, SHORT
     std::vector<std::byte> double_params;  // GeoDoubleParams, DOUBLE
@@ -523,21 +745,19 @@ struct GeoKeys {
 [[nodiscard]] std::expected<GeoKeys, std::string>
 build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept;
 
-// What GTModelTypeGeoKey must hold for this code. 1 projected, 2 geographic,
-// 0 when the EPSG registry does not name it. A reader validating a file needs
-// the same answer the writer used.
+// Return the required GTModelTypeGeoKey value for an EPSG code: 1 projected,
+// 2 geographic, or 0 when unknown.
 [[nodiscard]] std::uint16_t epsg_model_type(std::uint32_t epsg) noexcept;
 
 
-// Writer
+// Writing.
 
-// One image to write. transform is six affine coefficients in the order
-// (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), null when
-// the image carries no georeferencing, in which case epsg is 0 too and the
-// file gets the identity matrix with an undefined CRS.
+// Description of one file to write. transform contains six affine coefficients;
+// undefined georeferencing uses a null transform and EPSG 0.
 struct WriteDesc {
     std::uint32_t   image_width{};
     std::uint32_t   image_length{};
+    std::uint32_t   time_count{1};
     std::uint16_t   tile_size{};
     std::uint16_t   samples_per_pixel{};
     rumi_dtype      dtype{RUMI_DT_UNKNOWN};
@@ -545,11 +765,14 @@ struct WriteDesc {
     std::uint32_t   epsg{};
     bool            pixel_is_point{};
     std::uint8_t    frame_unit{};
+    // Time axis written to the trailer.
+    TimeAxis        time{};
 };
 
-// Writes the BigTIFF and returns the sidecar blob for it. frames are the
-// compressed payloads in frame order. For tile frames the order is row,
-// column, sample with sample innermost; cell frames are row then column.
+// Writes the file and returns the sidecar blob for it. frames are the
+// compressed payloads in frame-index order: the grid row by row, and then
+// whichever of bands and time steps the frame does not hold, in the order the
+// unit fixes. A frame holding both is one per grid position.
 [[nodiscard]] std::expected<std::vector<std::byte>, std::string>
 write_file(const char* path, const WriteDesc& desc,
            const unsigned char* const* frames, const std::size_t* sizes,

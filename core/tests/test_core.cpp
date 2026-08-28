@@ -1,5 +1,4 @@
-// The pieces the Python suite cannot reach directly. End to end lives in
-// bindings/python/tests.
+// Component tests for internal APIs not exposed to Python.
 
 #include "rumi/rumi.hpp"
 #include "rumi/thread_pool.hpp"
@@ -53,10 +52,10 @@ void ok_at(int line, bool cond, const char* expr)
 #define OK(cond)      ok_at(__LINE__, (cond), #cond)
 #define CASE(name)    current = name; std::printf("%s\n", name);
 
-// Kept independent of the implementation so the two can disagree.
+// Independent base-offset formula from the specification.
 std::uint64_t derived_base(std::uint32_t bands, std::uint64_t tiles)
 {
-    const std::uint64_t ifd = 8 + 20 * 12 + 8;   // 284 joined the fixed set
+    const std::uint64_t ifd = 8 + 20 * 13 + 8;   // FrameUnit and TimeCount
     std::uint64_t external = 128 + 32;
     if (bands >= 5) external += 2 * bands * 2;      // 258 and 339
     if (tiles >= 2) external += 8 * tiles;          // 324
@@ -103,6 +102,7 @@ std::vector<std::byte> make_blob(std::uint32_t w, std::uint32_t h,
     bh.version           = rumi::VERSION;
     bh.image_width       = w;
     bh.image_length      = h;
+    bh.time_count        = 1;
     bh.tile_width        = tile;
     bh.tile_length       = tile;
     bh.samples_per_pixel = bands;
@@ -225,11 +225,11 @@ void test_parse_blob()
 
     CASE("offsets are a prefix sum from the base")
     if (h) {
-        EQ(h->frame_offset(0), std::uint64_t(480));
-        EQ(h->frame_offset(1), std::uint64_t(490));
-        EQ(h->frame_offset(2), std::uint64_t(510));
-        EQ(h->frame_offset(3), std::uint64_t(540));
-        EQ(h->data_end(), std::uint64_t(580));
+        EQ(h->frame_offset(0), std::uint64_t(500));
+        EQ(h->frame_offset(1), std::uint64_t(510));
+        EQ(h->frame_offset(2), std::uint64_t(530));
+        EQ(h->frame_offset(3), std::uint64_t(560));
+        EQ(h->data_end(), std::uint64_t(600));
     }
 
     CASE("the frame index walks row major with the band innermost")
@@ -238,10 +238,10 @@ void test_parse_blob()
     OK(multi.has_value());
     if (multi) {
         EQ(multi->tiles_across, 4u);
-        EQ(multi->frame_index(0, 0, 0), 0u);
-        EQ(multi->frame_index(0, 0, 2), 2u);
-        EQ(multi->frame_index(0, 1, 0), 3u);
-        EQ(multi->frame_index(1, 0, 0), 12u);
+        EQ(multi->frame_index(0, 0, 0, 0), 0u);
+        EQ(multi->frame_index(0, 0, 2, 0), 2u);
+        EQ(multi->frame_index(0, 1, 0, 0), 3u);
+        EQ(multi->frame_index(1, 0, 0, 0), 12u);
     }
 
     CASE("sub-byte frames use padded decoded storage at any tile size")
@@ -275,6 +275,7 @@ void test_parse_blob()
     rumi::BlobHeader constant{};
     constant.magic             = rumi::MAGIC;
     constant.version           = rumi::VERSION;
+    constant.time_count        = 1;
     constant.image_width       = 385896268;  // minimized fuzz regression
     constant.image_length      = 262144;
     constant.tile_width        = 11567;
@@ -295,7 +296,8 @@ void test_parse_blob()
         EQ(compact->frame_offset(123),
            compact->base_frame_offset + std::uint64_t(123) * 65536);
         const int first_band[] = {1};
-        const auto ranges = rumi::plan_ranges(*compact, first_band,
+        const int one_time[] = {1};
+        const auto ranges = rumi::plan_ranges(*compact, one_time, first_band,
                                                0, 1, 0, 1);
         EQ(ranges.size(), std::size_t(1));
         if (!ranges.empty()) {
@@ -311,6 +313,7 @@ void test_parse_blob()
     rumi::BlobHeader variable{};
     variable.magic             = rumi::MAGIC;
     variable.version           = rumi::VERSION;
+    variable.time_count        = 1;
     variable.image_width       = too_many;
     variable.image_length      = 1;
     variable.tile_width        = 1;
@@ -329,7 +332,7 @@ void test_parse_blob()
     if (!rejected) OK(rejected.error() == rumi::ParseError::index_too_large);
 }
 
-// An independent unpacker. If it and the parser agree, the packing is right.
+// Independent frame-count unpacker used to verify the parser.
 std::vector<std::uint32_t> unpack_by_hand(const std::vector<std::byte>& blob,
                                           std::size_t n)
 {
@@ -361,12 +364,10 @@ void test_count_packing()
     CASE("counts survive every width from 0 to 32")
     std::uint64_t rng = 20260813;
     for (int bits = 0; bits <= 32; ++bits) {
-        // 96 frames is a 4 x 4 grid over 6 bands, and 96 * bits crosses every
-        // alignment the packer can land on.
+        // 96 residuals exercise every byte alignment for widths 0..32.
         std::vector<std::uint32_t> counts(96);
-        // The width comes from the top bit of the largest residual, so a
-        // residual of exactly that bit pins it. Going to the full 2^bits - 1
-        // would push a 32 bit case past uint32 once the minimum is added.
+        // Set the top required bit without overflowing the 32-bit case after
+        // adding count_min.
         const std::uint64_t top = bits == 0 ? 0 : std::uint64_t(1) << (bits - 1);
         for (auto& c : counts) {
             c = static_cast<std::uint32_t>(
@@ -410,7 +411,7 @@ void test_count_packing()
     OK(make_blob(32, 32, 16, 1, twice) == make_blob(32, 32, 16, 1, twice));
 
     CASE("a width wider than the counts need is refused")
-    // 40..47 fits in three bits, so claim four and repack by hand
+    // Counts 40..47 require three bits; encode them with a non-canonical four.
     const std::vector<std::uint32_t> counts{40, 41, 42, 47};
     auto wide = make_blob(32, 32, 16, 1, counts);
     {
@@ -451,22 +452,21 @@ void test_count_packing()
 
     CASE("frame_unit names a layout and nothing else")
     auto bad_unit = make_blob(32, 32, 16, 1, counts);
-    bad_unit[22] = std::byte{0xFF};   // bits no axis claims
+    bad_unit[26] = std::byte{0xFF};   // bits no axis claims
     OK(!rumi::parse_blob(bad_unit).has_value());
 
-    // A frame holding every band names one per grid position, so its count
-    // list is shorter and a tile-length one no longer fits. (b h w) and
-    // (h w b) differ only inside the frame, so both parse the same way.
+    // Cell layouts have one count per grid position. Their internal axis order
+    // does not change header parsing.
     for (std::uint8_t unit : {rumi::FRAME_PLANAR, rumi::FRAME_CHUNKY}) {
         auto cell = make_blob(32, 32, 16, 3, std::vector<std::uint32_t>(4, 9));
-        cell[22] = std::byte{unit};
+        cell[26] = std::byte{unit};
         auto cp = rumi::parse_blob(cell);
         OK(cp.has_value());
         if (cp) {
             EQ(cp->frame_unit, unit);
             EQ(cp->frame_count, 4u);
-            EQ(cp->frame_index(1, 1, 0), 3u);
-            EQ(cp->frame_index(1, 1, 2), 3u);  // band is ignored here
+            EQ(cp->frame_index(1, 1, 0, 0), 3u);
+            EQ(cp->frame_index(1, 1, 2, 0), 3u);  // band is ignored here
         }
     }
 
@@ -508,8 +508,8 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     auto rebuilt = rumi::build_blob_from_file(path);
     if (!rebuilt) { fail(__LINE__, "reread: " + rebuilt.error()); return; }
 
-    OK(*written == *rebuilt);                       // deterministic both ways
-    // count_bits is the last byte of the header, offset 27 in the spec table.
+    OK(*written == *rebuilt);                       // same canonical header
+    // count_bits is the final byte of the fixed header.
     OK(written->size() == rumi::HEADER_SIZE
           + (n * (std::size_t)std::to_integer<unsigned>(
                      (*written)[rumi::HEADER_SIZE - 1]) + 7) / 8);
@@ -521,7 +521,7 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     OK(ph->frame_count == n);
     for (std::size_t i = 0; i < n; ++i) OK(ph->frame_byte_counts[i] == sizes[i]);
 
-    // the offsets it rebuilt must be where the bytes actually landed
+    // Reconstructed offsets must point to the written payloads.
     std::FILE* f = std::fopen(path, "rb");
     OK(f != nullptr);
     if (!f) return;
@@ -531,8 +531,9 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
         OK(std::fread(got.data(), 1, sizes[i], f) == sizes[i]);
         OK(got == payload[i]);
     }
+    // Frame data ends immediately before the fixed undefined-time trailer.
     std::fseek(f, 0, SEEK_END);
-    OK((std::uint64_t)std::ftell(f) == ph->data_end());
+    OK((std::uint64_t)std::ftell(f) == ph->data_end() + rumi::TRAILER_SIZE);
     std::fclose(f);
     std::remove(path);
 }
@@ -558,21 +559,22 @@ void test_plan_ranges()
     if (!h) return;
 
     const int one_band[] = {1};
-    auto r = rumi::plan_ranges(*h, one_band, 0, 16, 0, 16);
+    const int one_time[] = {1};
+    auto r = rumi::plan_ranges(*h, one_time, one_band, 0, 16, 0, 16);
     EQ(r.size(), std::size_t(1));
     if (!r.empty()) {
-        EQ(r[0].offset, h->frame_offset(h->frame_index(0, 0, 0)));
+        EQ(r[0].offset, h->frame_offset(h->frame_index(0, 0, 0, 0)));
         EQ(r[0].length, std::uint64_t(100));
     }
 
     CASE("a window that straddles four tiles asks for four, per band")
-    auto four = rumi::plan_ranges(*h, one_band, 8, 16, 8, 16);
+    auto four = rumi::plan_ranges(*h, one_time, one_band, 8, 16, 8, 16);
     EQ(four.size(), std::size_t(4));
     const int both[] = {1, 2};
-    EQ(rumi::plan_ranges(*h, both, 8, 16, 8, 16).size(), std::size_t(8));
+    EQ(rumi::plan_ranges(*h, one_time, both, 8, 16, 8, 16).size(), std::size_t(8));
 
     CASE("the whole image asks for every frame")
-    EQ(rumi::plan_ranges(*h, both, 0, 64, 0, 64).size(), std::size_t(32));
+    EQ(rumi::plan_ranges(*h, one_time, both, 0, 64, 0, 64).size(), std::size_t(32));
 }
 
 void test_plan_ranges_c_api_rejects_invalid_requests()
@@ -588,13 +590,13 @@ void test_plan_ranges_c_api_rejects_invalid_requests()
     rumi_range* ranges = nullptr;
     std::size_t count = 0;
     const int bad_band[] = {999};
-    EQ(rumi_plan_ranges(spec, bad_band, 1, 0, 1, 0, 1,
+    EQ(rumi_plan_ranges(spec, nullptr, 0, bad_band, 1, 0, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
-    EQ(rumi_plan_ranges(spec, nullptr, 0, -1, 1, 0, 1,
+    EQ(rumi_plan_ranges(spec, nullptr, 0, nullptr, 0, -1, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
-    EQ(rumi_plan_ranges(spec, nullptr, 0, 0, 65, 0, 64,
+    EQ(rumi_plan_ranges(spec, nullptr, 0, nullptr, 0, 0, 65, 0, 64,
                         &ranges, &count), RUMI_ERR_INVALID);
-    EQ(rumi_plan_ranges(spec, bad_band, 0, 0, 1, 0, 1,
+    EQ(rumi_plan_ranges(spec, nullptr, 0, bad_band, 0, 0, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
 
     rumi_spec_destroy(spec);
@@ -633,16 +635,15 @@ void test_subbyte_dlpack_is_marked_padded()
     rumi_dlpack_free(tensor);
 }
 
-// No read here builds the pool, so this sees the count while it is still free
-// to move. The pinned side lives in bindings/python/tests/test_threads.py,
-// where each case gets its own process.
+// These checks run before pool creation. Pinned behavior is tested in isolated
+// Python processes.
 void test_thread_count()
 {
     CASE("the thread count moves until the pool exists")
     OK(rumi::global_thread_pool_size() == 0);
     EQ(rumi::set_num_threads(4), 4);
     EQ(rumi::num_threads(), 4);
-    // Out of range folds into the allowed span rather than failing.
+    // Out-of-range values are clamped.
     EQ(rumi::set_num_threads(0), 1);
     EQ(rumi::set_num_threads(1 << 20), 1024);
     EQ(rumi::num_threads(), 1024);
@@ -664,7 +665,7 @@ void test_failed_pool_construction_releases_the_count()
     }
     OK(threw);
     EQ(rumi::global_thread_pool_size(), 0u);
-    // A permanent PINNED bit would reject this change and return four.
+    // Rollback must leave the count configurable.
     EQ(rumi::set_num_threads(2), 2);
 }
 
@@ -767,8 +768,7 @@ void test_thread_pool_batches()
         for (int i = 0; i < 1000; ++i) {
             batch.submit([&ran] { ran.fetch_add(1, std::memory_order_relaxed); });
         }
-        // No explicit wait: the destructor is the lifetime guard for jobs that
-        // capture the batch while a later submission or caller unwinds.
+        // Batch destruction waits for jobs that capture its state.
     }
     EQ(ran.load(std::memory_order_relaxed), 1000);
 }
@@ -777,9 +777,7 @@ void test_thread_pool_batches()
 
 
 
-// The frame pattern. What a pattern may say is narrow, and every rejection
-// stands for a property of the format: frames are tile-interleaved, a frame
-// always holds a whole tile, and the tile stays a plane the predictor walks.
+// Frame-pattern grammar and format constraints.
 void test_frame_pattern()
 {
     CASE("the three layouts a pattern can name")
@@ -787,19 +785,22 @@ void test_frame_pattern()
         {"b (row h) (col w) -> row col (b h w)", rumi::FRAME_PLANAR, "b h w"},
         {"b (row h) (col w) -> row col b (h w)", rumi::FRAME_TILE,   "h w"},
         {"b (row h) (col w) -> row col (h w b)", rumi::FRAME_CHUNKY, "h w b"},
-        // The split names are the caller's; only the model's axes are reserved.
+        // Spatial split names are user-defined.
         {"b (r th) (c tw) -> r c (b th tw)",     rumi::FRAME_PLANAR, "b h w"},
-        // The input order is free, so (Y, X, B) needs no transpose first.
+        // Input axes may appear in any order.
         {"(row h) (col w) b -> row col (b h w)", rumi::FRAME_PLANAR, "b h w"},
-        // Whitespace carries no meaning.
+        // Whitespace is insignificant.
         {"  b ( row h )(col w)->row col( b h w ) ", rumi::FRAME_PLANAR, "b h w"},
     };
     for (const auto& g : good) {
         auto p = rumi::compile_frame_pattern(g.text);
         OK(p.has_value());
         if (!p) continue;
-        EQ(p->frame_unit, g.unit);
-        OK(rumi::unit_name(p->frame_unit) == std::string_view(g.layout));
+        auto unit = rumi::frame_unit_for(*p, 3, 1);
+        OK(unit.has_value());
+        if (!unit) continue;
+        EQ(*unit, g.unit);
+        OK(rumi::unit_name(*unit, 3, 1) == std::string(g.layout));
     }
 
     CASE("the input order is reported, so a caller can reach canonical order")
@@ -816,29 +817,29 @@ void test_frame_pattern()
     struct { const char* text; const char* because; } bad[] = {
         {"b (row h) (col w) row col (b h w)",        "one '->'"},
         {"b (row h) (col w) -> row col (b h w) -> x","one '->'"},
-        // Tile-interleaved is not negotiable.
+        // Grid axes must lead in row/column order.
         {"b (row h) (col w) -> col row (b h w)",     "grid axes lead"},
         {"b (row h) (col w) -> row (b h w)",         "grid axes lead"},
-        // The frame is the trailing group.
+        // The frame must be the trailing group.
         {"b (row h) (col w) -> (b h w) row col",     "must end in one"},
         {"b (row h) (col w) -> row col (h w) b",     "must end in one"},
         {"b (row h) (col w) -> row col b h w",       "must end in one"},
-        // The tile stays a plane.
+        // h and w remain adjacent and ordered.
         {"b (row h) (col w) -> row col (b w h)",     "adjacent"},
         {"b (row h) (col w) -> row col (h b w)",     "adjacent"},
-        // A frame always holds a whole tile.
-        {"b (row h) (col w) -> row col h (b w)",     "both spatial axes"},
-        // An axis nobody introduced is a lie the file would not record.
+        // h and w cannot become frame-index axes.
+        {"b (row h) (col w) -> row col h (b w)",     "belongs to the tile"},
+        // Output axes must be introduced by the input pattern.
         {"b (row h) (col w) -> row col ghost (b h w)", "never introduced"},
         {"b (row h) (col w) -> row col (b h z)",     "never introduced"},
         {"b (row h) (col w) -> row col (h w)",       "never placed"},
         {"b (row h) (col h) -> row col (b h h)",     "more than once"},
-        // Shape of the input.
+        // Invalid input-axis roles.
         {"y (row h) (col w) -> row col (b h w)",     "a frame may hold"},
         {"b (row h) -> row (b h)",                   "two split axes"},
         {"b (row h) (col w) (d z) -> row col (b h w)", "two split axes"},
         {"b (row h w) (col v) -> row col (b h w)",   "names two axes"},
-        // Structure.
+        // Invalid grouping structure.
         {"b (row (h)) (col w) -> row col (b h w)",   "nested"},
         {"b (row h) (col w -> row col (b h w)",      "unbalanced"},
         {"b (row h) () -> row col (b h w)",          "empty group"},
@@ -856,25 +857,24 @@ void test_frame_pattern()
     CASE("a layout round trips through its name")
     for (std::uint8_t u : {rumi::FRAME_TILE, rumi::FRAME_PLANAR,
                            rumi::FRAME_CHUNKY}) {
-        auto back = rumi::unit_from_name(rumi::unit_name(u));
+        auto back = rumi::unit_from_name(rumi::unit_name(u, 3, 1), 3, 1);
         OK(back.has_value());
         if (back) EQ(*back, u);
     }
-    OK(rumi::unit_name(0xFF).empty());
-    OK(!rumi::unit_from_name("b w h").has_value());
+    OK(rumi::unit_name(0xFF, 3, 1).empty());
+    OK(!rumi::unit_from_name("b w h", 3, 1).has_value());
 
     CASE("the grid, the count and where each frame sits")
-    // 130 x 100 on a 32 tile is 5 across by 4 down, with a ragged last row
-    // and column. Three bands.
+    // 130 x 100 with 32-pixel tiles gives a 5 x 4 grid and clipped edges.
     std::uint32_t across = 0, down = 0;
-    auto n = rumi::frame_geometry(rumi::FRAME_CHUNKY, 130, 100, 32, 3,
+    auto n = rumi::frame_geometry(rumi::FRAME_CHUNKY, 130, 100, 32, 3, 1,
                                   &across, &down);
     OK(n.has_value());
     EQ(across, 5u);
     EQ(down, 4u);
     if (n) EQ(*n, std::uint64_t(20));
 
-    auto corner = rumi::frame_at_index(rumi::FRAME_CHUNKY, 130, 100, 32, 3, 19);
+    auto corner = rumi::frame_at_index(rumi::FRAME_CHUNKY, 130, 100, 32, 3, 1, 19);
     OK(corner.has_value());
     if (corner) {
         EQ(corner->row, 3u);
@@ -888,11 +888,11 @@ void test_frame_pattern()
     }
 
     CASE("a frame holding one band makes the index walk bands too")
-    auto tiles = rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 32, 3,
+    auto tiles = rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 32, 3, 1,
                                       nullptr, nullptr);
     OK(tiles.has_value());
     if (tiles) EQ(*tiles, std::uint64_t(60));
-    auto t19 = rumi::frame_at_index(rumi::FRAME_TILE, 130, 100, 32, 3, 19);
+    auto t19 = rumi::frame_at_index(rumi::FRAME_TILE, 130, 100, 32, 3, 1, 19);
     OK(t19.has_value());
     if (t19) {
         EQ(t19->band, 1u);          // 19 % 3
@@ -902,16 +902,242 @@ void test_frame_pattern()
     }
 
     CASE("geometry refuses what it cannot answer")
-    OK(!rumi::frame_geometry(0xFF, 130, 100, 32, 3, nullptr, nullptr));
-    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 0, 100, 32, 3, nullptr, nullptr));
-    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 0, 3, nullptr, nullptr));
-    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 32, 0, nullptr, nullptr));
-    OK(!rumi::frame_at_index(rumi::FRAME_TILE, 130, 100, 32, 3, 60));
+    OK(!rumi::frame_geometry(0xFF, 130, 100, 32, 3, 1, nullptr, nullptr));
+    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 0, 100, 32, 3, 1, nullptr, nullptr));
+    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 0, 3, 1, nullptr, nullptr));
+    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 32, 0, 1, nullptr, nullptr));
+    OK(!rumi::frame_at_index(rumi::FRAME_TILE, 130, 100, 32, 3, 1, 60));
+}
+
+
+// frame_unit registry behavior across band and time extents.
+void test_frame_unit_registry()
+{
+    using rumi::unit_name;
+    using rumi::unit_valid_for;
+
+    CASE("a row that places one axis names whichever axis the raster has")
+    OK(unit_name(1, 3, 1) == "b h w");
+    OK(unit_name(1, 1, 3) == "t h w");
+    OK(unit_name(2, 3, 1) == "h w b");
+    OK(unit_name(2, 1, 3) == "h w t");
+    // Single-axis units are invalid with zero or two non-spatial axes.
+    OK(unit_name(1, 3, 3).empty());
+    OK(unit_name(1, 1, 1).empty());
+
+    CASE("a row that places two axes needs two to place")
+    OK(unit_name(3, 2, 5) == "b t h w");
+    OK(unit_name(4, 2, 5) == "t b h w");
+    OK(unit_name(5, 2, 5) == "b h w t");
+    OK(unit_name(6, 2, 5) == "t h w b");
+    OK(unit_name(7, 2, 5) == "h w b t");
+    OK(unit_name(8, 2, 5) == "h w t b");
+    for (std::uint8_t u = 3; u <= 9; ++u) OK(!unit_valid_for(u, 3, 1));
+
+    CASE("the second index order says nothing until there are two to order")
+    OK(unit_valid_for(0, 1, 1));
+    OK(!unit_valid_for(9, 3, 1));
+    OK(!unit_valid_for(9, 1, 3));
+    OK(unit_valid_for(9, 3, 3));
+    OK(unit_name(9, 3, 3) == "h w");
+    OK(!unit_valid_for(10, 3, 3));  // the registry ends at 9
+
+    CASE("a layout naming an axis of extent one is the one that leaves it out")
+    EQ(rumi::effective_unit(3, 2, 1), std::uint8_t(1));   // b t h w -> b h w
+    EQ(rumi::effective_unit(4, 1, 5), std::uint8_t(1));   // t b h w -> t h w
+    EQ(rumi::effective_unit(7, 2, 1), std::uint8_t(2));   // h w b t -> h w b
+    EQ(rumi::effective_unit(8, 1, 5), std::uint8_t(2));   // h w t b -> h w t
+    EQ(rumi::effective_unit(1, 1, 1), std::uint8_t(0));
+    EQ(rumi::effective_unit(9, 3, 1), std::uint8_t(0));
+    // With B > 1 and T > 1, units 0 and 9 remain distinct.
+    EQ(rumi::effective_unit(9, 3, 3), std::uint8_t(9));
+    EQ(rumi::effective_unit(0, 3, 3), std::uint8_t(0));
+
+    CASE("the index walks what the frame does not hold")
+    // 40 x 40 on a 16 tile is 3 x 3, with 2 bands over 5 steps.
+    std::uint32_t across = 0, down = 0;
+    auto cell = rumi::frame_geometry(3, 40, 40, 16, 2, 5, &across, &down);
+    OK(cell.has_value());
+    EQ(across, 3u);
+    EQ(down, 3u);
+    if (cell) EQ(*cell, std::uint64_t(9));
+    auto tiles = rumi::frame_geometry(0, 40, 40, 16, 2, 5, nullptr, nullptr);
+    OK(tiles.has_value());
+    if (tiles) EQ(*tiles, std::uint64_t(9 * 2 * 5));
+
+    CASE("both index orders reach every frame, and disagree on which")
+    for (std::uint8_t unit : {std::uint8_t(0), std::uint8_t(9)}) {
+        for (std::uint64_t i = 0; i < 90; ++i) {
+            auto at = rumi::frame_at_index(unit, 40, 40, 16, 2, 5, i);
+            OK(at.has_value());
+            if (!at) continue;
+            const std::uint64_t spatial = at->row * 3 + at->col;
+            const std::uint64_t want = unit == 0
+                ? (spatial * 2 + at->band) * 5 + at->time
+                : (spatial * 5 + at->time) * 2 + at->band;
+            EQ(want, i);
+        }
+    }
+    // Frame 1 distinguishes the b/t index order of units 0 and 9.
+    auto bt = rumi::frame_at_index(0, 40, 40, 16, 2, 5, 1);
+    auto tb = rumi::frame_at_index(9, 40, 40, 16, 2, 5, 1);
+    OK(bt.has_value() && tb.has_value());
+    if (bt && tb) {
+        EQ(bt->band, 0u);  EQ(bt->time, 1u);
+        EQ(tb->band, 1u);  EQ(tb->time, 0u);
+    }
+
+    CASE("a cell frame arrives in the order its unit names")
+    auto planar = rumi::frame_at_index(3, 40, 40, 16, 2, 5, 8);
+    OK(planar.has_value());
+    if (planar) {
+        EQ(planar->ndim, std::size_t(4));
+        EQ(planar->dims[0], std::int64_t(2));   // b
+        EQ(planar->dims[1], std::int64_t(5));   // t
+        EQ(planar->dims[2], std::int64_t(8));   // a ragged edge, 40 - 2 * 16
+        EQ(planar->dims[3], std::int64_t(8));
+    }
+    auto chunky = rumi::frame_at_index(8, 40, 40, 16, 2, 5, 0);
+    OK(chunky.has_value());
+    if (chunky) {
+        EQ(chunky->dims[0], std::int64_t(16));  // h
+        EQ(chunky->dims[1], std::int64_t(16));  // w
+        EQ(chunky->dims[2], std::int64_t(5));   // t
+        EQ(chunky->dims[3], std::int64_t(2));   // b
+    }
+
+    CASE("a pattern names a unit only once the shape is known")
+    auto p = rumi::compile_frame_pattern(
+        "t b (row h) (col w) -> row col t b (h w)");
+    OK(p.has_value());
+    if (p) {
+        EQ(p->index_ndim, std::size_t(2));
+        EQ(p->index[0], std::uint8_t(rumi::AXIS_TIME));
+        auto both = rumi::frame_unit_for(*p, 2, 5);
+        OK(both.has_value());
+        if (both) EQ(*both, std::uint8_t(9));
+        // With T == 1, the second index order collapses to unit 0.
+        auto flat = rumi::frame_unit_for(*p, 2, 1);
+        OK(flat.has_value());
+        if (flat) EQ(*flat, std::uint8_t(0));
+    }
+}
+
+void test_time_trailer()
+{
+    using rumi::TimeAxis;
+
+    auto trip = [](const TimeAxis& a, std::uint32_t t) -> std::size_t {
+        auto enc = rumi::encode_time(a, t);
+        OK(enc.has_value());
+        if (!enc) return 0;
+        auto dec = rumi::decode_time(*enc, t);
+        OK(dec.has_value());
+        if (dec) {
+            OK(dec->coords == a.coords);
+            EQ(dec->type, a.type);
+            EQ(dec->scale, a.type == rumi::TIME_UNDEFINED ? 1u : a.scale);
+        }
+        return enc->size();
+    };
+
+    CASE("an undefined axis is the fixed part and nothing else")
+    EQ(trip(TimeAxis{}, 1), rumi::TRAILER_SIZE);
+
+    CASE("an arithmetic axis lands on the line, so it costs nothing either")
+    TimeAxis fixed{rumi::TIME_INSTANT, 86400, {}};
+    for (int k = 0; k < 73; ++k) fixed.coords.push_back(k * 5);
+    EQ(trip(fixed, 73), rumi::TRAILER_SIZE);
+
+    CASE("a calendar axis departs from the line by a few days")
+    // Month starts in whole days produce small non-zero residuals.
+    const int len[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    TimeAxis months{rumi::TIME_INSTANT, 86400, {}};
+    std::int64_t at = 18262;
+    for (int k = 0; k < 60; ++k) { months.coords.push_back(at); at += len[k % 12]; }
+    const std::size_t calendar = trip(months, 60);
+    OK(calendar > rumi::TRAILER_SIZE);
+    EQ(calendar, std::size_t(73));
+
+    CASE("a fine scale is what makes that cost grow")
+    // Adding a time of day selects second scale and wider residuals.
+    TimeAxis noon{rumi::TIME_INSTANT, 1, {}};
+    for (std::int64_t d : months.coords) noon.coords.push_back(d * 86400 + 43200);
+    OK(trip(noon, 60) > calendar);
+
+    CASE("which is why a whole-day axis may not use it")
+    // Whole-day coordinates require day scale.
+    TimeAxis seconds{rumi::TIME_INSTANT, 1, {}};
+    for (std::int64_t d : months.coords) seconds.coords.push_back(d * 86400);
+    OK(!rumi::encode_time(seconds, 60));
+
+    CASE("an interval step carries its own start and end")
+    // Adjacent intervals may share an endpoint.
+    TimeAxis spans{rumi::TIME_INTERVAL, 86400, {0, 31, 31, 59, 59, 90}};
+    OK(trip(spans, 3) >= rumi::TRAILER_SIZE);
+
+    CASE("a gap is what two coordinates per step buy")
+    // Separate interval endpoints preserve gaps.
+    TimeAxis gappy{rumi::TIME_INTERVAL, 86400, {0, 31, 59, 90}};
+    OK(trip(gappy, 2) >= rumi::TRAILER_SIZE);
+
+    CASE("one step with an acquisition window costs nothing")
+    // Two coordinates always define the line between them.
+    TimeAxis window{rumi::TIME_INTERVAL, 1, {1724596200, 1724596500}};
+    EQ(trip(window, 1), rumi::TRAILER_SIZE);
+
+    CASE("a span past int64 is fine when the slope it implies is not")
+    // The endpoint span exceeds int64 while the resulting slope still fits.
+    TimeAxis wide{rumi::TIME_INSTANT, 1, {-4611686018427387904LL, 0,
+                                          4611686018427387904LL}};
+    EQ(trip(wide, 3), rumi::TRAILER_SIZE);
+    auto enc = rumi::encode_time(wide, 3);
+    OK(enc.has_value());
+    if (enc) {
+        std::int64_t step = 0;
+        std::memcpy(&step, enc->data() + 16, 8);
+        EQ(step, 4611686018427387904LL);
+    }
+
+    CASE("what an axis may not say")
+    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INSTANT, 86400, {0, 1}}, 3));
+    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INSTANT, 86400, {5, 3}}, 2));
+    // Reject an empty interval and overlapping intervals.
+    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INTERVAL, 86400, {5, 5}}, 1));
+    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INTERVAL, 86400, {0, 40, 31, 59}}, 2));
+    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INSTANT, 0, {7}}, 1));
+
+    CASE("a trailer that is not canonical is refused")
+    auto good = rumi::encode_time(months, 60);
+    OK(good.has_value());
+    if (good) {
+        auto widened = *good;
+        widened[7] = std::byte(std::uint8_t(widened[7]) + 1);  // time_bits
+        OK(!rumi::decode_time(widened, 60));
+
+        // residual(0) must be zero because time_epoch is the first coordinate.
+        auto nudged = *good;
+        nudged[rumi::TRAILER_SIZE] |= std::byte{1};
+        OK(!rumi::decode_time(nudged, 60));
+
+        // Changing epoch consistently produces a different valid axis.
+        auto moved = *good;
+        moved[8] = std::byte(std::uint8_t(moved[8]) + 1);
+        auto later = rumi::decode_time(moved, 60);
+        OK(later.has_value());
+        if (later) EQ(later->coords.front(), months.coords.front() + 1);
+
+        auto wrong_magic = *good;
+        wrong_magic[0] = std::byte{0};
+        OK(!rumi::decode_time(wrong_magic, 60));
+    }
 }
 
 int main()
 {
     test_frame_pattern();
+    test_frame_unit_registry();
+    test_time_trailer();
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();
     test_base_offset_accepts_valid_tile_sizes();
@@ -929,7 +1155,7 @@ int main()
     test_fork_ignores_an_inherited_construction_lock();
 #endif
     test_thread_count();
-    // Last: this creates the one process-global pool and pins its count.
+    // Run pool construction last because it pins process-wide thread state.
     test_concurrent_global_pool_construction();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);

@@ -13,7 +13,7 @@
 #include <vector>
 
 
-// Error plumbing.
+// Error state.
 
 // Thread-local last error, set by every entry point that fails.
 
@@ -25,8 +25,7 @@ struct FreeDeleter {
     void operator()(void* ptr) const noexcept { std::free(ptr); }
 };
 
-// Move-assign, not assign(): the in-place form pulls a symbol from a newer
-// libstdc++ and raises the platform tag of the wheel.
+// Move assignment avoids a newer libstdc++ symbol required by assign().
 void set_error(std::string_view msg) noexcept
 {
     try { g_last_error = std::string(msg); } catch (...) { g_last_error.clear(); }
@@ -35,7 +34,7 @@ void set_error(std::string_view msg) noexcept
 template <typename F>
 rumi_status capi_call(F&& body) noexcept
 {
-    // Clear so a stale message can't mask this call's error below.
+    // Each API call owns its error state.
     g_last_error.clear();
     try {
         return body();
@@ -59,6 +58,46 @@ rumi_status capi_call(F&& body) noexcept
 extern "C" int rumi_api_version(void)
 {
     return RUMI_API_VERSION;
+}
+
+extern "C" const char* rumi_axis_name(uint8_t axis)
+{
+    const std::string_view n = rumi::axis_name(axis);
+    return n.empty() ? nullptr : n.data();
+}
+
+extern "C" rumi_status
+rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!data && n_bytes) {
+            set_error("rumi_check_samples: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        const rumi_dtype_info* table = nullptr;
+        const size_t rows = rumi_dtype_table(&table);
+        unsigned bits = 0;
+        for (size_t i = 0; i < rows; ++i) {
+            if (table[i].code == static_cast<uint8_t>(dtype)) { bits = table[i].bits; break; }
+        }
+        if (bits == 0) {
+            set_error("rumi_check_samples: unknown dtype");
+            return RUMI_ERR_INVALID;
+        }
+        if (bits >= 8) return RUMI_OK;
+        const auto spare = static_cast<unsigned char>((0xFFu << bits) & 0xFFu);
+        const auto* p = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < n_bytes; ++i) {
+            if (p[i] & spare) {
+                set_error("sample " + std::to_string(i) + " has bits set above "
+                          "the " + std::to_string(bits) + " its encoding "
+                          "occupies; a sub-byte sample fills one byte and its "
+                          "unused high bits are zero");
+                return RUMI_ERR_INVALID;
+            }
+        }
+        return RUMI_OK;
+    });
 }
 
 extern "C" const char* rumi_version_string(void)
@@ -95,6 +134,16 @@ extern "C" void rumi_free(void* ptr)
 }
 
 // Threads.
+
+extern "C" uint64_t rumi_set_max_frame_bytes(uint64_t n)
+{
+    return rumi::set_max_frame_bytes(n);
+}
+
+extern "C" uint64_t rumi_get_max_frame_bytes(void)
+{
+    return rumi::max_frame_bytes();
+}
 
 extern "C" int rumi_set_num_threads(int n)
 {
@@ -137,30 +186,46 @@ rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size)
 
 // Layout.
 
+namespace {
+// Default output axes for one file or a stack.
+const char* default_pattern(size_t n, uint32_t times)
+{
+    if (n > 1) return times > 1 ? "n t b y x" : "n b y x";
+    return times > 1 ? "t b y x" : "b y x";
+}
+
+}  // namespace
+
+extern "C" const char* rumi_default_pattern(size_t n_images, uint32_t times)
+{
+    return default_pattern(n_images, times ? times : 1);
+}
+
 extern "C" rumi_status
 rumi_compile_layout(const char* pattern,
-                    int64_t n, int64_t b, int64_t y, int64_t x,
+                    int64_t n, int64_t t, int64_t b, int64_t y, int64_t x,
                     rumi_layout* out)
 {
     return capi_call([&]() -> rumi_status {
-        if (!pattern || !out) {
+        if (!out) {
             set_error("rumi_compile_layout: null argument");
             return RUMI_ERR_INVALID;
         }
-        auto plan = rumi::compile_layout(pattern, n, b, y, x);
+        // Keep default-pattern selection in the core for all bindings.
+        const char* pat = pattern ? pattern
+            : default_pattern(static_cast<size_t>(n),
+                              static_cast<uint32_t>(t < 1 ? 1 : t));
+        auto plan = rumi::compile_layout(pat, n, t, b, y, x);
         if (!plan) {
             set_error(plan.error());
             return RUMI_ERR_INVALID;
         }
         std::memset(out, 0, sizeof(*out));
         out->ndim = static_cast<int>(plan->shape.size());
-        for (size_t i = 0; i < plan->shape.size() && i < 4; ++i) {
+        for (size_t i = 0; i < plan->shape.size() && i < RUMI_OUT_NDIM; ++i) {
             out->shape[i] = plan->shape[i];
         }
-        out->sn     = plan->sn;
-        out->sb     = plan->sb;
-        out->sy     = plan->sy;
-        out->sx     = plan->sx;
+        for (size_t i = 0; i < RUMI_OUT_NDIM; ++i) out->stride[i] = plan->stride[i];
         out->native = plan->native ? 1 : 0;
         return RUMI_OK;
     });
@@ -181,29 +246,38 @@ rumi_compile_frame_pattern(const char* pattern, rumi_frame_pattern* out)
             return RUMI_ERR_INVALID;
         }
         std::memset(out, 0, sizeof(*out));
-        out->frame_unit = p->frame_unit;
         out->input_ndim = static_cast<int>(p->input_ndim);
         out->frame_ndim = static_cast<int>(p->frame_ndim);
+        out->index_ndim = static_cast<int>(p->index_ndim);
         for (std::size_t i = 0; i < p->input_ndim; ++i) out->input[i] = p->input[i];
         for (std::size_t i = 0; i < p->frame_ndim; ++i) out->frame[i] = p->frame[i];
+        for (std::size_t i = 0; i < p->index_ndim; ++i) out->index[i] = p->index[i];
         return RUMI_OK;
     });
 }
 
-extern "C" const char* rumi_unit_name(uint8_t unit)
-{
-    const std::string_view n = rumi::unit_name(unit);
-    return n.empty() ? nullptr : n.data();
-}
-
-extern "C" rumi_status rumi_unit_from_name(const char* name, uint8_t* out)
+extern "C" rumi_status
+rumi_frame_unit(const rumi_frame_pattern* pattern, uint16_t bands,
+                uint32_t times, uint8_t* out)
 {
     return capi_call([&]() -> rumi_status {
-        if (!name || !out) {
-            set_error("rumi_unit_from_name: null argument");
+        if (!pattern || !out) {
+            set_error("rumi_frame_unit: null argument");
             return RUMI_ERR_INVALID;
         }
-        auto u = rumi::unit_from_name(name);
+        rumi::FramePattern p{};
+        p.input_ndim = static_cast<std::size_t>(pattern->input_ndim);
+        p.frame_ndim = static_cast<std::size_t>(pattern->frame_ndim);
+        p.index_ndim = static_cast<std::size_t>(pattern->index_ndim);
+        if (p.input_ndim > RUMI_MAX_AXES || p.frame_ndim > RUMI_MAX_AXES
+            || p.index_ndim > 2) {
+            set_error("rumi_frame_unit: pattern names too many axes");
+            return RUMI_ERR_INVALID;
+        }
+        for (std::size_t i = 0; i < p.input_ndim; ++i) p.input[i] = pattern->input[i];
+        for (std::size_t i = 0; i < p.frame_ndim; ++i) p.frame[i] = pattern->frame[i];
+        for (std::size_t i = 0; i < p.index_ndim; ++i) p.index[i] = pattern->index[i];
+        auto u = rumi::frame_unit_for(p, bands, times);
         if (!u) {
             set_error(u.error());
             return RUMI_ERR_INVALID;
@@ -213,19 +287,80 @@ extern "C" rumi_status rumi_unit_from_name(const char* name, uint8_t* out)
     });
 }
 
-extern "C" int rumi_unit_indexes_bands(uint8_t unit)
+extern "C" rumi_status
+rumi_unit_name(uint8_t unit, uint16_t bands, uint32_t times, char* out,
+               size_t out_size)
 {
-    return rumi::unit_is_defined(unit) && rumi::unit_indexes_bands(unit) ? 1 : 0;
+    return capi_call([&]() -> rumi_status {
+        if (!out || out_size == 0) {
+            set_error("rumi_unit_name: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        const std::string n = rumi::unit_name(unit, bands, times);
+        if (n.empty()) {
+            set_error("frame_unit names no layout for this raster");
+            return RUMI_ERR_INVALID;
+        }
+        if (n.size() + 1 > out_size) {
+            set_error("rumi_unit_name: buffer too small");
+            return RUMI_ERR_INVALID;
+        }
+        std::memcpy(out, n.c_str(), n.size() + 1);
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_unit_index_axes(uint8_t unit, uint16_t bands, uint32_t times,
+                     uint8_t* out, int* out_ndim)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out || !out_ndim) {
+            set_error("rumi_unit_index_axes: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        std::array<std::uint8_t, 2> axes{};
+        const std::size_t n = rumi::unit_index_axes(unit, bands, times, axes);
+        for (std::size_t i = 0; i < n; ++i) out[i] = axes[i];
+        *out_ndim = static_cast<int>(n);
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_unit_from_name(const char* name, uint16_t bands, uint32_t times,
+                    uint8_t* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!name || !out) {
+            set_error("rumi_unit_from_name: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto u = rumi::unit_from_name(name, bands, times);
+        if (!u) {
+            set_error(u.error());
+            return RUMI_ERR_INVALID;
+        }
+        *out = *u;
+        return RUMI_OK;
+    });
+}
+
+extern "C" int rumi_unit_indexes_bands(uint8_t unit, uint16_t bands,
+                                       uint32_t times)
+{
+    return rumi::unit_is_defined(unit)
+        && rumi::unit_indexes_bands(unit, bands, times) ? 1 : 0;
 }
 
 extern "C" rumi_status
 rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-                 uint16_t bands, uint32_t* out_across, uint32_t* out_down,
-                 uint64_t* out_frames)
+                 uint16_t bands, uint32_t times, uint32_t* out_across,
+                 uint32_t* out_down, uint64_t* out_frames)
 {
     return capi_call([&]() -> rumi_status {
         std::uint32_t across = 0, down = 0;
-        auto n = rumi::frame_geometry(unit, width, length, tile, bands,
+        auto n = rumi::frame_geometry(unit, width, length, tile, bands, times,
                                       &across, &down);
         if (!n) {
             set_error(n.error());
@@ -240,23 +375,29 @@ rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
 
 extern "C" rumi_status
 rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-              uint16_t bands, uint64_t index, rumi_frame_at* out)
+              uint16_t bands, uint32_t times, uint64_t index,
+              rumi_frame_at* out)
 {
     return capi_call([&]() -> rumi_status {
         if (!out) {
             set_error("rumi_frame_locate: null argument");
             return RUMI_ERR_INVALID;
         }
-        auto at = rumi::frame_at_index(unit, width, length, tile, bands, index);
+        auto at = rumi::frame_at_index(unit, width, length, tile, bands, times,
+                                       index);
         if (!at) {
             set_error(at.error());
             return RUMI_ERR_INVALID;
         }
         std::memset(out, 0, sizeof(*out));
         out->row  = at->row;  out->col = at->col; out->band = at->band;
+        out->time = at->time;
         out->h    = at->h;    out->w   = at->w;
         out->ndim = static_cast<int>(at->ndim);
-        for (std::size_t i = 0; i < at->ndim; ++i) out->dims[i] = at->dims[i];
+        for (std::size_t i = 0; i < at->ndim; ++i) {
+            out->dims[i] = at->dims[i];
+            out->perm[i] = at->perm[i];
+        }
         return RUMI_OK;
     });
 }
@@ -264,7 +405,7 @@ rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
 
 namespace {
 
-// Overflow-checked size_t product of the requested read extents.
+// Compute the requested output size without overflowing size_t.
 bool checked_read_size(std::initializer_list<size_t> extents,
                        size_t bytes_per_sample, size_t* out) noexcept
 {
@@ -281,7 +422,33 @@ bool checked_read_size(std::initializer_list<size_t> extents,
     return true;
 }
 
-// NULL/0 bands means all bands in file order, 1-based.
+// NULL/0 means all 1-based positions in file order. Expanding all time steps
+// is unavailable when time_count exceeds the signed int index range.
+const char* times_fit(const int* times, size_t n_times, uint32_t tc) noexcept
+{
+    if (times && n_times > 0) return nullptr;      // the caller named them
+    if (tc > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
+        return "this file has more time steps than a read can index, so the "
+               "ones past INT_MAX cannot be named at all";
+    }
+    if (static_cast<uint64_t>(tc) * sizeof(int) > rumi::max_frame_bytes()) {
+        return "selecting every time step is past what this reader will "
+               "allocate; pass the steps you want";
+    }
+    return nullptr;
+}
+
+std::vector<int> resolve_times(const int* times, size_t n_times, uint32_t tc)
+{
+    if (times && n_times > 0) {
+        return std::vector<int>(times, times + n_times);
+    }
+    std::vector<int> all;
+    all.reserve(tc);
+    for (uint32_t i = 1; i <= tc; ++i) all.push_back(static_cast<int>(i));
+    return all;
+}
+
 std::vector<int> resolve_bands(const int* bands, size_t n_bands, uint16_t spp)
 {
     if (bands && n_bands > 0) {
@@ -304,8 +471,7 @@ std::vector<int> resolve_n_index(const int* n_index, size_t n_n, size_t total)
     return all;
 }
 
-// Message for the threaded path, where a worker's message can be lost and
-// g_last_error is left empty.
+// Fallback when a worker cannot propagate the decoder's detailed message.
 const char* k_unsupported_msg =
     "file uses a custom OpenZL codec this reader has not registered";
 
@@ -365,6 +531,7 @@ struct rumi_spec {
 
 extern "C" rumi_status
 rumi_plan_ranges(const rumi_spec* spec,
+                 const int* times, size_t n_times,
                  const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
                  rumi_range** out, size_t* out_count)
@@ -378,8 +545,23 @@ rumi_plan_ranges(const rumi_spec* spec,
             set_error("bands and n_bands must agree (both empty or both set)");
             return RUMI_ERR_INVALID;
         }
+        if ((times == nullptr) != (n_times == 0)) {
+            set_error("times and n_times must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
         const auto& h = spec->h;
-        const auto picked = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        const auto picked   = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        if (const char* why = times_fit(times, n_times, h.time_count)) {
+            set_error(why);
+            return RUMI_ERR_INVALID;
+        }
+        const auto picked_t = resolve_times(times, n_times, h.time_count);
+        for (int t : picked_t) {
+            if (t < 1 || static_cast<uint32_t>(t) > h.time_count) {
+                set_error("time step out of range");
+                return RUMI_ERR_INVALID;
+            }
+        }
         for (int band : picked) {
             if (band < 1 || band > h.samples_per_pixel) {
                 set_error("band out of range");
@@ -392,8 +574,14 @@ rumi_plan_ranges(const rumi_spec* spec,
             set_error("requested window out of bounds");
             return RUMI_ERR_INVALID;
         }
-        auto ranges = rumi::plan_ranges(h, std::span<const int>(picked),
-                                        y_off, y_size, x_off, x_size);
+        auto planned = rumi::plan_ranges_checked(
+            h, std::span<const int>(picked_t), std::span<const int>(picked),
+            y_off, y_size, x_off, x_size);
+        if (!planned) {
+            set_error(planned.error());
+            return RUMI_ERR_INVALID;
+        }
+        const auto& ranges = *planned;
 
         const size_t n = ranges.size();
         if (n > std::numeric_limits<size_t>::max() / sizeof(rumi_range)) {
@@ -421,6 +609,7 @@ void fill_header(const rumi::Header& h, rumi_header* out)
     std::memset(out, 0, sizeof(*out));
     out->image_width       = h.image_width;
     out->image_length      = h.image_length;
+    out->time_count        = h.time_count;
     out->tile_width        = h.tile_width;
     out->tile_length       = h.tile_length;
     out->samples_per_pixel = h.samples_per_pixel;
@@ -478,10 +667,10 @@ rumi_spec_header(const rumi_spec* spec, rumi_header* out)
 
 extern "C" rumi_status
 rumi_read(rumi_source* src, const rumi_spec* spec,
+          const int* times, size_t n_times,
           const int* bands, size_t n_bands,
           int y_off, int y_size, int x_off, int x_size,
-          const char* pattern, int num_threads,
-          void* dst, size_t dst_size)
+          const char* pattern, void* dst, size_t dst_size)
 {
     return capi_call([&]() -> rumi_status {
         if (!src || !spec || !dst) {
@@ -492,13 +681,24 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
             set_error("bands and n_bands must agree (both empty or both set)");
             return RUMI_ERR_INVALID;
         }
+        if ((times == nullptr) != (n_times == 0)) {
+            set_error("times and n_times must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
 
         const auto& h = spec->h;
-        const auto  picked = resolve_bands(bands, n_bands, h.samples_per_pixel);
-        const char* pat    = pattern ? pattern : "b y x";
+        const auto  picked   = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        if (const char* why = times_fit(times, n_times, h.time_count)) {
+            set_error(why);
+            return RUMI_ERR_INVALID;
+        }
+        const auto  picked_t = resolve_times(times, n_times, h.time_count);
+        const char* pat      = pattern ? pattern
+                             : default_pattern(1, h.time_count);
 
         auto plan = rumi::compile_layout(
             pat, 1,
+            static_cast<int64_t>(picked_t.size()),
             static_cast<int64_t>(picked.size()),
             static_cast<int64_t>(y_size),
             static_cast<int64_t>(x_size));
@@ -508,7 +708,7 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
         }
 
         size_t need = 0;
-        if (!checked_read_size({picked.size(),
+        if (!checked_read_size({picked_t.size(), picked.size(),
                                 static_cast<size_t>(y_size),
                                 static_cast<size_t>(x_size)},
                                h.bytes_per_sample, &need)) {
@@ -521,10 +721,10 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
         }
 
         auto r = rumi::read_window(*src->impl, h,
+                                   std::span<const int>(picked_t),
                                    std::span<const int>(picked),
                                    y_off, y_size, x_off, x_size,
-                                   *plan, static_cast<std::byte*>(dst),
-                                   num_threads);
+                                   *plan, static_cast<std::byte*>(dst));
         if (!r) {
             const rumi_status st = rumi::take_read_status();
             if (g_last_error.empty()) {
@@ -541,10 +741,10 @@ extern "C" rumi_status
 rumi_read_stack(rumi_source* const* sources,
                 const rumi_spec* const* specs, size_t n_images,
                 const int* n_index, size_t n_n,
+                const int* times, size_t n_times,
                 const int* bands, size_t n_bands,
                 int y_off, int y_size, int x_off, int x_size,
-                const char* pattern, int num_threads,
-                void* dst, size_t dst_size)
+                const char* pattern, void* dst, size_t dst_size)
 {
     return capi_call([&]() -> rumi_status {
         if (!sources || !specs || n_images == 0 || !dst) {
@@ -557,6 +757,10 @@ rumi_read_stack(rumi_source* const* sources,
         }
         if ((bands == nullptr) != (n_bands == 0)) {
             set_error("bands and n_bands must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
+        if ((times == nullptr) != (n_times == 0)) {
+            set_error("times and n_times must agree (both empty or both set)");
             return RUMI_ERR_INVALID;
         }
         for (size_t i = 0; i < n_images; ++i) {
@@ -572,12 +776,18 @@ rumi_read_stack(rumi_source* const* sources,
         const auto& h        = specs[0]->h;
         const auto  picked_n = resolve_n_index(n_index, n_n, n_images);
         const auto  picked_b = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        if (const char* why = times_fit(times, n_times, h.time_count)) {
+            set_error(why);
+            return RUMI_ERR_INVALID;
+        }
+        const auto  picked_t = resolve_times(times, n_times, h.time_count);
         const char* pat      = pattern
-            ? pattern : (picked_n.size() > 1 ? "n b y x" : "b y x");
+            ? pattern : default_pattern(picked_n.size(), h.time_count);
 
         auto plan = rumi::compile_layout(
             pat,
             static_cast<int64_t>(picked_n.size()),
+            static_cast<int64_t>(picked_t.size()),
             static_cast<int64_t>(picked_b.size()),
             static_cast<int64_t>(y_size),
             static_cast<int64_t>(x_size));
@@ -587,7 +797,7 @@ rumi_read_stack(rumi_source* const* sources,
         }
 
         size_t need = 0;
-        if (!checked_read_size({picked_n.size(), picked_b.size(),
+        if (!checked_read_size({picked_n.size(), picked_t.size(), picked_b.size(),
                                 static_cast<size_t>(y_size),
                                 static_cast<size_t>(x_size)},
                                h.bytes_per_sample, &need)) {
@@ -612,9 +822,10 @@ rumi_read_stack(rumi_source* const* sources,
             std::span<rumi::Source* const>(srcs.data(), n_images),
             std::span<const rumi::Header* const>(headers.data(), n_images),
             std::span<const int>(picked_n),
+            std::span<const int>(picked_t),
             std::span<const int>(picked_b),
             y_off, y_size, x_off, x_size,
-            *plan, static_cast<std::byte*>(dst), num_threads);
+            *plan, static_cast<std::byte*>(dst));
         if (!r) {
             const rumi_status st = rumi::take_read_status();
             if (g_last_error.empty()) {
@@ -657,10 +868,10 @@ finish_dlpack(std::byte* buffer,
 
 extern "C" rumi_status
 rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
+                 const int* times, size_t n_times,
                  const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
-                 const char* pattern, int num_threads,
-                 DLManagedTensorVersioned** out)
+                 const char* pattern, DLManagedTensorVersioned** out)
 {
     return capi_call([&]() -> rumi_status {
         if (!src || !spec || !out) {
@@ -671,13 +882,24 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
             set_error("bands and n_bands must agree (both empty or both set)");
             return RUMI_ERR_INVALID;
         }
+        if ((times == nullptr) != (n_times == 0)) {
+            set_error("times and n_times must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
 
-        const auto& h      = spec->h;
-        const auto  picked = resolve_bands(bands, n_bands, h.samples_per_pixel);
-        const char* pat    = pattern ? pattern : "b y x";
+        const auto& h        = spec->h;
+        const auto  picked   = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        if (const char* why = times_fit(times, n_times, h.time_count)) {
+            set_error(why);
+            return RUMI_ERR_INVALID;
+        }
+        const auto  picked_t = resolve_times(times, n_times, h.time_count);
+        const char* pat      = pattern ? pattern
+                             : default_pattern(1, h.time_count);
 
         auto plan = rumi::compile_layout(
-            pat, 1, static_cast<int64_t>(picked.size()),
+            pat, 1, static_cast<int64_t>(picked_t.size()),
+            static_cast<int64_t>(picked.size()),
             static_cast<int64_t>(y_size), static_cast<int64_t>(x_size));
         if (!plan) {
             set_error(plan.error());
@@ -685,7 +907,7 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
         }
 
         size_t need = 0;
-        if (!checked_read_size({picked.size(),
+        if (!checked_read_size({picked_t.size(), picked.size(),
                                 static_cast<size_t>(y_size),
                                 static_cast<size_t>(x_size)},
                                h.bytes_per_sample, &need)) {
@@ -700,9 +922,11 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
             return RUMI_ERR_OOM;
         }
 
-        auto r = rumi::read_window(*src->impl, h, std::span<const int>(picked),
+        auto r = rumi::read_window(*src->impl, h,
+                                   std::span<const int>(picked_t),
+                                   std::span<const int>(picked),
                                    y_off, y_size, x_off, x_size,
-                                   *plan, buffer.get(), num_threads);
+                                   *plan, buffer.get());
         return finish_dlpack(buffer.release(), r, h, *plan, out);
     });
 }
@@ -711,10 +935,10 @@ extern "C" rumi_status
 rumi_read_stack_dlpack(rumi_source* const* sources,
                        const rumi_spec* const* specs, size_t n_images,
                        const int* n_index, size_t n_n,
+                       const int* times, size_t n_times,
                        const int* bands, size_t n_bands,
                        int y_off, int y_size, int x_off, int x_size,
-                       const char* pattern, int num_threads,
-                       DLManagedTensorVersioned** out)
+                       const char* pattern, DLManagedTensorVersioned** out)
 {
     return capi_call([&]() -> rumi_status {
         if (!sources || !specs || n_images == 0 || !out) {
@@ -727,6 +951,10 @@ rumi_read_stack_dlpack(rumi_source* const* sources,
         }
         if ((bands == nullptr) != (n_bands == 0)) {
             set_error("bands and n_bands must agree (both empty or both set)");
+            return RUMI_ERR_INVALID;
+        }
+        if ((times == nullptr) != (n_times == 0)) {
+            set_error("times and n_times must agree (both empty or both set)");
             return RUMI_ERR_INVALID;
         }
         for (size_t i = 0; i < n_images; ++i) {
@@ -742,11 +970,17 @@ rumi_read_stack_dlpack(rumi_source* const* sources,
         const auto& h        = specs[0]->h;
         const auto  picked_n = resolve_n_index(n_index, n_n, n_images);
         const auto  picked_b = resolve_bands(bands, n_bands, h.samples_per_pixel);
+        if (const char* why = times_fit(times, n_times, h.time_count)) {
+            set_error(why);
+            return RUMI_ERR_INVALID;
+        }
+        const auto  picked_t = resolve_times(times, n_times, h.time_count);
         const char* pat      = pattern
-            ? pattern : (picked_n.size() > 1 ? "n b y x" : "b y x");
+            ? pattern : default_pattern(picked_n.size(), h.time_count);
 
         auto plan = rumi::compile_layout(
             pat, static_cast<int64_t>(picked_n.size()),
+            static_cast<int64_t>(picked_t.size()),
             static_cast<int64_t>(picked_b.size()),
             static_cast<int64_t>(y_size), static_cast<int64_t>(x_size));
         if (!plan) {
@@ -755,7 +989,7 @@ rumi_read_stack_dlpack(rumi_source* const* sources,
         }
 
         size_t need = 0;
-        if (!checked_read_size({picked_n.size(), picked_b.size(),
+        if (!checked_read_size({picked_n.size(), picked_t.size(), picked_b.size(),
                                 static_cast<size_t>(y_size),
                                 static_cast<size_t>(x_size)},
                                h.bytes_per_sample, &need)) {
@@ -783,9 +1017,10 @@ rumi_read_stack_dlpack(rumi_source* const* sources,
             std::span<rumi::Source* const>(srcs.data(), n_images),
             std::span<const rumi::Header* const>(headers.data(), n_images),
             std::span<const int>(picked_n),
+            std::span<const int>(picked_t),
             std::span<const int>(picked_b),
             y_off, y_size, x_off, x_size,
-            *plan, buffer.get(), num_threads);
+            *plan, buffer.get());
         return finish_dlpack(buffer.release(), r, h, *plan, out);
     });
 }
@@ -811,6 +1046,7 @@ rumi_write(const char*                 path,
         rumi::WriteDesc d{};
         d.image_width       = desc->image_width;
         d.image_length      = desc->image_length;
+        d.time_count        = desc->time_count;
         d.tile_size         = desc->tile_size;
         d.samples_per_pixel = desc->samples_per_pixel;
         d.dtype             = desc->dtype;
@@ -818,7 +1054,18 @@ rumi_write(const char*                 path,
         d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
         d.frame_unit        = desc->frame_unit;
-
+        // The core derives the canonical on-disk scale from POSIX seconds.
+        {
+            auto axis = rumi::axis_from_seconds(
+                desc->time_type,
+                std::span<const std::int64_t>(
+                    desc->time, desc->time ? desc->time_coords : 0));
+            if (!axis) {
+                set_error(axis.error());
+                return RUMI_ERR_INVALID;
+            }
+            d.time = std::move(*axis);
+        }
         auto result = rumi::write_file(path, d, frames, sizes, frame_count);
         if (!result) {
             set_error(result.error());
@@ -850,6 +1097,7 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
         rumi::WriteDesc d{};
         d.image_width       = desc->image_width;
         d.image_length      = desc->image_length;
+        d.time_count        = desc->time_count;
         d.tile_size         = desc->tile_size;
         d.samples_per_pixel = desc->samples_per_pixel;
         d.dtype             = desc->dtype;
@@ -857,13 +1105,92 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
         d.epsg              = desc->epsg;
         d.pixel_is_point    = desc->pixel_is_point != 0;
         d.frame_unit        = desc->frame_unit;
-
+        // The core derives the canonical on-disk scale from POSIX seconds.
+        {
+            auto axis = rumi::axis_from_seconds(
+                desc->time_type,
+                std::span<const std::int64_t>(
+                    desc->time, desc->time ? desc->time_coords : 0));
+            if (!axis) {
+                set_error(axis.error());
+                return RUMI_ERR_INVALID;
+            }
+            d.time = std::move(*axis);
+        }
         auto base = rumi::base_offset(d);
         if (!base) {
             set_error(base.error());
             return RUMI_ERR_INVALID;
         }
         *out = *base;
+        return RUMI_OK;
+    });
+}
+
+
+// Time.
+
+extern "C" rumi_status
+rumi_read_geo(const char* path, double* out_transform, uint32_t* out_epsg,
+              int* out_pixel_is_point)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!path) {
+            set_error("rumi_read_geo: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        rumi::FileGeo geo{};
+        auto blob = rumi::build_blob_from_file(path, &geo);
+        if (!blob) {
+            set_error(blob.error());
+            return RUMI_ERR_FORMAT;
+        }
+        if (out_transform) {
+            for (int i = 0; i < 6; ++i) out_transform[i] = geo.transform[i];
+        }
+        if (out_epsg) *out_epsg = geo.epsg;
+        if (out_pixel_is_point) *out_pixel_is_point = geo.pixel_is_point ? 1 : 0;
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_read_time(const char* path, uint8_t* out_type, uint32_t* out_scale,
+               int64_t** out_time, size_t* out_count)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!path || !out_type || !out_scale || !out_time || !out_count) {
+            set_error("rumi_read_time: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto axis = rumi::read_time_from_file(path);
+        if (!axis) {
+            set_error(axis.error());
+            return RUMI_ERR_FORMAT;
+        }
+        std::int64_t* buf = nullptr;
+        if (!axis->coords.empty()) {
+            buf = static_cast<std::int64_t*>(
+                std::malloc(axis->coords.size() * sizeof(std::int64_t)));
+            if (!buf) {
+                set_error("rumi_read_time: out of memory");
+                return RUMI_ERR_OOM;
+            }
+            // Public coordinates are POSIX seconds regardless of trailer scale.
+            const auto scale = static_cast<std::int64_t>(axis->scale);
+            for (std::size_t i = 0; i < axis->coords.size(); ++i) {
+                if (__builtin_mul_overflow(axis->coords[i], scale, &buf[i])) {
+                    std::free(buf);
+                    set_error("a time coordinate in seconds does not fit in "
+                              "int64");
+                    return RUMI_ERR_FORMAT;
+                }
+            }
+        }
+        *out_type  = axis->type;
+        *out_scale = axis->scale;
+        *out_time  = buf;
+        *out_count = axis->coords.size();
         return RUMI_OK;
     });
 }
@@ -890,8 +1217,7 @@ rumi_geokeys(uint32_t epsg, int pixel_is_point,
             return RUMI_ERR_INVALID;
         }
 
-        // Assign the out-params only once every copy succeeds, so a failure
-        // leaves them untouched.
+        // Publish output pointers only after every allocation succeeds.
         unsigned char* bufs[3] = {nullptr, nullptr, nullptr};
         const std::vector<std::byte>* src[3] = {
             &result->directory, &result->double_params, &result->ascii_params};

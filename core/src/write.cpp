@@ -44,7 +44,7 @@ std::size_t type_size(std::uint16_t type) noexcept
     }
 }
 
-// Little-endian host and file, so a raw copy is the value.
+// The build requires a little-endian host, so values can be copied directly.
 template <typename T>
 void put(std::vector<std::byte>& out, T value)
 {
@@ -53,8 +53,7 @@ void put(std::vector<std::byte>& out, T value)
     std::memcpy(out.data() + at, &value, sizeof(T));
 }
 
-// One IFD entry. payload is the packed value, empty for TileOffsets, which is
-// packed once its base is known.
+// IFD entry and encoded value. TileOffsets is filled after the base is known.
 struct Entry {
     std::uint16_t          tag;
     std::uint16_t          type;
@@ -80,7 +79,7 @@ Entry pack(std::uint16_t tag, std::uint16_t type, const std::vector<T>& values)
     return e;
 }
 
-// An already-encoded geokey payload, embedded verbatim.
+// Wrap an encoded GeoKey payload in an IFD entry.
 Entry adopt(std::uint16_t tag, std::uint16_t type,
             const std::vector<std::byte>& raw)
 {
@@ -88,7 +87,7 @@ Entry adopt(std::uint16_t tag, std::uint16_t type,
     return Entry{tag, type, count, raw};
 }
 
-// The on-disk encoding for a type, straight off the generated table.
+// Look up the on-disk sample encoding in the dtype registry.
 bool sample_encoding(rumi_dtype dt, std::uint8_t* sf, std::uint8_t* bits) noexcept
 {
     std::size_t n = 0;
@@ -141,8 +140,7 @@ base_entries(const WriteDesc& d, std::uint64_t frame_count,
     return e;
 }
 
-// Offsets of the values too large to sit inline, in entry order, each padded to
-// an even boundary. Returns the byte just past the last one.
+// Place external values in entry order and return the following byte offset.
 std::uint64_t place_external(const std::vector<Entry>& entries,
                              std::uint64_t cursor,
                              std::vector<std::uint64_t>& at)
@@ -172,11 +170,13 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
                    d.image_width, d.image_length);
     if (d.tile_size == 0)
         return err("tile_size must be at least 1");
+    if (d.time_count == 0)
+        return err("time_count must be at least 1");
     if (d.samples_per_pixel == 0)
         return err("samples_per_pixel must be at least 1");
     if (!unit_is_defined(d.frame_unit))
-        return err("frame_unit must be 0 (h w), 1 (b h w) or 2 (h w b), got %u",
-                   unsigned(d.frame_unit));
+        return err("frame_unit is %u; the registry runs 0 to %zu",
+                   unsigned(d.frame_unit), UNIT_REGISTRY.size() - 1);
     if ((d.transform == nullptr) != (d.epsg == 0))
         return err("transform and a CRS must be given together");
 
@@ -186,21 +186,19 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
 
     g.across = 1 + (d.image_width  - 1) / d.tile_size;
     g.down   = 1 + (d.image_length - 1) / d.tile_size;
-    // A tile frame holds one band, a cell frame holds every band.
-    g.frames = std::uint64_t(g.across) * g.down
-             * (unit_indexes_bands(effective_unit(d.frame_unit,
-                                                  d.samples_per_pixel))
-                ? d.samples_per_pixel : 1);
+    // Indexed axes multiply frames per grid position.
+    const std::uint8_t unit =
+        effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count);
+    if (!frame_count_of(unit, g.across, g.down, d.samples_per_pixel,
+                        d.time_count, &g.frames))
+        return err("frame count overflows uint64");
     if (g.frames > 0xFFFFFFFFu)
         return err("frame count overflows uint32: %llu",
                    static_cast<unsigned long long>(g.frames));
     return g;
 }
 
-constexpr std::uint64_t IFD_OFFSET = 16;
-
-// The IFD in tag order, plus where each out-of-line value goes and the offset
-// the frame data starts at. TileOffsets comes back unpacked, it needs the base.
+// Planned IFD, external values, and first frame offset.
 struct Layout {
     std::vector<Entry>         entries;
     std::vector<std::uint64_t> external;
@@ -220,15 +218,16 @@ plan(const WriteDesc& d, const Grid& g,
                      std::make_move_iterator(geo->begin()),
                      std::make_move_iterator(geo->end()));
 
-    // Private, so it sorts last. The file names its own layout with it.
+    // FrameUnit is the final tag in the fixed tag order.
     l.entries.push_back(pack(TAG_FRAME_UNIT, T_SHORT,
         {static_cast<std::uint16_t>(
-            effective_unit(d.frame_unit, d.samples_per_pixel))}));
+            effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count))}));
+    l.entries.push_back(pack(TAG_TIME_COUNT, T_LONG, {d.time_count}));
 
     const std::uint64_t ifd_size = 8 + 20 * l.entries.size() + 8;
     l.base = place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
 
-    // This writer builds the header in memory and caps its size at uint32.
+    // The writer builds the complete pre-frame region in memory.
     if (l.base > 0xFFFFFFFFu)
         return err("the header would be %llu bytes, past what this writer builds",
                    static_cast<unsigned long long>(l.base));
@@ -244,7 +243,7 @@ try {
     auto g = grid_of(d);
     if (!g) return std::unexpected(g.error());
 
-    // Only the length of the byte-count tag matters here, not the values.
+    // Base offset depends on the number of counts, not their values.
     const std::vector<std::uint32_t> counts(static_cast<std::size_t>(g->frames));
     auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
@@ -287,7 +286,7 @@ try {
     auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
 
-    // Build TileOffsets from frame sizes in frame-index order.
+    // Derive TileOffsets by prefix sum in frame-index order.
     std::vector<std::uint64_t> offsets(n);
     std::uint64_t running = l->base;
     for (std::size_t i = 0; i < n; ++i) {
@@ -302,10 +301,9 @@ try {
 
     std::vector<std::byte> head;
     head.reserve(static_cast<std::size_t>(l->base));
-    put<std::uint16_t>(head, 0x4949);
-    put<std::uint16_t>(head, 43);
-    put<std::uint16_t>(head, 8);
-    put<std::uint16_t>(head, 0);
+    put<std::uint32_t>(head, FILE_MAGIC);
+    put<std::uint16_t>(head, FILE_VERSION);
+    put<std::uint16_t>(head, 0);            // reserved
     put<std::uint64_t>(head, IFD_OFFSET);
     put<std::uint64_t>(head, l->entries.size());
 
@@ -329,32 +327,49 @@ try {
     head.insert(head.end(), ext.begin(), ext.end());
     head.resize(static_cast<std::size_t>(l->base), std::byte{0});
 
+    // Validate and encode the time axis before creating the output file.
+    auto encoded = encode_time(d.time, d.time_count);
+    if (!encoded) return std::unexpected(encoded.error());
+    const std::vector<std::byte>& trailer = *encoded;
+
     std::FILE* fp = std::fopen(path, "wb");
     if (!fp) return err("could not open %s for writing", path);
 
     bool ok = std::fwrite(head.data(), 1, head.size(), fp) == head.size();
     for (std::size_t i = 0; ok && i < frame_count; ++i)
         ok = std::fwrite(frames[i], 1, sizes[i], fp) == sizes[i];
+
+    // The trailer immediately follows the final frame.
+    if (ok) ok = std::fwrite(trailer.data(), 1, trailer.size(), fp)
+                 == trailer.size();
     const bool closed = std::fclose(fp) == 0;
     if (!ok || !closed) {
         std::remove(path);
         return err("write to %s failed", path);
     }
 
+    // Remove a partially written file unless the operation reaches commit().
+    struct Unless {
+        const char* path;
+        bool        keep{false};
+        ~Unless() { if (!keep) std::remove(path); }
+    } leave_nothing{path};
+
     BlobHeader bh{};
     bh.magic             = MAGIC;
     bh.version           = VERSION;
     bh.image_width       = d.image_width;
     bh.image_length      = d.image_length;
+    bh.time_count        = d.time_count;
     bh.tile_width        = d.tile_size;
     bh.tile_length       = d.tile_size;
     bh.samples_per_pixel = spp;
     bh.bits_per_sample   = g->bits;
     bh.sample_format     = g->sample_format;
-    // Tile and cell units are identical for one band; canonicalize to tile.
-    bh.frame_unit        = effective_unit(d.frame_unit, spp);
+    // Omit singleton band and time axes from the recorded frame unit.
+    bh.frame_unit        = effective_unit(d.frame_unit, spp, d.time_count);
 
-    // Verify the writer layout against the reader's closed form.
+    // Verify the planned base offset against the format formula.
     if (l->base != derived_base_offset(spp, n)) {
         return err("laid the frames at %llu, the profile puts them at %llu",
                    static_cast<unsigned long long>(l->base),
@@ -368,6 +383,19 @@ try {
     std::vector<std::byte> blob(HEADER_SIZE + cp.bytes);
     std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
     pack_counts(counts, cp, blob.data() + HEADER_SIZE);
+
+    // Rebuild the external header from the finalized file and compare it with
+    // the writer's result. Indexing reads metadata only, not frame payloads.
+    auto indexed = build_blob_from_file(path);
+    if (!indexed) {
+        return err("wrote %s but could not index it back: %s", path,
+                   indexed.error().c_str());
+    }
+    if (*indexed != blob) {
+        return err("the header describes something other than the file just "
+                   "written to %s", path);
+    }
+    leave_nothing.keep = true;
     return blob;
 }
 catch (const std::bad_alloc&) {

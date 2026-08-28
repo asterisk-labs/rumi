@@ -1,7 +1,5 @@
-/* Single source of truth for rumi's element types, one row per type. The enum,
- * the wire encoding and DLPack code are
- * generated from here, so add a type by adding a row. CODE is the wire value,
- * append only. RUMI_DT_UNKNOWN = 0 has no row, it ships with the enum. */
+/* rumi dtype registry. The enum, file encoding, and DLPack mapping are
+ * generated from these append-only rows. RUMI_DT_UNKNOWN = 0 has no row. */
 
 /*         CODE ENUM           NAME            SF   BITS  DLCODE            DLBITS */
 RUMI_DTYPE(  1, UINT8,         "uint8",          1,    8, kDLUInt,             8 )

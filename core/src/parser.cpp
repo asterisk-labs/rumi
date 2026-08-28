@@ -1,10 +1,28 @@
 #include "rumi/rumi.hpp"
 
+#include <atomic>
 #include <bit>
 #include <cstring>
 #include <limits>
 
 namespace rumi {
+
+namespace {
+std::atomic<std::uint64_t> g_max_frame_bytes{DEFAULT_MAX_FRAME_BYTES};
+}  // namespace
+
+std::uint64_t set_max_frame_bytes(std::uint64_t n) noexcept
+{
+    g_max_frame_bytes.store(n ? n : DEFAULT_MAX_FRAME_BYTES,
+                            std::memory_order_relaxed);
+    return g_max_frame_bytes.load(std::memory_order_relaxed);
+}
+
+std::uint64_t max_frame_bytes() noexcept
+{
+    return g_max_frame_bytes.load(std::memory_order_relaxed);
+}
+
 
 static_assert(std::endian::native == std::endian::little,
               "rumi requires a little-endian host");
@@ -21,6 +39,7 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::blob_size_mismatch:           return "blob size does not match frame count";
         case ParseError::frame_count_overflow:          return "frame count overflows uint32";
         case ParseError::frame_size_overflow:           return "frame byte size overflows size_t";
+        case ParseError::frame_too_large:               return "a decoded frame is past the size limit for this reader";
         case ParseError::index_too_large:               return "expanded frame index exceeds safety limit";
         case ParseError::non_positive_frame_byte_count: return "frame byte count is zero";
         case ParseError::invalid_frame_unit:           return "frame_unit names no frame layout";
@@ -49,8 +68,7 @@ CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept
     std::uint32_t low = counts[0];
     for (auto c : counts) low = c < low ? c : low;
 
-    // The highest bit set anywhere is the highest bit of the largest residual,
-    // so an or over the lot gives the width without a second comparison.
+    // OR preserves the highest set bit across all residuals.
     std::uint32_t any = 0;
     for (auto c : counts) any |= c - low;
 
@@ -66,7 +84,7 @@ void pack_counts(std::span<const std::uint32_t> counts,
 
     for (std::size_t i = 0; i < counts.size(); ++i) {
         const std::uint64_t at = std::uint64_t(i) * p.bits;
-        // A 32 bit residual shifted by at most 7 lands inside five bytes.
+        // A 32-bit residual with a bit offset of at most 7 spans five bytes.
         const std::uint64_t w = std::uint64_t(counts[i] - p.min) << (at % 8);
         const std::size_t   b = static_cast<std::size_t>(at / 8);
         for (std::size_t k = 0; k < 5 && b + k < p.bytes; ++k) {
@@ -75,7 +93,7 @@ void pack_counts(std::span<const std::uint32_t> counts,
     }
 }
 
-// The dtype set, expanded once from rumi_dtypes.def.
+// Expanded once from the dtype registry.
 static const rumi_dtype_info k_dtype_table[] = {
 #define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \
     { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
@@ -90,7 +108,7 @@ const rumi_dtype_info* dtype_table(std::size_t* count) noexcept
     return k_dtype_table;
 }
 
-// (sample_format, bits) is unique per row, so the first match is the type.
+// Each (sample_format, bits) pair identifies one dtype.
 rumi_dtype sample_to_dtype(std::uint8_t sample_format,
                            std::uint8_t bits) noexcept
 {
@@ -104,7 +122,7 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
     return RUMI_DT_UNKNOWN;
 }
 
-// Decoded width; OpenZL stores each sub-byte sample in one byte.
+// Decoded storage width. Sub-byte samples occupy one byte.
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
     std::size_t n = 0;
@@ -141,24 +159,26 @@ parse_blob(std::span<const std::byte> blob)
     if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
     }
-    if (!unit_is_defined(bh.frame_unit)) {
-        return std::unexpected(ParseError::invalid_frame_unit);
-    }
 
     if (bh.image_width == 0 || bh.image_length == 0 ||
         bh.tile_width  == 0 || bh.tile_length  == 0 ||
-        bh.samples_per_pixel == 0) {
+        bh.samples_per_pixel == 0 || bh.time_count == 0) {
         return std::unexpected(ParseError::invalid_dimensions);
     }
-    // These become int raster sizes, reject > INT_MAX so the cast stays positive.
+    // Read APIs use signed int dimensions.
     if (bh.image_width  > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         bh.image_length > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
         return std::unexpected(ParseError::invalid_dimensions);
+    }
+    // A frame unit may contain only axes whose extent exceeds one.
+    if (!unit_valid_for(bh.frame_unit, bh.samples_per_pixel, bh.time_count)) {
+        return std::unexpected(ParseError::invalid_frame_unit);
     }
 
     Header h;
     h.image_width       = bh.image_width;
     h.image_length      = bh.image_length;
+    h.time_count        = bh.time_count;
     h.tile_width        = bh.tile_width;
     h.tile_length       = bh.tile_length;
     h.samples_per_pixel = bh.samples_per_pixel;
@@ -171,26 +191,38 @@ parse_blob(std::span<const std::byte> blob)
     h.tiles_across = 1 + (bh.image_width  - 1) / bh.tile_width;
     h.tiles_down   = 1 + (bh.image_length - 1) / bh.tile_length;
 
-    // A tile frame holds one band, a cell frame holds every band.
-    const auto frame_count_u64 = static_cast<std::uint64_t>(h.tiles_across)
-                               * static_cast<std::uint64_t>(h.tiles_down)
-                               * (unit_indexes_bands(bh.frame_unit)
-                                  ? static_cast<std::uint64_t>(bh.samples_per_pixel)
-                                  : 1u);
-    if (frame_count_u64 > std::numeric_limits<std::uint32_t>::max()) {
+    // Indexed axes multiply the number of frames per grid position.
+    const std::uint16_t spp = bh.samples_per_pixel;
+    const std::uint32_t tc  = bh.time_count;
+    std::uint64_t frame_count_u64 = 0;
+    if (!frame_count_of(bh.frame_unit, h.tiles_across, h.tiles_down, spp, tc,
+                        &frame_count_u64)
+        || frame_count_u64 > std::numeric_limits<std::uint32_t>::max()) {
         return std::unexpected(ParseError::frame_count_overflow);
     }
     h.frame_count = static_cast<std::uint32_t>(frame_count_u64);
 
-    // Sub-byte samples decode to one byte each.
-    const auto frame_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width)
-                               * static_cast<std::uint64_t>(bh.tile_length)
-                               * static_cast<std::uint64_t>(h.bytes_per_sample)
-                               * (unit_indexes_bands(bh.frame_unit)
-                                  ? 1u
-                                  : static_cast<std::uint64_t>(bh.samples_per_pixel));
+    // Check each factor so an overflowing frame size cannot bypass the limit.
+    std::uint64_t frame_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width);
+    const std::uint64_t factors[] = {
+        static_cast<std::uint64_t>(bh.tile_length),
+        static_cast<std::uint64_t>(h.bytes_per_sample),
+        unit_holds(bh.frame_unit, AXIS_BAND, spp, tc)
+            ? static_cast<std::uint64_t>(spp) : 1u,
+        unit_holds(bh.frame_unit, AXIS_TIME, spp, tc)
+            ? static_cast<std::uint64_t>(tc) : 1u,
+    };
+    for (const std::uint64_t f : factors) {
+        if (!mul_ok(frame_bytes_u64, f, &frame_bytes_u64)) {
+            return std::unexpected(ParseError::frame_size_overflow);
+        }
+    }
     if (frame_bytes_u64 > std::numeric_limits<std::size_t>::max()) {
         return std::unexpected(ParseError::frame_size_overflow);
+    }
+    // Enforce the resource limit before allocating frame storage.
+    if (frame_bytes_u64 > max_frame_bytes()) {
+        return std::unexpected(ParseError::frame_too_large);
     }
     h.max_frame_size = static_cast<std::size_t>(frame_bytes_u64);
 
@@ -206,10 +238,8 @@ parse_blob(std::span<const std::byte> blob)
 
     h.base_frame_offset = derived_base_offset(bh.samples_per_pixel, h.frame_count);
 
-    // Two expanded vectors cost 12 bytes per frame. Bound their combined
-    // allocation: the external header is untrusted and a constant-count blob
-    // can otherwise describe billions of frames in only 28 bytes. Constant
-    // counts need no vectors and retain O(1) direct access through arithmetic.
+    // Variable counts require one count and one offset per frame. Constant
+    // counts remain implicit and do not allocate either vector.
     constexpr std::uint64_t bytes_per_index = sizeof(std::uint32_t)
                                               + sizeof(std::uint64_t);
     const bool index_too_large = std::uint64_t(h.frame_count)
@@ -238,9 +268,8 @@ parse_blob(std::span<const std::byte> blob)
     h.frame_byte_counts.resize(h.frame_count);
     h.frame_offsets.resize(h.frame_count);
 
-    // Prefix sum over the contiguous run, unpacking as it goes. seen_low and
-    // seen_any come out of the same pass and settle whether the writer packed
-    // canonically.
+    // Unpack counts and reconstruct offsets in one pass. Track the minimum and
+    // highest residual bit to validate the canonical packing.
     std::uint64_t offset   = h.base_frame_offset;
     std::uint64_t seen_low = ~0ull;
     std::uint64_t seen_any = 0;
@@ -250,8 +279,7 @@ parse_blob(std::span<const std::byte> blob)
         const std::size_t   byte = static_cast<std::size_t>(at / 8);
         const std::size_t   have = packed_bytes - byte;
 
-        // A residual ends inside the region, but a load of eight would not, and
-        // the blob belongs to the caller. Read what is there.
+        // The final residual may have fewer than eight readable bytes.
         std::uint64_t word = 0;
         std::memcpy(&word, packed + byte, have < 8 ? have : 8);
 
@@ -276,10 +304,7 @@ parse_blob(std::span<const std::byte> blob)
         offset += count;
     }
 
-    // Same counts must give the same bytes, or a blob stops being comparable
-    // and a column of them stops deduplicating. The smallest residual is zero
-    // when count_min was the real minimum, and the or of them all carries the
-    // top bit of the largest.
+    // Canonical packing uses the decoded minimum and the narrowest bit width.
     if (h.frame_count > 0) {
         if (seen_low != 0) return std::unexpected(ParseError::non_canonical_counts);
         if (std::bit_width(seen_any) != bh.count_bits) {

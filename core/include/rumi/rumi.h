@@ -10,9 +10,7 @@
 extern "C" {
 #endif
 
-// The build hides symbols by default and RUMI_API marks the C ABI
-// surface. RUMI_BUILD is defined only on the targets that compile the
-// library.
+// Export only the public C ABI when symbol visibility is hidden.
 #if defined(_WIN32)
 #  if defined(RUMI_BUILD)
 #    define RUMI_API __declspec(dllexport)
@@ -28,12 +26,13 @@ extern "C" {
 
 // Version.
 
-#define RUMI_API_VERSION 2
+// C API compatibility version.
+#define RUMI_API_VERSION 1
 
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
 
-// The OpenZL frame format version.
+// Maximum OpenZL frame format version accepted by the linked decoder.
 RUMI_API int         rumi_openzl_format_version(void);
 
 
@@ -51,8 +50,8 @@ typedef enum {
     RUMI_ERR_INTERNAL    = 99
 } rumi_status;
 
-// Thread-local, NULL when no error is pending. Valid until the next
-// library call on the same thread.
+// Error from the last status-returning call on this thread, or NULL. The
+// pointer stays valid until the next such call or rumi_clear_error.
 RUMI_API const char* rumi_last_error(void);
 
 RUMI_API void rumi_clear_error(void);
@@ -60,43 +59,41 @@ RUMI_API void rumi_clear_error(void);
 
 // Memory.
 
-// Releases buffers the library allocated. Only rumi_index_file, rumi_write and
-// rumi_geokeys allocate, everything else is caller-owned.
+// Release a buffer returned by rumi_index_file, rumi_plan_ranges, rumi_write,
+// rumi_read_time, or rumi_geokeys. Other pointers remain caller-owned.
 RUMI_API void rumi_free(void* ptr);
 
 
+// Resource limits.
+
+// Process-wide safety limit for decoded frames and other input-sized
+// allocations. Passing 0 restores the one-gibibyte default. Both functions
+// return the effective limit.
+RUMI_API uint64_t rumi_set_max_frame_bytes(uint64_t n);
+RUMI_API uint64_t rumi_get_max_frame_bytes(void);
+
 // Threads.
 
-// Process-wide default for reads with num_threads <= 0. RUMI_NUM_THREADS seeds
-// it with an integer or ALL_CPUS; values are clamped to 1..1024. The first
-// parallel read pins the count. A forked child initializes its own setting.
-// Both functions return the count in effect.
+// Process-wide read thread count, clamped to 1..1024. RUMI_NUM_THREADS may be
+// an integer or ALL_CPUS. The first parallel read fixes the pool size; later
+// calls cannot resize it. A forked child starts with its own setting. Both
+// functions return the effective count.
 RUMI_API int rumi_set_num_threads(int n);
 RUMI_API int rumi_get_num_threads(void);
 
 
-// Data paths.
-
 // Indexing.
 
-// On success *out_blob is *out_size bytes owned by the caller, released
-// with rumi_free. On failure the out-pointers are left untouched.
-//
-// A file records how many frames it holds, not the order of the axes inside
-// one, and with more than one band frame_unit 1 and 2 both give one frame per
-// grid position. The blob returned therefore always says 1, and reading a file
-// written as 2 with it gives the wrong samples and no error.
-//
-// Carry the blob rumi_write returned. A caller that knows the layout by other
-// means owns *out_blob and may set byte 22, the frame_unit field, before
-// handing it to rumi_spec_parse; the byte layout is normative in SPEC.md.
+// Validate a local rumi file's metadata and build its external header. On
+// success, *out_blob contains *out_size bytes released with rumi_free. On
+// failure, both outputs are unchanged. The blob layout is defined in SPEC.md.
 RUMI_API rumi_status
 rumi_index_file(const char*     path,
                 unsigned char** out_blob,
                 size_t*         out_size);
 
 
-// Header.
+// Dtypes and external-header fields.
 
 // Sentinel in the DLCODE column of rumi_dtypes.def for a type with no DLPack
 // form (the complex integers). Never a real DLPack code.
@@ -111,9 +108,8 @@ typedef enum {
 #undef RUMI_DTYPE
 } rumi_dtype;
 
-// One row of the dtype table, the ABI-stable view a binding walks to learn
-// every type instead of hard-coding the set. dl_code is RUMI_DL_NONE when the
-// type has no DLPack form.
+// ABI-stable view of one dtype-registry entry. dl_code is RUMI_DL_NONE when no
+// DLPack representation exists.
 typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
@@ -123,21 +119,23 @@ typedef struct {
     const char* name;
 } rumi_dtype_info;
 
-// Hands back the static dtype table and its length. Process-lifetime, not owned
-// by the caller. Bindings build their own numpy/name maps by walking it.
+// Return the number of rows in the process-lifetime dtype table. If out is not
+// NULL, *out receives the table. The caller does not own it.
 RUMI_API size_t rumi_dtype_table(const rumi_dtype_info** out);
 
-// dtype is the canonical type, rumi's own. The (sample_format,
-// bits_per_sample) pair is kept for reference.
+// Parsed fields from an external header. dtype is the canonical rumi type;
+// sample_format and bits_per_sample expose its on-disk encoding.
 typedef struct {
     uint32_t image_width;
     uint32_t image_length;
+    // Time steps. 1 is an Image, more is a Cube.
+    uint32_t time_count;
     uint16_t tile_width;
     uint16_t tile_length;
     uint16_t samples_per_pixel;
     uint8_t  bits_per_sample;
     uint8_t  sample_format;
-    // The frame's axis order: 0 is (h w), 1 is (b h w), 2 is (h w b).
+    // Entry in the frame_unit registry; resolve its axes with rumi_unit_name.
     uint8_t  frame_unit;
     uint32_t tiles_across;
     uint32_t tiles_down;
@@ -148,119 +146,157 @@ typedef struct {
 
 // Layout.
 
-// shape[0..ndim) is populated, the rest is zero. sn/sb/sy/sx are element
-// strides, multiply by bytes_per_sample for bytes. native is 1 when the
-// output order is canonical (n) b y x.
+// The axes a result may carry, in canonical order, indexing rumi_layout.stride.
+#define RUMI_OUT_N 0
+#define RUMI_OUT_T 1
+#define RUMI_OUT_B 2
+#define RUMI_OUT_Y 3
+#define RUMI_OUT_X 4
+#define RUMI_OUT_NDIM 5
+
+// shape[0..ndim) follows the pattern; grouped axes become one dimension. The
+// remaining shape entries are zero. stride is indexed by RUMI_OUT_* and is
+// measured in elements. native is non-zero when the axes are in n, t, b, y, x
+// order, ignoring omitted axes.
 typedef struct {
-    int64_t shape[4];
+    int64_t shape[5];
     int     ndim;
-    int64_t sn;
-    int64_t sb;
-    int64_t sy;
-    int64_t sx;
+    int64_t stride[5];
     int     native;
 } rumi_layout;
 
-// Pure function over (pattern, post-selection extents). For a single
-// image pass n = 1 and a pattern without n.
+// Return a static default pattern for an Image, Cube, or stack. times is the
+// file's time_count, not the number of selected steps.
+RUMI_API const char* rumi_default_pattern(size_t n_images, uint32_t times);
+
+// Compile a pattern for the selected n, t, b, y, x extents. Every extent must
+// be positive, and an omitted axis must have extent one. NULL uses the default
+// pattern. Strides are in elements.
 RUMI_API rumi_status
 rumi_compile_layout(const char*  pattern,
-                    int64_t n, int64_t b, int64_t y, int64_t x,
+                    int64_t n, int64_t t, int64_t b, int64_t y, int64_t x,
                     rumi_layout* out);
 
 
 // Frames.
 //
-// Everything a caller needs to cut an array into frames rumi will accept. The
-// library never touches the caller's array: it answers what to cut, in what
-// order, and in what shape, and the caller does the cutting. A binding that
-// uses these needs no knowledge of the format beyond them.
+// Helpers for cutting an array into frames without passing the array to C.
 
-// Axis roles a compiled pattern reports. H and W are the tile-local spatial
-// axes; Y and X are the image axes a pattern splits into a grid axis and one
-// of those.
+// Axis roles used by frame patterns. Y and X are full image axes; H and W are
+// their tile-local parts after splitting.
 typedef enum {
     RUMI_AXIS_BAND = 0,
     RUMI_AXIS_Y    = 1,
     RUMI_AXIS_X    = 2,
     RUMI_AXIS_H    = 3,
-    RUMI_AXIS_W    = 4
+    RUMI_AXIS_W    = 4,
+    RUMI_AXIS_TIME = 5
 } rumi_axis;
 
 #define RUMI_MAX_AXES 4
 
-// input holds the role of each of the caller's axes, in its own order, so a
-// binding knows how to reach canonical order. frame holds the roles inside one
-// frame, in order. frame_unit is what rumi_write_desc wants.
+// input is the source-array axis order. frame is the decoded frame axis order.
+// index lists band/time axes outside the frame, outermost first.
 typedef struct {
-    uint8_t frame_unit;
     uint8_t input[RUMI_MAX_AXES];
     int     input_ndim;
     uint8_t frame[RUMI_MAX_AXES];
     int     frame_ndim;
+    uint8_t index[2];
+    int     index_ndim;
 } rumi_frame_pattern;
 
-// Compiles "b (row h) (col w) -> row col (b h w)". The left names the input,
-// a parenthesised pair splits an axis into a grid axis and a tile-local one,
-// and the trailing group on the right is the frame. Unlike einops the split is
-// a division with a ceiling, so an image need not divide evenly by the tile.
+// Compile a pattern such as "b (row h) (col w) -> row col (b h w)". Spatial
+// splits use ceiling division, so edge frames may be smaller than tile_size.
 RUMI_API rumi_status
 rumi_compile_frame_pattern(const char* pattern, rumi_frame_pattern* out);
 
-// The frame's axis order for a unit, such as "b h w". NULL names no layout.
-// The string is static and outlives the call.
-RUMI_API const char* rumi_unit_name(uint8_t unit);
+// Resolve a compiled pattern to the frame_unit for these band and time counts.
+// Singleton band or time axes are removed here.
+RUMI_API rumi_status
+rumi_frame_unit(const rumi_frame_pattern* pattern, uint16_t bands,
+                uint32_t times, uint8_t* out);
 
-// The unit an axis order names.
-RUMI_API rumi_status rumi_unit_from_name(const char* name, uint8_t* out);
+// Write the unit's frame axes, such as "b h w", as a NUL-terminated string.
+// Eight bytes are enough for every valid result.
+RUMI_API rumi_status
+rumi_unit_name(uint8_t unit, uint16_t bands, uint32_t times, char* out,
+               size_t out_size);
 
-// Non-zero when a frame holds one band, so the frame index walks bands too.
-RUMI_API int rumi_unit_indexes_bands(uint8_t unit);
+// Write the band/time axes outside the frame, outermost first. out must hold
+// two rumi_axis values; *out_ndim says how many were written. Singleton axes
+// are omitted.
+RUMI_API rumi_status
+rumi_unit_index_axes(uint8_t unit, uint16_t bands, uint32_t times,
+                     uint8_t* out, int* out_ndim);
 
-// Where frame `index` sits and the shape it must arrive in. dims is in the
-// layout's own axis order, so a caller permutes its cut to match.
+// Return the static pattern name for an axis: "b", "t", "y", "x", "h", or
+// "w". Return NULL if axis is invalid.
+RUMI_API const char* rumi_axis_name(uint8_t axis);
+
+// Check that dtype is known. For sub-byte types, each decoded sample occupies
+// one byte and all unused high bits must be zero.
+RUMI_API rumi_status
+rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype);
+
+// Resolve a frame-axis string such as "b h w" for these band and time counts.
+RUMI_API rumi_status
+rumi_unit_from_name(const char* name, uint16_t bands, uint32_t times,
+                    uint8_t* out);
+
+// Return non-zero when the frame index, rather than the frame, carries band.
+RUMI_API int rumi_unit_indexes_bands(uint8_t unit, uint16_t bands,
+                                     uint32_t times);
+
+// Location and decoded shape of one frame. row, col, band, and time are
+// zero-based; h and w are the edge-aware frame dimensions.
 typedef struct {
-    uint32_t row, col, band, h, w;
+    uint32_t row, col, band, time, h, w;
     int64_t  dims[RUMI_MAX_AXES];
+    // Permutation from a cut ordered as held b, held t, h, w to dims.
+    uint8_t  perm[RUMI_MAX_AXES];
     int      ndim;
 } rumi_frame_at;
 
-// The grid and the frame count for a description. Any out-pointer may be NULL.
+// Return the tile grid and total frame count. Any output pointer may be NULL.
 RUMI_API rumi_status
 rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-                 uint16_t bands, uint32_t* out_across, uint32_t* out_down,
-                 uint64_t* out_frames);
+                 uint16_t bands, uint32_t times, uint32_t* out_across,
+                 uint32_t* out_down, uint64_t* out_frames);
 
+// Resolve a zero-based frame index. dims and perm use the first out->ndim
+// entries; row, col, band, and time are also zero-based.
 RUMI_API rumi_status
 rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-              uint16_t bands, uint64_t index, rumi_frame_at* out);
+                  uint16_t bands, uint32_t times, uint64_t index,
+                  rumi_frame_at* out);
 
 
-// Spec.
+// External header parsing.
 
-// A parsed header blob. Pure memory, no file handle, cheap to create and
-// destroy, reusable across any number of reads.
+// Parsed external header, independent of a source and reusable across reads.
 typedef struct rumi_spec rumi_spec;
 
+// Parse and copy an external-header blob. Destroy *out with rumi_spec_destroy;
+// the input blob may be released after this call. *out is unchanged on error.
 RUMI_API rumi_status
 rumi_spec_parse(const unsigned char* blob, size_t blob_size,
                 rumi_spec** out);
 
 RUMI_API void rumi_spec_destroy(rumi_spec* spec);
 
+// Copy the parsed scalar fields into out.
 RUMI_API rumi_status
 rumi_spec_header(const rumi_spec* spec, rumi_header* out);
 
 
 // Sources.
 
-// Where frame bytes come from. A source is opened once and shared by every read
-// against it; reads are safe to issue concurrently.
+// Byte source shared by concurrent reads.
 typedef struct rumi_source rumi_source;
 
-// A local file, read with pread, so workers share it without a cursor.
-// rumi speaks no network protocol; fetch remote bytes yourself and open them
-// with rumi_source_memory.
+// Open a local file for positional reads. Remote data must be fetched by the
+// caller and supplied through rumi_source_memory.
 RUMI_API rumi_status rumi_source_file(const char* path, rumi_source** out);
 
 // A buffer the caller owns and keeps alive for the life of the source.
@@ -269,13 +305,15 @@ rumi_source_memory(const void* data, size_t size, rumi_source** out);
 
 RUMI_API void rumi_source_free(rumi_source* src);
 
-// The byte ranges a window needs, in frame-index order, so a caller can fetch
-// those and read the result back through a memory source. Pure arithmetic over
-// the header, no I/O. *out is caller-owned, released with rumi_free.
+// One byte range in the source.
 typedef struct { uint64_t offset; uint64_t length; } rumi_range;
 
+// Return the unique frame ranges needed for a window, in frame-index order.
+// times and bands follow rumi_read selection rules; the window is zero-based.
+// This performs no I/O. Release *out with rumi_free.
 RUMI_API rumi_status
 rumi_plan_ranges(const rumi_spec* spec,
+                 const int* times, size_t n_times,
                  const int* bands, size_t n_bands,
                  int y_off, int y_size, int x_off, int x_size,
                  rumi_range** out, size_t* out_count);
@@ -283,104 +321,108 @@ rumi_plan_ranges(const rumi_spec* spec,
 
 // Read.
 
-// Reads the window from src. bands holds
-// 1-based indices in output order, NULL with n_bands = 0 means all bands in
-// file order. pattern NULL is shorthand for "b y x". dst must be aligned to
-// the sample size and dst_size is checked up front. num_threads <= 0 takes the
-// process-wide count, 1 stays on the calling thread and builds no pool, more
-// asks for that many and gets the pool's size if one already exists.
+// Read a zero-based (offset, size) window. times and bands are 1-based indices
+// in output order; (NULL, 0) selects all in file order. NULL pattern uses the
+// default Image or Cube layout. dst_size must cover every decoded sample;
+// sub-byte samples occupy one byte each. Reads use the process-wide thread
+// pool.
 RUMI_API rumi_status
 rumi_read(rumi_source*     src,
           const rumi_spec* spec,
+          const int*       times, size_t n_times,
           const int*       bands, size_t n_bands,
           int              y_off, int y_size,
           int              x_off, int x_size,
           const char*      pattern,
-          int              num_threads,
           void*            dst,   size_t dst_size);
 
-// Stack form. One source+spec per image, all sharing grid, tile size, band
-// count and dtype. n_index holds 1-based image indices, NULL with n_n = 0
-// means all images in order. The pattern must contain n when more than one
-// image is selected. dst follows the same alignment rule as rumi_read.
+// Stack form of rumi_read. sources[i] is described by specs[i]. All pairs must
+// share image and tile dimensions, band/time counts, dtype, and which of band
+// and time are held in a frame; their frame axis order may differ. n_index is
+// 1-based and controls output order; (NULL, 0) selects every image. A pattern
+// must include n when more than one image is selected.
 RUMI_API rumi_status
 rumi_read_stack(rumi_source* const*     sources,
                 const rumi_spec* const* specs,  size_t n_images,
                 const int*              n_index, size_t n_n,
+                const int*              times,   size_t n_times,
                 const int*              bands,   size_t n_bands,
                 int                     y_off, int y_size,
                 int                     x_off, int x_size,
                 const char*             pattern,
-                int                     num_threads,
                 void*                   dst,   size_t dst_size);
 
-// DLPack form. Reads like rumi_read but rumi owns the result, handed back as a
-// DLManagedTensorVersioned the caller wraps in a capsule. On success *out holds
-// it, released through its own deleter. A dtype with no DLPack code, the complex
-// integers, gives RUMI_ERR_UNSUPPORTED.
+// DLPack form of rumi_read. It allocates the output instead of accepting dst.
+// On success, release *out with its deleter or rumi_dlpack_free. A dtype with
+// no DLPack representation returns RUMI_ERR_UNSUPPORTED.
 RUMI_API rumi_status
 rumi_read_dlpack(rumi_source*     src,
                  const rumi_spec* spec,
+                 const int*       times, size_t n_times,
                  const int*       bands, size_t n_bands,
                  int              y_off, int y_size,
                  int              x_off, int x_size,
                  const char*      pattern,
-                 int              num_threads,
                  DLManagedTensorVersioned** out);
 
+// DLPack form of rumi_read_stack; selection and compatibility rules are the
+// same as above.
 RUMI_API rumi_status
 rumi_read_stack_dlpack(rumi_source* const*     sources,
                        const rumi_spec* const* specs,  size_t n_images,
                        const int*              n_index, size_t n_n,
+                       const int*              times,   size_t n_times,
                        const int*              bands,   size_t n_bands,
                        int                     y_off, int y_size,
                        int                     x_off, int x_size,
                        const char*             pattern,
-                       int                     num_threads,
                        DLManagedTensorVersioned** out);
 
-// Frees a tensor from rumi_read_dlpack. Same function the tensor carries as its
-// deleter, so a consumer and an unconsumed capsule free through one path.
+// Release a versioned tensor returned by rumi. Safe to call with NULL.
 RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
-// Wraps a versioned tensor for a DLPack 0.x consumer. Returns NULL without
-// taking ownership for padded sub-byte storage. Otherwise the wrapper owns t;
-// release it with rumi_dlpack_legacy_free.
+// Wrap a versioned tensor for a DLPack 0.x consumer. On success, the wrapper
+// owns t and must be released with rumi_dlpack_legacy_free. On failure, NULL is
+// returned and the caller still owns t. Padded sub-byte tensors cannot be
+// wrapped.
 RUMI_API DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 
+// Release a legacy wrapper and its versioned tensor. Safe to call with NULL.
 RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
 
 
 // Writing.
 
-// One image to write. transform is six affine coefficients in the order
-// (x_res, row_rotation, x_origin, column_rotation, y_res, y_origin), NULL when
-// the image carries no georeferencing, in which case epsg is 0 too and the
-// file gets the identity matrix with an undefined CRS.
+// Description of one file to write. transform contains six affine coefficients
+// in the order (x_res, row_rotation, x_origin, column_rotation, y_res,
+// y_origin). transform and epsg must be given together; use NULL and 0 for no
+// CRS.
 typedef struct {
     uint32_t      image_width;
     uint32_t      image_length;
+    // Time steps. 1 is an Image, more is a Cube.
+    uint32_t      time_count;
     uint16_t      tile_size;
     uint16_t      samples_per_pixel;
     rumi_dtype    dtype;
     const double* transform;
     uint32_t      epsg;
     int           pixel_is_point;
-    // The frame's axis order. 0 is (h w), one band at one grid position. 1 is
-    // (b h w) and 2 is (h w b), both every band at one grid position, which
-    // lets a graph model the correlation between bands. The two differ in what
-    // sits next to what: (b h w) keeps each band a plane, (h w b) keeps a
-    // pixel's bands together. With one band all three are the same bytes and
-    // the writer records 0.
+    // Entry in the frame_unit registry, normally obtained from rumi_frame_unit.
     uint8_t       frame_unit;
+    // Time trailer input: 0 undefined, 1 interval, 2 instant. time contains
+    // POSIX seconds: time_count values for instants, twice that for intervals,
+    // and none for undefined time. rumi derives the canonical storage scale.
+    uint8_t        time_type;
+    const int64_t* time;
+    uint64_t       time_coords;
 } rumi_write_desc;
 
-// Writes the file and hands back its header blob, *out_size bytes owned by the
-// caller and released with rumi_free. frames holds frame_count compressed
-// frames in frame-index order, sizes one length each; rumi_frame_count and
-// rumi_frame_locate give that order and the shape each frame must have had, so
-// a caller never has to derive either.
-// On failure the file is removed and the out-pointers are left untouched.
+// Write compressed frames in frame-index order and return the external header.
+// *out_blob contains *out_size caller-owned bytes released with rumi_free. Use
+// rumi_frame_count and rumi_frame_locate to obtain the required order and
+// decoded shapes. On failure, the partial file is removed and output pointers
+// are unchanged.
 RUMI_API rumi_status
 rumi_write(const char*                 path,
            const rumi_write_desc*      desc,
@@ -390,16 +432,39 @@ rumi_write(const char*                 path,
            unsigned char**             out_blob,
            size_t*                     out_size);
 
-// Where the frame data would start for this description, without writing.
+// Validate desc and return the byte offset of its first frame without writing.
 RUMI_API rumi_status
 rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 
 
-// Geo keys.
+// Time.
 
-// Builds the fixed GeoKeyDirectory from an EPSG code. pixel_is_point selects
-// PixelIsArea (0) or PixelIsPoint (non-zero). The directory is caller-owned and
-// released with rumi_free; out_dbl and out_ascii are NULL with size 0.
+// Read time coordinates from the file trailer as POSIX seconds. out_type is 0
+// for undefined, 1 for intervals, or 2 for instants. out_scale reports the
+// stored scale. Release *out_time with rumi_free; undefined time returns
+// (NULL, 0). All output pointers are required and unchanged on error.
+RUMI_API rumi_status
+rumi_read_time(const char* path, uint8_t* out_type, uint32_t* out_scale,
+               int64_t** out_time, size_t* out_count);
+
+
+// Georeferencing.
+
+// Read georeferencing from the file IFD. transform uses the rumi_write_desc
+// coefficient order. EPSG 0 means no CRS and the returned identity transform
+// is only a placeholder. out_pixel_is_point is non-zero for PixelIsPoint. Any
+// output pointer may be NULL.
+RUMI_API rumi_status
+rumi_read_geo(const char* path, double* out_transform, uint32_t* out_epsg,
+              int* out_pixel_is_point);
+
+
+// Georeferencing helpers.
+
+// Build rumi's fixed GeoKeyDirectory for an EPSG code. pixel_is_point selects
+// PixelIsArea (0) or PixelIsPoint (non-zero). Release *out_dir with rumi_free;
+// *out_dbl and *out_ascii are NULL with size 0. All output pointers are
+// required and unchanged on error.
 RUMI_API rumi_status
 rumi_geokeys(uint32_t        epsg,
              int             pixel_is_point,

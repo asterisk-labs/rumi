@@ -20,14 +20,14 @@
 namespace rumi {
 namespace {
 
-// Per-thread decode context and scratch, reused across frames. Grows only.
+// Decoder context and reusable buffers for one worker.
 struct WorkerState {
     ZL_DCtx*               dctx = ZL_DCtx_create();
     std::vector<std::byte> compressed;
     std::vector<std::byte> scratch;
 
     WorkerState() {
-        // Registration only fails on allocation. Drop it and report cleanly.
+        // Treat decoder registration failure as unavailable worker state.
         if (dctx && ZL_isError(geozl_register_decoders(dctx))) {
             ZL_DCtx_free(dctx);
             dctx = nullptr;
@@ -45,9 +45,7 @@ WorkerState& worker_state() noexcept
     return ws;
 }
 
-// A one-sample pixel stride on both sides is a contiguous row, a larger one
-// has another axis inner, so copy pixel by pixel. src_pitch is the frame's real
-// width, in whatever stride its layout gives a pixel.
+// Copy a plane row-wise when pixels are contiguous, otherwise sample-wise.
 void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
                     const std::byte* plane, std::byte* dst) noexcept
 {
@@ -76,7 +74,7 @@ void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
     }
 }
 
-// The frame is decoded once, so every band comes out of the one buffer.
+// Copy every selected plane from one decoded frame.
 void copy_rect(const FrameTask& t, const FrameSpec& spec,
                const std::byte* frame) noexcept
 {
@@ -85,13 +83,12 @@ void copy_rect(const FrameTask& t, const FrameSpec& spec,
                                 * t.src_pixel_stride;
 
     for (std::uint32_t k = 0; k < t.plane_count; ++k) {
-        copy_one_plane(t, bps, src_pitch,
-                       frame + static_cast<std::size_t>(t.planes[k]) * t.plane_bytes,
-                       t.dst + static_cast<std::int64_t>(k) * t.band_space);
+        copy_one_plane(t, bps, src_pitch, frame + t.src_offset[k],
+                       t.dst + t.dst_offset[k]);
     }
 }
 
-// Detects the engine's missing custom codec message and pulls out the CTid.
+// Extract a missing custom codec ID from an OpenZL error message.
 bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
 {
     if (!ctx) return false;
@@ -106,7 +103,7 @@ bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
     return true;
 }
 
-// The failing task's message, formatted once and handed up to Executor.
+// Format one task failure for Executor.
 [[gnu::format(printf, 2, 3)]]
 void say(std::string& out, const char* fmt, ...) noexcept
 {
@@ -139,8 +136,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         }
     }
 
-    // Frame bytes, read positionally so every worker reads at once. The
-    // decode runs after.
+    // Read compressed bytes positionally before decoding.
     const std::size_t got = t.source->read(
         t.offset, t.compressed_size, ws.compressed.data());
     if (got != t.compressed_size) {
@@ -151,7 +147,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         return RUMI_ERR_IO;
     }
 
-    // Complete frames decode into the output; partial frames use scratch.
+    // Direct tasks decode into output; all others decode into scratch.
     std::byte* frame = t.direct;
     if (!frame) {
         if (ws.scratch.size() < spec.frame_bytes) {
@@ -165,7 +161,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         frame = ws.scratch.data();
     }
 
-    // Validate the decoded numeric output before copying it.
+    // Validate decoded type and size before copying samples.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
         ws.dctx, &info, frame, t.frame_bytes,
@@ -195,6 +191,20 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
             static_cast<unsigned>(spec.bytes_per_sample),
             static_cast<unsigned long long>(t.frame_bytes), img);
         return RUMI_ERR_DECODE;
+    }
+
+    // Padded sub-byte samples must leave unused high bits clear.
+    if (spec.bits_per_sample < 8) {
+        const auto spare = static_cast<std::byte>(
+            (0xFFu << spec.bits_per_sample) & 0xFFu);
+        for (std::size_t i = 0; i < t.frame_bytes; ++i) {
+            if ((frame[i] & spare) != std::byte{0}) {
+                say(msg, "rumi: byte %zu of a decoded frame has bits set above "
+                    "the %u its encoding occupies%s",
+                    i, static_cast<unsigned>(spec.bits_per_sample), img);
+                return RUMI_ERR_DECODE;
+            }
+        }
     }
 
     if (!t.direct) copy_rect(t, spec, frame);
@@ -236,9 +246,8 @@ bool Executor::run(const Plan& plan) const
     };
 
     if (pool_ != nullptr && plan.tasks.size() > 1) {
-        // Submit one drain job per usable worker, not one std::function per
-        // frame. The atomic index keeps differently sized frames balanced while
-        // bounding queue allocations and mutex traffic by the thread count.
+        // Submit one draining job per worker. The atomic task index balances
+        // uneven frame sizes without queuing one function per frame.
         std::atomic<std::size_t> next{0};
         const auto drain = [&] {
             for (;;) {

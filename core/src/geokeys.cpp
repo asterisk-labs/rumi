@@ -20,7 +20,7 @@ std::unexpected<std::string> err(const char* fmt, ...)
     return std::unexpected(std::string(buf));
 }
 
-// GeoTIFF key ids. https://docs.ogc.org/is/19-008r4/19-008r4.html
+// GeoKey IDs reused by rumi. https://docs.ogc.org/is/19-008r4/19-008r4.html
 constexpr std::uint16_t GT_MODEL_TYPE   = 1024;
 constexpr std::uint16_t GT_RASTER_TYPE  = 1025;
 constexpr std::uint16_t GEOGRAPHIC_TYPE = 2048;
@@ -32,9 +32,8 @@ constexpr std::uint16_t MODEL_GEOGRAPHIC = 2;
 constexpr std::uint16_t RASTER_AREA      = 1;
 constexpr std::uint16_t RASTER_POINT     = 2;
 
-// Geographic or projected is not readable off the number. EPSG:4037 sits inside
-// the geographic block and is projected, and it has company. The table is
-// generated from the registry by tools/gen_epsg_kinds.py.
+// EPSG code ranges do not reliably identify geographic versus projected CRSs.
+// tools/gen_epsg_kinds.py generates the classification table from the registry.
 struct CodeRange {
     std::uint32_t lo;
     std::uint32_t hi;
@@ -92,7 +91,7 @@ std::uint16_t epsg_model_type(std::uint32_t epsg) noexcept
 std::expected<GeoKeys, std::string>
 build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept
 try {
-    // 0 is GeoTIFF's code for a parameter left out on purpose.
+    // EPSG 0 represents the undefined CRS in rumi's fixed GeoKey profile.
     const bool undefined  = epsg == 0;
     const bool geographic = !undefined && is_geographic(epsg);
     if (!undefined && !geographic && !is_projected(epsg))
@@ -105,7 +104,7 @@ try {
         crs_key = geographic ? GEOGRAPHIC_TYPE  : PROJECTED_TYPE;
     }
 
-    // Ascending key id, which the format requires.
+    // The fixed directory stores keys in ascending ID order.
     const std::uint16_t keys[][4] = {
         {GT_MODEL_TYPE,  0, 1, model},
         {GT_RASTER_TYPE, 0, 1, pixel_is_point ? RASTER_POINT : RASTER_AREA},
@@ -122,8 +121,7 @@ try {
     for (const auto& k : keys)
         for (std::uint16_t v : k) put16(out.directory, v);
 
-    // double_params and ascii_params stay empty: the code carries everything,
-    // so there are no parameters to spill into the companion tags.
+    // The EPSG code is inline, so companion parameter payloads remain empty.
     return out;
 }
 catch (const std::exception& e) {

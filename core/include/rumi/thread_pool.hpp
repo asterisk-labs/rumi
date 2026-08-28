@@ -17,9 +17,8 @@
 
 namespace rumi {
 
-// Fixed-size pool, one process-global instance shared by every read. Work goes
-// in batches, and each read waits only for its own submitted work. Reads are
-// planned and run on the calling thread.
+// Fixed-size process-wide pool. Each read submits a batch and waits only for
+// that batch.
 class ThreadPool {
 public:
     explicit ThreadPool(unsigned threads);
@@ -80,9 +79,8 @@ inline ThreadPool::ThreadPool(unsigned threads)
             });
         }
     } catch (...) {
-        // A partially built vector contains joinable std::threads. Letting its
-        // destructor see them would call std::terminate instead of reporting
-        // the resource failure to the read that requested the pool.
+        // Join workers created before a constructor failure; destroying a
+        // joinable std::thread would terminate the process.
         {
             std::lock_guard lock(mutex_);
             stop_ = true;
@@ -129,8 +127,7 @@ inline void ThreadPool::Batch::submit(std::function<void()> job)
             if (--pending_ == 0) done_.notify_all();
         });
     } catch (...) {
-        // Restore pending_ when enqueue rejects the job. The destructor still
-        // waits for previously accepted jobs.
+        // Undo pending_ when enqueue rejects this job.
         std::lock_guard lock(mutex_);
         if (--pending_ == 0) done_.notify_all();
         throw;
@@ -154,8 +151,8 @@ using pid_type = ::pid_t;
 inline pid_type current_pid() noexcept { return ::getpid(); }
 #endif
 
-// A child replaces the inherited slot before touching its mutex. The inherited
-// pool is not destroyed because its workers no longer exist after fork.
+// After fork, replace the inherited slot before locking it. The child cannot
+// destroy the old pool because its worker threads no longer exist.
 struct PoolSlot {
     explicit PoolSlot(pid_type pid) noexcept : owner(pid) {}
 
@@ -180,7 +177,7 @@ struct GlobalPool {
     }
 };
 
-// Avoid a function-local static guard that could be inherited during setup.
+// Avoid inheriting a function-local static initialization guard across fork.
 constinit inline GlobalPool g_global_pool;
 static_assert(std::atomic<PoolSlot*>::is_always_lock_free,
               "post-fork pool registry must not hide a library mutex");
@@ -211,7 +208,7 @@ inline PoolSlot& process_pool_slot()
     }
 }
 
-// Implemented in read.cpp and exposed here for deterministic pool tests.
+// Implemented in read.cpp; declared here for deterministic pool tests.
 int reserve_thread_count(int requested) noexcept;
 void rollback_thread_count(unsigned threads) noexcept;
 
@@ -229,8 +226,7 @@ inline unsigned global_thread_pool_size() noexcept
     return slot->threads.load(std::memory_order_acquire);
 }
 
-// Serialize construction per process. Reserve while locked, roll back on
-// failure, and publish the pool only after construction succeeds.
+// Serialize pool construction per process and publish only a complete pool.
 template <typename ReserveCount, typename RollbackCount, typename MakePool>
 inline ThreadPool* global_thread_pool(ReserveCount&& reserve_count,
                                       RollbackCount&& rollback_count,

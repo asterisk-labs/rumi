@@ -33,9 +33,8 @@ std::unexpected<std::string> err(std::string msg)
     return std::unexpected(std::move(msg));
 }
 
-// printf-checked. Error paths format into a buffer rather than concatenating
-// std::string, which pulls a symbol from a newer libstdc++ and raises the
-// platform tag of the wheel.
+// printf-format checked error helper. A fixed buffer avoids newer libstdc++
+// symbols that would raise the wheel's platform requirement.
 [[gnu::format(printf, 1, 2)]]
 std::unexpected<std::string> errf(const char* fmt, ...)
 {
@@ -47,18 +46,24 @@ std::unexpected<std::string> errf(const char* fmt, ...)
     return std::unexpected(std::string(buf));
 }
 
-// Set by read_window on the calling thread, read by the C ABI after the call
-// returns.
+// Detailed status for the most recent read on the calling thread.
 thread_local rumi_status g_read_status = RUMI_ERR_IO;
 
 std::expected<void, std::string>
-validate_request(const Header& h, std::span<const int> bands,
+validate_request(const Header& h, std::span<const int> times,
+                 std::span<const int> bands,
                  int y_off, int y_size, int x_off, int x_size)
 {
     if (bands.empty()) return err("no bands selected");
     for (int b : bands) {
         if (b < 1 || b > h.samples_per_pixel) {
             return errf("band %d out of range [1, %u]", b, h.samples_per_pixel);
+        }
+    }
+    if (times.empty()) return err("no time steps selected");
+    for (int t : times) {
+        if (t < 1 || static_cast<std::uint32_t>(t) > h.time_count) {
+            return errf("t=%d out of range [1, %u]", t, h.time_count);
         }
     }
     if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
@@ -76,7 +81,7 @@ int clamp_threads(int n) noexcept
     return n < 1 ? 1 : (n > MAX_THREADS ? MAX_THREADS : n);
 }
 
-// An integer, or ALL_CPUS as GDAL_NUM_THREADS spells it. Anything else is 1.
+// Parse RUMI_NUM_THREADS as an integer or ALL_CPUS; invalid values select 1.
 int env_threads() noexcept
 {
     const char* s = std::getenv("RUMI_NUM_THREADS");
@@ -95,7 +100,7 @@ int env_threads() noexcept
     return n > MAX_THREADS ? MAX_THREADS : static_cast<int>(n);
 }
 
-// Pack PID, count and pinned state so a child can reseed them atomically.
+// Store PID, thread count, and pinned state in one atomic value.
 constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
 constexpr std::uint32_t PINNED       = 0x80000000u;
 
@@ -133,7 +138,7 @@ bool state_owned_by(std::uint64_t state, std::uint32_t pid) noexcept
         && state_threads(state) != 0;
 }
 
-// Seed this process from the environment on first use and after fork.
+// Initialize thread state on first use and after fork.
 std::uint64_t process_thread_state() noexcept
 {
     const std::uint32_t pid = pid_key();
@@ -149,7 +154,7 @@ std::uint64_t process_thread_state() noexcept
     return state;
 }
 
-// Atomically reserve the count for the first parallel read.
+// Pin the process-wide count on the first parallel read.
 int pin_num_threads(int requested) noexcept
 {
     const std::uint32_t pid = pid_key();
@@ -163,7 +168,7 @@ int pin_num_threads(int requested) noexcept
 
         const int want = requested > 0
             ? clamp_threads(requested) : state_threads(state);
-        // A serial request does not create a pool or pin the count.
+        // Serial reads do not create a pool or pin the thread count.
         if (want <= 1) return want;
         const std::uint64_t pinned = pack_thread_state(pid, want, true);
         if (g_thread_state.compare_exchange_weak(
@@ -174,7 +179,7 @@ int pin_num_threads(int requested) noexcept
     }
 }
 
-// PoolSlot::make remains locked during rollback.
+// Called while PoolSlot::make still holds the construction lock.
 void rollback_pin_num_threads(unsigned threads) noexcept
 {
     const std::uint32_t pid = pid_key();
@@ -187,18 +192,14 @@ void rollback_pin_num_threads(unsigned threads) noexcept
         std::memory_order_acquire);
 }
 
-ThreadPool* pool_for(int requested, std::size_t tasks)
+// One pool per process, sized on the first parallel read: how wide it is
+// belongs to the process, so a read does not choose. A lone task needs none,
+// and asking for one would pin the count for nothing.
+ThreadPool* pool_for(std::size_t tasks)
 {
-    if (requested == 1) return nullptr;
-
-    // Keep an explicit count as the process default even when this read has one task.
-    if (tasks <= 1) {
-        if (requested > 1) (void) set_num_threads(requested);
-        return nullptr;
-    }
-
+    if (tasks <= 1) return nullptr;
     return global_thread_pool(
-        [requested] { return detail::reserve_thread_count(requested); },
+        [] { return detail::reserve_thread_count(0); },
         [](unsigned threads) { detail::rollback_thread_count(threads); });
 }
 
@@ -308,7 +309,7 @@ FileSource::~FileSource()
 #endif
 }
 
-// Positional, so no lock and no shared cursor. Every worker reads at once.
+// Positional reads allow workers to share the source without a cursor lock.
 std::size_t
 FileSource::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
 {
@@ -354,24 +355,31 @@ FrameSpec make_frame_spec(const Header& h) noexcept
         h.tile_width,
         h.tile_length,
         static_cast<std::uint8_t>(h.bytes_per_sample),
+        h.bits_per_sample,
         h.max_frame_size,
     };
 }
 
-// One FrameTask per intersecting frame. A full spatial tile with contiguous
-// output decodes straight into the buffer; the rest goes through scratch.
+// Build one task per intersecting frame. Full tile frames can decode directly
+// into contiguous output; partial or multi-plane frames use scratch. Selected
+// band/time pairs that share a frame are grouped into the same task.
 Plan build_plan(const Header& h, Source* source,
                 int x_off, int y_off, int x_size, int y_size,
                 std::byte* data,
-                std::span<const int> bands,
-                std::int64_t pixel_space, std::int64_t line_space, std::int64_t band_space)
+                std::span<const int> times, std::span<const int> bands,
+                std::int64_t pixel_space, std::int64_t line_space,
+                std::int64_t band_space, std::int64_t time_space)
 {
     const int tw  = h.tile_width;
     const int tl  = h.tile_length;
     const int img_w = static_cast<int>(h.image_width);
     const int img_h = static_cast<int>(h.image_length);
     const std::size_t bps = h.bytes_per_sample;
-    const int band_count = static_cast<int>(bands.size());
+    const std::uint8_t  unit = h.frame_unit;
+    const std::uint16_t B = h.samples_per_pixel;
+    const std::uint32_t T = h.time_count;
+    const int nb = static_cast<int>(bands.size());
+    const int nt = static_cast<int>(times.size());
 
     const int tx_min = x_off / tw;
     const int ty_min = y_off / tl;
@@ -380,30 +388,30 @@ Plan build_plan(const Header& h, Source* source,
     const int ty_max = static_cast<int>(
         (static_cast<std::int64_t>(y_off) + y_size + tl - 1) / tl);
 
-    // Direct decode needs a one-sample pixel stride; the matching row pitch is
-    // checked per tile, since edge tiles are narrower.
+    // Direct decode requires contiguous pixels; row pitch is checked per tile.
     const bool one_sample_stride = pixel_space == static_cast<std::int64_t>(bps);
 
-    // A frame holding every band gives one task per grid position; a tile
-    // frame holds one band, so one task per band.
-    const bool cell   = !unit_indexes_bands(h.frame_unit);
-    const bool chunky = unit_is_chunky(h.frame_unit);
+    // Only tile frames can decode directly into one output plane.
+    const bool cell = unit_holds(unit, AXIS_BAND, B, T)
+                   || unit_holds(unit, AXIS_TIME, B, T);
+    const bool walks_b = unit_indexes_bands(unit, B, T);
+    const bool walks_t = unit_indexes_time(unit, B, T);
+    const std::size_t src_pixel_stride = bps * unit_pixel_step(unit, B, T);
 
     Plan plan;
     plan.spec = make_frame_spec(h);
-    plan.plane_index.resize(static_cast<std::size_t>(band_count));
-    for (int i = 0; i < band_count; ++i) {
-        plan.plane_index[static_cast<std::size_t>(i)] =
-            cell ? static_cast<std::uint32_t>(bands[i] - 1) : 0u;
-    }
     plan.tasks.reserve(static_cast<std::size_t>(tx_max - tx_min) *
-                       (ty_max - ty_min) * (cell ? 1 : band_count));
+                       (ty_max - ty_min) * (cell ? 1 : std::size_t(nt) * nb));
+
+    // Frame index to selected band/time pairs, rebuilt for each grid position.
+    std::vector<std::uint64_t> frames;
+    std::vector<std::vector<std::pair<int, int>>> members;
 
     for (int ty = ty_min; ty < ty_max; ++ty) {
         for (int tx = tx_min; tx < tx_max; ++tx) {
             const int tile_px = tx * tw;
             const int tile_py = ty * tl;
-            // An edge tile only reaches as far as the image.
+            // Clip edge tiles to the image bounds.
             const int ex_w = std::min(tw, img_w - tile_px);
             const int ex_h = std::min(tl, img_h - tile_py);
 
@@ -416,33 +424,52 @@ Plan build_plan(const Header& h, Source* source,
             const bool full_tile =
                 ix0 == tile_px && iy0 == tile_py &&
                 ix1 == tile_px + ex_w && iy1 == tile_py + ex_h;
-            const bool direct = full_tile && one_sample_stride &&
+            const bool direct = full_tile && one_sample_stride && !cell &&
                 line_space == static_cast<std::int64_t>(ex_w)
                             * static_cast<std::int64_t>(bps);
 
             const std::size_t area_bytes = static_cast<std::size_t>(ex_w)
                                          * static_cast<std::size_t>(ex_h) * bps;
-            const std::size_t frame_bytes = cell
-                ? area_bytes * h.samples_per_pixel : area_bytes;
-            // In (h w b) the bands sit inside the pixel, so the step to the
-            // next band is one sample and the step along x carries them all.
-            const std::size_t plane_bytes = chunky ? bps : area_bytes;
-            const std::size_t src_pixel_stride =
-                chunky ? bps * h.samples_per_pixel : bps;
+            std::size_t frame_bytes = area_bytes;
+            if (unit_holds(unit, AXIS_BAND, B, T)) frame_bytes *= B;
+            if (unit_holds(unit, AXIS_TIME, B, T)) frame_bytes *= T;
 
-            const int steps = cell ? 1 : band_count;
-            for (int i = 0; i < steps; ++i) {
-                const auto band = static_cast<std::uint32_t>(
-                    cell ? 0 : bands[i] - 1);
-                const std::uint32_t idx = h.frame_index(
-                    static_cast<std::uint32_t>(ty),
-                    static_cast<std::uint32_t>(tx),
-                    band);
+            // Group selected planes by frame index without searching existing
+            // tasks.
+            frames.clear();
+            members.clear();
+            for (int wi = 0; wi < (walks_t ? nt : 1); ++wi) {
+                for (int wj = 0; wj < (walks_b ? nb : 1); ++wj) {
+                    frames.push_back(h.frame_index(
+                        static_cast<std::uint32_t>(ty),
+                        static_cast<std::uint32_t>(tx),
+                        static_cast<std::uint32_t>(bands[walks_b ? wj : 0] - 1),
+                        static_cast<std::uint32_t>(times[walks_t ? wi : 0] - 1)));
+                    auto& into = members.emplace_back();
+                    for (int i = walks_t ? wi : 0; i < (walks_t ? wi + 1 : nt); ++i)
+                        for (int j = walks_b ? wj : 0; j < (walks_b ? wj + 1 : nb); ++j)
+                            into.emplace_back(i, j);
+                }
+            }
 
-                std::byte* dst = data
-                    + static_cast<std::int64_t>(iy0 - y_off) * line_space
-                    + static_cast<std::int64_t>(ix0 - x_off) * pixel_space
-                    + static_cast<std::int64_t>(cell ? 0 : i) * band_space;
+            std::byte* base = data
+                + static_cast<std::int64_t>(iy0 - y_off) * line_space
+                + static_cast<std::int64_t>(ix0 - x_off) * pixel_space;
+
+            for (std::size_t g = 0; g < frames.size(); ++g) {
+                const std::uint32_t idx = static_cast<std::uint32_t>(frames[g]);
+                const std::uint32_t at = static_cast<std::uint32_t>(plan.src_offset.size());
+                for (const auto& [i, j] : members[g]) {
+                    const auto tt = static_cast<std::uint32_t>(times[i] - 1);
+                    const auto bb = static_cast<std::uint32_t>(bands[j] - 1);
+                    plan.src_offset.push_back(static_cast<std::int64_t>(
+                        unit_plane_offset(unit, B, T, bb, tt,
+                                          static_cast<std::uint32_t>(ex_h),
+                                          static_cast<std::uint32_t>(ex_w)) * bps));
+                    plan.dst_offset.push_back(
+                        static_cast<std::int64_t>(i) * time_space
+                        + static_cast<std::int64_t>(j) * band_space);
+                }
 
                 FrameTask task{};
                 task.source          = source;
@@ -450,16 +477,13 @@ Plan build_plan(const Header& h, Source* source,
                 task.compressed_size = h.frame_byte_count(idx);
                 task.frame_width     = static_cast<std::uint32_t>(ex_w);
                 task.frame_bytes     = frame_bytes;
-                task.plane_bytes     = plane_bytes;
                 task.src_pixel_stride = src_pixel_stride;
-                task.planes          = plan.plane_index.data();
-                task.plane_count     = static_cast<std::uint32_t>(
-                    cell ? band_count : 1);
-                task.band_space      = band_space;
-                if (direct && !cell) {
-                    task.direct = dst;
+                task.offset_at       = at;
+                task.plane_count     = static_cast<std::uint32_t>(members[g].size());
+                if (direct) {
+                    task.direct = base + plan.dst_offset[at];
                 } else {
-                    task.dst              = dst;
+                    task.dst              = base;
                     task.src_x            = static_cast<std::uint32_t>(ix0 - tile_px);
                     task.src_y            = static_cast<std::uint32_t>(iy0 - tile_py);
                     task.w                = static_cast<std::uint32_t>(ix1 - ix0);
@@ -472,12 +496,35 @@ Plan build_plan(const Header& h, Source* source,
         }
     }
 
+    bind_offsets(plan);
     return plan;
 }
 
 
+std::expected<std::vector<Range>, std::string>
+plan_ranges_checked(const Header& h, std::span<const int> times,
+                    std::span<const int> bands,
+                    int y_off, int y_size, int x_off, int x_size)
+{
+    const std::uint64_t tiles =
+        (std::uint64_t(y_off + y_size - 1) / h.tile_length
+         - std::uint64_t(y_off) / h.tile_length + 1)
+        * (std::uint64_t(x_off + x_size - 1) / h.tile_width
+           - std::uint64_t(x_off) / h.tile_width + 1);
+    std::uint64_t most = 0;
+    if (__builtin_mul_overflow(tiles, times.size() * bands.size(), &most)
+        || most > max_frame_bytes() / sizeof(Range)) {
+        return errf("that window reaches %llu frames, past the %llu bytes of "
+                    "ranges this reader will allocate",
+                    static_cast<unsigned long long>(most),
+                    static_cast<unsigned long long>(max_frame_bytes()));
+    }
+    return plan_ranges(h, times, bands, y_off, y_size, x_off, x_size);
+}
+
 std::vector<Range>
-plan_ranges(const Header& h, std::span<const int> bands,
+plan_ranges(const Header& h, std::span<const int> times,
+            std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size)
 {
     const std::uint32_t r0 = static_cast<std::uint32_t>(y_off) / h.tile_length;
@@ -485,18 +532,34 @@ plan_ranges(const Header& h, std::span<const int> bands,
     const std::uint32_t c0 = static_cast<std::uint32_t>(x_off) / h.tile_width;
     const std::uint32_t c1 = static_cast<std::uint32_t>(x_off + x_size - 1) / h.tile_width;
 
-    // One range per frame, and a frame holding every band needs only one.
-    const bool cell = !unit_indexes_bands(h.frame_unit);
-    const std::size_t per_pos = cell ? 1 : bands.size();
+    // Only indexed axes multiply the number of required frame ranges.
+    static constexpr int ONE[] = {1};
+    const std::span<const int> walk_t =
+        unit_indexes_time(h.frame_unit, h.samples_per_pixel, h.time_count)
+            ? times : std::span<const int>(ONE);
+    const std::span<const int> walk_b =
+        unit_indexes_bands(h.frame_unit, h.samples_per_pixel, h.time_count)
+            ? bands : std::span<const int>(ONE);
 
     std::vector<Range> out;
-    out.reserve(std::size_t(r1 - r0 + 1) * (c1 - c0 + 1) * per_pos);
+    out.reserve(std::size_t(r1 - r0 + 1) * (c1 - c0 + 1)
+                * walk_t.size() * walk_b.size());
+    // Return unique ranges in frame-index order regardless of selection order.
+    std::vector<std::uint32_t> at;
+    at.reserve(walk_t.size() * walk_b.size());
     for (std::uint32_t row = r0; row <= r1; ++row) {
         for (std::uint32_t col = c0; col <= c1; ++col) {
-            for (std::size_t k = 0; k < per_pos; ++k) {
-                const auto band = static_cast<std::uint32_t>(
-                    cell ? 0 : bands[k] - 1);
-                const std::uint32_t i = h.frame_index(row, col, band);
+            at.clear();
+            for (const int t : walk_t) {
+                for (const int b : walk_b) {
+                    at.push_back(static_cast<std::uint32_t>(h.frame_index(
+                        row, col, static_cast<std::uint32_t>(b - 1),
+                        static_cast<std::uint32_t>(t - 1))));
+                }
+            }
+            std::sort(at.begin(), at.end());
+            at.erase(std::unique(at.begin(), at.end()), at.end());
+            for (const std::uint32_t i : at) {
                 out.push_back({h.frame_offset(i), h.frame_byte_count(i)});
             }
         }
@@ -507,19 +570,13 @@ plan_ranges(const Header& h, std::span<const int> bands,
 
 std::expected<void, std::string>
 read_window(Source& src, const Header& h,
-            std::span<const int> bands,
+            std::span<const int> times, std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
-            const LayoutPlan& layout, std::byte* dst,
-            int num_threads)
+            const LayoutPlan& layout, std::byte* dst)
 {
     g_read_status = RUMI_ERR_IO;
-    if (auto ok = validate_request(h, bands, y_off, y_size, x_off, x_size); !ok) {
+    if (auto ok = validate_request(h, times, bands, y_off, y_size, x_off, x_size); !ok) {
         return ok;
-    }
-    if (h.bits_per_sample < 8 &&
-        !(y_off == 0 && y_size == static_cast<int>(h.image_length) &&
-          x_off == 0 && x_size == static_cast<int>(h.image_width))) {
-        return err("sub-byte types support only a full-image read for now");
     }
 
     if (auto ok = check_data_fits(h, src); !ok) {
@@ -529,12 +586,13 @@ read_window(Source& src, const Header& h,
 
     const std::size_t bps = h.bytes_per_sample;
     Plan plan = build_plan(h, &src,
-                           x_off, y_off, x_size, y_size, dst, bands,
-                           static_cast<std::int64_t>(layout.sx) * bps,
-                           static_cast<std::int64_t>(layout.sy) * bps,
-                           static_cast<std::int64_t>(layout.sb) * bps);
+                           x_off, y_off, x_size, y_size, dst, times, bands,
+                           layout.stride[OUT_X] * static_cast<std::int64_t>(bps),
+                           layout.stride[OUT_Y] * static_cast<std::int64_t>(bps),
+                           layout.stride[OUT_B] * static_cast<std::int64_t>(bps),
+                           layout.stride[OUT_T] * static_cast<std::int64_t>(bps));
 
-    ThreadPool* pool = pool_for(num_threads, plan.tasks.size());
+    ThreadPool* pool = pool_for(plan.tasks.size());
     Executor exec(pool);
     if (!exec.run(plan)) {
         g_read_status = exec.status();
@@ -549,10 +607,9 @@ std::expected<void, std::string>
 read_stack(std::span<Source* const> sources,
            std::span<const Header* const> headers,
            std::span<const int> n_index,
-           std::span<const int> bands,
+           std::span<const int> times, std::span<const int> bands,
            int y_off, int y_size, int x_off, int x_size,
-           const LayoutPlan& layout, std::byte* dst,
-           int num_threads)
+           const LayoutPlan& layout, std::byte* dst)
 {
     g_read_status = RUMI_ERR_IO;
     if (sources.empty() || sources.size() != headers.size()) {
@@ -578,20 +635,28 @@ read_stack(std::span<Source* const> sources,
         if (h.dtype != ref.dtype) {
             return errf("image %zu: dtype mismatch", i + 1);
         }
-        // The merged plan carries one frame spec and one plane index, both
-        // taken from the reference. A frame holding one band decodes to a
-        // different size and selects planes differently from one holding every
-        // band, so mixing the two would size the scratch from the wrong image.
-        if (unit_indexes_bands(h.frame_unit)
-            != unit_indexes_bands(ref.frame_unit)) {
-            return errf("image %zu: frame layout mismatch, %s against %s; a "
-                        "stack cannot mix frames holding one band with frames "
-                        "holding every band",
+        if (h.time_count != ref.time_count) {
+            return errf("image %zu: time step count mismatch", i + 1);
+        }
+        // The merged plan shares one scratch bound, so every image must have
+        // the same maximum decoded frame size. Frame axis order may differ.
+        const bool hb = unit_holds(h.frame_unit, AXIS_BAND,
+                                   h.samples_per_pixel, h.time_count);
+        const bool ht = unit_holds(h.frame_unit, AXIS_TIME,
+                                   h.samples_per_pixel, h.time_count);
+        const bool rb = unit_holds(ref.frame_unit, AXIS_BAND,
+                                   ref.samples_per_pixel, ref.time_count);
+        const bool rt = unit_holds(ref.frame_unit, AXIS_TIME,
+                                   ref.samples_per_pixel, ref.time_count);
+        if (hb != rb || ht != rt) {
+            return errf("image %zu: frame layout mismatch, '%s' against '%s'; "
+                        "a stack cannot mix frames that hold an axis with "
+                        "frames that leave it to the index",
                         i + 1,
-                        unit_indexes_bands(h.frame_unit) ? "one band"
-                                                         : "every band",
-                        unit_indexes_bands(ref.frame_unit) ? "one band"
-                                                           : "every band");
+                        unit_name(h.frame_unit, h.samples_per_pixel,
+                                  h.time_count).c_str(),
+                        unit_name(ref.frame_unit, ref.samples_per_pixel,
+                                  ref.time_count).c_str());
         }
     }
 
@@ -602,19 +667,15 @@ read_stack(std::span<Source* const> sources,
         }
     }
 
-    // The grid is shared, so a window valid for the reference is valid for all.
-    if (auto ok = validate_request(ref, bands, y_off, y_size, x_off, x_size);
+    // Shared grid dimensions make one window validation sufficient.
+    if (auto ok = validate_request(ref, times, bands, y_off, y_size, x_off, x_size);
         !ok) {
         return ok;
     }
-    if (ref.bits_per_sample < 8 &&
-        !(y_off == 0 && y_size == static_cast<int>(ref.image_length) &&
-          x_off == 0 && x_size == static_cast<int>(ref.image_width))) {
-        return err("sub-byte types support only a full-image read for now");
-    }
 
     const std::size_t bps      = ref.bytes_per_sample;
-    const std::size_t n_stride = static_cast<std::size_t>(layout.sn) * bps;
+    const std::size_t n_stride =
+        static_cast<std::size_t>(layout.stride[OUT_N]) * bps;
 
     Plan plan;
     plan.spec = make_frame_spec(ref);
@@ -629,23 +690,29 @@ read_stack(std::span<Source* const> sources,
 
         Plan sub = build_plan(*headers[i], &src,
                               x_off, y_off, x_size, y_size,
-                              dst + k * n_stride, bands,
-                              static_cast<std::int64_t>(layout.sx) * bps,
-                              static_cast<std::int64_t>(layout.sy) * bps,
-                              static_cast<std::int64_t>(layout.sb) * bps);
-        // sub dies at the end of the loop, so repoint at the merged plan's
-        // copy. Every image shares the band request.
-        if (plan.plane_index.empty()) plan.plane_index = sub.plane_index;
+                              dst + k * n_stride, times, bands,
+                              layout.stride[OUT_X] * static_cast<std::int64_t>(bps),
+                              layout.stride[OUT_Y] * static_cast<std::int64_t>(bps),
+                              layout.stride[OUT_B] * static_cast<std::int64_t>(bps),
+                              layout.stride[OUT_T] * static_cast<std::int64_t>(bps));
+        // Append sub-plan offsets now and bind task pointers after all vectors
+        // stop growing.
+        const auto shift = static_cast<std::uint32_t>(plan.src_offset.size());
+        plan.src_offset.insert(plan.src_offset.end(),
+                               sub.src_offset.begin(), sub.src_offset.end());
+        plan.dst_offset.insert(plan.dst_offset.end(),
+                               sub.dst_offset.begin(), sub.dst_offset.end());
         for (FrameTask& t : sub.tasks) {
-            t.image  = static_cast<std::uint32_t>(n_index[k]);
-            t.planes = plan.plane_index.data();
+            t.image      = static_cast<std::uint32_t>(n_index[k]);
+            t.offset_at += shift;
         }
         plan.tasks.insert(plan.tasks.end(),
                           std::make_move_iterator(sub.tasks.begin()),
                           std::make_move_iterator(sub.tasks.end()));
     }
+    bind_offsets(plan);
 
-    ThreadPool* pool = pool_for(num_threads, plan.tasks.size());
+    ThreadPool* pool = pool_for(plan.tasks.size());
     Executor exec(pool);
     if (!exec.run(plan)) {
         g_read_status = exec.status();
