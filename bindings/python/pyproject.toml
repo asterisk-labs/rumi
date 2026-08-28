@@ -101,6 +101,5 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "NPY"]
 
 [tool.mypy]
-python_version = "3.11"
 check_untyped_defs = true
 ignore_missing_imports = true
