@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from types import ModuleType
 
 import numpy as np
 
@@ -41,6 +42,7 @@ _ML_SCALARS: dict[tuple[int, int], str] = {
     (_DL_F4_E2M1, 4): "float4_e2m1fn",
 }
 
+_ml_dtypes: ModuleType | None
 try:
     import ml_dtypes as _ml_dtypes
 except ImportError:

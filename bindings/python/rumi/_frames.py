@@ -89,7 +89,7 @@ class Frame:
     def __getattr__(self, name):
         # Keep the specific error raised by properties such as band and tile.
         prop = getattr(type(self), name, None)
-        if isinstance(prop, property):
+        if isinstance(prop, property) and prop.fget is not None:
             return prop.fget(self)
         try:
             col = self._f._extra[name]

@@ -11,6 +11,7 @@ from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
 
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
+Header = bytes | bytearray | memoryview
 
 
 _pyapi = ctypes.pythonapi
@@ -224,7 +225,7 @@ def _pattern_for(pattern: str | None, n_images: int, times: int) -> bytes:
 def _empty_subbyte(shape, dtype_code):
     """Allocate the byte-padded NumPy result used by sub-byte dtypes."""
     storage = np.empty(shape, np.uint8)
-    array = storage.view(numpy_dtype(dtype_code))
+    array: np.ndarray = storage.view(numpy_dtype(dtype_code))
     return storage, RumiArray(None, shape, dtype_code, array=array)
 
 
@@ -325,7 +326,7 @@ def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
 
 
 def read(source: PathLike | bytes | Sequence[PathLike | bytes],
-         header: bytes | Sequence[bytes] | None = None, *,
+         header: Header | Sequence[Header] | None = None, *,
          framework: str | None = "numpy", pattern: str | None = None,
          time: Axis = None, bands: Axis = None, window: Window = None,
          n: Axis = None, t: Axis = None, b: Axis = None,
@@ -355,12 +356,21 @@ def read(source: PathLike | bytes | Sequence[PathLike | bytes],
     if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):
         if n is not None:
             raise ValueError("n applies to a stack; pass a list of sources")
+        if header is not None and not isinstance(
+                header, (bytes, bytearray, memoryview)):
+            raise TypeError("one source needs one bytes-like header")
         raw_header = header if header is not None else _header_of(source)
         arr = _read_one(_Source(source), _Spec(raw_header), pattern, t, b, y, x)
         return _to_framework(arr, framework)
 
     sources = list(source)
-    raw_headers = header if header is not None else [_header_of(s) for s in sources]
+    raw_headers: list[Header]
+    if header is None:
+        raw_headers = [_header_of(s) for s in sources]
+    elif isinstance(header, (bytes, bytearray, memoryview)):
+        raise TypeError("a stack needs one header per source")
+    else:
+        raw_headers = list(header)
     specs = [_Spec(raw) for raw in raw_headers]
     arr = _read_stack([_Source(s) for s in sources], specs,
                       pattern, n, t, b, y, x)

@@ -111,6 +111,14 @@ def test_stack_mixes_paths_and_bytes(image):
     assert np.array_equal(out[1], data)
 
 
+def test_headers_match_single_and_stack_sources(image):
+    path, header, _data = image
+    with pytest.raises(TypeError, match="one source needs one bytes-like header"):
+        rumi.read(path, [header])
+    with pytest.raises(TypeError, match="a stack needs one header per source"):
+        rumi.read([path], header)
+
+
 def test_truncated_buffer_is_refused(image):
     path, header, _data = image
     blob = open(path, "rb").read()
