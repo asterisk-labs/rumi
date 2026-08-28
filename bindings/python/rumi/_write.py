@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 from ._dtype import dtype_code
 from ._ffi import PathLike, _check, _enc, ffi, lib
+from ._time import compile_axis
 
 
 def _epsg(crs) -> int:
@@ -24,7 +25,7 @@ def _epsg(crs) -> int:
     raise ValueError(f"crs must be an EPSG code, got {crs!r}")
 
 
-def _desc(tf, transform, crs, pixel_is_point):
+def _desc(tf, transform, crs, pixel_is_point, time):
     """Build a write descriptor and retain its referenced buffers."""
     if (transform is None) != (crs is None):
         raise ValueError("transform and crs must be given together")
@@ -33,17 +34,36 @@ def _desc(tf, transform, crs, pixel_is_point):
     d = ffi.new("rumi_write_desc*")
     d.image_width = tf.image_width
     d.image_length = tf.image_length
+    d.time_count = tf.time_count
     d.tile_size = tf.tile_size
     d.samples_per_pixel = tf.bands
     d.dtype = dtype_code(tf.dtype)
     d.pixel_is_point = 1 if pixel_is_point else 0
-    d.frame_unit = tf.pattern.frame_unit
+    d.frame_unit = tf.frame_unit
+
+    # Pass POSIX seconds to the core; it selects the canonical trailer scale.
+    kind, coords = compile_axis(time, tf.time_count)
+    d.time_type = kind
+    if coords:
+        buf = ffi.new("int64_t[]", [int(c) for c in coords])
+        keep.append(buf)
+        d.time = buf
+        d.time_coords = len(coords)
+    else:
+        d.time = ffi.NULL
+        d.time_coords = 0
 
     if transform is None:
         d.transform = ffi.NULL
         d.epsg = 0
     else:
-        coeffs = ffi.new("double[6]", [float(v) for v in tuple(transform)[:6]])
+        values = tuple(transform)
+        if len(values) < 6:
+            raise ValueError(
+                f"a transform is six coefficients (x_res, row_rot, x_origin, "
+                f"col_rot, y_res, y_origin), got {len(values)}")
+        # Affine objects may expose additional values after the six coefficients.
+        coeffs = ffi.new("double[6]", [float(v) for v in values[:6]])
         keep.append(coeffs)
         d.transform = coeffs
         d.epsg = _epsg(crs)
@@ -53,17 +73,18 @@ def _desc(tf, transform, crs, pixel_is_point):
 def header_bytes(tf, *, transform=None, crs=None,
                  pixel_is_point=False) -> int:
     """Return the first frame offset for this layout."""
-    d, _keep = _desc(tf, transform, crs, pixel_is_point)
+    d, _keep = _desc(tf, transform, crs, pixel_is_point, None)
     out = ffi.new("uint64_t*")
     _check(lib.rumi_write_base_offset(d, out))
     return int(out[0])
 
 
 def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
-                 transform=None, crs=None, pixel_is_point=False) -> bytes:
+                 transform=None, crs=None, pixel_is_point=False,
+                 time=None) -> bytes:
     """Write compressed frames and return the binary header."""
     frames = [ffi.from_buffer(f) for f in frames]
-    d, keep = _desc(tf, transform, crs, pixel_is_point)
+    d, keep = _desc(tf, transform, crs, pixel_is_point, time)
     ptrs = ffi.new("unsigned char*[]", [ffi.cast("unsigned char*", f)
                                         for f in frames])
     sizes = ffi.new("size_t[]", [len(f) for f in frames])
@@ -78,7 +99,8 @@ def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
         lib.rumi_free(out[0])
 
 
-def write(path, tf, *, transform=None, crs=None, pixel_is_point=False):
+def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
+          time=None):
     """Write a compressed FrameTable to a rumi file.
 
     Returns ``(path, header)``. Pass the header to ``read`` or store it in a
@@ -91,6 +113,9 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False):
                     a to_epsg(); pairs with transform.
     pixel_is_point  anchor the pixel at its center (PixelIsPoint) rather than
                     its top-left corner (PixelIsArea, the default).
+    time            one entry per time step: a date, datetime or ISO string
+                    for an instant, or a (start, end) pair for an interval.
+                    Omit it and the file records no time.
     """
     frames = tf["compressed"]
     missing = [i for i, f in enumerate(frames) if f is None]
@@ -100,5 +125,5 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False):
             f"{missing[0]}; compress every frame before writing")
 
     header = write_frames(path, frames, tf, transform=transform, crs=crs,
-                          pixel_is_point=pixel_is_point)
+                          pixel_is_point=pixel_is_point, time=time)
     return path, header

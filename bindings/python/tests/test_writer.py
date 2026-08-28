@@ -1,8 +1,4 @@
-"""Pins the file the writer produces, byte for byte.
-
-The IFD writer is moving to C. These tests read the file back with their own
-parser, so they check the bytes rather than the code that wrote them.
-"""
+"""Validate writer output with an independent file parser."""
 
 import hashlib
 import struct
@@ -17,6 +13,7 @@ SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
 TYPE_SIZE = {ASCII: 1, SHORT: 2, LONG: 4, DOUBLE: 8, LONG8: 8}
 
 TILE_OFFSETS, TILE_BYTE_COUNTS = 324, 325
+TRAILER_SIZE = 28
 
 TILE = "b (row h) (col w) -> row col b (h w)"
 CELL = "b (row h) (col w) -> row col (b h w)"
@@ -31,8 +28,7 @@ ROTATED = (30.0, 5.0, 500000.0, 5.0, -30.0, 8000000.0)
 
 def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
                pattern=TILE):
-    """A frame whose payloads are all different sizes, so a permutation bug in
-    the offset table cannot hide behind equal-length tiles."""
+    """Build frames with distinct payload sizes to expose ordering errors."""
     n = np.prod(shape[1:])
     arr = np.arange(shape[0] * n, dtype=dtype).reshape(shape)
     tf = FrameTable.from_array(arr, pattern, tile_size)
@@ -41,10 +37,11 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
 
 
 def read_ifd(path):
-    """Walk the BigTIFF by hand. Returns (entries, next_ifd, blob)."""
+    """Return ``(entries, next_ifd, bytes)`` from the independent parser."""
     blob = open(path, "rb").read()
-    order, version, offset_size, reserved = struct.unpack_from("<HHHH", blob, 0)
-    assert (order, version, offset_size, reserved) == (0x4949, 43, 8, 0)
+    magic, version, reserved = struct.unpack_from("<IHH", blob, 0)
+    assert (magic, version, reserved) == (FILE_MAGIC, 1, 0)
+    assert blob[:4] == b"RUMI"
     (first,) = struct.unpack_from("<Q", blob, 8)
 
     (count,) = struct.unpack_from("<Q", blob, first)
@@ -70,7 +67,7 @@ def values(entry, fmt):
     return list(struct.unpack("<" + fmt * n, payload))
 
 
-def test_bigtiff_header(tmp_path):
+def test_the_directory_sits_at_sixteen_and_is_the_only_one(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
@@ -94,11 +91,12 @@ def test_tag_set(tmp_path):
     entries = read_ifd(path)[0]
 
     assert set(entries) == {256, 257, 258, 277, 322, 323, 324, 325, 339,
-                            34264, 34735, 65000}
+                            34264, 34735, 65000, 65001}
     # rumi is not TIFF/GeoTIFF: these compatibility fields do not exist.
     assert {259, 262, 284}.isdisjoint(entries)  # compression/photo/planar
-    # 65000 is rumi's own, and carries the frame's axis order.
+    # FrameUnit is rumi's private layout tag.
     assert values(entries[65000], "H") == [0]   # this table is (h w)
+    assert values(entries[65001], "I") == [1]   # one time step
     assert values(entries[256], "I") == [tf.image_width]
     assert values(entries[257], "I") == [tf.image_length]
     assert values(entries[258], "H") == [16] * tf.bands
@@ -136,8 +134,7 @@ def test_frame_index_order(tmp_path):
     write_frames(path, tf["compressed"], tf)
     entries = read_ifd(path)[0]
 
-    # Both tags run in frame-index order, which is also the physical order, so
-    # the byte counts come out exactly as the frames were handed over.
+    # Both frame tables use physical frame-index order.
     expected = [len(f) for f in tf["compressed"]]
     assert values(entries[TILE_BYTE_COUNTS], "I") == expected
     assert values(entries[TILE_OFFSETS], "Q") == sorted(
@@ -154,7 +151,7 @@ def test_payload_offsets(tmp_path):
     offsets = values(entries[TILE_OFFSETS], "Q")
     counts = values(entries[TILE_BYTE_COUNTS], "I")
     assert min(offsets) == base
-    assert len(blob) == base + sum(counts)
+    assert len(blob) == base + sum(counts) + TRAILER_SIZE
 
     for i, (off, n) in enumerate(zip(offsets, counts, strict=True)):
         assert blob[off:off + n] == tf["compressed"][i]
@@ -165,7 +162,9 @@ def test_tile_write_order(tmp_path):
     path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf)
     blob = open(path, "rb").read()
-    assert blob[header_bytes(tf):] == b"".join(tf["compressed"])
+    payloads = b"".join(tf["compressed"])
+    base = header_bytes(tf)
+    assert blob[base:base + len(payloads)] == payloads
 
 
 def test_north_up_transform(tmp_path):
@@ -174,7 +173,7 @@ def test_north_up_transform(tmp_path):
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
     entries = read_ifd(path)[0]
 
-    # coefficient 0 is the x resolution, coefficient 2 the x origin
+    # Coefficient 0 is x resolution; coefficient 2 is x origin.
     assert 33550 not in entries and 33922 not in entries
     assert values(entries[34264], "d") == [30.0, 0.0, 0.0, 500000.0,
                                            0.0, -30.0, 0.0, 8000000.0,
@@ -195,12 +194,14 @@ def test_rotated_transform(tmp_path):
                                            0.0, 0.0, 0.0, 1.0]
 
 
-# GeoTIFF key ids
+# GeoKey IDs reused by rumi.
+FILE_MAGIC = 0x494D5552
+
 MODEL, RASTER, GEOGRAPHIC, PROJECTED = 1024, 1025, 2048, 3072
 
 
 def geokeys(path):
-    """The key directory as {key id: value}, plus the header."""
+    """Return the GeoKey header and an ID-to-value mapping."""
     v = values(read_ifd(path)[0][34735], "H")
     return v[:4], {v[4 + i * 4]: v[7 + i * 4] for i in range(v[3])}
 
@@ -213,7 +214,7 @@ def test_geokeys_projected(tmp_path):
     head, keys = geokeys(path)
     assert head == [1, 1, 0, 3]
     assert keys == {MODEL: 1, RASTER: 1, PROJECTED: UTM18S}
-    # an EPSG code needs no parameters, so neither companion tag is written
+    # EPSG codes are inline and require no companion parameter tags.
     assert 34736 not in read_ifd(path)[0]
     assert 34737 not in read_ifd(path)[0]
 
@@ -226,8 +227,7 @@ def test_geokeys_geographic(tmp_path):
 
 
 def test_geokeys_kind_is_not_the_code_range(tmp_path):
-    """EPSG:4037 sits inside the geographic block and is projected. The kind
-    comes from the generated table, not from the number."""
+    """EPSG:4037 is projected despite its position among geographic codes."""
     tf = make_frame()
     path = tmp_path / "a.rumi"
     write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4037)
@@ -292,9 +292,46 @@ def test_edge_tiles(tmp_path):
     assert h["frame_unit"] == "h w"
 
 
+def test_a_unit_must_fit_the_raster(tmp_path):
+    """A singleton band axis is omitted from the recorded frame unit."""
+    tf = make_frame(shape=(1, 40, 40), tile_size=16, pattern=CELL)
+    _path, header = rumi.write(tmp_path / "a.rumi", tf)
+    assert rumi.RumiHeader(header).frame_unit == "h w"
+
+    claim = bytearray(header)
+    claim[26] = 1                       # (b h w), which one band cannot be
+    with pytest.raises(ValueError, match="frame layout"):
+        rumi.RumiHeader(bytes(claim))
+
+
+def test_a_frame_past_the_size_limit_is_refused():
+    """Decoded frame allocation is bounded by a configurable reader limit."""
+    from rumi._ffi import lib
+    huge = struct.pack("<IHIIIHHHBBBIB", 0x45564F4C, 1, 65535, 65535, 1,
+                       65535, 65535, 1, 16, 1, 0, 10, 0)
+    assert lib.rumi_get_max_frame_bytes() == 1 << 30
+    with pytest.raises(ValueError, match="size limit"):
+        rumi.RumiHeader(huge)
+    try:
+        lib.rumi_set_max_frame_bytes(1 << 40)
+        assert rumi.RumiHeader(huge).shape == (1, 65535, 65535)
+    finally:
+        assert lib.rumi_set_max_frame_bytes(0) == 1 << 30
+
+
+def test_sub_byte_samples_leave_their_high_bits_zero():
+    """Padded sub-byte samples require zero in every unused high bit."""
+    ml = pytest.importorskip("ml_dtypes")
+    data = np.zeros((2, 8, 8), dtype=ml.float4_e2m1fn)
+    assert len(rumi.frames(data, CELL, 4)) == 4
+
+    data.view(np.uint8)[0, 0, 0] = 0xF0
+    with pytest.raises(ValueError, match="bits set above"):
+        rumi.frames(data, CELL, 4)
+
+
 def test_the_file_names_its_own_layout(tmp_path):
-    """PlanarConfiguration carries the axis order, so a header rebuilt from the
-    file alone matches the one the writer returned."""
+    """FrameUnit preserves the decoded layout when rebuilding the header."""
     for pattern, want in ((TILE, "h w"), (CELL, "b h w"), (CHUNKY, "h w b")):
         tf = make_frame(shape=(3, 40, 40), tile_size=16, pattern=pattern)
         path, header = rumi.write(tmp_path / "a.rumi", tf)
@@ -305,7 +342,7 @@ def test_the_file_names_its_own_layout(tmp_path):
 
 
 def test_cell_frame_count(tmp_path):
-    """A cell frame holds every band, so the grid alone gives the count."""
+    """Cell layouts contain one frame per grid position."""
     tf = make_frame(shape=(3, 257, 256), tile_size=128, pattern=CELL)
     _path, blob = rumi.write(tmp_path / "a.rumi", tf)
     h = rumi.RumiHeader(blob).to_dict()
@@ -327,13 +364,12 @@ def test_sample_format(tmp_path, dtype):
     assert values(entries[258], "H") == [np.dtype(dtype).itemsize * 8]
 
 
-# Digests of complete files. Update them only for an intentional format change.
-# Last regenerated when the layout tag joined the fixed IFD.
+# Digests of complete files. Update only for an intentional format change.
 GOLDEN = {
-    "plain": "bc5bc64c9b895cbee038ca95d558d3b64e38a3270acfa3b0a4566754d88ead96",
-    "north_up": "9755c794fb4937f2e04afcdd12b1cb8bd3f387dd5f904ad4871e1e01a7b17104",
-    "rotated": "8a1abec684a74a19d01e541dc52aa6cb17d6213e14ad37081fad0e05a7a0a8b0",
-    "point": "46aa0e6d8d666ed38edd318109aee87c8fd4a2cf3444e37a4463ea7d47ba25ba",
+    "plain": "60859c0c41d98fd59e71dea4adadd880e1cb5213ef797f66a1542b03a84f0092",
+    "north_up": "1fbeccb932afba05b9311c5311d3d05628c2e9d53da38d6168bb00a45c760aef",
+    "rotated": "595ea87f612db9c5ebda0d68ddd995ad8fbd20f64f4f9fbf2863de2143a5fb1f",
+    "point": "dbb5366348c61adb6c4716d22294421211dc3d6d0b58cb7f0969b1da4b1df8a5",
 }
 
 CASES = {
@@ -373,10 +409,27 @@ def test_frame_dimensions_must_be_positive(shape):
         rumi.frames(np.empty(shape, np.uint8), "b (row h) (col w) -> row col b (h w)", 16)
 
 
-@pytest.mark.parametrize("dtype", [np.bool_, object, "S1"])
+@pytest.mark.parametrize("dtype", [object, "S1"])
 def test_frames_reject_unsupported_dtypes(dtype):
     with pytest.raises(TypeError, match="not supported"):
         rumi.frames(np.zeros((1, 16, 16), dtype=dtype), "b (row h) (col w) -> row col b (h w)", 16)
+
+
+def test_a_boolean_mask_is_the_binary_type(tmp_path):
+    """numpy.bool_ round-trips through rumi's padded binary encoding."""
+    geozl = pytest.importorskip("geozl")
+    mask = np.arange(1 * 32 * 32).reshape(1, 32, 32) % 3 == 0
+    tf = rumi.frames(mask, "b (row h) (col w) -> row col (b h w)", 16)
+    assert tf.dtype == np.dtype(bool)
+    for f in tf:
+        buf = f.data.view(np.uint8)
+        f.compressed = geozl.compress(buf, graph=geozl.graph(buf, "planar>zigzag>zstd"))
+    path, header = rumi.write(tmp_path / "mask.rumi", tf)
+
+    h = rumi.RumiHeader(header)
+    assert h.to_dict()["dtype"] == "binary"
+    assert h.dtype is np.bool_
+    assert np.array_equal(np.asarray(rumi.read(path, header)), mask)
 
 
 def test_compressed_frames_must_be_bytes_like():
@@ -400,3 +453,15 @@ def test_write_needs_all_frames(tmp_path):
     tf[2].compressed = None
     with pytest.raises(ValueError, match="no payload"):
         rumi.write(tmp_path / "a.rumi", tf)
+
+
+def test_a_transform_is_six_coefficients(tmp_path):
+    """Reject transforms missing any of the six affine coefficients."""
+    tf = make_frame()
+    with pytest.raises(ValueError, match="six coefficients"):
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf,
+                     transform=(10.0, 0.0, 3e5, 0.0, -10.0), crs=UTM18S)
+    # Affine objects may expose additional values after the six coefficients.
+    write_frames(tmp_path / "b.rumi", tf["compressed"], tf,
+                 transform=(10.0, 0.0, 3e5, 0.0, -10.0, 8.1e6, 0.0, 0.0, 1.0),
+                 crs=UTM18S)
