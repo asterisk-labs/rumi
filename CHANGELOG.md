@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-29
+
 ### Breaking
 
 - RUMI files now start with a 16-byte `RUMI` header instead of a BigTIFF
