@@ -148,7 +148,7 @@ if(RUMI_BUILD_FUZZERS)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "RUMI_BUILD_FUZZERS requires Clang/libFuzzer")
     endif()
-    foreach(surface IN ITEMS header index pattern)
+    foreach(surface IN ITEMS header index pattern read)
         add_executable(rumi_${surface}_fuzzer
             ${CMAKE_CURRENT_SOURCE_DIR}/../fuzz/${surface}_fuzzer.cpp
             ${RUMI_SOURCES})

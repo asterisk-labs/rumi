@@ -30,7 +30,7 @@ FUZZ_JOBS ?= 0
 FUZZ_OUT  := fuzz/out
 FUZZ_CORPUS := fuzz/corpus
 FUZZ_SEEDS := fuzz/replay
-FUZZ_TARGETS := header index pattern
+FUZZ_TARGETS := header index pattern read
 UNAME     := $(shell uname -s)
 VERSION   := $(shell tr -d '[:space:]' < VERSION)
 
