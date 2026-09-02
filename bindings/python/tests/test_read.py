@@ -36,6 +36,19 @@ def test_path_round_trip(image):
     assert np.array_equal(rumi.read(path, header), data)
 
 
+def test_fused_planar_pfor_frame_round_trips(tmp_path):
+    """The bundled reader registers GeoZL 0.16's fused PFOR codec."""
+    y, x = np.indices((17, 19))
+    data = (3 * x + 5 * y).astype(np.uint16)[None, :, :]
+    tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 32)
+    for frame in tf:
+        graph = geozl.graph(frame.data, "planar>zigzag>pfor")
+        frame.compressed = geozl.compress(frame.data, graph=graph)
+
+    path, header = rumi.write(tmp_path / "planar-pfor.rumi", tf)
+    assert np.array_equal(rumi.read(path, header), data)
+
+
 def test_bytes_round_trip(image):
     path, header, data = image
     blob = open(path, "rb").read()
