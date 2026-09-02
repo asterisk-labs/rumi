@@ -8,6 +8,20 @@ A rumi file names its own frame layout, so any 0.17 file can be read from the
 path alone. The header a writer returns saves the parse; it is not needed to get
 the right samples.
 
+## Writers and readers
+
+Only files created by rumi's writer are supported. The writer is available as
+`rumi.write` in Python and `rumi_write` in C. Independent writers are outside
+the compatibility policy.
+
+Independent readers are supported. [SPEC.md](SPEC.md) contains everything
+needed to read a `.rumi` file without this library. If a file written by rumi
+cannot be read from the specification, that is a specification bug.
+
+A `.rumi` file does not record which writer created it. The reader therefore
+accepts any file that follows the format, but support is limited to files
+created with rumi's own writer.
+
 ## APIs
 
 The public C source API is stable from 0.17. The binary ABI is not stable before

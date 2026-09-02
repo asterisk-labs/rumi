@@ -43,6 +43,10 @@ This document defines:
 
 It does not define the OpenZL frame format or a catalogue format.
 
+This document contains everything needed to implement a rumi reader. The only
+supported writer is the one provided by rumi; independent writers are outside
+the [compatibility policy](https://github.com/asterisk-labs/rumi/blob/main/COMPATIBILITY.md).
+
 Unless a section says otherwise, all integer arithmetic used to validate or
 derive sizes, counts, and offsets is exact. A reader MUST reject an input when a
 required result cannot be represented by its implementation.

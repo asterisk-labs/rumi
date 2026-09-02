@@ -176,6 +176,11 @@ The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_C
 - A CRS must be an EPSG code, or be omitted.
 - Sources are local paths or bytes already in memory; object-storage URLs are not read directly yet.
 
+> [!NOTE]
+> Create files with rumi's writer, available as `rumi.write` in Python and
+> `rumi_write` in C. Independent readers are supported; independent writers are
+> not. See the [compatibility policy](COMPATIBILITY.md) for details.
+
 ## Learn more
 
 - [Format specification](SPEC.md)
