@@ -4,6 +4,17 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-01
+
+### Changed
+
+- Updated to GeoZL 0.16.0 (`geozl>=0.16.0,<0.17` for Python writing), adding
+  fused planar codecs and faster, lower-memory PFOR decoding. Frames from
+  GeoZL 0.14 and 0.15 remain readable.
+- GeoZL 0.15 and 0.15.1 also add optional `int32` frame coefficients and accept
+  all-zero `quant_linear` domains. RUMI preserves coefficients without
+  interpreting them.
+
 ## [0.18.0] - 2026-08-29
 
 ### Breaking
@@ -181,7 +192,9 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/asterisk-labs/rumi/compare/v0.18.0...v0.19.0
+[0.18.0]: https://github.com/asterisk-labs/rumi/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/asterisk-labs/rumi/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/asterisk-labs/rumi/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/asterisk-labs/rumi/compare/v0.14.0...v0.15.0
