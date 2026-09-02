@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Invalid read selections now return `RUMI_ERR_INVALID` instead of reporting
+  an I/O failure.
+
 ## [0.19.0] - 2026-09-01
 
 ### Changed

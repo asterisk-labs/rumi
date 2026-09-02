@@ -115,6 +115,26 @@ std::vector<std::byte> make_blob(std::uint32_t w, std::uint32_t h,
     return blob;
 }
 
+void test_c_api_metadata()
+{
+    CASE("the C API reports the linked library versions")
+    EQ(rumi_api_version(), RUMI_API_VERSION);
+    OK(std::strcmp(rumi_version_string(), RUMI_VERSION_STRING) == 0);
+    EQ(rumi_openzl_format_version(), rumi::openzl_format_version());
+
+    CASE("the C API error can be cleared")
+    unsigned char* dir = nullptr;
+    unsigned char* dbl = nullptr;
+    unsigned char* ascii = nullptr;
+    std::size_t dir_n = 0;
+    std::size_t dbl_n = 0;
+    std::size_t ascii_n = 0;
+    EQ(rumi_geokeys(999999, 0, &dir, &dir_n, &dbl, &dbl_n,
+                    &ascii, &ascii_n), RUMI_ERR_INVALID);
+    OK(rumi_last_error() != nullptr && std::strlen(rumi_last_error()) > 0);
+    rumi_clear_error();
+    OK(rumi_last_error() == nullptr);
+}
 
 void test_base_offset_matches_the_spec()
 {
@@ -207,6 +227,24 @@ void test_geokeys()
 
     CASE("a code no registry names is refused")
     OK(!rumi::build_geokeys(999999, false).has_value());
+
+    CASE("the geokey C API returns caller-owned buffers")
+    unsigned char *dir = nullptr, *dbl = nullptr, *ascii = nullptr;
+    std::size_t dir_n = 0, dbl_n = 0, ascii_n = 0;
+    EQ(rumi_geokeys(32718, 0, &dir, &dir_n, &dbl, &dbl_n,
+                    &ascii, &ascii_n), RUMI_OK);
+    EQ(dir_n, std::size_t(32));
+    OK(dir != nullptr);
+    OK(dbl == nullptr && dbl_n == 0);
+    OK(ascii == nullptr && ascii_n == 0);
+    rumi_free(dir);
+
+    unsigned char* untouched = nullptr;
+    std::size_t untouched_n = 7;
+    EQ(rumi_geokeys(999999, 0, &untouched, &untouched_n, &dbl, &dbl_n,
+                    &ascii, &ascii_n), RUMI_ERR_INVALID);
+    OK(untouched == nullptr);
+    EQ(untouched_n, std::size_t(7));
 }
 
 void test_parse_blob()
@@ -602,6 +640,83 @@ void test_plan_ranges_c_api_rejects_invalid_requests()
     rumi_spec_destroy(spec);
 }
 
+void test_read_c_api_rejects_invalid_requests()
+{
+    CASE("the read C API rejects invalid selections")
+    constexpr std::size_t n = 4;
+    std::vector<std::vector<unsigned char>> payload(n);
+    std::vector<const unsigned char*> ptrs(n);
+    std::vector<std::size_t> sizes(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        payload[i].assign(64, static_cast<unsigned char>(i));
+        ptrs[i]  = payload[i].data();
+        sizes[i] = payload[i].size();
+    }
+
+    rumi::WriteDesc desc{};
+    desc.image_width       = 32;
+    desc.image_length      = 32;
+    desc.tile_size         = 16;
+    desc.samples_per_pixel = 1;
+    desc.dtype             = RUMI_DT_UINT16;
+
+    const std::string path = "/tmp/rumi_capi_guard_"
+                           + std::to_string(std::random_device{}()) + ".rumi";
+    auto blob = rumi::write_file(path.c_str(), desc, ptrs.data(), sizes.data(), n);
+    if (!blob) {
+        std::remove(path.c_str());
+        fail(__LINE__, "write: " + blob.error());
+        return;
+    }
+
+    rumi_spec* spec = nullptr;
+    EQ(rumi_spec_parse(reinterpret_cast<const unsigned char*>(blob->data()),
+                       blob->size(), &spec), RUMI_OK);
+    rumi_source* src = nullptr;
+    EQ(rumi_source_file(path.c_str(), &src), RUMI_OK);
+    if (!spec || !src) {
+        rumi_spec_destroy(spec);
+        rumi_source_free(src);
+        std::remove(path.c_str());
+        return;
+    }
+
+    std::vector<std::uint16_t> dst(32 * 32);
+    const std::size_t dst_size = dst.size() * sizeof(std::uint16_t);
+    auto read = [&](const int* bands, std::size_t n_bands,
+                    const int* times, std::size_t n_times,
+                    int y_off, int y_size, int x_off, int x_size) {
+        return rumi_read(src, spec, times, n_times, bands, n_bands,
+                         y_off, y_size, x_off, x_size, nullptr,
+                         dst.data(), dst_size);
+    };
+    auto rejects = [&](rumi_status status, const char* message) {
+        EQ(status, RUMI_ERR_INVALID);
+        const char* error = rumi_last_error();
+        OK(error != nullptr && std::strstr(error, message) != nullptr);
+    };
+
+    const int zero = 0, past = 2, band1 = 1, time2 = 2;
+    rejects(read(&zero, 1, nullptr, 0, 0, 32, 0, 32),
+            "band 0 out of range");
+    rejects(read(&past, 1, nullptr, 0, 0, 32, 0, 32),
+            "band 2 out of range");
+    rejects(read(&band1, 1, &time2, 1, 0, 32, 0, 32),
+            "t=2 out of range");
+    rejects(read(&band1, 1, nullptr, 0, 0, 32, 30, 4),
+            "requested window out of bounds");
+    rejects(read(&band1, 1, nullptr, 0, -1, 32, 0, 32),
+            "requested window out of bounds");
+    rejects(read(&band1, 1, nullptr, 0, 0, 0, 0, 32),
+            "must be positive");
+    rejects(read(&band1, 1, nullptr, 0, 0, 33, 0, 32),
+            "dst buffer too small");
+
+    rumi_source_free(src);
+    rumi_spec_destroy(spec);
+    std::remove(path.c_str());
+}
+
 void test_dtype_table()
 {
     CASE("every dtype round trips through its sample encoding")
@@ -618,7 +733,7 @@ void test_dtype_table()
     EQ(rumi::dtype_size(RUMI_DT_UINT4), std::size_t(1));
 }
 
-void test_subbyte_dlpack_is_marked_padded()
+void test_dlpack_wrappers()
 {
     CASE("DLPack marks padded sub-byte storage and refuses a legacy wrapper")
     void* data = std::malloc(3);
@@ -633,6 +748,29 @@ void test_subbyte_dlpack_is_marked_padded()
     OK((tensor->flags & DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED) != 0);
     OK(rumi_dlpack_legacy(tensor) == nullptr);
     rumi_dlpack_free(tensor);
+
+    CASE("a legacy DLPack wrapper owns the versioned tensor")
+    data = std::malloc(4 * sizeof(std::uint16_t));
+    const std::int64_t legacy_shape[] = {4};
+    tensor = rumi::build_dlpack(data, RUMI_DT_UINT16, legacy_shape, 1);
+    OK(tensor != nullptr);
+    if (!tensor) {
+        std::free(data);
+        return;
+    }
+
+    DLManagedTensor* legacy = rumi_dlpack_legacy(tensor);
+    OK(legacy != nullptr);
+    if (!legacy) {
+        rumi_dlpack_free(tensor);
+        return;
+    }
+    OK(legacy->dl_tensor.data == data);
+    EQ(legacy->dl_tensor.ndim, 1);
+    EQ(legacy->dl_tensor.shape[0], std::int64_t(4));
+    OK(legacy->manager_ctx == tensor);
+    OK(legacy->deleter == rumi_dlpack_legacy_free);
+    legacy->deleter(legacy);
 }
 
 // These checks run before pool creation. Pinned behavior is tested in isolated
@@ -1138,6 +1276,7 @@ int main()
     test_frame_pattern();
     test_frame_unit_registry();
     test_time_trailer();
+    test_c_api_metadata();
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();
     test_base_offset_accepts_valid_tile_sizes();
@@ -1147,8 +1286,9 @@ int main()
     test_write_then_read_back();
     test_plan_ranges();
     test_plan_ranges_c_api_rejects_invalid_requests();
+    test_read_c_api_rejects_invalid_requests();
     test_dtype_table();
-    test_subbyte_dlpack_is_marked_padded();
+    test_dlpack_wrappers();
     test_thread_pool_batches();
     test_failed_pool_construction_releases_the_count();
 #if !defined(_WIN32) && !defined(RUMI_TSAN)

@@ -574,7 +574,7 @@ read_window(Source& src, const Header& h,
             int y_off, int y_size, int x_off, int x_size,
             const LayoutPlan& layout, std::byte* dst)
 {
-    g_read_status = RUMI_ERR_IO;
+    g_read_status = RUMI_ERR_INVALID;
     if (auto ok = validate_request(h, times, bands, y_off, y_size, x_off, x_size); !ok) {
         return ok;
     }
@@ -611,7 +611,7 @@ read_stack(std::span<Source* const> sources,
            int y_off, int y_size, int x_off, int x_size,
            const LayoutPlan& layout, std::byte* dst)
 {
-    g_read_status = RUMI_ERR_IO;
+    g_read_status = RUMI_ERR_INVALID;
     if (sources.empty() || sources.size() != headers.size()) {
         return err("sources and headers must be non-empty and the same length");
     }
