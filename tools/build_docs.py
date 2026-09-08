@@ -112,6 +112,57 @@ def replace_generated_region(document: str, name: str, content: str) -> str:
     return document[:start_index] + content.rstrip() + document[end_index + len(end) :]
 
 
+def spec_integer(document: str, pattern: str, label: str) -> int:
+    match = re.search(pattern, document, re.MULTILINE)
+    if match is None:
+        raise ValueError(f"SPEC.md does not define {label}")
+    return int(match.group(1))
+
+
+def assert_current_figures() -> None:
+    specification = SPEC_SOURCE.read_text(encoding="utf-8")
+    header_size = spec_integer(
+        specification, r"fixed (\d+)-byte header", "the external header size"
+    )
+    tag_count = spec_integer(
+        specification, r"entry count `(\d+)`", "the fixed IFD entry count"
+    )
+    max_count_bits = spec_integer(
+        specification,
+        r"count_bits` MUST be between `0` and\s+`(\d+)`",
+        "the maximum frame count width",
+    )
+    frames = 64
+    max_blob_size = header_size + (frames * max_count_bits + 7) // 8
+
+    expected_text = {
+        ROOT / "img" / "approach-rumi-index.svg": (
+            f"{header_size}-byte header",
+            f"{header_size} bytes, fixed layout",
+        ),
+        ROOT / "img" / "approach-rumi-metadata-tax.svg": (
+            f"at most {max_blob_size} bytes",
+            f"{header_size} B header",
+            f"&#8804;{max_blob_size} B",
+        ),
+        ROOT / "img" / "approach-rumi-one-layout.svg": (
+            f"{tag_count} fixed IFD tags",
+        ),
+        ROOT / "img" / "rumi-index.svg": (f"{tag_count} fixed IFD tags",),
+        ROOT / "img" / "rumi-catalog.svg": (f"{header_size} B",),
+        ROOT / "img" / "approach-khipu-data-model.svg": (
+            "(T, B, Y, X)",
+            "collections across files",
+        ),
+    }
+    for path, values in expected_text.items():
+        document = path.read_text(encoding="utf-8")
+        missing = [value for value in values if value not in document]
+        if missing:
+            relative = path.relative_to(ROOT)
+            raise ValueError(f"{relative} is out of sync with SPEC.md: {missing}")
+
+
 def assert_local_assets(output: Path) -> None:
     required = (
         output / "index.html",
@@ -198,6 +249,7 @@ def prepare_output(output: Path, *, clean: bool) -> None:
 
 def build(output: Path, *, clean: bool = False) -> None:
     prepare_output(output, clean=clean)
+    assert_current_figures()
 
     # docs/ is the website. The other two directories are mounted into that
     # website only in the disposable Pages artifact.

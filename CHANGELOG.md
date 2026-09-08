@@ -11,7 +11,7 @@ Notable user-visible changes are recorded here.
   supplied. `Metadata` combines the external header, shape, dtype, tile and
   frame layout with time and georeferencing when a source is available.
 - `rumi_info` exposes the same operation for C, R and Julia over any
-  `rumi_source`, including Karu-backed paths and URIs and borrowed memory.
+  `rumi_source`, including paths, remote URIs and borrowed memory.
 
 - `rumi.read_many` reads one fixed-size window per source:
   `windows[i]` is the `(row, column, height, width)` taken from `sources[i]`.
@@ -22,12 +22,10 @@ Notable user-visible changes are recorded here.
 
 - `rumi_read_many` and `rumi_read_many_dlpack` expose the same operation through
   an array of `rumi_read_item` structs. The struct keeps each source, header and
-  window origin together, making the ABI straightforward to bind from R and
-  Julia.
+  window origin together so R and Julia bindings do not need parallel arrays.
 
-- Local paths and remote object URIs now share `rumi_source_file`. Karu handles
-  byte-range transport inside `librumi`; its headers and symbols are not
-  installed.
+- Local paths and remote object URIs now share `rumi_source_file` and the same
+  read operations.
 
 ### Performance
 
@@ -66,6 +64,10 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- `RumiArray`, returned when `framework=None`, is now exported from the Python
+  package as indicated by its representation and read documentation.
+- `Metadata.tile` now reports rectangular tiles as `(height, width)`, and
+  `Metadata.frames` uses both tile dimensions instead of assuming squares.
 - Invalid read selections now return `RUMI_ERR_INVALID` instead of reporting
   an I/O failure.
 - Remote range limits count only axes stored as separate frames, so a valid

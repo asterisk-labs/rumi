@@ -1,6 +1,6 @@
 <svg width="980" viewBox="-20 0 980 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
-<title id="t">One array in. GeoTIFF has thousands of valid forms; rumi has one .rumi form</title>
-<desc id="d">The same array goes into both paths. A plain GeoTIFF fans through seven compression choices, three interleave choices and five further switches into roughly two thousand .tif files. rumi fixes every choice, so one path leads to one .rumi file.</desc>
+<title id="t">GeoTIFF permits many storage layouts; rumi defines one profile</title>
+<desc id="d">The same array can use many combinations of compression, interleave, prediction, tiling, overviews and sparse storage in GeoTIFF. rumi fixes the container choices and leaves compression to OpenZL.</desc>
 <style>
   .sans{font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
   .mono{font-family:ui-monospace,'SFMono-Regular','JetBrains Mono',Menlo,Consolas,monospace}
@@ -61,12 +61,12 @@
 <path class="fileg" d="M793.0 168.0H842.0L857.0 183.0V246.0A4 4 0 0 1 853.0 250.0H793.0A4 4 0 0 1 789.0 246.0V172.0A4 4 0 0 1 793.0 168.0Z" opacity="0.44"/><path class="fileg" d="M798.0 173.0H847.0L862.0 188.0V251.0A4 4 0 0 1 858.0 255.0H798.0A4 4 0 0 1 794.0 251.0V177.0A4 4 0 0 1 798.0 173.0Z" opacity="0.58"/><path class="fileg" d="M803.0 178.0H852.0L867.0 193.0V256.0A4 4 0 0 1 863.0 260.0H803.0A4 4 0 0 1 799.0 256.0V182.0A4 4 0 0 1 803.0 178.0Z" opacity="0.72"/><path class="fileg" d="M808.0 183.0H857.0L872.0 198.0V261.0A4 4 0 0 1 868.0 265.0H808.0A4 4 0 0 1 804.0 261.0V187.0A4 4 0 0 1 808.0 183.0Z"/><path class="fileg" d="M857.0 183.0V198.0H872.0"/>
 <text class="mono rowlab ink" x="838" y="160" text-anchor="middle">GeoTIFF</text>
 <text class="mono ext ink" x="834" y="232" text-anchor="middle">.tif</text>
-<text class="sans num torg" x="838" y="299.0" text-anchor="middle">&#8776;2,016</text>
+<text class="sans num torg" x="838" y="299.0" text-anchor="middle">many</text>
 
 <path class="filev" d="M808.0 423.0H857.0L872.0 438.0V501.0A4 4 0 0 1 868.0 505.0H808.0A4 4 0 0 1 804.0 501.0V427.0A4 4 0 0 1 808.0 423.0Z"/><path class="filev" d="M857.0 423.0V438.0H872.0"/>
 <text class="mono fix tvio" x="240" y="497" text-anchor="middle">OpenZL</text>
 <text class="mono fix key tvio" x="385" y="497" text-anchor="middle">frame-index order</text>
-<text class="mono fix tvio" x="600" y="497" text-anchor="middle">11 fixed IFD tags</text>
+<text class="mono fix tvio" x="600" y="497" text-anchor="middle">13 fixed IFD tags</text>
 <text class="mono rowlab tvio" x="838" y="400" text-anchor="middle">rumi</text>
 <text class="mono ext tvio" x="834" y="472" text-anchor="middle">.rumi</text>
 <text class="sans num tvio" x="838" y="539.0" text-anchor="middle">1</text>

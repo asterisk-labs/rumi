@@ -26,7 +26,7 @@
 <text class="mono" x="460" y="204" text-anchor="middle" font-size="12" font-weight="700" fill="#1A1A1A">tile | cell</text>
 
 <rect x="562" y="185" width="196" height="30" rx="8" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.5"/>
-<text class="mono" x="660" y="204" text-anchor="middle" font-size="12" font-weight="700" fill="#1A1A1A">11 fixed IFD tags</text>
+<text class="mono" x="660" y="204" text-anchor="middle" font-size="12" font-weight="700" fill="#1A1A1A">13 fixed IFD tags</text>
 
 <!-- result -->
 <line x1="815" y1="160" x2="815" y2="250" stroke="#CBD5E1" stroke-width="1.5"/>

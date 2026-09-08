@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img" aria-label="OpenZL separates compression from serialization. The compression graph is described inside the frame, so a single universal decoder reads any graph; you can compose, train and retrain new graphs without ever shipping a new decoder.">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img" aria-label="OpenZL stores a compression graph in each frame. Rumi stores the complete frame bytes, and the OpenZL decoder interprets the graph.">
 <style>
 .mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
 .sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
@@ -9,9 +9,9 @@
 <text class="sans" x="70" y="156" font-size="21" font-weight="700" fill="#1A1A1A">OpenZL separates</text>
 <text class="sans" x="70" y="182" font-size="21" font-weight="700" fill="#1A1A1A">compression from</text>
 <text class="sans" x="70" y="208" font-size="21" font-weight="700" fill="#1A1A1A">serialization.</text>
-<text class="sans" x="70" y="246" font-size="14" fill="#374151">Serialize in Zarr, GeoTIFF,</text>
-<text class="sans" x="70" y="266" font-size="14" fill="#374151">or anything. The container</text>
-<text class="sans" x="70" y="286" font-size="14" fill="#374151">only stores the bytes.</text>
+<text class="sans" x="70" y="246" font-size="14" fill="#374151">A container stores each</text>
+<text class="sans" x="70" y="266" font-size="14" fill="#374151">complete OpenZL frame as</text>
+<text class="sans" x="70" y="286" font-size="14" fill="#374151">an opaque byte sequence.</text>
 <text class="sans" x="70" y="320" font-size="12.5" fill="#9CA3AF">Compression is a write-time</text>
 <text class="sans" x="70" y="340" font-size="12.5" fill="#9CA3AF">choice, not the format's.</text>
 
@@ -36,12 +36,12 @@
 <line x1="834" y1="210" x2="853" y2="210" stroke="#94A3B8" stroke-width="1.6"/><path d="M860 210 L853 214 L853 206 Z" fill="#94A3B8"/>
 
 <rect x="860" y="195" width="72" height="30" rx="8" fill="#1A1A1A"/><text class="mono" x="896" y="214" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FFFFFF">frame</text>
-<text class="sans" x="896" y="182" text-anchor="middle" font-size="10.5" fill="#9CA3AF">the graph spec rides inside the frame</text>
+<text class="sans" x="896" y="182" text-anchor="middle" font-size="10.5" fill="#9CA3AF">graph description stored in the frame</text>
 
 <line x1="896" y1="227" x2="896" y2="313" stroke="#B6BEC8" stroke-width="1.5"/><path d="M896 315 L892 308 L900 308 Z" fill="#B6BEC8"/>
 <rect x="796" y="315" width="200" height="46" rx="10" fill="#1A1A1A"/>
-<text class="sans" x="896" y="337" text-anchor="middle" font-size="13.5" font-weight="700" fill="#FFFFFF">universal decoder</text>
-<text class="sans" x="896" y="353" text-anchor="middle" font-size="10.5" fill="#9CA3AF">reads any graph, no plugins</text>
-<text class="sans" x="896" y="388" text-anchor="middle" font-size="11" font-weight="700" fill="#166534">compose, train, retrain graphs</text>
-<text class="sans" x="896" y="406" text-anchor="middle" font-size="10.5" fill="#9CA3AF">without ever shipping a new decoder</text>
+<text class="sans" x="896" y="337" text-anchor="middle" font-size="13.5" font-weight="700" fill="#FFFFFF">OpenZL decoder</text>
+<text class="sans" x="896" y="353" text-anchor="middle" font-size="10.5" fill="#9CA3AF">executes the stored graph</text>
+<text class="sans" x="896" y="388" text-anchor="middle" font-size="11" font-weight="700" fill="#166534">graphs may differ by frame</text>
+<text class="sans" x="896" y="406" text-anchor="middle" font-size="10.5" fill="#9CA3AF">without changing the Rumi layout</text>
 </svg>

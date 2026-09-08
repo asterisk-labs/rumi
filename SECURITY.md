@@ -3,7 +3,7 @@
 Security fixes target the latest release.
 
 Please report vulnerabilities privately to `hello@asterisk.coop` with
-`[rumi security]` in the subject. Include the RUMI version, platform, impact,
+`[rumi security]` in the subject. Include the Rumi version, platform, impact,
 and a reproducer or sample when possible.
 
 Malformed files, external headers, or OpenZL frames that cause crashes, invalid

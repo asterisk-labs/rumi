@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#080b10">
 <title>rumi</title>
-<meta name="description" content="A GeoTIFF-inspired raster format for deep learning.">
+<meta name="description" content="An experimental raster format for machine-learning datasets.">
 
 <link rel="icon" href="assets/svg/rumi-mark.svg">
 <link rel="stylesheet" href="assets/css/tokens.css">
@@ -42,7 +42,6 @@
     </div>
 
     <nav class="nav" aria-label="Sections">
-      <a href="#/documentation">Docs</a>
       <a href="#/spec">Spec</a>
       <a href="deck/">Deck</a>
     </nav>
@@ -64,12 +63,12 @@
 <template id="view-home">
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-copy">
-      <p class="eyebrow">GeoTIFF-inspired raster format</p>
+      <p class="eyebrow">Raster storage for machine-learning datasets</p>
 
-      <h1 id="hero-title">Scale<span class="hero-line">block by <span class="hero-highlight">block</span>.</span></h1>
+      <h1 id="hero-title">Read only the<span class="hero-line"><span class="hero-highlight">frames</span> you need.</span></h1>
 
       <p class="hero-summary">
-        Each block is an independent <strong class="hero-summary-highlight">OpenZL frame</strong> in a strict, GeoTIFF-inspired layout that scales from one image to millions.
+        Rumi stores images and time series in a fixed container. Each <strong class="hero-summary-highlight">OpenZL frame</strong> carries its own compression graph.
       </p>
 
       <div class="install" data-copy-root>
@@ -120,34 +119,6 @@
         <!-- RUMI_SPEC_BODY_END -->
       </article>
     </div>
-  </section>
-</template>
-
-<template id="view-documentation">
-  <section class="documentation-view" aria-labelledby="documentation-title">
-    <header class="section-heading">
-      <span class="stub-kicker">rumi / documentation</span>
-      <h1 id="documentation-title">documentation</h1>
-    </header>
-
-    <div class="documentation-skeleton" aria-hidden="true">
-      <aside class="skeleton-nav">
-        <span class="skeleton-line skeleton-line--label"></span>
-        <span class="skeleton-line"></span>
-        <span class="skeleton-line skeleton-line--short"></span>
-        <span class="skeleton-line skeleton-line--medium"></span>
-        <span class="skeleton-line skeleton-line--short"></span>
-      </aside>
-
-      <div class="skeleton-content">
-        <span class="skeleton-line skeleton-line--title"></span>
-        <span class="skeleton-line skeleton-line--wide"></span>
-        <span class="skeleton-line skeleton-line--wide"></span>
-        <span class="skeleton-line skeleton-line--medium"></span>
-        <span class="skeleton-block"></span>
-      </div>
-    </div>
-    <span class="visually-hidden">Documentation coming soon.</span>
   </section>
 </template>
 

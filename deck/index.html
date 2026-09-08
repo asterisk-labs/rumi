@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>rumi — a GeoTIFF-inspired format for AI4EO</title>
+  <link rel="icon" href="../img/rumi-logo.svg">
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
@@ -36,18 +37,18 @@
       <div class="section-kicker">01</div>
       <h1>The problem</h1>
       <p class="section-subtitle">
-        The same flexibility that makes GeoTIFF universal makes it expensive at large scale.
+        GeoTIFF permits many layouts and records an offset and size for every tile.
       </p>
       <div class="section-bar"><span></span><span></span><span></span></div>
     </section>
 
     <section class="slide" data-layout="figure">
       <div class="slide-header">
-        <h2>Flexibility is the enemy of scale</h2>
+        <h2>GeoTIFF permits many storage layouts</h2>
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="problem-rumi-geotiff-flavours.svg" alt="">
+        <img data-src="problem-rumi-geotiff-flavours.svg" alt="GeoTIFF creation options permit many storage layouts.">
       </div>
     </section>
 
@@ -57,7 +58,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="problem-rumi-metadata-tax.svg" alt="">
+        <img data-src="problem-rumi-metadata-tax.svg" alt="Per-file indexes grow to gigabytes across one million files.">
       </div>
     </section>
 
@@ -67,7 +68,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="problem-rumi-codecs-monolith.svg" alt="">
+        <img data-src="problem-rumi-codecs-monolith.svg" alt="DEFLATE, Zstandard, and Brotli use separate codec integrations.">
       </div>
     </section>
 
@@ -87,7 +88,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="approach-rumi-one-layout.svg" alt="">
+        <img data-src="approach-rumi-one-layout.svg" alt="Rumi defines one container profile with tile and cell frame layouts.">
       </div>
     </section>
 
@@ -97,7 +98,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="approach-rumi-index.svg" alt="">
+        <img data-src="approach-rumi-index.svg" alt="Rumi stores packed frame sizes and derives offsets by prefix sum.">
       </div>
     </section>
 
@@ -107,7 +108,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="approach-rumi-metadata-tax.svg" alt="">
+        <img data-src="approach-rumi-metadata-tax.svg" alt="Rumi uses at most 288 bytes of index for 64 frames.">
       </div>
     </section>
 
@@ -117,7 +118,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="approach-rumi-openzl.svg" alt="">
+        <img data-src="approach-rumi-openzl.svg" alt="Each OpenZL frame stores the compression graph used to decode it.">
       </div>
     </section>
 
@@ -126,7 +127,7 @@
       <div class="section-kicker">03</div>
       <h1>Benchmark</h1>
       <p class="section-subtitle">
-        Measured on a real Sentinel-2 band — almost the best ratio, a fraction of the cost.
+        One Sentinel-2 band, with ratio, write time, and read throughput measured together.
       </p>
       <div class="section-bar"><span></span><span></span><span></span></div>
     </section>
@@ -137,7 +138,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="approach-rumi-benchmark.svg" alt="">
+        <img data-src="approach-rumi-benchmark.svg" alt="Compression ratio, write time, and read throughput on one Sentinel-2 band.">
       </div>
     </section>
 
@@ -147,7 +148,7 @@
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container compact-figure">
-        <img data-src="approach-rumi-results-table.svg" alt="">
+        <img data-src="approach-rumi-results-table.svg" alt="Measured compression results for JPEG2000, OpenZL, Zstandard, and DEFLATE.">
       </div>
       <a class="fig-link" href="https://colab.research.google.com/drive/1wK6qybf5cogi4z842Mja2oeB8PR60LPz?usp=sharing" target="_blank" rel="noopener">
         reproduce every number on Google Colab
@@ -159,18 +160,18 @@
       <div class="section-kicker">04</div>
       <h1>The data model</h1>
       <p class="section-subtitle">
-        rumi is one stone in a larger structure.
+        Rumi covers raster storage within the khipu data model.
       </p>
       <div class="section-bar"><span></span><span></span><span></span></div>
     </section>
 
     <section class="slide" data-layout="figure">
       <div class="slide-header">
-        <h2>rumi is part of the khipu data model</h2>
+        <h2>Rumi is part of the khipu data model</h2>
         <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
       </div>
       <div class="fig-container">
-        <img data-src="approach-khipu-data-model.svg" alt="">
+        <img data-src="approach-khipu-data-model.svg" alt="Rumi stores Images and Cubes; Rumikuna groups them into collections.">
       </div>
     </section>
 

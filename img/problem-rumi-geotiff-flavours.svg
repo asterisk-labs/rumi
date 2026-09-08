@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="438" viewBox="0 14 1000 438" role="img" aria-label="GDAL create options produce thousands of valid GeoTIFFs">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="438" viewBox="0 14 1000 438" role="img" aria-label="GDAL creation options permit many GeoTIFF storage layouts">
 <style>
 .mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;}
 .sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif;}
@@ -70,8 +70,8 @@
 <line x1="815" y1="110" x2="815" y2="410" stroke="#CBD5E1" stroke-width="1.5"/>
 <line x1="818" y1="260" x2="842" y2="260" stroke="#9CA3AF" stroke-width="1.5"/>
 <path d="M842 260 l-8 -4 v8 z" fill="#9CA3AF"/>
-<text class="sans" x="905" y="252" text-anchor="middle" font-size="42" font-weight="700" fill="#FE6B37">&#8776;2,016</text>
-<text class="sans" x="905" y="278" text-anchor="middle" font-size="14" fill="#1A1A1A">valid GeoTIFFs</text>
+<text class="sans" x="905" y="252" text-anchor="middle" font-size="42" font-weight="700" fill="#FE6B37">many</text>
+<text class="sans" x="905" y="278" text-anchor="middle" font-size="14" fill="#1A1A1A">valid layouts</text>
 <text class="sans" x="905" y="300" text-anchor="middle" font-size="10.5" fill="#9CA3AF">before dtype or</text>
 <text class="sans" x="905" y="314" text-anchor="middle" font-size="10.5" fill="#9CA3AF">compression levels</text>
 </svg>

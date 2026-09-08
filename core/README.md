@@ -1,3 +1,5 @@
 # rumi core
 
-C++ reader and writer for rumi, a GeoTIFF-inspired raster format. The format is defined in [`SPEC.md`](../SPEC.md); bindings live in [`../bindings`](../bindings/).
+C++ reader and writer for Rumi. The format is defined in
+[`SPEC.md`](../SPEC.md), and language bindings live in
+[`bindings/`](../bindings/).

@@ -31,10 +31,10 @@
 
 <!-- RIGHT: rumi -->
 <text class="sans" x="548" y="46" font-size="16" font-weight="600" fill="#16A34A">rumi</text>
-<text class="sans" x="548" y="66" font-size="12" fill="#9CA3AF">28 byte header and packed counts</text>
+<text class="sans" x="548" y="66" font-size="12" fill="#9CA3AF">32-byte header and packed counts</text>
 <rect x="548" y="80" width="404" height="44" rx="10" fill="#ECFDF5" stroke="#16A34A" stroke-width="1"/>
 <text class="mono" x="566" y="102" font-size="13" font-weight="700" fill="#166534">rumi header</text>
-<text class="sans" x="566" y="118" font-size="11" fill="#5E8B73">28 bytes, fixed layout</text>
+<text class="sans" x="566" y="118" font-size="11" fill="#5E8B73">32 bytes, fixed layout</text>
 
 <rect x="548" y="132" width="404" height="28" rx="8" fill="#ECFDF5" stroke="#16A34A" stroke-width="1"/>
 <text class="mono" x="750" y="151" text-anchor="middle" font-size="12" fill="#166534">base_frame_offset = derived</text>
@@ -61,7 +61,7 @@
 
 <rect x="388" y="360" width="180" height="46" rx="10" fill="#ECFDF5" stroke="#16A34A"/>
 <text class="mono" x="478" y="380" text-anchor="middle" font-size="13" font-weight="700" fill="#166534">rumi blob</text>
-<text class="mono" x="478" y="396" text-anchor="middle" font-size="11" fill="#5E8B73">28 B + packed counts[N]</text>
+<text class="mono" x="478" y="396" text-anchor="middle" font-size="11" fill="#5E8B73">32 B + packed counts[N]</text>
 
 <text class="mono" x="610" y="376" text-anchor="middle" font-size="11" fill="#16A34A">parse</text>
 <line x1="573" y1="383" x2="645" y2="383" stroke="#94A3B8" stroke-width="1.5"/><path d="M652 383 L645 387 L645 379 Z" fill="#94A3B8"/>

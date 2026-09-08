@@ -267,8 +267,7 @@
   font-size: 0.9em;
 }
 
-.spec-page,
-.documentation-view {
+.spec-page {
   width: 100%;
   padding-block: clamp(18px, 4vw, 48px);
 }
@@ -481,92 +480,6 @@
   border-top: 1px solid var(--edge);
 }
 
-.documentation-view {
-  width: min(100%, 1080px);
-  margin-inline: auto;
-}
-
-.documentation-view .section-heading {
-  margin-bottom: clamp(28px, 5vw, 48px);
-}
-
-.documentation-skeleton {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
-  gap: clamp(32px, 6vw, 72px);
-  min-height: 310px;
-  overflow: hidden;
-  padding-top: 30px;
-  border-top: 1px solid var(--edge);
-}
-
-.documentation-skeleton::after {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 28%, rgba(255, 255, 255, 0.035) 45%, transparent 62%);
-  content: '';
-  transform: translateX(-100%);
-  animation: documentation-shimmer 2.8s ease-in-out infinite;
-}
-
-.skeleton-nav,
-.skeleton-content {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.skeleton-content {
-  padding-left: clamp(22px, 4vw, 46px);
-  border-left: 1px solid var(--edge);
-}
-
-.skeleton-line,
-.skeleton-block {
-  display: block;
-  background: rgba(151, 161, 180, 0.1);
-}
-
-.skeleton-line {
-  width: 72%;
-  height: 9px;
-}
-
-.skeleton-line--label {
-  width: 34%;
-  height: 7px;
-  margin-bottom: 9px;
-  background: rgba(145, 242, 188, 0.11);
-}
-
-.skeleton-line--short {
-  width: 48%;
-}
-
-.skeleton-line--medium {
-  width: 62%;
-}
-
-.skeleton-line--title {
-  width: min(64%, 390px);
-  height: clamp(30px, 4vw, 46px);
-  margin-bottom: 15px;
-  background: rgba(231, 235, 243, 0.1);
-}
-
-.skeleton-line--wide {
-  width: min(92%, 650px);
-}
-
-.skeleton-block {
-  width: min(100%, 720px);
-  height: 112px;
-  margin-top: 18px;
-  border: 1px solid rgba(151, 161, 180, 0.08);
-  background: rgba(151, 161, 180, 0.045);
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -575,13 +488,6 @@
   clip: rect(0 0 0 0);
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-@keyframes documentation-shimmer {
-  55%,
-  100% {
-    transform: translateX(100%);
-  }
 }
 
 @media (max-width: 1000px) {
@@ -691,19 +597,6 @@
     white-space: nowrap;
   }
 
-  .documentation-skeleton {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 34px;
-  }
-
-  .skeleton-nav {
-    display: none;
-  }
-
-  .skeleton-content {
-    padding-left: 0;
-    border-left: 0;
-  }
 }
 
 @media (max-width: 390px) {
