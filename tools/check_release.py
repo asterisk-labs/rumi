@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import re
 import sys
 import tomllib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(
@@ -84,6 +84,7 @@ def check(tag: str | None) -> tuple[str, str]:
         "licenses/LICENSE.OpenZL",
         "licenses/LICENSE.Zstandard",
         "licenses/LICENSE.LZ4",
+        "licenses/LICENSE.Karu",
     ):
         if not (ROOT / notice).is_file():
             fail(f"missing release notice: {notice}")
