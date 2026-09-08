@@ -39,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
       - name: Init OpenZL dependencies
         run: |
@@ -78,6 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
       - name: Init OpenZL dependencies
         run: |

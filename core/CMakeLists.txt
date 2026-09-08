@@ -26,6 +26,8 @@ option(RUMI_WERROR            "Treat warnings in rumi C++ as errors"            
 # geozl supplies OpenZL transitively from the repository root.
 set(RUMI_GEOZL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/geozl"
     CACHE PATH "Path to the geozl submodule source")
+set(RUMI_KARU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/karu"
+    CACHE PATH "Path to the private karu transport source")
 
 # Examples: -DRUMI_SANITIZE=thread or -DRUMI_SANITIZE=address,undefined.
 set(RUMI_SANITIZE "" CACHE STRING "Sanitizer to compile and link with")
@@ -61,6 +63,13 @@ set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib
 add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
 target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
 
+# Karu is an internal source dependency. It owns local and remote transport,
+# but its symbols and headers are not installed as part of Rumi.
+set(KARU_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(KARU_WERROR ${RUMI_WERROR} CACHE BOOL "" FORCE)
+set(KARU_SANITIZE "${RUMI_SANITIZE}" CACHE STRING "" FORCE)
+add_subdirectory(${RUMI_KARU_DIR} ${CMAKE_CURRENT_BINARY_DIR}/karu EXCLUDE_FROM_ALL)
+
 set(RUMI_SOURCES
     src/parser.cpp
     src/builder.cpp
@@ -82,6 +91,7 @@ target_include_directories(rumi_config INTERFACE
 )
 target_link_libraries(rumi_config INTERFACE
     geozl::geozl
+    karu::internal
 )
 target_compile_definitions(rumi_config INTERFACE
     RUMI_BUILD
@@ -135,7 +145,22 @@ endif()
 # Component tests compile internal sources directly.
 if(RUMI_BUILD_TESTS)
     enable_testing()
+    # R and Julia bind the C ABI, so keep the installed header consumable by a
+    # real C11 compiler rather than testing it only from C++ and CFFI.
+    add_library(rumi_c_header_check OBJECT tests/test_c_header.c)
+    target_include_directories(rumi_c_header_check PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_options(rumi_c_header_check PRIVATE
+        $<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+        $<$<COMPILE_LANG_AND_ID:C,MSVC>:/W4>)
+    if(RUMI_WERROR)
+        target_compile_options(rumi_c_header_check PRIVATE
+            $<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-Werror>
+            $<$<COMPILE_LANG_AND_ID:C,MSVC>:/WX>)
+    endif()
+
     add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})
+    add_dependencies(rumi_tests rumi_c_header_check)
     target_link_libraries(rumi_tests PRIVATE rumi_config)
     if(RUMI_SANITIZE STREQUAL "thread")
         # TSAN cannot run the post-fork thread-creation test.
@@ -164,6 +189,7 @@ message(STATUS "rumi ${RUMI_VERSION_FULL}")
 message(STATUS "  C API version:   ${RUMI_API_VERSION}")
 message(STATUS "  geozl:          ${RUMI_GEOZL_DIR}")
 message(STATUS "  OpenZL:         via geozl")
+message(STATUS "  karu:           ${RUMI_KARU_DIR} (internal)")
 message(STATUS "  Standalone lib: ${RUMI_BUILD_SHARED_LIB}")
 message(STATUS "  Tests:          ${RUMI_BUILD_TESTS}")
 message(STATUS "  Fuzzers:        ${RUMI_BUILD_FUZZERS}")

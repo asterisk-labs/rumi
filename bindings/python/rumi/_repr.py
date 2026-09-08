@@ -36,33 +36,6 @@ def _bands(b):
     return sheets + dots
 
 
-def _header_cube(b, x, y):
-    return (
-        '<svg width="100%" viewBox="0 0 215 205" '
-        f'role="img" aria-label="rumi image cube, {b} bands">'
-        f'<polygon points="55,72 88,39 178,39 145,72" fill="{_TOP}" '
-        f'stroke="{_LINE}" stroke-width="1.3"/>'
-        f'<polygon points="145,72 178,39 178,152 145,185" fill="{_SIDE}" '
-        f'stroke="{_LINE}" stroke-width="1.3"/>'
-        f'{_bands(b)}'
-        f'<rect x="55" y="72" width="90" height="113" fill="{_FACE}" '
-        f'stroke="{_EDGE}" stroke-width="1.5"/>'
-        f'<g stroke="{_LINE}" stroke-width="0.5" opacity=".35">'
-        '<line x1="85" y1="72" x2="85" y2="185"/>'
-        '<line x1="115" y1="72" x2="115" y2="185"/>'
-        '<line x1="55" y1="110" x2="145" y2="110"/>'
-        '<line x1="55" y1="147" x2="145" y2="147"/></g>'
-        f'<text x="100" y="199" text-anchor="middle" font-size="10.5" '
-        f'font-family="monospace" fill="currentColor" opacity=".7">X: {x}</text>'
-        f'<text x="44" y="128" text-anchor="middle" font-size="10.5" '
-        f'font-family="monospace" fill="currentColor" opacity=".7" '
-        f'transform="rotate(-90,44,128)">Y: {y}</text>'
-        f'<text x="182" y="37" font-size="10.5" font-family="monospace" '
-        f'fill="currentColor" opacity=".7">B: {b}</text>'
-        '</svg>'
-    )
-
-
 _CSS = """
 #ID{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:inherit;
  display:inline-block;line-height:1.5}
@@ -83,40 +56,6 @@ def _wrap(inner):
     uid = f"rumi{next(_counter)}"
     return (f'<div class="rumi-repr" id="{uid}"><style>'
             f'{_CSS.replace("#ID", f"#{uid}")}</style>{inner}</div>')
-
-
-def header_text(f):
-    if not f["ok"]:
-        return "<rumi.RumiHeader (unreadable)>"
-    tw, tl = f["tile"]
-    return "\n".join([
-        f"<rumi.RumiHeader {shape_of(f)}>",
-        f"  dtype      : {f['dtype']}",
-        f"  tile       : {tw} x {tl}",
-        f"  frames     : {f['frames']}",
-        f"  tiles/band : {f['across'] * f['down']}",
-        f"  codec      : {f['codec']}",
-    ])
-
-
-def header_html(f):
-    if not f["ok"]:
-        return _wrap('<div class="hdr"><span class="cls">rumi.RumiHeader</span> '
-                     '<span class="dim">(unreadable)</span></div>')
-    tw, tl = f["tile"]
-    e = html.escape
-    rows = (
-        f'<tr><td class="k">dtype</td><td>{e(f["dtype"])}</td></tr>'
-        f'<tr><td class="k">tile</td><td>{tw} \u00d7 {tl}</td></tr>'
-        f'<tr><td class="k">frames</td><td><b>{f["frames"]:,}</b></td></tr>'
-        f'<tr><td class="k">tiles/band</td><td>{f["across"] * f["down"]:,}</td></tr>'
-        f'<tr><td class="k">codec</td><td>{e(f["codec"])}</td></tr>'
-    )
-    meta = (f'<div><div class="hdr"><span class="cls">rumi.RumiHeader</span> '
-            f'<span class="dim">{shape_of(f)}</span></div>'
-            f'<table>{rows}</table></div>')
-    return _wrap(f'<div class="box">{meta}'
-                 f'<div class="g">{_header_cube(f["b"], f["x"], f["y"])}</div></div>')
 
 
 def _human(n):

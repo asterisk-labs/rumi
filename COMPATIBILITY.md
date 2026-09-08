@@ -24,9 +24,10 @@ created with rumi's own writer.
 
 ## APIs
 
-The public C source API is stable from 0.17. The binary ABI is not stable before
-1.0, so C applications should be recompiled after an update. ABI changes also
-increment `RUMI_API_VERSION` and the shared-library SONAME.
+The public C source API and binary ABI are not stable before 1.0, so C
+applications should be recompiled after an update. `RUMI_API_VERSION` and the
+shared-library SONAME remain at 1 throughout this unstable period. Starting
+with Rumi 1.0, incompatible ABI changes will increment them.
 
 The Python API follows semantic versioning. Before 1.0, a minor release may
 contain a breaking change; it will be called out in the changelog.

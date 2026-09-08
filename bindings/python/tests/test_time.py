@@ -34,18 +34,18 @@ def scale_of(path):
 
 
 def test_a_file_with_no_time_says_so_rather_than_omitting_it(tmp_path):
-    assert rumi.read_time(write(tmp_path, "plain")).steps == []
+    assert rumi.info(source=write(tmp_path, "plain")).time == []
 
 
 def test_a_dated_scene_round_trips_as_a_date(tmp_path):
     path = write(tmp_path, "scene", ["2024-08-25"])
-    assert rumi.read_time(path).steps == [dt.date(2024, 8, 25)]
+    assert rumi.info(source=path).time == [dt.date(2024, 8, 25)]
 
 
 def test_a_date_before_the_epoch_round_trips(tmp_path):
     path = write(tmp_path, "before", ["1969-12-31"])
     assert scale_of(path) == 86400
-    assert rumi.read_time(path).steps == [dt.date(1969, 12, 31)]
+    assert rumi.info(source=path).time == [dt.date(1969, 12, 31)]
 
 
 def test_a_date_costs_nothing_over_a_file_with_none(tmp_path):
@@ -56,13 +56,13 @@ def test_a_date_costs_nothing_over_a_file_with_none(tmp_path):
 
 def test_a_time_of_day_makes_the_axis_seconds(tmp_path):
     path = write(tmp_path, "exact", ["2024-08-25T14:32:07Z"])
-    assert rumi.read_time(path).steps == [dt.datetime(2024, 8, 25, 14, 32, 7, tzinfo=UTC)]
+    assert rumi.info(source=path).time == [dt.datetime(2024, 8, 25, 14, 32, 7, tzinfo=UTC)]
 
 
 def test_an_acquisition_window_is_a_pair(tmp_path):
     window = ("2024-08-25T14:30:00Z", "2024-08-25T14:35:00Z")
     path = write(tmp_path, "window", [window])
-    got = rumi.read_time(path).steps
+    got = rumi.info(source=path).time
     assert got == [(dt.datetime(2024, 8, 25, 14, 30, tzinfo=UTC),
                     dt.datetime(2024, 8, 25, 14, 35, tzinfo=UTC))]
 
@@ -81,7 +81,7 @@ def test_a_window_also_costs_nothing(tmp_path):
     np.datetime64("2024-08-25"),
 ])
 def test_every_accepted_type_names_the_same_day(tmp_path, value):
-    got = rumi.read_time(write(tmp_path, "any", [value])).steps[0]
+    got = rumi.info(source=write(tmp_path, "any", [value])).time[0]
     assert (got.date() if isinstance(got, dt.datetime) else got) \
         == dt.date(2024, 8, 25)
 
@@ -90,21 +90,21 @@ def test_a_naive_datetime_is_utc(tmp_path):
     """Naive datetimes are interpreted as UTC."""
     naive = dt.datetime(2024, 8, 25, 14, 0, 0)
     aware = dt.datetime(2024, 8, 25, 14, 0, 0, tzinfo=UTC)
-    assert rumi.read_time(write(tmp_path, "naive", [naive])).steps \
-        == rumi.read_time(write(tmp_path, "aware", [aware])).steps
+    assert rumi.info(source=write(tmp_path, "naive", [naive])).time \
+        == rumi.info(source=write(tmp_path, "aware", [aware])).time
 
 
 def test_a_zone_is_converted_not_dropped(tmp_path):
     lima = dt.timezone(dt.timedelta(hours=-5))
     path = write(tmp_path, "lima", [dt.datetime(2024, 8, 25, 9, 0, tzinfo=lima)])
-    assert rumi.read_time(path).steps == [dt.datetime(2024, 8, 25, 14, 0, tzinfo=UTC)]
+    assert rumi.info(source=path).time == [dt.datetime(2024, 8, 25, 14, 0, tzinfo=UTC)]
 
 
 def test_a_zone_conversion_may_cross_into_the_next_day(tmp_path):
     lima = dt.timezone(dt.timedelta(hours=-5))
     value = dt.datetime(2024, 8, 25, 23, 0, tzinfo=lima)
     path = write(tmp_path, "next-day", [value])
-    assert rumi.read_time(path).steps == [
+    assert rumi.info(source=path).time == [
         dt.datetime(2024, 8, 26, 4, 0, tzinfo=UTC)]
 
 
@@ -141,13 +141,13 @@ def test_a_coordinate_outside_a_list_is_named_not_iterated(tmp_path, time,
 
 def test_a_numpy_array_of_dates_is_a_list(tmp_path):
     stamps = np.array(["2024-08-25"], dtype="datetime64[D]")
-    assert rumi.read_time(write(tmp_path, "np", stamps)).steps == [dt.date(2024, 8, 25)]
+    assert rumi.info(source=write(tmp_path, "np", stamps)).time == [dt.date(2024, 8, 25)]
 
 
 def test_time_coordinates_may_come_from_a_generator(tmp_path):
     stamps = (value for value in ["2024-08-25"])
     path = write(tmp_path, "generator", stamps)
-    assert rumi.read_time(path).steps == [dt.date(2024, 8, 25)]
+    assert rumi.info(source=path).time == [dt.date(2024, 8, 25)]
 
 
 def test_instants_and_intervals_cannot_be_mixed(tmp_path):
@@ -172,13 +172,13 @@ def test_a_time_of_day_moves_the_scale_to_seconds(tmp_path):
 
 def test_the_axis_says_what_kind_it_is(tmp_path):
     """Decoded time kind comes from time_type, not Python value shape."""
-    assert rumi.read_time(write(tmp_path, "none")).kind is None
-    assert rumi.read_time(write(tmp_path, "one", ["2024-08-25"])).kind == "instant"
+    assert rumi.info(source=write(tmp_path, "none")).time_kind is None
+    assert rumi.info(source=write(tmp_path, "one", ["2024-08-25"])).time_kind == "instant"
     span = write(tmp_path, "span", [("2024-08-25", "2024-08-26")])
-    assert rumi.read_time(span).kind == "interval"
+    assert rumi.info(source=span).time_kind == "interval"
     # Steps remain directly iterable.
-    assert len(rumi.read_time(span).steps) == 1
-    for start, end in rumi.read_time(span).steps:
+    assert len(rumi.info(source=span).time) == 1
+    for start, end in rumi.info(source=span).time:
         assert start < end
 
 
@@ -195,5 +195,5 @@ def test_a_fraction_of_a_second_is_refused(tmp_path, value):
 
 def test_a_whole_second_still_goes_through(tmp_path):
     path = write(tmp_path, "whole", ["2024-08-25T14:32:07Z"])
-    assert rumi.read_time(path).steps == [
+    assert rumi.info(source=path).time == [
         dt.datetime(2024, 8, 25, 14, 32, 7, tzinfo=UTC)]

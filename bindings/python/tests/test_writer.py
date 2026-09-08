@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import rumi
 from rumi import FrameTable
+from rumi._ffi import _Spec
 from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
@@ -271,37 +272,35 @@ def test_write_blob_round_trip(tmp_path):
     tf = make_frame()
     path, blob = rumi.write(tmp_path / "a.rumi", tf)
 
-    header = rumi.RumiHeader(blob)
+    header = rumi.info(header=blob)
     assert header.shape == (tf.bands, tf.image_length, tf.image_width)
     assert header.dtype == tf.dtype
-    d = header.to_dict()
-    assert d["tile"] == [tf.tile_size, tf.tile_size]
-    assert d["tiles_across"] == tf.tiles_across
-    assert d["tiles_down"] == tf.tiles_down
-    assert d["base_frame_offset"] == header_bytes(tf)
-    assert rumi.RumiHeader.from_path(path).to_dict() == d
+    assert header.tile == (tf.tile_size, tf.tile_size)
+    assert header.frames == len(tf)
+    assert _Spec(blob).fields.base_frame_offset == header_bytes(tf)
+    assert rumi.info(source=path).header == blob
 
 
 def test_edge_tiles(tmp_path):
     tf = make_frame(shape=(3, 257, 256), tile_size=128)
     assert {t.data.shape for t in tf} == {(128, 128), (1, 128)}
     _path, blob = rumi.write(tmp_path / "a.rumi", tf)
-    h = rumi.RumiHeader(blob).to_dict()
-    assert h["height"] == 257 and h["width"] == 256
-    assert h["frames"] == len(tf)
-    assert h["frame_unit"] == "h w"
+    h = rumi.info(header=blob)
+    assert h.shape == (3, 257, 256)
+    assert h.frames == len(tf)
+    assert h.frame_layout == "h w"
 
 
 def test_a_unit_must_fit_the_raster(tmp_path):
     """A singleton band axis is omitted from the recorded frame unit."""
     tf = make_frame(shape=(1, 40, 40), tile_size=16, pattern=CELL)
     _path, header = rumi.write(tmp_path / "a.rumi", tf)
-    assert rumi.RumiHeader(header).frame_unit == "h w"
+    assert rumi.info(header=header).frame_layout == "h w"
 
     claim = bytearray(header)
     claim[26] = 1                       # (b h w), which one band cannot be
     with pytest.raises(ValueError, match="frame layout"):
-        rumi.RumiHeader(bytes(claim))
+        rumi.info(header=bytes(claim))
 
 
 def test_a_frame_past_the_size_limit_is_refused():
@@ -311,10 +310,10 @@ def test_a_frame_past_the_size_limit_is_refused():
                        65535, 65535, 1, 16, 1, 0, 10, 0)
     assert lib.rumi_get_max_frame_bytes() == 1 << 30
     with pytest.raises(ValueError, match="size limit"):
-        rumi.RumiHeader(huge)
+        rumi.info(header=huge)
     try:
         lib.rumi_set_max_frame_bytes(1 << 40)
-        assert rumi.RumiHeader(huge).shape == (1, 65535, 65535)
+        assert rumi.info(header=huge).shape == (1, 65535, 65535)
     finally:
         assert lib.rumi_set_max_frame_bytes(0) == 1 << 30
 
@@ -335,19 +334,18 @@ def test_the_file_names_its_own_layout(tmp_path):
     for pattern, want in ((TILE, "h w"), (CELL, "b h w"), (CHUNKY, "h w b")):
         tf = make_frame(shape=(3, 40, 40), tile_size=16, pattern=pattern)
         path, header = rumi.write(tmp_path / "a.rumi", tf)
-        assert rumi.RumiHeader(header).frame_unit == want
-        assert rumi.RumiHeader.from_path(path).frame_unit == want
-        assert rumi.RumiHeader.from_path(path).to_dict() == \
-            rumi.RumiHeader(header).to_dict()
+        assert rumi.info(header=header).frame_layout == want
+        assert rumi.info(source=path).frame_layout == want
+        assert rumi.info(source=path).header == header
 
 
 def test_cell_frame_count(tmp_path):
     """Cell layouts contain one frame per grid position."""
     tf = make_frame(shape=(3, 257, 256), tile_size=128, pattern=CELL)
     _path, blob = rumi.write(tmp_path / "a.rumi", tf)
-    h = rumi.RumiHeader(blob).to_dict()
-    assert h["frame_unit"] == "b h w"
-    assert h["frames"] == len(tf) == h["tiles_across"] * h["tiles_down"]
+    h = rumi.info(header=blob)
+    assert h.frame_layout == "b h w"
+    assert h.frames == len(tf) == tf.tiles_across * tf.tiles_down
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.int16, np.uint16, np.int32,
@@ -426,8 +424,7 @@ def test_a_boolean_mask_is_the_binary_type(tmp_path):
         f.compressed = geozl.compress(buf, graph=geozl.graph(buf, "planar>zigzag>zstd"))
     path, header = rumi.write(tmp_path / "mask.rumi", tf)
 
-    h = rumi.RumiHeader(header)
-    assert h.to_dict()["dtype"] == "binary"
+    h = rumi.info(header=header)
     assert h.dtype is np.bool_
     assert np.array_equal(np.asarray(rumi.read(path, header)), mask)
 

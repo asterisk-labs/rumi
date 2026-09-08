@@ -9,7 +9,7 @@
 # make install    cmake --install into PREFIX (/usr/local)
 # make docs       render SPEC.md into a deployable copy of docs/
 # make clean      remove all build output, caches and generated files
-# make submodules fetch or update geozl (and OpenZL under it)
+# make submodules fetch or update geozl, Karu, and their nested dependencies
 
 # `make help` lists targets and configurable variables.
 
@@ -21,6 +21,7 @@ GEN    ?= Ninja
 CORE      := core
 BUILD_DIR := core/build
 GEOZL     := extern/geozl
+KARU      := extern/karu
 PY_DIR    := bindings/python
 R_DIR     := bindings/r
 PY_LIB_DIR := $(PY_DIR)/rumi/_lib
@@ -53,17 +54,17 @@ CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 
 all: python
 
-# Initialize the geozl submodule on first build.
-$(GEOZL)/core/CMakeLists.txt:
+# Initialize native submodules on first build.
+$(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt:
 	git submodule update --init --recursive
 
 submodules:
 	git submodule update --init --recursive
 
-$(BUILD_DIR)/CMakeCache.txt: $(GEOZL)/core/CMakeLists.txt
+$(BUILD_DIR)/CMakeCache.txt: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
 	cmake -S $(CORE) -B $(BUILD_DIR) $(CMAKE_OPTS)
 
-configure: $(GEOZL)/core/CMakeLists.txt
+configure: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
 	cmake -S $(CORE) -B $(BUILD_DIR) $(CMAKE_OPTS)
 
 build: $(BUILD_DIR)/CMakeCache.txt
@@ -249,7 +250,7 @@ help:
 	@echo "make sync       validate VERSION; write R DESCRIPTION if present"
 	@echo "make install    cmake --install into PREFIX ($(PREFIX))"
 	@echo "make clean      remove all build output, caches and generated files"
-	@echo "make submodules fetch or update geozl (and OpenZL under it)"
+	@echo "make submodules fetch or update GeoZL, Karu, and nested dependencies"
 	@echo ""
 	@echo "vars  BUILD_TYPE=Debug  PYTHON=python3.12  GEN='Unix Makefiles'  PREFIX=/opt"
 	@echo "      STAGE_DIR=out  CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Debug"

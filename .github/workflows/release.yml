@@ -17,6 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
       - id: version
         name: Check VERSION, changelog, GeoZL, and tag
@@ -39,6 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
       - name: Init native dependencies
         run: |
@@ -70,6 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
       - name: Init native dependencies
         run: |

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import rumi
 from rumi import FrameTable
+from rumi._ffi import _Spec
 from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
@@ -197,7 +198,7 @@ def test_a_broken_trailer_is_refused(tmp_path, field, value, because):
     bad = tmp_path / "bad.rumi"
     bad.write_bytes(blob)
     with pytest.raises(ValueError, match=because):
-        rumi.RumiHeader.from_path(bad)
+        rumi.info(source=bad)
 
 
 def test_a_file_cut_short_of_its_trailer_is_refused(tmp_path):
@@ -208,7 +209,7 @@ def test_a_file_cut_short_of_its_trailer_is_refused(tmp_path):
     short = tmp_path / "short.rumi"
     short.write_bytes(blob[:-4])
     with pytest.raises(ValueError, match="no room for"):
-        rumi.RumiHeader.from_path(short)
+        rumi.info(source=short)
 
 
 # Fixed IFD
@@ -315,8 +316,8 @@ def test_base_offset_matches_the_derivation(tmp_path, shape, tile):
 def test_the_blob_agrees_with_the_derivation(tmp_path):
     tf = make_frame()
     _path, blob = rumi.write(tmp_path / "a.rumi", tf)
-    facts = rumi.RumiHeader(blob).to_dict()
-    assert facts["base_frame_offset"] == derive_base_offset(tf.bands, len(tf))
+    fields = _Spec(blob).fields
+    assert fields.base_frame_offset == derive_base_offset(tf.bands, len(tf))
 
 
 def test_the_same_shape_gives_the_same_offset(tmp_path):
@@ -520,9 +521,9 @@ def valid_file(tmp_path):
 def test_the_independent_writer_is_accepted(valid_file):
     """Confirm that the independent builder produces a valid baseline file."""
     path, _entries, _tiles = valid_file
-    facts = rumi.RumiHeader.from_path(path).to_dict()
-    assert facts["shape"] == [2, 40, 70]
-    assert facts["base_frame_offset"] == derive_base_offset(2, 30)
+    metadata = rumi.info(source=path)
+    assert metadata.shape == (2, 40, 70)
+    assert _Spec(metadata.header).fields.base_frame_offset == derive_base_offset(2, 30)
 
 
 def _rejects(tmp_path, entries, tiles, match, bands=2, pad=0):
@@ -530,7 +531,7 @@ def _rejects(tmp_path, entries, tiles, match, bands=2, pad=0):
     path.write_bytes(build_tiff(entries, tiles, bands=bands,
                                 pad_before_tiles=pad))
     with pytest.raises((ValueError, IOError), match=match):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_an_extra_tag_is_rejected(tmp_path, valid_file):
@@ -558,7 +559,7 @@ def test_tags_out_of_rising_order_are_rejected(tmp_path, valid_file):
     path = tmp_path / "bad-order.rumi"
     path.write_bytes(blob)
     with pytest.raises(ValueError, match="order"):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_external_values_out_of_place_are_rejected(tmp_path, valid_file):
@@ -570,7 +571,7 @@ def test_external_values_out_of_place_are_rejected(tmp_path, valid_file):
     path = tmp_path / "bad-placement.rumi"
     path.write_bytes(blob)
     with pytest.raises(ValueError, match="expected"):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_a_missing_geo_tag_is_rejected(tmp_path, valid_file):
@@ -603,7 +604,7 @@ def test_an_unaligned_tile_size_is_accepted(tmp_path):
     entries = spec_entries(40, 40, 20, 1, tiles)
     path = tmp_path / "unaligned.rumi"
     path.write_bytes(build_tiff(entries, tiles, bands=1))
-    assert rumi.RumiHeader.from_path(path).to_dict()["tile"] == [20, 20]
+    assert rumi.info(source=path).tile == (20, 20)
 
 
 def test_an_overflowing_tile_frame_count_is_rejected(tmp_path):
@@ -618,7 +619,7 @@ def test_an_undefined_crs_file_is_accepted(tmp_path):
                            transform=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0))
     path = tmp_path / "nogeo.rumi"
     path.write_bytes(build_tiff(entries, tiles, bands=1))
-    assert rumi.RumiHeader.from_path(path).shape == (1, 32, 32)
+    assert rumi.info(source=path).shape == (1, 32, 32)
 
 
 # Round trip
@@ -627,8 +628,7 @@ def test_blob_from_file_matches_blob_from_write(tmp_path):
     tf = make_frame()
     path, blob = rumi.write(tmp_path / "a.rumi", tf,
                             transform=NORTH_UP, crs=UTM18S)
-    assert rumi.RumiHeader.from_path(path).to_dict() == \
-           rumi.RumiHeader(blob).to_dict()
+    assert rumi.info(source=path).header == blob
 
 
 def test_pixels_survive_the_round_trip(tmp_path):
@@ -644,7 +644,7 @@ def test_pixels_survive_the_round_trip(tmp_path):
     path, header = rumi.write(tmp_path / "a.rumi", tf,
                               transform=NORTH_UP, crs=UTM18S)
     assert np.array_equal(rumi.read(path, header), data)
-    assert rumi.RumiHeader(header).to_dict()["base_frame_offset"] == \
+    assert _Spec(header).fields.base_frame_offset == \
            derive_base_offset(3, len(tf))
 
 
@@ -695,7 +695,7 @@ def test_a_sample_format_wider_than_a_byte_is_refused(tmp_path):
     path = tmp_path / "sf.rumi"
     path.write_bytes(build_tiff(entries, tiles))
     with pytest.raises(ValueError, match="sample_format=257"):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_an_undefined_crs_needs_the_geographic_key(tmp_path):
@@ -710,7 +710,7 @@ def test_an_undefined_crs_needs_the_geographic_key(tmp_path):
     path = tmp_path / "gk.rumi"
     path.write_bytes(build_tiff(entries, tiles))
     with pytest.raises(ValueError, match="key 2048"):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_more_coordinates_than_the_reader_will_hold_are_refused(tmp_path):
@@ -719,7 +719,7 @@ def test_more_coordinates_than_the_reader_will_hold_are_refused(tmp_path):
     trailer = struct.pack("<IHBBqqI", TIME_MAGIC, 1, 2, 0, 0, 1, 86400)
     path = dated_file(tmp_path / "big.rumi", trailer, huge)
     with pytest.raises(ValueError, match="this reader will allocate"):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 @pytest.mark.parametrize("because, kw", [
@@ -733,7 +733,7 @@ def test_a_trailer_that_is_not_canonical_is_refused(tmp_path, because, kw):
     path = dated_file(tmp_path / "canon.rumi",
                       pack_trailer(2, coords, **kw), len(coords))
     with pytest.raises(ValueError, match=because):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 @pytest.mark.parametrize("kind, coords, because", [
@@ -746,15 +746,15 @@ def test_steps_out_of_order_are_refused(tmp_path, kind, coords, because):
     path = dated_file(tmp_path / "order.rumi",
                       pack_trailer(kind, coords), steps)
     with pytest.raises(ValueError, match=because):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_a_canonical_trailer_built_from_the_spec_is_accepted(tmp_path):
     """Accept the canonical baseline used by the preceding rejection cases."""
     coords = [19723, 19754, 19782, 19813]
     path = dated_file(tmp_path / "ok.rumi", pack_trailer(2, coords), len(coords))
-    assert rumi.RumiHeader.from_path(path).time_count == 4
-    assert rumi.read_time(path).steps == [
+    assert rumi.info(source=path).time_count == 4
+    assert rumi.info(source=path).time == [
         __import__("datetime").date(1970, 1, 1)
         + __import__("datetime").timedelta(days=d) for d in coords]
 
@@ -767,9 +767,9 @@ def test_padding_left_in_the_last_residual_byte_is_refused(tmp_path):
     path = dated_file(tmp_path / "pad.rumi",
                       pack_trailer(2, coords, spare=0xC0), len(coords))
     with pytest.raises(ValueError, match="unused bits"):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
     ok = dated_file(tmp_path / "nopad.rumi", good, len(coords))
-    assert rumi.RumiHeader.from_path(ok).time_count == 3
+    assert rumi.info(source=ok).time_count == 3
 
 
 def blob(width, length, tile, bands=1, steps=1, unit=0, count_min=1, bits=16):
@@ -854,7 +854,7 @@ def test_a_foreign_file_header_is_refused(tmp_path, at, value, because):
     bad = tmp_path / "bad.rumi"
     bad.write_bytes(blob)
     with pytest.raises(ValueError, match=because):
-        rumi.RumiHeader.from_path(bad)
+        rumi.info(source=bad)
 
 
 def test_an_inline_value_leaves_no_room_for_a_second_spelling(tmp_path):
@@ -881,7 +881,7 @@ def test_an_inline_value_leaves_no_room_for_a_second_spelling(tmp_path):
     bad = tmp_path / "bad.rumi"
     bad.write_bytes(dirty)
     with pytest.raises(ValueError, match="inline bytes"):
-        rumi.RumiHeader.from_path(bad)
+        rumi.info(source=bad)
 
 
 def test_the_blob_a_writer_returns_is_the_one_the_file_yields(tmp_path):
@@ -891,7 +891,7 @@ def test_the_blob_a_writer_returns_is_the_one_the_file_yields(tmp_path):
         tf = make_frame()
         path = tmp_path / "a.rumi"
         written = write_frames(path, tf["compressed"], tf, **kw)
-        assert written == rumi._ffi._header_from_file(path)
+        assert written == rumi.info(source=path).header
 
 
 # Derived frame sizes must reject uint64 multiplication overflow.
@@ -944,7 +944,7 @@ def test_georeferencing_fields_have_one_legal_shape(tmp_path, because, mutate):
     path = tmp_path / "geo.rumi"
     path.write_bytes(build_tiff(entries, tiles))
     with pytest.raises(ValueError, match=because):
-        rumi.RumiHeader.from_path(path)
+        rumi.info(source=path)
 
 
 def test_a_decoded_sub_byte_frame_proves_its_padding(tmp_path):
@@ -958,7 +958,7 @@ def test_a_decoded_sub_byte_frame_proves_its_padding(tmp_path):
                                unit=0, time=1)
         path = tmp_path / f"{fill:02x}.rumi"
         path.write_bytes(build_tiff(entries, [payload]))
-        header = rumi._ffi._header_from_file(path)
+        header = rumi.info(source=path).header
         if ok:
             assert np.unique(np.asarray(rumi.read(path, header))) == [fill]
         else:
@@ -973,13 +973,13 @@ def test_an_undefined_crs_carries_the_matrix_the_spec_fixes(tmp_path):
                            epsg=0, transform=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0))
     path = tmp_path / "none.rumi"
     path.write_bytes(build_tiff(entries, tiles))
-    assert rumi.RumiHeader.from_path(path).frames == 1
+    assert rumi.info(source=path).frames == 1
 
     entries[34264] = (DOUBLE, [30.0, *entries[34264][1][1:]])
     bad = tmp_path / "none-but-placed.rumi"
     bad.write_bytes(build_tiff(entries, tiles))
     with pytest.raises(ValueError, match="undefined CRS carries"):
-        rumi.RumiHeader.from_path(bad)
+        rumi.info(source=bad)
 
 
 def test_a_sub_byte_window_reads_like_any_other(tmp_path):
@@ -994,11 +994,13 @@ def test_a_sub_byte_window_reads_like_any_other(tmp_path):
     entries = spec_entries(32, 32, 16, 1, payloads, bits=4, fmt=1, unit=0, time=1)
     path = tmp_path / "sb.rumi"
     path.write_bytes(build_tiff(entries, payloads))
-    header = rumi._ffi._header_from_file(path)
+    header = rumi.info(source=path).header
 
     assert np.array_equal(np.asarray(rumi.read(path, header))[0], src)
     for y, x in (((0, 16), (16, 32)), ((8, 24), (4, 28)), ((13, 31), (2, 30))):
-        got = np.asarray(rumi.read(path, header, y=y, x=x))
+        got = np.asarray(rumi.read(
+            path, header,
+            window=(y[0], x[0], y[1] - y[0], x[1] - x[0])))
         assert np.array_equal(got[0], src[y[0]:y[1], x[0]:x[1]]), (y, x)
 
 
@@ -1014,14 +1016,14 @@ def test_a_file_hands_back_the_georeferencing_it_was_given(tmp_path):
         tf = make_frame()
         path = tmp_path / "geo.rumi"
         write_frames(path, tf["compressed"], tf, **kw)
-        got = rumi.read_geo(path)
+        got = rumi.info(source=path)
         assert got.crs == want[1]
         assert got.pixel_is_point == want[2]
         assert got.transform == want[0]
 
 
-def test_a_sub_byte_stack_reads_without_dlpack(tmp_path):
-    """Sub-byte stacks use the materialized numpy read path."""
+def test_a_sub_byte_batch_reads_without_dlpack(tmp_path):
+    """Sub-byte batches use the materialized numpy read path."""
     pytest.importorskip("ml_dtypes")
     geozl = pytest.importorskip("geozl")
     paths, headers, want = [], [], []
@@ -1033,10 +1035,13 @@ def test_a_sub_byte_stack_reads_without_dlpack(tmp_path):
         path = tmp_path / f"sb{i}.rumi"
         path.write_bytes(build_tiff(entries, [payload]))
         paths.append(path)
-        headers.append(rumi._ffi._header_from_file(path))
+        headers.append(rumi.info(source=path).header)
         want.append(buf)
 
-    got = np.asarray(rumi.read(paths, headers))
+    got = np.asarray(rumi.read_many(
+        paths, headers, windows=[(0, 0, 16, 16)] * len(paths)))
     assert np.array_equal(got[:, 0], np.stack(want))
-    picked = np.asarray(rumi.read(paths, headers, n=[2, 0]))
+    picked = np.asarray(rumi.read_many(
+        [paths[2], paths[0]], [headers[2], headers[0]],
+        windows=[(0, 0, 16, 16)] * 2))
     assert np.array_equal(picked[:, 0], np.stack([want[2], want[0]]))

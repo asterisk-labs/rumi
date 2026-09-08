@@ -613,6 +613,29 @@ void test_plan_ranges()
 
     CASE("the whole image asks for every frame")
     EQ(rumi::plan_ranges(*h, one_time, both, 0, 64, 0, 64).size(), std::size_t(32));
+
+    CASE("range limits count only axes that index separate frames")
+    auto cell_blob = make_blob(
+        1024, 1024, 16, 2, std::vector<std::uint32_t>(4096, 100));
+    rumi::BlobHeader cell_header{};
+    std::memcpy(&cell_header, cell_blob.data(), sizeof(cell_header));
+    cell_header.time_count = 100;
+    cell_header.frame_unit = 3;  // b t h w: both axes live inside each frame.
+    std::memcpy(cell_blob.data(), &cell_header, sizeof(cell_header));
+    auto cell = rumi::parse_blob(cell_blob);
+    OK(cell.has_value());
+    if (cell) {
+        std::vector<int> all_times(100);
+        for (int i = 0; i < 100; ++i) all_times[i] = i + 1;
+        const std::uint64_t prior_limit = rumi::max_frame_bytes();
+        rumi::set_max_frame_bytes(1024 * 1024);
+        auto planned = rumi::plan_ranges_checked(
+            *cell, all_times, both, 0, 1024, 0, 1024);
+        rumi::set_max_frame_bytes(prior_limit);
+        OK(planned.has_value());
+        if (planned) EQ(planned->size(), std::size_t(4096));
+    }
+
 }
 
 void test_plan_ranges_c_api_rejects_invalid_requests()
@@ -1271,6 +1294,176 @@ void test_time_trailer()
     }
 }
 
+// Filler frames exercise validation before decoding.
+struct FillerFile {
+    std::string path;
+    rumi_spec*  spec = nullptr;
+    rumi_source* src = nullptr;
+
+    FillerFile(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
+               std::uint16_t bands, rumi_dtype dtype, std::size_t frames)
+    {
+        std::vector<std::vector<unsigned char>> payload(frames);
+        std::vector<const unsigned char*>       ptrs(frames);
+        std::vector<std::size_t>                sizes(frames);
+        for (std::size_t i = 0; i < frames; ++i) {
+            payload[i].assign(64, static_cast<unsigned char>(i));
+            ptrs[i]  = payload[i].data();
+            sizes[i] = payload[i].size();
+        }
+        rumi::WriteDesc desc{};
+        desc.image_width       = w;
+        desc.image_length      = h;
+        desc.tile_size         = tile;
+        desc.samples_per_pixel = bands;
+        desc.dtype             = dtype;
+
+        path = "/tmp/rumi_batch_" + std::to_string(std::random_device{}())
+             + ".rumi";
+        auto blob = rumi::write_file(path.c_str(), desc, ptrs.data(),
+                                     sizes.data(), frames);
+        if (!blob) { std::remove(path.c_str()); path.clear(); return; }
+        rumi_spec_parse(reinterpret_cast<const unsigned char*>(blob->data()),
+                        blob->size(), &spec);
+        rumi_source_file(path.c_str(), &src);
+    }
+
+    ~FillerFile()
+    {
+        rumi_spec_destroy(spec);
+        rumi_source_free(src);
+        if (!path.empty()) std::remove(path.c_str());
+    }
+
+    [[nodiscard]] bool ok() const { return spec != nullptr && src != nullptr; }
+};
+
+void test_info_c_api()
+{
+    CASE("info unifies source and external-header metadata")
+    FillerFile file(32, 32, 16, 1, RUMI_DT_UINT16, 4);
+    if (!file.ok()) {
+        fail(__LINE__, "could not build the info fixture");
+        return;
+    }
+
+    rumi_metadata source{};
+    EQ(rumi_info(file.src, nullptr, 0, &source), RUMI_OK);
+    EQ(source.fields.image_width, 32u);
+    EQ(source.fields.image_length, 32u);
+    EQ(source.has_source, 1);
+    OK(source.blob != nullptr && source.blob_size >= rumi::HEADER_SIZE);
+
+    rumi_metadata header{};
+    EQ(rumi_info(nullptr, source.blob, source.blob_size, &header), RUMI_OK);
+    EQ(header.fields.image_width, source.fields.image_width);
+    EQ(header.has_source, 0);
+    OK(header.time == nullptr);
+
+    rumi_metadata matched{};
+    EQ(rumi_info(file.src, source.blob, source.blob_size, &matched), RUMI_OK);
+
+    std::vector<unsigned char> wrong(source.blob,
+                                     source.blob + source.blob_size);
+    wrong[6] ^= 1;  // image width
+    rumi_metadata untouched{};
+    EQ(rumi_info(file.src, wrong.data(), wrong.size(), &untouched),
+       RUMI_ERR_INVALID);
+    OK(untouched.blob == nullptr);
+
+    rumi_metadata_free(&source);
+    rumi_metadata_free(&header);
+    rumi_metadata_free(&matched);
+    rumi_metadata_free(nullptr);
+}
+
+void test_read_many_c_api()
+{
+    CASE("the read-many C API rejects malformed calls")
+    FillerFile a(32, 32, 16, 1, RUMI_DT_UINT16, 4);
+    FillerFile b(32, 32, 16, 1, RUMI_DT_UINT16, 4);
+    if (!a.ok() || !b.ok()) { fail(__LINE__, "could not build the fixtures"); return; }
+
+    int y_offs[2]               = {0, 16};
+    int x_offs[2]               = {0, 16};
+    std::vector<std::uint16_t> dst(2 * 16 * 16);
+    const std::size_t dst_size  = dst.size() * sizeof(std::uint16_t);
+
+    auto call = [&](std::size_t n, const int* ys, const int* xs,
+                    int y_size, int x_size, void* out, std::size_t out_size) {
+        rumi_read_item items[2] = {
+            {a.src, a.spec, ys ? ys[0] : 0, xs ? xs[0] : 0},
+            {b.src, b.spec, ys ? ys[1] : 0, xs ? xs[1] : 0},
+        };
+        return rumi_read_many(items, n, nullptr, 0, nullptr, 0,
+                              y_size, x_size, "n b y x", out, out_size);
+    };
+
+    EQ(call(0, y_offs, x_offs, 16, 16, dst.data(), dst_size), RUMI_ERR_INVALID);
+    EQ(call(2, y_offs, x_offs, 16, 16, nullptr, dst_size), RUMI_ERR_INVALID);
+
+    CASE("a batch will not write past the buffer it was given")
+    EQ(call(2, y_offs, x_offs, 16, 16, dst.data(), dst_size - 1),
+       RUMI_ERR_INVALID);
+
+    CASE("a window is checked against its own item's header")
+    int past[2] = {0, 24};   // 24 + 16 runs off a 32-pixel image
+    EQ(call(2, past, x_offs, 16, 16, dst.data(), dst_size), RUMI_ERR_INVALID);
+
+    CASE("null entries are named rather than dereferenced")
+    rumi_read_item with_null_src[2] = {
+        {a.src, a.spec, 0, 0}, {nullptr, b.spec, 16, 16},
+    };
+    rumi_read_item with_null_spec[2] = {
+        {a.src, a.spec, 0, 0}, {b.src, nullptr, 16, 16},
+    };
+    EQ(rumi_read_many(with_null_src, 2, nullptr, 0, nullptr, 0,
+                       16, 16, "n b y x", dst.data(), dst_size),
+       RUMI_ERR_INVALID);
+    EQ(rumi_read_many(with_null_spec, 2, nullptr, 0, nullptr, 0,
+                       16, 16, "n b y x", dst.data(), dst_size),
+       RUMI_ERR_INVALID);
+
+    CASE("a batch refuses items the merged plan could not share")
+    {
+        FillerFile wrong_tile(32, 32, 8, 1, RUMI_DT_UINT16, 16);
+        FillerFile wrong_bands(32, 32, 16, 2, RUMI_DT_UINT16, 8);
+        FillerFile wrong_dtype(32, 32, 16, 1, RUMI_DT_UINT8, 4);
+        if (wrong_tile.ok() && wrong_bands.ok() && wrong_dtype.ok()) {
+            for (const FillerFile* other :
+                     {&wrong_tile, &wrong_bands, &wrong_dtype}) {
+                rumi_read_item mixed[2] = {
+                    {a.src, a.spec, y_offs[0], x_offs[0]},
+                    {other->src, other->spec, y_offs[1], x_offs[1]},
+                };
+                EQ(rumi_read_many(mixed, 2, nullptr, 0, nullptr, 0,
+                                  16, 16, "n b y x", dst.data(), dst_size),
+                   RUMI_ERR_INVALID);
+            }
+        } else {
+            fail(__LINE__, "could not build the mismatched fixtures");
+        }
+    }
+
+    CASE("images of different extents are allowed into one batch")
+    {
+        // Filler frames fail at decode, after compatibility validation.
+        FillerFile wide(64, 32, 16, 1, RUMI_DT_UINT16, 8);
+        if (wide.ok()) {
+            rumi_read_item mixed[2] = {
+                {a.src, a.spec, y_offs[0], x_offs[0]},
+                {wide.src, wide.spec, y_offs[1], x_offs[1]},
+            };
+            const rumi_status st =
+                rumi_read_many(mixed, 2, nullptr, 0, nullptr, 0,
+                               16, 16, "n b y x", dst.data(), dst_size);
+            OK(st != RUMI_ERR_INVALID);
+        } else {
+            fail(__LINE__, "could not build the wide fixture");
+        }
+    }
+}
+
 int main()
 {
     test_frame_pattern();
@@ -1287,6 +1480,8 @@ int main()
     test_plan_ranges();
     test_plan_ranges_c_api_rejects_invalid_requests();
     test_read_c_api_rejects_invalid_requests();
+    test_info_c_api();
+    test_read_many_c_api();
     test_dtype_table();
     test_dlpack_wrappers();
     test_thread_pool_batches();

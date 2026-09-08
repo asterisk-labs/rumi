@@ -12,6 +12,7 @@ _NOTICE_FILES = (
     "licenses/LICENSE.OpenZL",
     "licenses/LICENSE.Zstandard",
     "licenses/LICENSE.LZ4",
+    "licenses/LICENSE.Karu",
 )
 
 

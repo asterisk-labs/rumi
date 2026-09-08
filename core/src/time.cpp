@@ -20,7 +20,7 @@ std::unexpected<std::string> err(std::string msg)
     return std::unexpected(std::move(msg));
 }
 
-[[gnu::format(printf, 1, 2)]]
+RUMI_PRINTF_LIKE(1, 2)
 std::unexpected<std::string> errf(const char* fmt, ...)
 {
     char buf[192];
@@ -312,55 +312,6 @@ decode_time(std::span<const std::byte> bytes, std::uint32_t time_count)
     }
     if (auto ok = check_order(axis); !ok) return std::unexpected(ok.error());
     return axis;
-}
-
-}  // namespace rumi
-
-namespace rumi {
-
-std::expected<TimeAxis, std::string> read_time_from_file(const char* path)
-{
-    if (!path) return err("path is null");
-
-    // Index the file to locate the byte immediately after the final frame.
-    auto blob = build_blob_from_file(path);
-    if (!blob) return std::unexpected(blob.error());
-    auto header = parse_blob(*blob);
-    if (!header) return err(std::string(describe(header.error())));
-
-    struct Closer { void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); } };
-    std::unique_ptr<std::FILE, Closer> file(std::fopen(path, "rb"));
-    if (!file) return errf("could not open: %s", path);
-
-    // Windows fseek uses a 32-bit long, so use the 64-bit variant.
-    const std::uint64_t at = header->data_end();
-#ifdef _WIN32
-    const bool sought = _fseeki64(file.get(), static_cast<__int64>(at),
-                                  SEEK_SET) == 0;
-#else
-    const bool sought = std::fseek(file.get(), static_cast<long>(at),
-                                   SEEK_SET) == 0;
-#endif
-    if (!sought) {
-        return err("could not seek to the time trailer");
-    }
-    std::vector<std::byte> bytes(TRAILER_SIZE);
-    if (std::fread(bytes.data(), 1, TRAILER_SIZE, file.get()) != TRAILER_SIZE) {
-        return err("could not read the time trailer");
-    }
-
-    TimeTrailer tt{};
-    std::memcpy(&tt, bytes.data(), TRAILER_SIZE);
-    const std::uint64_t count = time_coord_count(tt.time_type, header->time_count);
-    const std::size_t   extra = static_cast<std::size_t>(
-        (count * std::uint64_t(tt.time_bits) + 7) / 8);
-    if (extra) {
-        bytes.resize(TRAILER_SIZE + extra);
-        if (std::fread(bytes.data() + TRAILER_SIZE, 1, extra, file.get()) != extra) {
-            return err("the time trailer is shorter than it claims");
-        }
-    }
-    return decode_time(bytes, header->time_count);
 }
 
 }  // namespace rumi

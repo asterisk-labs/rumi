@@ -32,18 +32,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as d:
         path, header = rumi.write(Path(d) / "smoke.rumi", tf,
                                   transform=TRANSFORM, crs=CRS)
-        facts = rumi.RumiHeader(header).to_dict()
-        on_disk = rumi.RumiHeader.from_path(path).to_dict()
+        facts = rumi.info(header=header)
+        on_disk = rumi.info(source=path)
         blob = Path(path).read_bytes()
 
-    if rumi.RumiHeader(header).shape != tuple(facts["shape"]):
-        print("::error::header shape disagrees with itself")
-        return 1
-
-    if facts != on_disk:
+    if facts.header != on_disk.header:
         print("::error::the header written and the header read back differ")
         return 1
-    if facts["shape"] != [2, 40, 70] or facts["dtype"] != "uint16":
+    if facts.shape != (2, 40, 70) or facts.dtype is not np.uint16:
         print(f"::error::header says {facts}")
         return 1
 

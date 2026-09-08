@@ -85,7 +85,7 @@ def test_the_c_reaches_the_frame_that_holds_the_samples(unit, tmp_path):
 def test_the_list_order_is_the_physical_order(unit, tmp_path):
     """Frame payloads are contiguous in FrameTable order."""
     tf, _idents, path, header = build(unit, tmp_path)
-    base = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
+    base = int(_Spec(header).fields.base_frame_offset)
     payloads = b"".join(tf["compressed"])
     blob = path.read_bytes()
     # Frames form the contiguous region immediately before the time trailer.
@@ -97,7 +97,7 @@ def test_the_frame_count_matches_the_grid(unit, tmp_path):
     tf, _idents, _path, header = build(unit, tmp_path)
     want = DOWN * ACROSS * (BANDS if unit == "tile" else 1)
     assert len(tf) == want
-    assert rumi.RumiHeader(header).frames == want
+    assert rumi.info(header=header).frames == want
 
 
 def spec_frame_index(row, col, band, unit):
@@ -110,7 +110,7 @@ def spec_frame_index(row, col, band, unit):
 def test_the_index_is_the_one_the_spec_defines(unit, tmp_path):
     """Check stored offsets against independently computed frame indices."""
     tf, _idents, path, header = build(unit, tmp_path)
-    base = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
+    base = int(_Spec(header).fields.base_frame_offset)
 
     # Offsets in file order, as the spec reconstructs them.
     offsets, at = [], base

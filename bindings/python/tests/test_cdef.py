@@ -38,8 +38,6 @@ void rumi_clear_error(void);
 void rumi_free(void* ptr);
 int rumi_set_num_threads(int n);
 int rumi_get_num_threads(void);
-rumi_status rumi_index_file(const char* path, unsigned char** out_blob,
-                            size_t* out_size);
 size_t rumi_dtype_table(const rumi_dtype_info** out);
 rumi_status rumi_compile_layout(const char* pattern, int64_t n, int64_t t,
                                 int64_t b, int64_t y, int64_t x,
@@ -52,6 +50,9 @@ rumi_status rumi_source_file(const char* path, rumi_source** out);
 rumi_status rumi_source_memory(const void* data, size_t size,
                                rumi_source** out);
 void rumi_source_free(rumi_source* src);
+rumi_status rumi_info(rumi_source* source, const unsigned char* header,
+                      size_t header_size, rumi_metadata* out);
+void rumi_metadata_free(rumi_metadata* metadata);
 rumi_status rumi_plan_ranges(const rumi_spec* spec, const int* times,
                              size_t n_times, const int* bands,
                              size_t n_bands, int y_off, int y_size, int x_off,
@@ -61,27 +62,22 @@ rumi_status rumi_read(rumi_source* src, const rumi_spec* spec,
                       const int* bands, size_t n_bands, int y_off, int y_size,
                       int x_off, int x_size, const char* pattern,
                       void* dst, size_t dst_size);
-rumi_status rumi_read_stack(rumi_source* const* sources,
-                            const rumi_spec* const* specs, size_t n_images,
-                            const int* n_index, size_t n_n,
-                            const int* times, size_t n_times, const int* bands,
-                            size_t n_bands, int y_off, int y_size, int x_off,
-                            int x_size, const char* pattern,
-                            void* dst, size_t dst_size);
 rumi_status rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                              const int* times, size_t n_times,
                              const int* bands, size_t n_bands, int y_off,
                              int y_size, int x_off, int x_size,
                              const char* pattern,
                              DLManagedTensorVersioned** out);
-rumi_status rumi_read_stack_dlpack(rumi_source* const* sources,
-                                   const rumi_spec* const* specs,
-                                   size_t n_images, const int* n_index,
-                                   size_t n_n, const int* times,
-                                   size_t n_times, const int* bands,
-                                   size_t n_bands, int y_off, int y_size,
-                                   int x_off, int x_size, const char* pattern,
-                                   DLManagedTensorVersioned** out);
+rumi_status rumi_read_many(const rumi_read_item* items, size_t n_items,
+                           const int* times, size_t n_times,
+                           const int* bands, size_t n_bands,
+                           int y_size, int x_size, const char* pattern,
+                           void* dst, size_t dst_size);
+rumi_status rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
+                                  const int* times, size_t n_times,
+                                  const int* bands, size_t n_bands,
+                                  int y_size, int x_size, const char* pattern,
+                                  DLManagedTensorVersioned** out);
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
 DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 void rumi_dlpack_legacy_free(DLManagedTensor* t);
@@ -93,8 +89,6 @@ rumi_status rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 const char* rumi_axis_name(uint8_t axis);
 rumi_status rumi_check_samples(const void* data, size_t n_bytes,
                                rumi_dtype dtype);
-rumi_status rumi_read_geo(const char* path, double* out_transform,
-                          uint32_t* out_epsg, int* out_pixel_is_point);
 rumi_status rumi_geokeys(uint32_t epsg, int pixel_is_point,
                          unsigned char** out_dir, size_t* out_dir_size,
                          unsigned char** out_dbl, size_t* out_dbl_size,
@@ -119,9 +113,17 @@ typedef struct {
     uint32_t tiles_down; uint64_t base_frame_offset; rumi_dtype dtype;
 } rumi_header;
 typedef struct {
+    rumi_header fields; unsigned char* blob; size_t blob_size;
+    int has_source; double transform[6]; uint32_t epsg;
+    int pixel_is_point; uint8_t time_type; int64_t* time; size_t time_coords;
+} rumi_metadata;
+typedef struct {
     int64_t shape[5]; int ndim; int64_t stride[5]; int native;
 } rumi_layout;
 typedef struct { uint64_t offset; uint64_t length; } rumi_range;
+typedef struct {
+    rumi_source* source; const rumi_spec* spec; int y_off; int x_off;
+} rumi_read_item;
 typedef struct {
     uint32_t image_width; uint32_t image_length; uint32_t time_count;
     uint16_t tile_size;
@@ -265,7 +267,7 @@ def test_public_c_api_matches_the_recorded_signatures(c_declarations):
 def test_public_c_types_match_the_recorded_layouts():
     baseline = _typedef_blocks(_PUBLIC_TYPES)
     current = _typedef_blocks(_HEADER.read_text())
-    assert len(baseline) == 6
+    assert len(baseline) == 8
     drift = [
         f"{name}: expected {signature}, found {current.get(name)}"
         for name, signature in baseline.items()
@@ -277,7 +279,7 @@ def test_public_c_types_match_the_recorded_layouts():
     from rumi._ffi import API_VERSION
     api_version = re.search(r"^#define RUMI_API_VERSION\s+(\d+)$",
                             _HEADER.read_text(), re.MULTILINE)
-    assert api_version and int(api_version[1]) == API_VERSION
+    assert api_version and int(api_version[1]) == API_VERSION == 1
 
 
 def test_dtype_codes_are_append_only():

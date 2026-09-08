@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rumi.h"
+#include "karu/karu.h"
 
 #include <cstdio>
 
@@ -8,12 +9,20 @@
 #include <cstdint>
 #include <cstddef>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
+
+#if defined(__GNUC__) || defined(__clang__)
+#  define RUMI_PRINTF_LIKE(format_index, first_argument) \
+    [[gnu::format(printf, format_index, first_argument)]]
+#else
+#  define RUMI_PRINTF_LIKE(format_index, first_argument)
+#endif
 
 namespace rumi {
 
@@ -168,21 +177,24 @@ unit_indexes_time(std::uint8_t u, std::uint16_t bands,
 // Multiply two uint64 values without overflow.
 [[nodiscard]] constexpr bool
 mul_ok(std::uint64_t a, std::uint64_t b, std::uint64_t* out) noexcept {
-    return !__builtin_mul_overflow(a, b, out);
+    if (a != 0 && b > std::numeric_limits<std::uint64_t>::max() / a)
+        return false;
+    *out = a * b;
+    return true;
 }
 
 // Compute frame count from the grid and indexed axes. Return false on overflow.
 [[nodiscard]] constexpr bool
 frame_count_of(std::uint8_t unit, std::uint64_t across, std::uint64_t down,
-               std::uint16_t bands, std::uint32_t times,
+    std::uint16_t bands, std::uint32_t times,
                std::uint64_t* out) noexcept {
     std::uint64_t n = 0;
-    if (__builtin_mul_overflow(across, down, &n)) return false;
+    if (!mul_ok(across, down, &n)) return false;
     if (unit_indexes_bands(unit, bands, times)) {
-        if (__builtin_mul_overflow(n, std::uint64_t(bands), &n)) return false;
+        if (!mul_ok(n, std::uint64_t(bands), &n)) return false;
     }
     if (unit_indexes_time(unit, bands, times)) {
-        if (__builtin_mul_overflow(n, std::uint64_t(times), &n)) return false;
+        if (!mul_ok(n, std::uint64_t(times), &n)) return false;
     }
     *out = n;
     return true;
@@ -290,10 +302,6 @@ encode_time(const TimeAxis& axis, std::uint32_t time_count);
 // Decode and validate a trailer at the start of bytes.
 [[nodiscard]] std::expected<TimeAxis, std::string>
 decode_time(std::span<const std::byte> bytes, std::uint32_t time_count);
-
-// Read the time axis from a local rumi file.
-[[nodiscard]] std::expected<TimeAxis, std::string>
-read_time_from_file(const char* path);
 
 // Number of stored coordinates for T time steps.
 [[nodiscard]] constexpr std::uint64_t
@@ -451,11 +459,8 @@ sample_to_dtype(std::uint8_t sample_format,
 
 // Sources.
 
-// Compressed frame byte range.
-struct Range {
-    std::uint64_t offset;
-    std::uint64_t length;
-};
+// The C and C++ APIs share the exact range type, including its ABI layout.
+using Range = ::rumi_range;
 
 // Concurrent positional byte source.
 class Source {
@@ -466,31 +471,33 @@ public:
     read(std::uint64_t offset, std::size_t count, void* buffer) noexcept = 0;
 
     [[nodiscard]] virtual std::uint64_t size() const noexcept = 0;
+
+    // Remote transport sources expose their resolved Karu locator so an entire
+    // decode plan can be fetched as one request batch.
+    [[nodiscard]] virtual const karu_locator*
+    remote_locator() const noexcept { return nullptr; }
 };
 
-// A local file, read positionally (pread, or ReadFile with an OVERLAPPED
-// offset on Windows), so workers share it without a cursor or a lock.
-class FileSource final : public Source {
+// A path or URI owned by Karu. Local files stay open for positional reads;
+// remote sources expose their locator for batched prefetch.
+class TransportSource final : public Source {
 public:
-    [[nodiscard]] static std::expected<std::unique_ptr<FileSource>, std::string>
+    [[nodiscard]] static std::expected<std::unique_ptr<TransportSource>, std::string>
     open(const char* path) noexcept;
 
-    ~FileSource() override;
+    ~TransportSource() override;
 
     [[nodiscard]] std::size_t
     read(std::uint64_t offset, std::size_t count, void* buffer) noexcept override;
 
-    [[nodiscard]] std::uint64_t size() const noexcept override { return size_; }
+    [[nodiscard]] std::uint64_t size() const noexcept override;
+
+    [[nodiscard]] const karu_locator*
+    remote_locator() const noexcept override;
 
 private:
-    FileSource() = default;
-
-#ifdef _WIN32
-    void*         handle_{};
-#else
-    int           fd_{-1};
-#endif
-    std::uint64_t size_{};
+    TransportSource() = default;
+    karu_source* source_{};
 };
 
 // Borrowed memory buffer; the caller keeps it alive with the source.
@@ -509,7 +516,6 @@ private:
     std::uint64_t    size_;
 };
 
-
 // Planning and decoding.
 
 struct FrameSpec {
@@ -526,6 +532,9 @@ struct FrameSpec {
 // other tasks decode to scratch before copying the requested rectangle.
 struct FrameTask {
     Source*       source;
+    // Remote plans point directly at a Karu-owned compressed buffer. Local and
+    // memory sources leave this null and are read positionally by the worker.
+    const std::byte* compressed;
     std::uint64_t offset;
     std::uint32_t compressed_size;
     std::uint32_t frame_width;
@@ -544,9 +553,9 @@ struct FrameTask {
     // into Plan's backing vectors until bind_offsets assigns stable pointers.
     const std::int64_t* src_offset;
     const std::int64_t* dst_offset;
-    std::uint32_t       offset_at;
-    std::uint32_t       plane_count;
-    std::uint32_t image;  // 1-based n in a stack read, 0 for a single image
+    std::size_t         offset_at;
+    std::size_t         plane_count;
+    std::size_t         item;  // 1-based label in a multi-item read, else 0
 };
 
 struct Plan {
@@ -581,17 +590,6 @@ private:
     mutable std::string error_;
     mutable rumi_status status_{RUMI_OK};
 };
-
-[[nodiscard]] FrameSpec make_frame_spec(const Header& h) noexcept;
-
-// Build decode tasks for a validated window and 1-based band selection.
-[[nodiscard]] Plan
-build_plan(const Header& h, Source* source,
-           int x_off, int y_off, int x_size, int y_size,
-           std::byte* data,
-           std::span<const int> bands,
-           std::int64_t pixel_space, std::int64_t line_space, std::int64_t band_space);
-
 
 // Layout.
 
@@ -702,16 +700,18 @@ read_window(Source& src, const Header& h,
             int y_off, int y_size, int x_off, int x_size,
             const LayoutPlan& layout, std::byte* dst);
 
-// Validates that every header shares grid, tile size, band count and dtype,
-// then reads each selected asset (n_index, 1-based) into its OUT_N slice of
-// dst.
+// Read one fixed-size window per source. Item k uses (y_offs[k], x_offs[k])
+// and lands in OUT_N order.
+//
+// Headers must agree on tile size, band count, dtype, time step count, and
+// which of band and time a frame holds. Image dimensions may differ.
 [[nodiscard]] std::expected<void, std::string>
-read_stack(std::span<Source* const> sources,
-           std::span<const Header* const> headers,
-           std::span<const int> n_index,
-           std::span<const int> times, std::span<const int> bands,
-           int y_off, int y_size, int x_off, int x_size,
-           const LayoutPlan& layout, std::byte* dst);
+read_many(std::span<Source* const> sources,
+          std::span<const Header* const> headers,
+          std::span<const int> y_offs, std::span<const int> x_offs,
+          std::span<const int> times, std::span<const int> bands,
+          int y_size, int x_size,
+          const LayoutPlan& layout, std::byte* dst);
 
 
 // Indexing.
@@ -723,10 +723,16 @@ struct FileGeo {
     bool          pixel_is_point{};
 };
 
-// Validate a file and build its external header. Optionally return its
-// georeferencing.
+// Validate a source and build its external header. Optionally return metadata
+// stored outside that header.
 [[nodiscard]] std::expected<std::vector<std::byte>, std::string>
-build_blob_from_file(const char* path, FileGeo* geo = nullptr) noexcept;
+build_blob_from_source(Source& source, FileGeo* geo = nullptr,
+                       TimeAxis* time = nullptr) noexcept;
+
+// Convenience wrapper used after writing a local file.
+[[nodiscard]] std::expected<std::vector<std::byte>, std::string>
+build_blob_from_file(const char* path, FileGeo* geo = nullptr,
+                     TimeAxis* time = nullptr) noexcept;
 
 // Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned, malloc'd data
 // that the tensor deleter frees. nullptr when the dtype has no DLPack code.

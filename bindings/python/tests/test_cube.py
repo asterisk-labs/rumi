@@ -47,9 +47,9 @@ def test_every_layout_round_trips(name, tmp_path):
 def test_the_file_records_the_layout_it_was_given(name, tmp_path):
     _pattern, unit, layout = LAYOUTS[name]
     tf, _path, header = store(tmp_path, name)
-    h = rumi.RumiHeader(header)
+    h = rumi.info(header=header)
     assert tf.frame_unit == unit
-    assert h.frame_unit == layout
+    assert h.frame_layout == layout
     assert h.shape == (T, B, Y, X)
     assert h.time_count == T
 
@@ -69,9 +69,9 @@ def test_the_two_index_orders_are_different_files(tmp_path):
     tb, path_tb, head_tb = store(tmp_path, "tile_tb")
 
     assert len(bt) == len(tb)
-    assert rumi.RumiHeader(head_bt).frames == rumi.RumiHeader(head_tb).frames
-    assert rumi.RumiHeader(head_bt).index_order == ("b", "t")
-    assert rumi.RumiHeader(head_tb).index_order == ("t", "b")
+    assert rumi.info(header=head_bt).frames == rumi.info(header=head_tb).frames
+    assert rumi.info(header=head_bt).index_order == ("b", "t")
+    assert rumi.info(header=head_tb).index_order == ("t", "b")
     assert path_bt.read_bytes() != path_tb.read_bytes()
 
     # Frame 1 is the next step of band 0 in one and the next band of step 0 in
@@ -118,10 +118,10 @@ def test_a_frame_holds_the_samples_its_position_claims(name, tmp_path):
 def test_a_selection_reaches_the_right_steps(name, tmp_path):
     src = cube()
     _tf, path, header = store(tmp_path, name)
-    for kw, want in [({"t": [0, 2]}, src[[0, 2]]),
-                     ({"t": [3, 1]}, src[[3, 1]]),
-                     ({"t": [1], "b": [2, 0]}, src[[1]][:, [2, 0]]),
-                     ({"t": [2], "y": (4, 20), "x": (4, 36)},
+    for kw, want in [({"time": [0, 2]}, src[[0, 2]]),
+                     ({"time": [3, 1]}, src[[3, 1]]),
+                     ({"time": [1], "bands": [2, 0]}, src[[1]][:, [2, 0]]),
+                     ({"time": [2], "window": (4, 4, 16, 32)},
                       src[[2]][:, :, 4:20, 4:36])]:
         got = np.asarray(rumi.read(path, header, **kw))
         assert np.array_equal(got, want), kw
@@ -138,7 +138,7 @@ def test_named_selection_reaches_the_same_cube_window(tmp_path):
 def test_a_step_out_of_range_is_refused(tmp_path):
     _tf, path, header = store(tmp_path, "planar")
     with pytest.raises(ValueError, match="out of"):
-        rumi.read(path, header, t=[T])
+        rumi.read(path, header, time=[T])
 
 
 def test_an_output_pattern_may_place_time(tmp_path):
@@ -156,8 +156,8 @@ def test_a_cube_defaults_to_carrying_its_time_axis(tmp_path):
     """Selecting one Cube step preserves the time axis."""
     _tf, path, header = store(tmp_path, "planar")
     assert np.asarray(rumi.read(path, header)).shape == (T, B, Y, X)
-    assert np.asarray(rumi.read(path, header, t=[1])).shape == (1, B, Y, X)
-    assert np.asarray(rumi.read(path, header, b=[1])).shape == (T, 1, Y, X)
+    assert np.asarray(rumi.read(path, header, time=[1])).shape == (1, B, Y, X)
+    assert np.asarray(rumi.read(path, header, bands=[1])).shape == (T, 1, Y, X)
 
 
 def test_one_step_is_an_image_whatever_the_pattern_named(tmp_path):
@@ -165,8 +165,8 @@ def test_one_step_is_an_image_whatever_the_pattern_named(tmp_path):
     flat = np.arange(2 * 30 * 30, dtype=np.uint16).reshape(1, 2, 30, 30)
     tf, path, header = store(tmp_path, "planar", arr=flat)
     assert tf.frame_unit == 1
-    assert rumi.RumiHeader(header).frame_unit == "b h w"
-    assert rumi.RumiHeader(header).shape == (2, 30, 30)
+    assert rumi.info(header=header).frame_layout == "b h w"
+    assert rumi.info(header=header).shape == (2, 30, 30)
     assert np.array_equal(np.asarray(rumi.read(path, header)), flat[0])
 
 
@@ -175,7 +175,7 @@ def test_a_single_band_cube_places_time_where_bands_would_go(tmp_path):
     one = np.arange(4 * 30 * 30, dtype=np.uint16).reshape(4, 1, 30, 30)
     tf, path, header = store(tmp_path, "planar", arr=one)
     assert tf.frame_unit == 1
-    assert rumi.RumiHeader(header).frame_unit == "t h w"
+    assert rumi.info(header=header).frame_layout == "t h w"
     assert np.array_equal(np.asarray(rumi.read(path, header)), one)
 
 
@@ -184,7 +184,8 @@ def test_ragged_edges_survive_a_time_axis(tmp_path):
     for name in ("planar", "tile_tb", "chunky_bt"):
         _tf, path, header = store(tmp_path, name, arr=rag, tile=32)
         assert np.array_equal(np.asarray(rumi.read(path, header)), rag)
-        got = rumi.read(path, header, t=[2, 0], b=[1], y=(30, 70), x=(90, 130))
+        got = rumi.read(path, header, time=[2, 0], bands=[1],
+                        window=(30, 90, 40, 40))
         assert np.array_equal(np.asarray(got),
                               rag[[2, 0]][:, [1]][:, :, 30:70, 90:130])
 
@@ -193,7 +194,7 @@ def test_a_cube_carries_its_dates(tmp_path):
     days = ["2024-05-01", "2024-06-01", "2024-07-01", "2024-08-01"]
     _tf, path, _header = store(tmp_path, "planar", time=days)
     import datetime as dt
-    assert rumi.read_time(path).steps == [dt.date.fromisoformat(d) for d in days]
+    assert rumi.info(source=path).time == [dt.date.fromisoformat(d) for d in days]
 
 
 def test_a_date_list_covers_every_step(tmp_path):
@@ -201,21 +202,24 @@ def test_a_date_list_covers_every_step(tmp_path):
         store(tmp_path, "planar", time=["2024-05-01"])
 
 
-def test_a_stack_of_cubes_is_rank_five(tmp_path):
+def test_a_batch_of_cubes_is_rank_five(tmp_path):
     src = cube()
     made = [store(tmp_path, "planar", arr=src + 10000 * i, stem=f"s{i}")[1:]
             for i in range(3)]
     paths = [p for p, _h in made]
     heads = [h for _p, h in made]
     want = np.stack([src + 10000 * i for i in range(3)])
-    assert np.array_equal(np.asarray(rumi.read(paths, heads)), want)
-    got = rumi.read(paths, heads, n=[2, 0], t=[1])
-    assert np.array_equal(np.asarray(got), want[[2, 0]][:, [1]])
+    windows = [(0, 0, Y, X)] * len(paths)
+    assert np.array_equal(
+        np.asarray(rumi.read_many(paths, heads, windows=windows)), want)
+    got = rumi.read_many(paths, heads, windows=windows, time=[1])
+    assert np.array_equal(np.asarray(got), want[:, [1]])
 
-    named = rumi.read(paths, heads, n=[2, 0], time=[1], bands=[2, 0],
-                      window=(4, 4, 16, 32))
+    named = rumi.read_many(
+        paths, heads, windows=[(4, 4, 16, 32)] * len(paths),
+        time=[1], bands=[2, 0])
     assert np.array_equal(np.asarray(named),
-                          want[[2, 0]][:, [1]][:, :, [2, 0], 4:20, 4:36])
+                          want[:, [1]][:, :, [2, 0], 4:20, 4:36])
 
 
 def test_the_table_names_the_axes_the_index_walks(tmp_path):
@@ -234,9 +238,9 @@ def test_a_selection_shortens_the_axis_it_selects(tmp_path):
     """Selection length changes an axis extent without removing the axis."""
     src = cube()
     _tf, path, header = store(tmp_path, "planar")
-    for kw, want in (({}, src), ({"t": [1]}, src[[1]]),
-                     ({"t": [2, 0]}, src[[2, 0]]),
-                     ({"t": [1], "b": [0]}, src[[1]][:, [0]])):
+    for kw, want in (({}, src), ({"time": [1]}, src[[1]]),
+                     ({"time": [2, 0]}, src[[2, 0]]),
+                     ({"time": [1], "bands": [0]}, src[[1]][:, [0]])):
         got = rumi.read(path, header, **kw)
         assert got.shape == want.shape, kw
         assert np.asarray(got).shape == want.shape, kw
@@ -259,7 +263,7 @@ def test_planned_ranges_come_in_frame_index_order(name, order, tmp_path):
     """Planned ranges follow frame-index order for units 0 and 9."""
     from rumi._ffi import _Spec, ffi, lib
     tf, _path, header = store(tmp_path, name)
-    assert rumi.RumiHeader(header).index_order == order
+    assert rumi.info(header=header).index_order == order
 
     spec = _Spec(header)
     out = ffi.new("rumi_range**")
@@ -269,7 +273,7 @@ def test_planned_ranges_come_in_frame_index_order(name, order, tmp_path):
     got = [out[0][i].offset for i in range(count[0])]
     lib.rumi_free(out[0])
 
-    at = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
+    at = int(_Spec(header).fields.base_frame_offset)
     physical = []
     for k, payload in enumerate(tf["compressed"]):
         if tf[k].row == 0 and tf[k].col == 0:

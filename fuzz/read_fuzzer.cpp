@@ -5,11 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <vector>
-
-#include <unistd.h>
 
 namespace {
 
@@ -57,39 +53,24 @@ void read_into(rumi_source* src, const rumi_spec* spec, const rumi_header& h)
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
                                       std::size_t size)
 {
-    char path[] = "/tmp/rumi-read-fuzz-XXXXXX";
-    const int fd = mkstemp(path);
-    if (fd < 0) return 0;
-
-    std::FILE* file = fdopen(fd, "wb");
-    if (!file) {
-        close(fd);
-        unlink(path);
-        return 0;
-    }
-    (void)std::fwrite(data, 1, size, file);
-    (void)std::fclose(file);
-
     rumi_set_max_frame_bytes(MAX_FRAME_BYTES);
 
-    unsigned char* blob = nullptr;
-    std::size_t blob_size = 0;
-    if (rumi_index_file(path, &blob, &blob_size) == RUMI_OK) {
+    rumi_source* src = nullptr;
+    rumi_metadata metadata{};
+    if (rumi_source_memory(data, size, &src) == RUMI_OK
+        && rumi_info(src, nullptr, 0, &metadata) == RUMI_OK) {
         rumi_spec* spec = nullptr;
-        if (rumi_spec_parse(blob, blob_size, &spec) == RUMI_OK) {
+        if (rumi_spec_parse(metadata.blob, metadata.blob_size, &spec) == RUMI_OK) {
             rumi_header h{};
-            rumi_source* src = nullptr;
-            if (rumi_spec_header(spec, &h) == RUMI_OK
-                && rumi_source_file(path, &src) == RUMI_OK) {
+            if (rumi_spec_header(spec, &h) == RUMI_OK) {
                 read_into(src, spec, h);
             }
-            rumi_source_free(src);
         }
         rumi_spec_destroy(spec);
-        rumi_free(blob);
     }
+    rumi_metadata_free(&metadata);
+    rumi_source_free(src);
 
-    (void)unlink(path);
     rumi_set_max_frame_bytes(0);
     rumi_clear_error();
     return 0;

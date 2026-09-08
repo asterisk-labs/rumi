@@ -2,11 +2,9 @@
 
 #include <cstdarg>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <expected>
 #include <limits>
-#include <memory>
 #include <new>
 #include <string>
 #include <vector>
@@ -16,7 +14,7 @@ namespace rumi {
 namespace {
 
 // printf-format checked error helper.
-[[gnu::format(printf, 1, 2)]]
+RUMI_PRINTF_LIKE(1, 2)
 std::unexpected<std::string> err(const char* fmt, ...)
 {
     char buf[256];
@@ -27,37 +25,10 @@ std::unexpected<std::string> err(const char* fmt, ...)
     return std::unexpected(std::string(buf));
 }
 
-struct FileCloser {
-    void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); }
-};
-using FilePtr = std::unique_ptr<std::FILE, FileCloser>;
-
-// Seek to a uint64 offset on all supported platforms.
-bool seek64(std::FILE* fp, std::uint64_t off) noexcept
+bool read_at(Source& source, std::uint64_t off, void* dst,
+             std::size_t n) noexcept
 {
-#ifdef _WIN32
-    return _fseeki64(fp, static_cast<__int64>(off), SEEK_SET) == 0;
-#else
-    return std::fseek(fp, static_cast<long>(off), SEEK_SET) == 0;
-#endif
-}
-
-std::uint64_t file_size(std::FILE* fp) noexcept
-{
-#if defined(_WIN32)
-    if (_fseeki64(fp, 0, SEEK_END) != 0) return 0;
-    const std::int64_t n = _ftelli64(fp);
-#else
-    if (std::fseek(fp, 0, SEEK_END) != 0) return 0;
-    const long n = std::ftell(fp);
-#endif
-    return n < 0 ? 0 : static_cast<std::uint64_t>(n);
-}
-
-bool read_at(std::FILE* fp, std::uint64_t off, void* dst, std::size_t n) noexcept
-{
-    if (!seek64(fp, off)) return false;
-    return std::fread(dst, 1, n, fp) == n;
+    return source.read(off, n, dst) == n;
 }
 
 // Parsed IFD entry. Values up to eight bytes are inline.
@@ -91,17 +62,11 @@ std::uint64_t read_uint(const std::byte* p, std::size_t sz) noexcept
 }  // namespace
 
 std::expected<std::vector<std::byte>, std::string>
-build_blob_from_file(const char* path, FileGeo* geo) noexcept
+build_blob_from_source(Source& source, FileGeo* geo, TimeAxis* time) noexcept
 try {
-    if (!path) return err("path is null");
-
-    FilePtr file(std::fopen(path, "rb"));
-    if (!file) return err("could not open: %s", path);
-    std::FILE* fp = file.get();
-
     // Read and validate the fixed 16-byte file header.
     unsigned char hdr[16];
-    if (!read_at(fp, 0, hdr, sizeof(hdr))) {
+    if (!read_at(source, 0, hdr, sizeof(hdr))) {
         return err("could not read the 16-byte rumi file header");
     }
     std::uint32_t magic = 0;
@@ -131,7 +96,7 @@ try {
 
     // rumi permits exactly one IFD.
     std::uint64_t n_entries;
-    if (!read_at(fp, ifd_offset, &n_entries, 8)) {
+    if (!read_at(source, ifd_offset, &n_entries, 8)) {
         return err("could not read the IFD entry count");
     }
     if (n_entries != 13) {
@@ -146,11 +111,11 @@ try {
         return err("allocation failed for %llu IFD entries",
                    static_cast<unsigned long long>(n_entries));
     }
-    if (!read_at(fp, ifd_offset + 8, raw_entries.data(), raw_entries.size())) {
+    if (!read_at(source, ifd_offset + 8, raw_entries.data(), raw_entries.size())) {
         return err("could not read the IFD entries");
     }
     std::uint64_t next_ifd;
-    if (!read_at(fp, ifd_offset + 8 + raw_entries.size(), &next_ifd, 8)) {
+    if (!read_at(source, ifd_offset + 8 + raw_entries.size(), &next_ifd, 8)) {
         return err("could not read the next-IFD offset");
     }
     if (next_ifd != 0) {
@@ -256,7 +221,7 @@ try {
         } else {
             std::uint64_t off;
             std::memcpy(&off, e->value, 8);
-            if (!read_at(fp, off, buf, ts)) return err("could not read tag %u", tag);
+            if (!read_at(source, off, buf, ts)) return err("could not read tag %u", tag);
         }
         return read_uint(buf, ts);
     };
@@ -289,7 +254,7 @@ try {
         } else {
             std::uint64_t off;
             std::memcpy(&off, e->value, 8);
-            if (!read_at(fp, off, rawv.data(), static_cast<std::size_t>(total))) {
+            if (!read_at(source, off, rawv.data(), static_cast<std::size_t>(total))) {
                 return err("could not read the tag %u array", tag);
             }
         }
@@ -496,10 +461,10 @@ try {
     }
     // Every frame occupies at least one byte, so frame count cannot exceed
     // file size.
-    if (n_frames > file_size(fp)) {
+    if (n_frames > source.size()) {
         return err("%llu frames need at least that many bytes, the file has %llu",
                    static_cast<unsigned long long>(n_frames),
-                   static_cast<unsigned long long>(file_size(fp)));
+                   static_cast<unsigned long long>(source.size()));
     }
     if (n_frames > max_frame_bytes() / 12) {
         return err("indexing %llu frames needs %llu bytes, past the %llu this "
@@ -561,7 +526,7 @@ try {
     }
 
     // The time trailer starts immediately after the final frame.
-    const std::uint64_t on_disk = file_size(fp);
+    const std::uint64_t on_disk = source.size();
     if (on_disk < running + TRAILER_SIZE) {
         return err("frames end at %llu, leaving no room for the %zu-byte time "
                    "trailer in a file of %llu bytes",
@@ -570,7 +535,7 @@ try {
     }
 
     TimeTrailer tt{};
-    if (!read_at(fp, running, &tt, sizeof tt)) {
+    if (!read_at(source, running, &tt, sizeof tt)) {
         return err("could not read the time trailer");
     }
     if (tt.magic != TIME_MAGIC) {
@@ -596,12 +561,11 @@ try {
     // Use the normal decoder to validate canonical encoding and coordinate
     // order while building the external header.
     std::vector<std::byte> tail(static_cast<std::size_t>(TRAILER_SIZE + packed));
-    if (!read_at(fp, running, tail.data(), tail.size())) {
+    if (!read_at(source, running, tail.data(), tail.size())) {
         return err("could not read the time trailer");
     }
-    if (auto axis = decode_time(tail, time_count); !axis) {
-        return err("%s", axis.error().c_str());
-    }
+    auto axis = decode_time(tail, time_count);
+    if (!axis) return err("%s", axis.error().c_str());
 
     BlobHeader bh{};
     bh.magic             = MAGIC;
@@ -635,14 +599,24 @@ try {
         geo->epsg = model == 0 ? 0u : static_cast<std::uint32_t>(epsg);
         geo->pixel_is_point = raster == 2;
     }
+    if (time) *time = std::move(*axis);
     return blob;
 }
 // Convert allocation failures to the function's string error type.
 catch (const std::bad_alloc&) {
-    return err("allocation failed while indexing %s", path ? path : "(null)");
+    return err("allocation failed while indexing source");
 }
 catch (const std::exception& e) {
     return err("indexing failed: %s", e.what());
+}
+
+std::expected<std::vector<std::byte>, std::string>
+build_blob_from_file(const char* path, FileGeo* geo, TimeAxis* time) noexcept
+{
+    if (!path) return err("path is null");
+    auto source = TransportSource::open(path);
+    if (!source) return std::unexpected(source.error());
+    return build_blob_from_source(**source, geo, time);
 }
 
 }  // namespace rumi

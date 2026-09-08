@@ -1,4 +1,6 @@
-"""Read paths for local files, memory buffers, windows, and stacks."""
+"""Read paths for local files, memory buffers, and windows."""
+
+import inspect
 
 import numpy as np
 import pytest
@@ -8,6 +10,15 @@ from rumi._ffi import _Spec, ffi, lib
 geozl = pytest.importorskip("geozl")
 
 GRAPH = "planar>zigzag>zstd"
+
+
+def test_public_read_signature_has_one_set_of_selectors():
+    assert tuple(inspect.signature(rumi.read).parameters) == (
+        "source", "header", "framework", "pattern", "time", "bands", "window"
+    )
+    assert tuple(inspect.signature(rumi.read_many).parameters) == (
+        "sources", "headers", "windows", "framework", "pattern", "time", "bands"
+    )
 
 PATTERNS = {"tile": "b (row h) (col w) -> row col b (h w)",
             "cell": "b (row h) (col w) -> row col (b h w)",
@@ -58,29 +69,9 @@ def test_bytes_round_trip(image):
 def test_both_sources_agree(image):
     path, header, data = image
     blob = open(path, "rb").read()
-    window = dict(b=[0, 2], y=(10, 74), x=(30, 94))
-    assert np.array_equal(rumi.read(path, header, **window),
-                          rumi.read(blob, header, **window))
-
-
-def test_named_selection_matches_the_short_form(image):
-    path, header, _data = image
-    short = rumi.read(path, header, b=[0, 2], y=(10, 74), x=(30, 94))
-    named = rumi.read(path, header, bands=[0, 2],
-                      window=(10, 30, 64, 64))
-    assert np.array_equal(named, short)
-
-
-@pytest.mark.parametrize("kw, message", [
-    ({"time": [0], "t": [0]}, "use time or t"),
-    ({"bands": [0], "b": [0]}, "use bands or b"),
-    ({"window": (0, 0, 1, 1), "y": (0, 1)}, "use window or y/x"),
-    ({"window": (0, 0, 1, 1), "x": (0, 1)}, "use window or y/x"),
-])
-def test_named_and_short_selection_cannot_be_mixed(image, kw, message):
-    path, header, _data = image
-    with pytest.raises(ValueError, match=message):
-        rumi.read(path, header, **kw)
+    selection = dict(bands=[0, 2], window=(10, 30, 64, 64))
+    assert np.array_equal(rumi.read(path, header, **selection),
+                          rumi.read(blob, header, **selection))
 
 
 @pytest.mark.parametrize("window, error", [
@@ -116,19 +107,21 @@ def test_bytes_need_the_header(image):
         rumi.read(blob)
 
 
-def test_stack_mixes_paths_and_bytes(image):
+def test_read_many_mixes_paths_and_bytes(image):
     path, header, data = image
     blob = open(path, "rb").read()
-    out = rumi.read([path, blob, path], [header] * 3)
+    window = (0, 0, data.shape[-2], data.shape[-1])
+    out = rumi.read_many([path, blob, path], [header] * 3,
+                         windows=[window] * 3)
     assert out.shape == (3, *data.shape)
     assert np.array_equal(out[1], data)
 
 
-def test_headers_match_single_and_stack_sources(image):
+def test_read_accepts_exactly_one_source_and_header(image):
     path, header, _data = image
-    with pytest.raises(TypeError, match="one source needs one bytes-like header"):
+    with pytest.raises(TypeError, match="one bytes-like header"):
         rumi.read(path, [header])
-    with pytest.raises(TypeError, match="a stack needs one header per source"):
+    with pytest.raises(TypeError, match="read takes one source"):
         rumi.read([path], header)
 
 
@@ -163,10 +156,10 @@ def plan(header, *, bands=None, y=(0, 0), x=(0, 0)):
 
 def test_plan_ranges_covers_one_tile(image):
     path, header, _data = image
-    h = rumi.RumiHeader(header).to_dict()
+    h = _Spec(header).fields
     ranges = plan(header, bands=[0], y=(0, 1), x=(0, 1))
     assert len(ranges) == 1
-    assert ranges[0][0] == h["base_frame_offset"]
+    assert ranges[0][0] == h.base_frame_offset
 
 
 def test_plan_ranges_counts_frames_for_selected_bands(image):
@@ -196,9 +189,9 @@ def test_fetching_only_the_planned_ranges_is_enough(image):
     """Planned ranges are sufficient to read a window from sparse memory."""
     path, header, data = image
     blob = open(path, "rb").read()
-    window = dict(b=[0], y=(0, 32), x=(0, 32))
+    selection = dict(bands=[0], window=(0, 0, 32, 32))
 
-    base = rumi.RumiHeader(header).to_dict()["base_frame_offset"]
+    base = int(_Spec(header).fields.base_frame_offset)
     sparse = bytearray(len(blob))
     sparse[:base] = blob[:base]
     fetched = 0
@@ -207,8 +200,8 @@ def test_fetching_only_the_planned_ranges_is_enough(image):
         fetched += length
 
     assert fetched < len(blob) / 4
-    assert np.array_equal(rumi.read(bytes(sparse), header, **window),
-                          rumi.read(path, header, **window))
+    assert np.array_equal(rumi.read(bytes(sparse), header, **selection),
+                          rumi.read(path, header, **selection))
 
 
 @pytest.fixture(scope="module")
@@ -238,7 +231,7 @@ def test_a_cell_file_round_trips(cell_image):
 def test_a_cell_read_keeps_the_band_order_asked_for(cell_image, bands):
     """A cell frame preserves the requested band order."""
     path, header, data = cell_image
-    assert np.array_equal(rumi.read(path, header, b=bands), data[bands])
+    assert np.array_equal(rumi.read(path, header, bands=bands), data[bands])
 
 
 @pytest.mark.parametrize("bands", [[0], [3, 1], [0, 1, 2, 3, 4]])
@@ -257,7 +250,8 @@ def test_every_layout_reads_the_same_window(tmp_path, bands):
             t.compressed = geozl.compress(t.data, graph=g)
         path, header = rumi.write(tmp_path / f"{unit}.rumi", tf)
         out[unit] = np.asarray(
-            rumi.read(str(path), header, b=bands, y=(30, 70), x=(20, 90)))
+            rumi.read(str(path), header, bands=bands,
+                      window=(30, 20, 40, 70)))
     want = data[bands, 30:70, 20:90]
     for unit, got in out.items():
         assert np.array_equal(got, want), unit
@@ -273,7 +267,7 @@ def test_a_chunky_frame_holds_the_pixel_spectrum(tmp_path):
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
     path, header = rumi.write(tmp_path / "chunky.rumi", tf)
-    assert rumi.RumiHeader(header).frame_unit == "h w b"
+    assert rumi.info(header=header).frame_layout == "h w b"
     assert np.array_equal(rumi.read(str(path), header), data)
 
 
@@ -293,16 +287,17 @@ def test_a_file_names_its_own_layout(tmp_path, unit):
     path, header = _write(tmp_path, unit, data, unit, tile=32)
     assert np.array_equal(rumi.read(path, header), data)
     assert np.array_equal(rumi.read(path), data)
-    assert (rumi.RumiHeader.from_path(path).frame_unit
-            == rumi.RumiHeader(header).frame_unit)
+    assert (rumi.info(source=path).frame_layout
+            == rumi.info(header=header).frame_layout)
 
 
-def test_a_stack_needs_no_headers(tmp_path):
-    """A stack may rebuild headers for files with different frame layouts."""
+def test_read_many_needs_no_headers(tmp_path):
+    """A batch may rebuild headers for files with different frame layouts."""
     rng = np.random.default_rng(6)
     data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
     paths = [_write(tmp_path, u, data, u, tile=32)[0] for u in ("cell", "chunky")]
-    got = np.asarray(rumi.read(paths))
+    got = np.asarray(rumi.read_many(
+        paths, windows=[(0, 0, 70, 90)] * len(paths)))
     assert np.array_equal(got[0], data) and np.array_equal(got[1], data)
 
 
@@ -335,8 +330,8 @@ def test_a_tile_read_still_asks_per_band(image):
     assert len(both) == 2 * len(one)
 
 
-def test_a_cell_stack_round_trips(tmp_path):
-    """Stack reads merge one decode plan per selected image."""
+def test_a_cell_batch_round_trips(tmp_path):
+    """Multi-item reads merge one decode plan per selected image."""
     rng = np.random.default_rng(3)
     base = rng.integers(0, 3000, (4, 64, 64)).astype(np.uint16)
     paths, headers, cubes = [], [], []
@@ -350,5 +345,7 @@ def test_a_cell_stack_round_trips(tmp_path):
         paths.append(str(path))
         headers.append(header)
         cubes.append(cube)
-    got = np.asarray(rumi.read(paths, headers, b=[3, 0]))
+    got = np.asarray(rumi.read_many(
+        paths, headers, windows=[(0, 0, 64, 64)] * len(paths),
+        bands=[3, 0]))
     assert np.array_equal(got, np.stack([c[[3, 0]] for c in cubes]))

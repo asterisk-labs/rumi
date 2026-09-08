@@ -82,19 +82,8 @@ The trailing group of the pattern is the frame, and its axis order decides what 
 "b (row h) (col w) -> row col b (h w)"   # one band per frame
 ```
 
-The last layout can produce tile-aligned training samples without opening the
-file first:
-
-```python
-chunks = rumi.chunks(
-    header, tiles=(2, 2), time=1, bands=[0, 1, 2], edge="drop"
-)
-sample = rumi.read(path, header, **chunks[i])
-```
-
-`tiles=1` means one tile per sample. `edge="clip"` keeps smaller border
-samples. Other frame layouts are rejected so a chunk never decodes a larger
-cell and discards part of it.
+Sampling policy stays in the dataset. Build the windows, bands and time steps
+your training task needs, then pass them to `read` or `read_many`.
 
 Only `b` and `t` are reserved, so the names a split introduces are yours. The left side names your array, so an input in `(rows, columns, bands)` order needs no transpose first:
 
@@ -126,10 +115,9 @@ path, header = rumi.write("series.rumi", frames, time=[
 
 series = rumi.read(path, header)              # (6, 4, 512, 512)
 summer = rumi.read(path, header, time=[2, 3], bands=[0])
-when = rumi.read_time(path)                   # Time(steps=[date(2024, 5, 1), ...],
-                                              #      kind='instant')
-where = rumi.read_geo(path)                   # Geo(None, None, False): this one
-                                              # was written without a CRS
+metadata = rumi.info(source=path)
+when = metadata.time                         # [date(2024, 5, 1), ...]
+where = metadata.crs, metadata.transform     # (None, None): no CRS was written
 ```
 
 ## Georeferencing
@@ -143,7 +131,37 @@ path, header = rumi.write("utm.rumi", frames, transform=transform, crs=32718)
 
 The transform is `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`. `crs` takes an `int`, an `"EPSG:32718"` string, or any object with a `to_epsg()`. Pass `pixel_is_point=True` to anchor a pixel at its centre rather than its top-left corner.
 
-The header is a small binary index. Store it next to the file path in Parquet or another catalog and pass both values to `rumi.read`. If you omit it, rumi can rebuild it from a local file:
+## Metadata and external headers
+
+`info` is the single metadata entry point. A source provides all metadata,
+including time and georeferencing:
+
+```python
+metadata = rumi.info(source="scene.rumi")
+header = metadata.header
+```
+
+An external header alone provides the structural fields needed for a read, but
+not time or georeferencing because those remain in the source:
+
+```python
+metadata = rumi.info(header=header)
+```
+
+Passing both validates that the header is the exact canonical header rebuilt
+from that source. This checks synchronization without adding an identity field
+to the format:
+
+```python
+metadata = rumi.info(source="scene.rumi", header=header)
+```
+
+It validates the index, not payload identity: two sources with the same shape,
+layout and compressed frame sizes intentionally have the same external header.
+
+The header is a small binary index. Store it next to the file path in Parquet
+or another catalog and pass both values to `rumi.read`. If you omit it, rumi
+can rebuild it from a local file:
 
 ```python
 result = rumi.read("scene.rumi")
@@ -159,22 +177,102 @@ Return a tensor by selecting the framework:
 tensor = rumi.read(path, header, framework="torch")
 ```
 
-rumi uses one thread by default. Keep that default inside a `torch.utils.data.DataLoader`: its workers are already separate processes, so additional pools usually oversubscribe the CPU.
+### Reading many windows
 
-For an interactive full-image read in a single process, enable parallel decoding before the first parallel read:
+`read_many` pairs each source with its own window and returns the items along
+the `n` axis. One call builds a native plan for the whole set.
+
+```python
+batch = rumi.read_many(paths, headers,
+                       windows=[(y, x, 256, 256) for y, x in positions],
+                       framework="torch")          # (n, b, 256, 256)
+```
+
+`read` always reads exactly one source. To apply the same window to several
+sources, repeat it once per item:
+
+```python
+batch = rumi.read_many(paths, headers, windows=[window] * len(paths))
+```
+
+PyTorch's [`DataLoader`](https://docs.pytorch.org/docs/stable/data.html) uses
+the optional batched `Dataset.__getitems__` hook when the dataset defines it:
+
+```python
+class Chips(torch.utils.data.Dataset):
+    def __init__(self, samples, size=256, threads=8):
+        rumi.set_num_threads(threads)     # before the first read: it pins there
+        self.samples, self.size = samples, size
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, i):
+        return self.__getitems__([i])[0]
+
+    def __getitems__(self, idx):
+        picked = [self.samples[i] for i in idx]
+        return rumi.read_many(
+            [s.path for s in picked],
+            [s.header for s in picked],
+            windows=[(s.y, s.x, self.size, self.size) for s in picked],
+            framework="torch",
+        )
+
+loader = torch.utils.data.DataLoader(
+    Chips(samples), batch_size=64, num_workers=0,
+    collate_fn=lambda batch: batch, pin_memory=True,
+)
+```
+
+The identity `collate_fn` keeps the tensor `read_many` produced instead of
+stacking it again. Set `batch_size`; `batch_size=None` reads samples through
+`__getitem__` one at a time.
+
+`read_many` submits the frames from every item to the same pool. Set the
+thread count before the first parallel read with `set_num_threads`,
+`RUMI_NUM_THREADS`, or `RUMI_NUM_THREADS=ALL_CPUS`. When using several
+`DataLoader` worker processes, keep rumi at one thread per worker to avoid
+oversubscribing the CPU.
+
+### Full-image reads
+
+For an interactive full-image read, a wider pool can decode several frames at
+once:
 
 ```python
 rumi.set_num_threads(8)
 image = rumi.read(path, header)
 ```
 
-The same setting is available as `RUMI_NUM_THREADS=8` or `RUMI_NUM_THREADS=ALL_CPUS`. Forked workers default to one rumi thread. If the environment sets a larger value, call `rumi.set_num_threads(1)` in `worker_init_fn` before the first read.
+## Remote data
+
+Remote transport uses the same API as local files. Keep the external header in
+the dataset manifest and pass the object URI directly:
+
+```python
+chip = rumi.read(
+    "s3://bucket/scene.rumi", header,
+    bands=[0, 1, 2], window=(row, column, 256, 256),
+)
+```
+
+Karu handles local files, HTTP and object storage inside the native library.
+Rumi chooses the frames and decodes them; Karu fetches the byte ranges, combines
+nearby requests and manages connections and retries. The Python, R and Julia
+bindings only need Rumi's C API.
+
+At the C level, `rumi_source_file` accepts either a path or a URI. Karu is
+compiled into `librumi`; none of its headers or symbols are installed.
 
 ## Current limits
 
 - rumi is beta software. Version 0.17 is its current compatibility baseline.
 - A CRS must be an EPSG code, or be omitted.
-- Sources are local paths or bytes already in memory; object-storage URLs are not read directly yet.
+- Remote reads require an external header; automatic indexing currently applies
+  only to local files.
+- Object-store URIs currently cover public objects. Use a signed HTTPS URL when
+  credentials are required; `hf://` also accepts `HF_TOKEN`.
 
 > [!NOTE]
 > Create files with rumi's writer, available as `rumi.write` in Python and

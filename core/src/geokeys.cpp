@@ -9,7 +9,7 @@
 namespace rumi {
 namespace {
 
-[[gnu::format(printf, 1, 2)]]
+RUMI_PRINTF_LIKE(1, 2)
 std::unexpected<std::string> err(const char* fmt, ...)
 {
     char buf[256];

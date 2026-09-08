@@ -7,11 +7,13 @@ import numpy as np
 
 from ._dtype import is_subbyte, numpy_dtype
 from ._dtype import name as dtype_name
-from ._ffi import PathLike, _check, _header_from_file, _Source, _Spec, ffi, lib
+from ._ffi import PathLike, _check, _Source, _Spec, ffi, lib
+from ._info import _info_blob
 
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
 Header = bytes | bytearray | memoryview
+_ReadSource = PathLike | bytearray | memoryview
 
 
 _pyapi = ctypes.pythonapi
@@ -158,35 +160,11 @@ def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     raise TypeError(f"{name}: expected tuple or list, got {type(sel).__name__}")
 
 
-def _resolve_window(sel: tuple[int, int] | None, name: str,
-                    total: int) -> tuple[int, int]:
-    if sel is None:
-        return 0, total
-    if isinstance(sel, tuple) and len(sel) == 2:
-        start, stop = sel
-        if not (0 <= start < stop <= total):
-            raise ValueError(f"{name}: window ({start}, {stop}) out of [0, {total}]")
-        return start, stop - start
-    raise TypeError(f"{name}: expected (start, stop) tuple")
-
-
-def _named_selectors(time: Axis, bands: Axis, window: Window,
-                     t: Axis, b: Axis,
-                     y: tuple[int, int] | None,
-                     x: tuple[int, int] | None):
-    """Map the descriptive read arguments to the original axis selectors."""
-    if time is not None and t is not None:
-        raise ValueError("use time or t, not both")
-    if bands is not None and b is not None:
-        raise ValueError("use bands or b, not both")
-    if window is not None and (y is not None or x is not None):
-        raise ValueError("use window or y/x, not both")
-
-    t = time if time is not None else t
-    b = bands if bands is not None else b
+def _resolve_window(window: Window, image_height: int, image_width: int) \
+        -> tuple[int, int, int, int]:
+    """Validate a row/column/height/width window against one image."""
     if window is None:
-        return t, b, y, x
-
+        return 0, image_height, 0, image_width
     if not isinstance(window, tuple) or len(window) != 4:
         raise TypeError("window: expected (row, column, height, width) tuple")
     try:
@@ -198,7 +176,9 @@ def _named_selectors(time: Axis, bands: Axis, window: Window,
         raise ValueError(
             "window: row and column must be non-negative; height and width "
             "must be positive")
-    return t, b, (row, row + height), (column, column + width)
+    if row + height > image_height or column + width > image_width:
+        raise ValueError("window: requested window is out of image bounds")
+    return row, height, column, width
 
 
 def _to_c(lst: list[int] | None):
@@ -212,14 +192,23 @@ def _header_of(source) -> bytes:
         raise ValueError(
             "reading from bytes needs the header passed in; it cannot be "
             "recovered from the buffer alone")
-    return _header_from_file(source)
+    location = os.fspath(source)
+    if isinstance(location, str) and (
+            "://" in location or location.startswith("/vsi")):
+        raise ValueError("remote sources need their external header passed in")
+    return _info_blob(source)
 
 
-def _pattern_for(pattern: str | None, n_images: int, times: int) -> bytes:
+def _pattern_for(pattern: str | None, n_items: int, times: int) -> bytes:
     """Use the requested output pattern, or the default for this shape."""
     if pattern is not None:
         return pattern.encode("ascii")
-    return ffi.string(lib.rumi_default_pattern(n_images, times))
+    return ffi.string(lib.rumi_default_pattern(n_items, times))
+
+
+def _many_pattern(pattern: str | None, times: int) -> bytes:
+    # Ask the core for a multi-item default so n remains present for one item.
+    return _pattern_for(pattern, 2, times)
 
 
 def _empty_subbyte(shape, dtype_code):
@@ -229,33 +218,42 @@ def _empty_subbyte(shape, dtype_code):
     return storage, RumiArray(None, shape, dtype_code, array=array)
 
 
-def _read_one(src: _Source, spec: _Spec, pattern: str | None,
-              t: Axis, b: Axis, y: tuple[int, int] | None,
-              x: tuple[int, int] | None) -> RumiArray:
-    h = spec.fields
-    times = _resolve_axis(t, "t", h.time_count)
-    bands = _resolve_axis(b, "b", h.samples_per_pixel)
-    y_off, y_size = _resolve_window(y, "y", h.image_length)
-    x_off, x_size = _resolve_window(x, "x", h.image_width)
+def _dlpack_shape(tensor) -> tuple[int, ...]:
+    """Read result metadata produced by the core instead of recompiling it."""
+    value = tensor.dl_tensor
+    return tuple(int(value.shape[i]) for i in range(value.ndim))
 
-    n_bands = len(bands) if bands is not None else h.samples_per_pixel
+
+def _read_one(src: _Source, spec: _Spec, pattern: str | None,
+              time: Axis, bands: Axis, window: Window) -> RumiArray:
+    h = spec.fields
+    times = _resolve_axis(time, "time", h.time_count)
+    picked_bands = _resolve_axis(bands, "bands", h.samples_per_pixel)
+    y_off, y_size, x_off, x_size = _resolve_window(
+        window, h.image_length, h.image_width)
+
+    n_bands = (len(picked_bands) if picked_bands is not None
+               else h.samples_per_pixel)
     n_times = len(times) if times is not None else h.time_count
     # The file controls which axes exist; selections only change their lengths.
-    output_pattern = _pattern_for(pattern, 1, h.time_count)
-
-    layout = ffi.new("rumi_layout*")
-    _check(lib.rumi_compile_layout(
-        output_pattern, 1, n_times, n_bands, y_size, x_size, layout
-    ))
-    shape = tuple(layout.shape[i] for i in range(layout.ndim))
+    # NULL lets the read API choose its own default using the file's complete
+    # time axis. Sub-byte storage needs the shape before reading, so only that
+    # fallback asks the core to compile the same explicit default first.
+    output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
 
     times_c, n_times_c = _to_c(times)
-    bands_c, n_bands_c = _to_c(bands)
+    bands_c, n_bands_c = _to_c(picked_bands)
     if is_subbyte(spec.fields.dtype):
+        subbyte_pattern = _pattern_for(pattern, 1, h.time_count)
+        layout = ffi.new("rumi_layout*")
+        _check(lib.rumi_compile_layout(
+            subbyte_pattern, 1, n_times, n_bands, y_size, x_size, layout
+        ))
+        shape = tuple(layout.shape[i] for i in range(layout.ndim))
         storage, result = _empty_subbyte(shape, spec.fields.dtype)
         _check(lib.rumi_read(
             src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
-            y_off, y_size, x_off, x_size, output_pattern,
+            y_off, y_size, x_off, x_size, subbyte_pattern,
             ffi.cast("void*", storage.ctypes.data), storage.nbytes,
         ))
         return result
@@ -265,113 +263,179 @@ def _read_one(src: _Source, spec: _Spec, pattern: str | None,
         src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size, output_pattern, out,
     ))
-    return RumiArray(out[0], shape, spec.fields.dtype)
+    return RumiArray(out[0], _dlpack_shape(out[0]), spec.fields.dtype)
 
 
-def _read_stack(sources: Sequence[_Source], specs: Sequence[_Spec],
-                pattern: str | None, n: Axis, t: Axis, b: Axis,
-                y: tuple[int, int] | None,
-                x: tuple[int, int] | None) -> RumiArray:
+def _resolve_windows(windows) -> tuple[list[int], list[int], int, int]:
+    """Split equal-sized windows into row offsets, column offsets, and size."""
+    rows: list[int] = []
+    cols: list[int] = []
+    size: tuple[int, int] | None = None
+    for i, window in enumerate(windows):
+        if not isinstance(window, tuple) or len(window) != 4:
+            raise TypeError(
+                f"windows[{i}]: expected (row, column, height, width) tuple"
+            )
+        try:
+            row, column, height, width = map(operator.index, window)
+        except TypeError:
+            raise TypeError(
+                f"windows[{i}]: row, column, height and width must be integers"
+            ) from None
+        if row < 0 or column < 0:
+            raise ValueError(f"windows[{i}]: row and column must not be negative")
+        if height <= 0 or width <= 0:
+            raise ValueError(f"windows[{i}]: height and width must be positive")
+        if size is None:
+            size = (height, width)
+        elif (height, width) != size:
+            raise ValueError(
+                f"windows[{i}]: every window must be the same size; "
+                f"got {height}x{width} after {size[0]}x{size[1]}"
+            )
+        rows.append(row)
+        cols.append(column)
+    if size is None:
+        raise ValueError("read_many requires at least one window")
+    return rows, cols, size[0], size[1]
+
+
+def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
+               windows, pattern: str | None,
+               time: Axis, bands: Axis) -> RumiArray:
     sources = list(sources)
     specs = list(specs)
+    windows = list(windows)
+    if not sources:
+        raise ValueError("read_many requires at least one item")
     if len(sources) != len(specs):
         raise ValueError(
             f"sources and specs length mismatch: {len(sources)} vs {len(specs)}"
         )
-    if not sources:
-        raise ValueError("read requires at least one image")
+    if len(windows) != len(sources):
+        raise ValueError(
+            f"sources and windows length mismatch: {len(sources)} vs {len(windows)}"
+        )
+
+    y_offs, x_offs, y_size, x_size = _resolve_windows(windows)
 
     h = specs[0].fields
-    images = _resolve_axis(n, "n", len(specs))
-    times = _resolve_axis(t, "t", h.time_count)
-    bands = _resolve_axis(b, "b", h.samples_per_pixel)
-    y_off, y_size = _resolve_window(y, "y", h.image_length)
-    x_off, x_size = _resolve_window(x, "x", h.image_width)
-
-    image_count = len(images) if images is not None else len(specs)
-    n_bands = len(bands) if bands is not None else h.samples_per_pixel
+    times = _resolve_axis(time, "time", h.time_count)
+    picked_bands = _resolve_axis(bands, "bands", h.samples_per_pixel)
+    n_items = len(specs)
+    n_bands = (len(picked_bands) if picked_bands is not None
+               else h.samples_per_pixel)
     n_times = len(times) if times is not None else h.time_count
-    output_pattern = _pattern_for(pattern, image_count, h.time_count)
+    output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
 
-    layout = ffi.new("rumi_layout*")
-    _check(lib.rumi_compile_layout(
-        output_pattern, image_count, n_times, n_bands, y_size, x_size, layout
-    ))
-    shape = tuple(layout.shape[i] for i in range(layout.ndim))
+    items = ffi.new("rumi_read_item[]", [
+        (source.handle, spec.handle, y_off, x_off)
+        for source, spec, y_off, x_off
+        in zip(sources, specs, y_offs, x_offs, strict=True)
+    ])
 
-    specs_arr = ffi.new("rumi_spec*[]", [s.handle for s in specs])
-    srcs_arr = ffi.new("rumi_source*[]", [s.handle for s in sources])
-
-    images_c, n_images_c = _to_c(images)
     times_c, n_times_c = _to_c(times)
-    bands_c, n_bands_c = _to_c(bands)
+    bands_c, n_bands_c = _to_c(picked_bands)
 
     if is_subbyte(h.dtype):
+        subbyte_pattern = _many_pattern(pattern, h.time_count)
+        layout = ffi.new("rumi_layout*")
+        _check(lib.rumi_compile_layout(
+            subbyte_pattern, n_items, n_times, n_bands,
+            y_size, x_size, layout
+        ))
+        shape = tuple(layout.shape[i] for i in range(layout.ndim))
         storage, result = _empty_subbyte(shape, h.dtype)
-        _check(lib.rumi_read_stack(
-            srcs_arr, specs_arr, len(specs),
-            images_c, n_images_c, times_c, n_times_c, bands_c, n_bands_c,
-            y_off, y_size, x_off, x_size, output_pattern,
+        _check(lib.rumi_read_many(
+            items, n_items,
+            times_c, n_times_c, bands_c, n_bands_c,
+            y_size, x_size, subbyte_pattern,
             ffi.cast("void*", storage.ctypes.data), storage.nbytes,
         ))
         return result
 
     out = ffi.new("DLManagedTensorVersioned**")
-    _check(lib.rumi_read_stack_dlpack(
-        srcs_arr, specs_arr, len(specs),
-        images_c, n_images_c, times_c, n_times_c, bands_c, n_bands_c,
-        y_off, y_size, x_off, x_size, output_pattern, out,
+    _check(lib.rumi_read_many_dlpack(
+        items, n_items,
+        times_c, n_times_c, bands_c, n_bands_c,
+        y_size, x_size, output_pattern, out,
     ))
-    return RumiArray(out[0], shape, specs[0].fields.dtype)
+    return RumiArray(out[0], _dlpack_shape(out[0]), specs[0].fields.dtype)
 
 
-def read(source: PathLike | bytes | Sequence[PathLike | bytes],
-         header: Header | Sequence[Header] | None = None, *,
+def read(source: _ReadSource, header: Header | None = None, *,
          framework: str | None = "numpy", pattern: str | None = None,
-         time: Axis = None, bands: Axis = None, window: Window = None,
-         n: Axis = None, t: Axis = None, b: Axis = None,
-         y: tuple[int, int] | None = None,
-         x: tuple[int, int] | None = None):
-    """Read one rumi raster or a stack of compatible rasters.
+         time: Axis = None, bands: Axis = None, window: Window = None):
+    """Read one rumi raster.
 
-    ``source`` may be a local path or the file's bytes. Pass a sequence of
-    sources to read them as a stack.
+    ``source`` may be a local path, a remote URI, or the file's bytes. Remote
+    transport is handled inside librumi; remote sources require external
+    headers. Use ``read_many`` to read more than one source.
 
     ``header`` is the value returned by ``write``. It can be omitted for local
-    paths, where rumi rebuilds it from the file. A stack takes one header per
-    source.
+    paths, where rumi rebuilds it from the file.
 
     ``time`` and ``bands`` accept a list of indices or a half-open
     ``(start, stop)`` range. ``window`` is ``(row, column, height, width)``.
-    Indices are zero-based. The shorter ``t``, ``b``, ``y``, and ``x`` names
-    remain available for compatibility. ``n`` selects images from a stack.
-    ``pattern`` controls the output axis order.
+    Indices are zero-based. ``pattern`` controls the output axis order.
 
     ``framework`` selects NumPy, PyTorch, JAX, or TensorFlow. Pass ``None`` to
     receive a RumiArray instead. Reads use the process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
-    t, b, y, x = _named_selectors(time, bands, window, t, b, y, x)
+    if not isinstance(source, (str, os.PathLike,
+                               bytes, bytearray, memoryview)):
+        raise TypeError("read takes one source; use read_many for multiple sources")
+    if header is not None and not isinstance(
+            header, (bytes, bytearray, memoryview)):
+        raise TypeError("read needs one bytes-like header")
+    raw_header = header if header is not None else _header_of(source)
+    arr = _read_one(_Source(source), _Spec(raw_header), pattern,
+                    time, bands, window)
+    return _to_framework(arr, framework)
 
-    if isinstance(source, (str, os.PathLike, bytes, bytearray, memoryview)):
-        if n is not None:
-            raise ValueError("n applies to a stack; pass a list of sources")
-        if header is not None and not isinstance(
-                header, (bytes, bytearray, memoryview)):
-            raise TypeError("one source needs one bytes-like header")
-        raw_header = header if header is not None else _header_of(source)
-        arr = _read_one(_Source(source), _Spec(raw_header), pattern, t, b, y, x)
-        return _to_framework(arr, framework)
 
-    sources = list(source)
+def read_many(sources: Sequence[_ReadSource],
+              headers: Sequence[Header] | None = None, *,
+              windows: Sequence[tuple[int, int, int, int]],
+              framework: str | None = "numpy", pattern: str | None = None,
+              time: Axis = None, bands: Axis = None):
+    """Read one fixed-size window per source.
+
+    ``windows[i]`` is the ``(row, column, height, width)`` read from
+    ``sources[i]``. Every window must be the same size, because the result is
+    one array with a leading ``n`` axis; only the position may differ. Items
+    come back in the order given, along the ``n`` axis, including a one-item
+    call.
+
+    ``read_many`` pairs each source with its own window and executes every
+    item as one plan. To use one shared window, repeat it once per source.
+
+    Sources must agree on tile size, band count, dtype, time step count, and
+    which of band and time a frame holds. Image dimensions may differ, so a
+    call may draw from scenes of different extents.
+
+    Reads use rumi's process-wide thread pool. Call ``set_num_threads`` before
+    the first parallel read to set its size.
+
+    ``headers`` may be omitted for local paths, where rumi rebuilds each one
+    from the file. Passing them avoids rebuilding the indexes. A source may
+    also be bytes or a remote URI; both forms require a header unless the
+    source is a local path.
+    """
+    if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
+        raise TypeError("read_many takes a sequence of sources; use read for one")
+    sources = list(sources)
+
     raw_headers: list[Header]
-    if header is None:
+    if headers is None:
         raw_headers = [_header_of(s) for s in sources]
-    elif isinstance(header, (bytes, bytearray, memoryview)):
-        raise TypeError("a stack needs one header per source")
+    elif isinstance(headers, (bytes, bytearray, memoryview)):
+        raise TypeError("read_many needs one header per source")
     else:
-        raw_headers = list(header)
+        raw_headers = list(headers)
+
     specs = [_Spec(raw) for raw in raw_headers]
-    arr = _read_stack([_Source(s) for s in sources], specs,
-                      pattern, n, t, b, y, x)
+    arr = _read_many([_Source(s) for s in sources], specs, windows, pattern,
+                     time, bands)
     return _to_framework(arr, framework)

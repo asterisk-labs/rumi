@@ -138,6 +138,51 @@ def test_concurrent_reads_share_the_pool_safely(image):
     """) == "True"
 
 
+def test_one_batched_c_call_releases_the_gil(image):
+    """A binding must not move CPU concurrency back behind Python's GIL."""
+    assert run(image, """
+        import threading
+        from rumi._ffi import _Source, _Spec, ffi, lib
+
+        source = _Source(PATH)
+        spec = _Spec(HDR)
+        count = 32
+        items = ffi.new("rumi_read_item[]", [
+            (source.handle, spec.handle, 0, 0)
+        ] * count)
+        out = ffi.new("DLManagedTensorVersioned**")
+
+        done = threading.Event()
+        ready = threading.Event()
+        ticks = [0]
+
+        def tick():
+            ready.set()
+            while not done.is_set():
+                ticks[0] += 1
+                time.sleep(0)
+
+        thread = threading.Thread(target=tick)
+        thread.start()
+        ready.wait()
+        while ticks[0] == 0:
+            time.sleep(0)
+        # If the C call retained the GIL, the interpreter would not switch to
+        # tick during this interval. CFFI ABI calls are expected to release it.
+        sys.setswitchinterval(100.0)
+        before = ticks[0]
+        rc = lib.rumi_read_many_dlpack(
+            items, count, ffi.NULL, 0, ffi.NULL, 0,
+            160, 160, ffi.NULL, out)
+        after = ticks[0]
+        done.set()
+        thread.join()
+        if out[0] != ffi.NULL:
+            lib.rumi_dlpack_free(out[0])
+        print(rc == lib.RUMI_OK and after > before)
+    """) == "True"
+
+
 @needs_fork
 def test_a_child_reads_after_a_parallel_parent(image):
     """A forked child replaces the inherited pool before reading."""
@@ -207,7 +252,7 @@ def test_torch_dataloader_workers_stay_serial_after_parent_eda(image):
                 return 4
 
             def __getitem__(self, index):
-                rumi.read(PATH, HDR, y=(0, 32), x=(0, 32))
+                rumi.read(PATH, HDR, window=(0, 0, 32, 32))
                 return rumi.get_num_threads(), torch.get_num_threads()
 
         loader = torch.utils.data.DataLoader(

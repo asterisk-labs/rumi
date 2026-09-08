@@ -62,14 +62,6 @@ int         rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void        rumi_free(void* ptr);
 
-rumi_status
-rumi_read_geo(const char* path, double* out_transform, uint32_t* out_epsg,
-              int* out_pixel_is_point);
-
-rumi_status
-rumi_read_time(const char* path, uint8_t* out_type, uint32_t* out_scale,
-               int64_t** out_time, size_t* out_count);
-
 uint64_t rumi_set_max_frame_bytes(uint64_t n);
 uint64_t rumi_get_max_frame_bytes(void);
 
@@ -77,9 +69,6 @@ int rumi_set_num_threads(int n);
 int rumi_get_num_threads(void);
 
 size_t rumi_dtype_table(const rumi_dtype_info** out);
-
-rumi_status
-rumi_index_file(const char* path, unsigned char** out_blob, size_t* out_size);
 
 typedef struct {
     uint8_t input[4];
@@ -123,7 +112,7 @@ rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
                   uint16_t bands, uint32_t times, uint64_t index,
                   rumi_frame_at* out);
 
-const char* rumi_default_pattern(size_t n_images, uint32_t times);
+const char* rumi_default_pattern(size_t n_items, uint32_t times);
 
 rumi_status
 rumi_compile_layout(const char* pattern,
@@ -147,6 +136,26 @@ rumi_status rumi_source_memory(const void* data, size_t size, rumi_source** out)
 
 void rumi_source_free(rumi_source* src);
 
+typedef struct {
+    rumi_header    fields;
+    unsigned char* blob;
+    size_t         blob_size;
+    int            has_source;
+    double         transform[6];
+    uint32_t       epsg;
+    int            pixel_is_point;
+    uint8_t        time_type;
+    int64_t*       time;
+    size_t         time_coords;
+} rumi_metadata;
+
+rumi_status
+rumi_info(rumi_source* source,
+          const unsigned char* header, size_t header_size,
+          rumi_metadata* out);
+
+void rumi_metadata_free(rumi_metadata* metadata);
+
 typedef struct { uint64_t offset; uint64_t length; } rumi_range;
 
 rumi_status
@@ -156,7 +165,26 @@ rumi_plan_ranges(const rumi_spec* spec,
                  int y_off, int y_size, int x_off, int x_size,
                  rumi_range** out, size_t* out_count);
 
-typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
+typedef struct { uint32_t major; uint32_t minor; } DLPackVersion;
+typedef int DLDeviceType;
+typedef struct { DLDeviceType device_type; int32_t device_id; } DLDevice;
+typedef struct { uint8_t code; uint8_t bits; uint16_t lanes; } DLDataType;
+typedef struct {
+    void* data;
+    DLDevice device;
+    int32_t ndim;
+    DLDataType dtype;
+    int64_t* shape;
+    int64_t* strides;
+    uint64_t byte_offset;
+} DLTensor;
+typedef struct DLManagedTensorVersioned {
+    DLPackVersion version;
+    void* manager_ctx;
+    void (*deleter)(struct DLManagedTensorVersioned* self);
+    uint64_t flags;
+    DLTensor dl_tensor;
+} DLManagedTensorVersioned;
 
 rumi_status
 rumi_read(rumi_source* src, const rumi_spec* spec,
@@ -172,23 +200,26 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                  int y_off, int y_size, int x_off, int x_size,
                  const char* pattern, DLManagedTensorVersioned** out);
 
-rumi_status
-rumi_read_stack(rumi_source* const* sources,
-                const rumi_spec* const* specs, size_t n_images,
-                const int* n_index, size_t n_n,
-                const int* times, size_t n_times,
-                const int* bands, size_t n_bands,
-                int y_off, int y_size, int x_off, int x_size,
-                const char* pattern, void* dst, size_t dst_size);
+typedef struct {
+    rumi_source*     source;
+    const rumi_spec* spec;
+    int              y_off;
+    int              x_off;
+} rumi_read_item;
 
 rumi_status
-rumi_read_stack_dlpack(rumi_source* const* sources,
-                       const rumi_spec* const* specs, size_t n_images,
-                       const int* n_index, size_t n_n,
-                       const int* times, size_t n_times,
-                       const int* bands, size_t n_bands,
-                       int y_off, int y_size, int x_off, int x_size,
-                       const char* pattern, DLManagedTensorVersioned** out);
+rumi_read_many(const rumi_read_item* items, size_t n_items,
+               const int* times, size_t n_times,
+               const int* bands, size_t n_bands,
+               int y_size, int x_size,
+               const char* pattern, void* dst, size_t dst_size);
+
+rumi_status
+rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
+                      const int* times, size_t n_times,
+                      const int* bands, size_t n_bands,
+                      int y_size, int x_size,
+                      const char* pattern, DLManagedTensorVersioned** out);
 
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
@@ -257,6 +288,12 @@ def _load_lib():
 
 
 lib = _load_lib()
+_native_api_version = lib.rumi_api_version()
+if _native_api_version != API_VERSION:
+    raise ImportError(
+        f"librumi C API {_native_api_version} is incompatible with this "
+        f"binding, which requires C API {API_VERSION}"
+    )
 
 
 _STATUS_TO_EXC = {
@@ -284,32 +321,22 @@ def _enc(path: PathLike) -> bytes:
     return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
 
 
-def _header_from_file(path: PathLike) -> bytes:
-    # Copy the C-owned result before releasing it.
-    out = ffi.new("unsigned char**")
-    size = ffi.new("size_t*")
-    _check(lib.rumi_index_file(_enc(path), out, size))
-    try:
-        return bytes(ffi.buffer(out[0], size[0]))
-    finally:
-        lib.rumi_free(out[0])
-
-
 class _Source:
-    """Where rumi reads bytes from: a local path, or a buffer the caller holds."""
+    """Where rumi reads bytes from: a path, URI, or caller-owned buffer."""
 
     __slots__ = ("handle", "_keep")
+    _keep: object
 
     def __init__(self, target) -> None:
         out = ffi.new("rumi_source**")
         if isinstance(target, (bytes, bytearray, memoryview)):
-            self._keep = ffi.from_buffer(target)
-            _check(lib.rumi_source_memory(self._keep, len(self._keep), out))
+            buffer = ffi.from_buffer(target)
+            self._keep = buffer
+            _check(lib.rumi_source_memory(buffer, len(buffer), out))
         else:
             self._keep = None
             _check(lib.rumi_source_file(_enc(target), out))
         self.handle = ffi.gc(out[0], lib.rumi_source_free)
-
 
 class _Spec:
     """Parsed header and its C handle."""

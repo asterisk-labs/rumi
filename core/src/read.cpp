@@ -10,20 +10,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <expected>
-#include <iterator>
+#include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
-
-#ifdef _WIN32
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
-#else
-#  include <fcntl.h>
-#  include <sys/stat.h>
-#  include <unistd.h>
-#endif
 
 namespace rumi {
 namespace {
@@ -35,7 +27,7 @@ std::unexpected<std::string> err(std::string msg)
 
 // printf-format checked error helper. A fixed buffer avoids newer libstdc++
 // symbols that would raise the wheel's platform requirement.
-[[gnu::format(printf, 1, 2)]]
+RUMI_PRINTF_LIKE(1, 2)
 std::unexpected<std::string> errf(const char* fmt, ...)
 {
     char buf[256];
@@ -269,73 +261,42 @@ check_data_fits(const Header& h, const Source& src)
 
 // Sources
 
-std::expected<std::unique_ptr<FileSource>, std::string>
-FileSource::open(const char* path) noexcept
+std::expected<std::unique_ptr<TransportSource>, std::string>
+TransportSource::open(const char* path) noexcept
 {
-    std::unique_ptr<FileSource> src(new (std::nothrow) FileSource);
+    std::unique_ptr<TransportSource> src(new (std::nothrow) TransportSource);
     if (!src) return errf("out of memory opening %s", path);
-
-#ifdef _WIN32
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return errf("could not open: %s", path);
-    LARGE_INTEGER n{};
-    if (!GetFileSizeEx(h, &n)) {
-        CloseHandle(h);
-        return errf("could not size: %s", path);
+    const karu_status status = karu_source_open(path, &src->source_);
+    if (status != KARU_OK) {
+        const char* detail = karu_last_error();
+        return errf("could not open %s: %s", path,
+                    detail && *detail ? detail : karu_status_string(status));
     }
-    src->handle_ = h;
-    src->size_   = static_cast<std::uint64_t>(n.QuadPart);
-#else
-    const int fd = ::open(path, O_RDONLY);
-    if (fd < 0) return errf("could not open: %s", path);
-    struct stat st {};
-    if (::fstat(fd, &st) != 0) {
-        ::close(fd);
-        return errf("could not size: %s", path);
-    }
-    src->fd_   = fd;
-    src->size_ = static_cast<std::uint64_t>(st.st_size);
-#endif
     return src;
 }
 
-FileSource::~FileSource()
+TransportSource::~TransportSource()
 {
-#ifdef _WIN32
-    if (handle_) CloseHandle(static_cast<HANDLE>(handle_));
-#else
-    if (fd_ >= 0) ::close(fd_);
-#endif
+    karu_source_free(source_);
 }
 
-// Positional reads allow workers to share the source without a cursor lock.
 std::size_t
-FileSource::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
+TransportSource::read(std::uint64_t offset, std::size_t count,
+                      void* buffer) noexcept
 {
-    auto* out = static_cast<std::byte*>(buffer);
-    std::size_t done = 0;
-    while (done < count) {
-#ifdef _WIN32
-        OVERLAPPED ov{};
-        ov.Offset     = static_cast<DWORD>((offset + done) & 0xFFFFFFFFu);
-        ov.OffsetHigh = static_cast<DWORD>((offset + done) >> 32);
-        DWORD got = 0;
-        if (!ReadFile(static_cast<HANDLE>(handle_), out + done,
-                      static_cast<DWORD>(count - done), &got, &ov) || got == 0)
-            break;
-#else
-        const ssize_t got = ::pread(fd_, out + done, count - done,
-                                    static_cast<off_t>(offset + done));
-        if (got < 0) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        if (got == 0) break;
-#endif
-        done += static_cast<std::size_t>(got);
-    }
-    return done;
+    std::size_t got = 0;
+    return karu_source_read_at(source_, offset, buffer, count, &got) == KARU_OK
+        ? got : 0;
+}
+
+std::uint64_t TransportSource::size() const noexcept
+{
+    return karu_source_size(source_);
+}
+
+const karu_locator* TransportSource::remote_locator() const noexcept
+{
+    return karu_source_is_remote(source_) ? karu_source_locator(source_) : nullptr;
 }
 
 std::size_t
@@ -348,6 +309,7 @@ MemorySource::read(std::uint64_t offset, std::size_t count, void* buffer) noexce
     return n;
 }
 
+namespace {
 
 FrameSpec make_frame_spec(const Header& h) noexcept
 {
@@ -360,20 +322,42 @@ FrameSpec make_frame_spec(const Header& h) noexcept
     };
 }
 
-// Build one task per intersecting frame. Full tile frames can decode directly
-// into contiguous output; partial or multi-plane frames use scratch. Selected
-// band/time pairs that share a frame are grouped into the same task.
-Plan build_plan(const Header& h, Source* source,
-                int x_off, int y_off, int x_size, int y_size,
-                std::byte* data,
-                std::span<const int> times, std::span<const int> bands,
-                std::int64_t pixel_space, std::int64_t line_space,
-                std::int64_t band_space, std::int64_t time_space)
+template<class T>
+void reserve_append(std::vector<T>& values, std::size_t extra)
 {
-    const int tw  = h.tile_width;
-    const int tl  = h.tile_length;
-    const int img_w = static_cast<int>(h.image_width);
-    const int img_h = static_cast<int>(h.image_length);
+    const std::size_t max = values.max_size();
+    if (extra > max - values.size()) {
+        throw std::length_error("read plan exceeds vector capacity");
+    }
+    const std::size_t needed = values.size() + extra;
+    if (needed <= values.capacity()) return;
+    const std::size_t grown = values.capacity() > max / 2
+        ? max : values.capacity() * 2;
+    values.reserve(std::max(needed, grown));
+}
+
+std::size_t checked_size_product(std::size_t a, std::size_t b)
+{
+    if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a) {
+        throw std::length_error("read plan exceeds addressable memory");
+    }
+    return a * b;
+}
+
+// Append one task per intersecting frame. Band/time pairs that share a frame
+// stay in the same task.
+void append_read_plan(Plan& plan, const Header& h, Source* source,
+                      int x_off, int y_off, int x_size, int y_size,
+                      std::byte* data,
+                      std::span<const int> times, std::span<const int> bands,
+                      std::int64_t pixel_space, std::int64_t line_space,
+                      std::int64_t band_space, std::int64_t time_space,
+                      std::size_t item)
+{
+    const std::int64_t tw = h.tile_width;
+    const std::int64_t tl = h.tile_length;
+    const std::int64_t img_w = h.image_width;
+    const std::int64_t img_h = h.image_length;
     const std::size_t bps = h.bytes_per_sample;
     const std::uint8_t  unit = h.frame_unit;
     const std::uint16_t B = h.samples_per_pixel;
@@ -381,58 +365,76 @@ Plan build_plan(const Header& h, Source* source,
     const int nb = static_cast<int>(bands.size());
     const int nt = static_cast<int>(times.size());
 
-    const int tx_min = x_off / tw;
-    const int ty_min = y_off / tl;
-    const int tx_max = static_cast<int>(
-        (static_cast<std::int64_t>(x_off) + x_size + tw - 1) / tw);
-    const int ty_max = static_cast<int>(
-        (static_cast<std::int64_t>(y_off) + y_size + tl - 1) / tl);
+    const std::int64_t tx_min = x_off / tw;
+    const std::int64_t ty_min = y_off / tl;
+    const std::int64_t tx_max =
+        (static_cast<std::int64_t>(x_off) + x_size + tw - 1) / tw;
+    const std::int64_t ty_max =
+        (static_cast<std::int64_t>(y_off) + y_size + tl - 1) / tl;
 
     // Direct decode requires contiguous pixels; row pitch is checked per tile.
     const bool one_sample_stride = pixel_space == static_cast<std::int64_t>(bps);
 
-    // Only tile frames can decode directly into one output plane.
-    const bool cell = unit_holds(unit, AXIS_BAND, B, T)
-                   || unit_holds(unit, AXIS_TIME, B, T);
     const bool walks_b = unit_indexes_bands(unit, B, T);
     const bool walks_t = unit_indexes_time(unit, B, T);
     const std::size_t src_pixel_stride = bps * unit_pixel_step(unit, B, T);
 
-    Plan plan;
-    plan.spec = make_frame_spec(h);
-    plan.tasks.reserve(static_cast<std::size_t>(tx_max - tx_min) *
-                       (ty_max - ty_min) * (cell ? 1 : std::size_t(nt) * nb));
+    const auto x_tiles = static_cast<std::uint64_t>(tx_max - tx_min);
+    const auto y_tiles = static_cast<std::uint64_t>(ty_max - ty_min);
+    if (x_tiles > std::numeric_limits<std::size_t>::max()
+        || y_tiles > std::numeric_limits<std::size_t>::max()) {
+        throw std::length_error("read plan exceeds addressable memory");
+    }
+    const std::size_t tiles = checked_size_product(
+        static_cast<std::size_t>(x_tiles), static_cast<std::size_t>(y_tiles));
+    std::size_t task_count = checked_size_product(
+        tiles, walks_t ? static_cast<std::size_t>(nt) : 1);
+    task_count = checked_size_product(
+        task_count, walks_b ? static_cast<std::size_t>(nb) : 1);
+    const std::size_t offset_count = checked_size_product(
+        checked_size_product(tiles, static_cast<std::size_t>(nt)),
+        static_cast<std::size_t>(nb));
+    // This function runs once per item. Grow geometrically so reserving
+    // each item's addition does not repeatedly move every earlier item.
+    reserve_append(plan.tasks, task_count);
+    reserve_append(plan.src_offset, offset_count);
+    reserve_append(plan.dst_offset, offset_count);
 
     // Frame index to selected band/time pairs, rebuilt for each grid position.
     std::vector<std::uint64_t> frames;
     std::vector<std::vector<std::pair<int, int>>> members;
 
-    for (int ty = ty_min; ty < ty_max; ++ty) {
-        for (int tx = tx_min; tx < tx_max; ++tx) {
-            const int tile_px = tx * tw;
-            const int tile_py = ty * tl;
+    for (std::int64_t ty = ty_min; ty < ty_max; ++ty) {
+        for (std::int64_t tx = tx_min; tx < tx_max; ++tx) {
+            const std::int64_t tile_px = tx * tw;
+            const std::int64_t tile_py = ty * tl;
             // Clip edge tiles to the image bounds.
-            const int ex_w = std::min(tw, img_w - tile_px);
-            const int ex_h = std::min(tl, img_h - tile_py);
+            const std::int64_t ex_w = std::min(tw, img_w - tile_px);
+            const std::int64_t ex_h = std::min(tl, img_h - tile_py);
 
-            const int ix0 = std::max(tile_px, x_off);
-            const int iy0 = std::max(tile_py, y_off);
-            const int ix1 = std::min(tile_px + ex_w, x_off + x_size);
-            const int iy1 = std::min(tile_py + ex_h, y_off + y_size);
+            const std::int64_t ix0 = std::max(
+                tile_px, static_cast<std::int64_t>(x_off));
+            const std::int64_t iy0 = std::max(
+                tile_py, static_cast<std::int64_t>(y_off));
+            const std::int64_t ix1 = std::min(
+                tile_px + ex_w, static_cast<std::int64_t>(x_off) + x_size);
+            const std::int64_t iy1 = std::min(
+                tile_py + ex_h, static_cast<std::int64_t>(y_off) + y_size);
             if (ix1 <= ix0 || iy1 <= iy0) continue;
 
             const bool full_tile =
                 ix0 == tile_px && iy0 == tile_py &&
                 ix1 == tile_px + ex_w && iy1 == tile_py + ex_h;
-            const bool direct = full_tile && one_sample_stride && !cell &&
-                line_space == static_cast<std::int64_t>(ex_w)
-                            * static_cast<std::int64_t>(bps);
-
-            const std::size_t area_bytes = static_cast<std::size_t>(ex_w)
-                                         * static_cast<std::size_t>(ex_h) * bps;
+            const std::size_t area_bytes = checked_size_product(
+                checked_size_product(static_cast<std::size_t>(ex_w),
+                                     static_cast<std::size_t>(ex_h)), bps);
             std::size_t frame_bytes = area_bytes;
-            if (unit_holds(unit, AXIS_BAND, B, T)) frame_bytes *= B;
-            if (unit_holds(unit, AXIS_TIME, B, T)) frame_bytes *= T;
+            if (unit_holds(unit, AXIS_BAND, B, T)) {
+                frame_bytes = checked_size_product(frame_bytes, B);
+            }
+            if (unit_holds(unit, AXIS_TIME, B, T)) {
+                frame_bytes = checked_size_product(frame_bytes, T);
+            }
 
             // Group selected planes by frame index without searching existing
             // tasks.
@@ -458,7 +460,7 @@ Plan build_plan(const Header& h, Source* source,
 
             for (std::size_t g = 0; g < frames.size(); ++g) {
                 const std::uint32_t idx = static_cast<std::uint32_t>(frames[g]);
-                const std::uint32_t at = static_cast<std::uint32_t>(plan.src_offset.size());
+                const std::size_t at = plan.src_offset.size();
                 for (const auto& [i, j] : members[g]) {
                     const auto tt = static_cast<std::uint32_t>(times[i] - 1);
                     const auto bb = static_cast<std::uint32_t>(bands[j] - 1);
@@ -479,9 +481,31 @@ Plan build_plan(const Header& h, Source* source,
                 task.frame_bytes     = frame_bytes;
                 task.src_pixel_stride = src_pixel_stride;
                 task.offset_at       = at;
-                task.plane_count     = static_cast<std::uint32_t>(members[g].size());
+                task.plane_count     = members[g].size();
+                task.item            = item;
+                // Decode straight into the result whenever the entire frame
+                // maps byte-for-byte onto one contiguous output region. This
+                // includes the common one-chip b-h-w training sample, not just
+                // frames containing a single plane.
+                bool direct = full_tile && one_sample_stride &&
+                    line_space == static_cast<std::int64_t>(ex_w)
+                                * static_cast<std::int64_t>(bps) &&
+                    members[g].size() * area_bytes == frame_bytes;
+                std::int64_t direct_dst = 0;
+                bool has_origin = false;
+                for (std::size_t k = 0; direct && k < members[g].size(); ++k) {
+                    if (plan.src_offset[at + k] == 0) {
+                        direct_dst = plan.dst_offset[at + k];
+                        has_origin = true;
+                    }
+                }
+                direct = direct && has_origin;
+                for (std::size_t k = 0; direct && k < members[g].size(); ++k) {
+                    direct = plan.dst_offset[at + k] - direct_dst
+                           == plan.src_offset[at + k];
+                }
                 if (direct) {
-                    task.direct = base + plan.dst_offset[at];
+                    task.direct = base + direct_dst;
                 } else {
                     task.dst              = base;
                     task.src_x            = static_cast<std::uint32_t>(ix0 - tile_px);
@@ -496,9 +520,211 @@ Plan build_plan(const Header& h, Source* source,
         }
     }
 
-    bind_offsets(plan);
-    return plan;
 }
+
+
+struct ReadItem {
+    Source*       source;
+    const Header* header;
+    int           y_off;
+    int           x_off;
+    std::size_t   label;
+};
+
+struct KaruBufferFree {
+    void operator()(void* ptr) const noexcept { karu_free(ptr); }
+};
+using KaruBuffer = std::unique_ptr<void, KaruBufferFree>;
+
+struct KaruBatchFree {
+    void operator()(karu_batch* batch) const noexcept { karu_batch_free(batch); }
+};
+
+std::expected<std::vector<KaruBuffer>, std::string>
+fetch_remote_frames(Plan& plan)
+{
+    std::vector<karu_req> requests;
+    requests.reserve(plan.tasks.size());
+    for (FrameTask& task : plan.tasks) {
+        const karu_locator* locator = task.source->remote_locator();
+        if (!locator) continue;
+        requests.push_back({
+            locator,
+            task.offset,
+            task.compressed_size,
+            nullptr,
+            &task,
+        });
+    }
+    if (requests.empty()) return std::vector<KaruBuffer>{};
+
+    karu_batch* raw_batch = nullptr;
+    const karu_status submitted =
+        karu_submit(requests.data(), requests.size(), &raw_batch);
+    if (submitted != KARU_OK) {
+        const char* detail = karu_last_error();
+        return errf("transport submit failed: %s",
+                    detail && *detail ? detail : karu_status_string(submitted));
+    }
+    std::unique_ptr<karu_batch, KaruBatchFree> batch(raw_batch);
+
+    std::vector<KaruBuffer> buffers;
+    buffers.reserve(requests.size());
+    std::size_t completed = 0;
+    for (;;) {
+        karu_done done{};
+        const karu_status step = karu_next(batch.get(), &done, -1);
+        if (step == KARU_END) break;
+        if (step != KARU_OK) {
+            const char* detail = karu_last_error();
+            return errf("transport failed: %s",
+                        detail && *detail ? detail : karu_status_string(step));
+        }
+
+        KaruBuffer buffer(done.buf);
+        auto* task = static_cast<FrameTask*>(done.tag);
+        if (!task) return err("transport returned a completion without a task");
+        if (done.status != KARU_OK) {
+            const char* detail = karu_last_error();
+            return errf("transport read failed at %llu: %s",
+                        static_cast<unsigned long long>(task->offset),
+                        detail && *detail ? detail
+                                          : karu_status_string(done.status));
+        }
+        if (done.got != task->compressed_size || !done.buf) {
+            return errf("transport short read at %llu: %llu of %u",
+                        static_cast<unsigned long long>(task->offset),
+                        static_cast<unsigned long long>(done.got),
+                        task->compressed_size);
+        }
+        task->compressed = static_cast<const std::byte*>(done.buf);
+        buffers.push_back(std::move(buffer));
+        ++completed;
+    }
+    if (completed != requests.size()) {
+        return errf("transport completed %zu of %zu frame reads",
+                    completed, requests.size());
+    }
+    return buffers;
+}
+
+std::expected<void, std::string>
+compatible_headers(std::span<const Header* const> headers)
+{
+    const Header& ref = *headers[0];
+    const bool ref_b = unit_holds(ref.frame_unit, AXIS_BAND,
+                                  ref.samples_per_pixel, ref.time_count);
+    const bool ref_t = unit_holds(ref.frame_unit, AXIS_TIME,
+                                  ref.samples_per_pixel, ref.time_count);
+    for (std::size_t i = 1; i < headers.size(); ++i) {
+        const Header& h = *headers[i];
+        if (h.tile_width != ref.tile_width || h.tile_length != ref.tile_length) {
+            return errf("item %zu: tile size mismatch", i + 1);
+        }
+        if (h.samples_per_pixel != ref.samples_per_pixel) {
+            return errf("item %zu: band count mismatch", i + 1);
+        }
+        if (h.dtype != ref.dtype) {
+            return errf("item %zu: dtype mismatch", i + 1);
+        }
+        if (h.time_count != ref.time_count) {
+            return errf("item %zu: time step count mismatch", i + 1);
+        }
+        const bool holds_b = unit_holds(h.frame_unit, AXIS_BAND,
+                                        h.samples_per_pixel, h.time_count);
+        const bool holds_t = unit_holds(h.frame_unit, AXIS_TIME,
+                                        h.samples_per_pixel, h.time_count);
+        if (holds_b != ref_b || holds_t != ref_t) {
+            return errf("item %zu: frame layout mismatch, '%s' against '%s'",
+                        i + 1,
+                        unit_name(h.frame_unit, h.samples_per_pixel,
+                                  h.time_count).c_str(),
+                        unit_name(ref.frame_unit, ref.samples_per_pixel,
+                                  ref.time_count).c_str());
+        }
+    }
+    return {};
+}
+
+std::expected<void, std::string>
+read_items(std::span<const ReadItem> items,
+           std::span<const int> times, std::span<const int> bands,
+           int y_size, int x_size,
+           const LayoutPlan& layout, std::byte* dst,
+           const char* item_name)
+{
+    g_read_status = RUMI_ERR_INVALID;
+    if (items.empty()) return err("a read needs at least one item");
+    if (!items[0].source || !items[0].header) {
+        return err("null source or header");
+    }
+
+    const Header& ref = *items[0].header;
+    const std::size_t bps = ref.bytes_per_sample;
+    const std::size_t n_stride =
+        static_cast<std::size_t>(layout.stride[OUT_N]) * bps;
+
+    Plan plan;
+    plan.spec = make_frame_spec(ref);
+    for (const ReadItem& item : items) {
+        if (!item.source || !item.header) return err("null source or header");
+        plan.spec.frame_bytes =
+            std::max(plan.spec.frame_bytes, item.header->max_frame_size);
+    }
+
+    for (std::size_t k = 0; k < items.size(); ++k) {
+        const ReadItem& item = items[k];
+        const Header& h = *item.header;
+        if (auto ok = validate_request(h, times, bands,
+                                       item.y_off, y_size,
+                                       item.x_off, x_size);
+            !ok) {
+            if (item_name) {
+                return errf("%s %zu: %s", item_name, item.label,
+                            ok.error().c_str());
+            }
+            return ok;
+        }
+        if (auto ok = check_data_fits(h, *item.source); !ok) {
+            g_read_status = RUMI_ERR_FORMAT;
+            if (item_name) {
+                return errf("%s %zu: %s", item_name, item.label,
+                            ok.error().c_str());
+            }
+            return ok;
+        }
+
+        append_read_plan(
+            plan, h, item.source, item.x_off, item.y_off, x_size, y_size,
+            dst + k * n_stride, times, bands,
+            layout.stride[OUT_X] * static_cast<std::int64_t>(bps),
+            layout.stride[OUT_Y] * static_cast<std::int64_t>(bps),
+            layout.stride[OUT_B] * static_cast<std::int64_t>(bps),
+            layout.stride[OUT_T] * static_cast<std::int64_t>(bps), item.label);
+    }
+    bind_offsets(plan);
+
+    // Karu sees the complete remote workload at once, so it can group by
+    // object, coalesce ranges, and fill the network independently of decode
+    // thread count. The returned buffers stay alive through execution.
+    auto remote_buffers = fetch_remote_frames(plan);
+    if (!remote_buffers) {
+        g_read_status = RUMI_ERR_IO;
+        return std::unexpected(remote_buffers.error());
+    }
+
+    ThreadPool* pool = pool_for(plan.tasks.size());
+    Executor exec(pool);
+    if (!exec.run(plan)) {
+        g_read_status = exec.status();
+        return err(exec.error().empty() ? std::string("read failed")
+                                        : exec.error());
+    }
+    g_read_status = RUMI_OK;
+    return {};
+}
+
+}  // namespace
 
 
 std::expected<std::vector<Range>, std::string>
@@ -506,13 +732,26 @@ plan_ranges_checked(const Header& h, std::span<const int> times,
                     std::span<const int> bands,
                     int y_off, int y_size, int x_off, int x_size)
 {
+    const std::uint64_t y_last = static_cast<std::uint64_t>(y_off)
+                               + static_cast<std::uint64_t>(y_size) - 1;
+    const std::uint64_t x_last = static_cast<std::uint64_t>(x_off)
+                               + static_cast<std::uint64_t>(x_size) - 1;
     const std::uint64_t tiles =
-        (std::uint64_t(y_off + y_size - 1) / h.tile_length
+        (y_last / h.tile_length
          - std::uint64_t(y_off) / h.tile_length + 1)
-        * (std::uint64_t(x_off + x_size - 1) / h.tile_width
+        * (x_last / h.tile_width
            - std::uint64_t(x_off) / h.tile_width + 1);
+    std::uint64_t axes = 1;
     std::uint64_t most = 0;
-    if (__builtin_mul_overflow(tiles, times.size() * bands.size(), &most)
+    bool fits = true;
+    if (unit_indexes_time(h.frame_unit, h.samples_per_pixel, h.time_count)) {
+        fits = mul_ok(axes, static_cast<std::uint64_t>(times.size()), &axes);
+    }
+    if (fits && unit_indexes_bands(
+            h.frame_unit, h.samples_per_pixel, h.time_count)) {
+        fits = mul_ok(axes, static_cast<std::uint64_t>(bands.size()), &axes);
+    }
+    if (!fits || !mul_ok(tiles, axes, &most)
         || most > max_frame_bytes() / sizeof(Range)) {
         return errf("that window reaches %llu frames, past the %llu bytes of "
                     "ranges this reader will allocate",
@@ -528,9 +767,13 @@ plan_ranges(const Header& h, std::span<const int> times,
             int y_off, int y_size, int x_off, int x_size)
 {
     const std::uint32_t r0 = static_cast<std::uint32_t>(y_off) / h.tile_length;
-    const std::uint32_t r1 = static_cast<std::uint32_t>(y_off + y_size - 1) / h.tile_length;
+    const std::uint32_t r1 = static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(y_off)
+        + static_cast<std::uint64_t>(y_size) - 1) / h.tile_length;
     const std::uint32_t c0 = static_cast<std::uint32_t>(x_off) / h.tile_width;
-    const std::uint32_t c1 = static_cast<std::uint32_t>(x_off + x_size - 1) / h.tile_width;
+    const std::uint32_t c1 = static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(x_off)
+        + static_cast<std::uint64_t>(x_size) - 1) / h.tile_width;
 
     // Only indexed axes multiply the number of required frame ranges.
     static constexpr int ONE[] = {1};
@@ -574,153 +817,42 @@ read_window(Source& src, const Header& h,
             int y_off, int y_size, int x_off, int x_size,
             const LayoutPlan& layout, std::byte* dst)
 {
-    g_read_status = RUMI_ERR_INVALID;
-    if (auto ok = validate_request(h, times, bands, y_off, y_size, x_off, x_size); !ok) {
-        return ok;
-    }
-
-    if (auto ok = check_data_fits(h, src); !ok) {
-        g_read_status = RUMI_ERR_FORMAT;
-        return ok;
-    }
-
-    const std::size_t bps = h.bytes_per_sample;
-    Plan plan = build_plan(h, &src,
-                           x_off, y_off, x_size, y_size, dst, times, bands,
-                           layout.stride[OUT_X] * static_cast<std::int64_t>(bps),
-                           layout.stride[OUT_Y] * static_cast<std::int64_t>(bps),
-                           layout.stride[OUT_B] * static_cast<std::int64_t>(bps),
-                           layout.stride[OUT_T] * static_cast<std::int64_t>(bps));
-
-    ThreadPool* pool = pool_for(plan.tasks.size());
-    Executor exec(pool);
-    if (!exec.run(plan)) {
-        g_read_status = exec.status();
-        return err(exec.error().empty() ? std::string("read failed") : exec.error());
-    }
-    g_read_status = RUMI_OK;
-    return {};
+    const ReadItem item{&src, &h, y_off, x_off, 0};
+    return read_items(std::span<const ReadItem>(&item, 1), times, bands,
+                      y_size, x_size, layout, dst, nullptr);
 }
 
 
 std::expected<void, std::string>
-read_stack(std::span<Source* const> sources,
-           std::span<const Header* const> headers,
-           std::span<const int> n_index,
-           std::span<const int> times, std::span<const int> bands,
-           int y_off, int y_size, int x_off, int x_size,
-           const LayoutPlan& layout, std::byte* dst)
+read_many(std::span<Source* const> sources,
+          std::span<const Header* const> headers,
+          std::span<const int> y_offs, std::span<const int> x_offs,
+          std::span<const int> times, std::span<const int> bands,
+          int y_size, int x_size,
+          const LayoutPlan& layout, std::byte* dst)
 {
     g_read_status = RUMI_ERR_INVALID;
-    if (sources.empty() || sources.size() != headers.size()) {
-        return err("sources and headers must be non-empty and the same length");
+    const std::size_t n = sources.size();
+    if (n == 0) return err("read_many needs at least one item");
+    if (headers.size() != n || y_offs.size() != n || x_offs.size() != n) {
+        return err("sources, headers and offsets must all be the same length");
     }
-    for (std::size_t i = 0; i < headers.size(); ++i) {
-        if (!sources[i]) return errf("null source at index %zu", i + 1);
-        if (!headers[i]) return errf("null header at index %zu", i + 1);
-    }
-
-    const Header& ref = *headers[0];
-    for (std::size_t i = 1; i < headers.size(); ++i) {
-        const Header& h = *headers[i];
-        if (h.image_width != ref.image_width || h.image_length != ref.image_length) {
-            return errf("image %zu: image size mismatch", i + 1);
-        }
-        if (h.tile_width != ref.tile_width || h.tile_length != ref.tile_length) {
-            return errf("image %zu: tile size mismatch", i + 1);
-        }
-        if (h.samples_per_pixel != ref.samples_per_pixel) {
-            return errf("image %zu: band count mismatch", i + 1);
-        }
-        if (h.dtype != ref.dtype) {
-            return errf("image %zu: dtype mismatch", i + 1);
-        }
-        if (h.time_count != ref.time_count) {
-            return errf("image %zu: time step count mismatch", i + 1);
-        }
-        // The merged plan shares one scratch bound, so every image must have
-        // the same maximum decoded frame size. Frame axis order may differ.
-        const bool hb = unit_holds(h.frame_unit, AXIS_BAND,
-                                   h.samples_per_pixel, h.time_count);
-        const bool ht = unit_holds(h.frame_unit, AXIS_TIME,
-                                   h.samples_per_pixel, h.time_count);
-        const bool rb = unit_holds(ref.frame_unit, AXIS_BAND,
-                                   ref.samples_per_pixel, ref.time_count);
-        const bool rt = unit_holds(ref.frame_unit, AXIS_TIME,
-                                   ref.samples_per_pixel, ref.time_count);
-        if (hb != rb || ht != rt) {
-            return errf("image %zu: frame layout mismatch, '%s' against '%s'; "
-                        "a stack cannot mix frames that hold an axis with "
-                        "frames that leave it to the index",
-                        i + 1,
-                        unit_name(h.frame_unit, h.samples_per_pixel,
-                                  h.time_count).c_str(),
-                        unit_name(ref.frame_unit, ref.samples_per_pixel,
-                                  ref.time_count).c_str());
-        }
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!sources[i]) return errf("null source at item %zu", i + 1);
+        if (!headers[i]) return errf("null header at item %zu", i + 1);
     }
 
-    if (n_index.empty()) return err("no images selected");
-    for (int ni : n_index) {
-        if (ni < 1 || static_cast<std::size_t>(ni) > headers.size()) {
-            return errf("n=%d out of range [1, %zu]", ni, headers.size());
-        }
+    if (auto ok = compatible_headers(headers); !ok) return ok;
+
+    std::vector<ReadItem> items;
+    items.reserve(n);
+    for (std::size_t k = 0; k < n; ++k) {
+        items.push_back({sources[k], headers[k], y_offs[k], x_offs[k],
+                         k + 1});
     }
-
-    // Shared grid dimensions make one window validation sufficient.
-    if (auto ok = validate_request(ref, times, bands, y_off, y_size, x_off, x_size);
-        !ok) {
-        return ok;
-    }
-
-    const std::size_t bps      = ref.bytes_per_sample;
-    const std::size_t n_stride =
-        static_cast<std::size_t>(layout.stride[OUT_N]) * bps;
-
-    Plan plan;
-    plan.spec = make_frame_spec(ref);
-
-    for (std::size_t k = 0; k < n_index.size(); ++k) {
-        const std::size_t i = static_cast<std::size_t>(n_index[k] - 1);
-        Source& src = *sources[i];
-        if (auto ok = check_data_fits(*headers[i], src); !ok) {
-            g_read_status = RUMI_ERR_FORMAT;
-            return errf("image %d: %s", n_index[k], ok.error().c_str());
-        }
-
-        Plan sub = build_plan(*headers[i], &src,
-                              x_off, y_off, x_size, y_size,
-                              dst + k * n_stride, times, bands,
-                              layout.stride[OUT_X] * static_cast<std::int64_t>(bps),
-                              layout.stride[OUT_Y] * static_cast<std::int64_t>(bps),
-                              layout.stride[OUT_B] * static_cast<std::int64_t>(bps),
-                              layout.stride[OUT_T] * static_cast<std::int64_t>(bps));
-        // Append sub-plan offsets now and bind task pointers after all vectors
-        // stop growing.
-        const auto shift = static_cast<std::uint32_t>(plan.src_offset.size());
-        plan.src_offset.insert(plan.src_offset.end(),
-                               sub.src_offset.begin(), sub.src_offset.end());
-        plan.dst_offset.insert(plan.dst_offset.end(),
-                               sub.dst_offset.begin(), sub.dst_offset.end());
-        for (FrameTask& t : sub.tasks) {
-            t.image      = static_cast<std::uint32_t>(n_index[k]);
-            t.offset_at += shift;
-        }
-        plan.tasks.insert(plan.tasks.end(),
-                          std::make_move_iterator(sub.tasks.begin()),
-                          std::make_move_iterator(sub.tasks.end()));
-    }
-    bind_offsets(plan);
-
-    ThreadPool* pool = pool_for(plan.tasks.size());
-    Executor exec(pool);
-    if (!exec.run(plan)) {
-        g_read_status = exec.status();
-        return err(exec.error().empty() ? std::string("read failed")
-                                        : exec.error());
-    }
-    g_read_status = RUMI_OK;
-    return {};
+    return read_items(items, times, bands, y_size, x_size,
+                      layout, dst, "item");
 }
+
 
 }  // namespace rumi

@@ -1,7 +1,4 @@
 import datetime as dt
-from typing import NamedTuple
-
-from ._ffi import PathLike, _check, _enc, ffi, lib
 
 UNDEFINED, INTERVAL, INSTANT = 0, 1, 2
 
@@ -109,35 +106,3 @@ def _from_seconds(seconds):
     if seconds % DAY == 0:
         return EPOCH + dt.timedelta(days=seconds // DAY)
     return dt.datetime.fromtimestamp(seconds, dt.UTC)
-
-
-class Time(NamedTuple):
-    """Decoded time axis.
-
-    ``steps`` contains one coordinate per instant or one ``(start, end)`` pair
-    per interval. ``kind`` is ``"instant"``, ``"interval"``, or ``None``.
-    """
-
-    steps: list
-    kind: str | None
-
-
-def read(path: PathLike) -> Time:
-    """Read the time axis from a local rumi file."""
-    kind = ffi.new("uint8_t*")
-    _scale = ffi.new("uint32_t*")
-    out = ffi.new("int64_t**")
-    count = ffi.new("size_t*")
-    _check(lib.rumi_read_time(_enc(path), kind, _scale, out, count))
-    try:
-        coords = [int(out[0][i]) for i in range(count[0])]
-    finally:
-        if out[0] != ffi.NULL:
-            lib.rumi_free(out[0])
-
-    if kind[0] == UNDEFINED:
-        return Time([], None)
-    if kind[0] == INSTANT:
-        return Time([_from_seconds(s) for s in coords], "instant")
-    return Time([(_from_seconds(coords[i]), _from_seconds(coords[i + 1]))
-                 for i in range(0, len(coords), 2)], "interval")

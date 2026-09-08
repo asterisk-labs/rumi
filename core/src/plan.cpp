@@ -82,7 +82,7 @@ void copy_rect(const FrameTask& t, const FrameSpec& spec,
     const std::size_t src_pitch = static_cast<std::size_t>(t.frame_width)
                                 * t.src_pixel_stride;
 
-    for (std::uint32_t k = 0; k < t.plane_count; ++k) {
+    for (std::size_t k = 0; k < t.plane_count; ++k) {
         copy_one_plane(t, bps, src_pitch, frame + t.src_offset[k],
                        t.dst + t.dst_offset[k]);
     }
@@ -104,7 +104,7 @@ bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
 }
 
 // Format one task failure for Executor.
-[[gnu::format(printf, 2, 3)]]
+RUMI_PRINTF_LIKE(2, 3)
 void say(std::string& out, const char* fmt, ...) noexcept
 {
     char buf[512];
@@ -118,8 +118,8 @@ void say(std::string& out, const char* fmt, ...) noexcept
 rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
                          std::string& msg) noexcept
 {
-    char img[24] = "";
-    if (t.image) std::snprintf(img, sizeof img, " (image %u)", t.image);
+    char item[24] = "";
+    if (t.item) std::snprintf(item, sizeof item, " (item %zu)", t.item);
 
     WorkerState& ws = worker_state();
     if (!ws.dctx) {
@@ -127,24 +127,28 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         return RUMI_ERR_OOM;
     }
 
-    if (ws.compressed.size() < t.compressed_size) {
-        try {
-            ws.compressed.resize(t.compressed_size);
-        } catch (const std::bad_alloc&) {
-            say(msg, "rumi: out of memory growing compressed scratch");
-            return RUMI_ERR_OOM;
+    const std::byte* compressed = t.compressed;
+    if (!compressed) {
+        if (ws.compressed.size() < t.compressed_size) {
+            try {
+                ws.compressed.resize(t.compressed_size);
+            } catch (const std::bad_alloc&) {
+                say(msg, "rumi: out of memory growing compressed scratch");
+                return RUMI_ERR_OOM;
+            }
         }
-    }
 
-    // Read compressed bytes positionally before decoding.
-    const std::size_t got = t.source->read(
-        t.offset, t.compressed_size, ws.compressed.data());
-    if (got != t.compressed_size) {
-        say(msg, "rumi: short read at %llu: %llu of %llu%s",
-            static_cast<unsigned long long>(t.offset),
-            static_cast<unsigned long long>(got),
-            static_cast<unsigned long long>(t.compressed_size), img);
-        return RUMI_ERR_IO;
+        // Local and memory sources read positionally in the decode worker.
+        const std::size_t got = t.source->read(
+            t.offset, t.compressed_size, ws.compressed.data());
+        if (got != t.compressed_size) {
+            say(msg, "rumi: short read at %llu: %llu of %llu%s",
+                static_cast<unsigned long long>(t.offset),
+                static_cast<unsigned long long>(got),
+                static_cast<unsigned long long>(t.compressed_size), item);
+            return RUMI_ERR_IO;
+        }
+        compressed = ws.compressed.data();
     }
 
     // Direct tasks decode into output; all others decode into scratch.
@@ -165,7 +169,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
         ws.dctx, &info, frame, t.frame_bytes,
-        ws.compressed.data(), t.compressed_size);
+        compressed, t.compressed_size);
 
     if (ZL_isError(rep)) {
         const char* ctx = ZL_DCtx_getErrorContextString(ws.dctx, rep);
@@ -174,10 +178,10 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
             const char* what = geozl_owns_ctid(ctid)
                 ? "a geozl codec this build lacks, update geozl"
                 : "an unknown OpenZL custom codec";
-            say(msg, "rumi: file uses %s (CTid %lu)%s", what, ctid, img);
+            say(msg, "rumi: file uses %s (CTid %lu)%s", what, ctid, item);
             return RUMI_ERR_UNSUPPORTED;
         }
-        say(msg, "rumi: OpenZL decode failed: %s%s", ctx, img);
+        say(msg, "rumi: OpenZL decode failed: %s%s", ctx, item);
         return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
@@ -189,7 +193,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
             static_cast<unsigned>(info.fixedWidth),
             static_cast<unsigned long long>(info.decompressedByteSize),
             static_cast<unsigned>(spec.bytes_per_sample),
-            static_cast<unsigned long long>(t.frame_bytes), img);
+            static_cast<unsigned long long>(t.frame_bytes), item);
         return RUMI_ERR_DECODE;
     }
 
@@ -201,7 +205,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
             if ((frame[i] & spare) != std::byte{0}) {
                 say(msg, "rumi: byte %zu of a decoded frame has bits set above "
                     "the %u its encoding occupies%s",
-                    i, static_cast<unsigned>(spec.bits_per_sample), img);
+                    i, static_cast<unsigned>(spec.bits_per_sample), item);
                 return RUMI_ERR_DECODE;
             }
         }
