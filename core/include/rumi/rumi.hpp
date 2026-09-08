@@ -462,15 +462,40 @@ sample_to_dtype(std::uint8_t sample_format,
 // The C and C++ APIs share the exact range type, including its ABI layout.
 using Range = ::rumi_range;
 
+// One Karu client per Rumi operation. The client is created lazily, so reads
+// backed entirely by memory do not start transport workers. It owns connection
+// pools and a snapshot of the supported GDAL-style environment variables, but
+// no object data or semantic cache.
+class TransportSession {
+public:
+    TransportSession() = default;
+    ~TransportSession();
+
+    TransportSession(const TransportSession&) = delete;
+    TransportSession& operator=(const TransportSession&) = delete;
+
+    [[nodiscard]] karu_client* client() noexcept;
+    [[nodiscard]] karu_status status() const noexcept { return status_; }
+
+private:
+    karu_client* client_{};
+    karu_status  status_{KARU_OK};
+    bool         initialized_{};
+};
+
 // Concurrent positional byte source.
 class Source {
 public:
     virtual ~Source() = default;
 
     [[nodiscard]] virtual std::size_t
-    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept = 0;
+    read(TransportSession& transport, std::uint64_t offset,
+         std::size_t count, void* buffer) noexcept = 0;
 
-    [[nodiscard]] virtual std::uint64_t size() const noexcept = 0;
+    // Exact addressable size. Remote implementations may perform one explicit
+    // metadata request; normal reads avoid this through remote_locator().
+    [[nodiscard]] virtual std::expected<std::uint64_t, std::string>
+    size(TransportSession& transport) const = 0;
 
     // Remote transport sources expose their resolved Karu locator so an entire
     // decode plan can be fetched as one request batch.
@@ -478,8 +503,8 @@ public:
     remote_locator() const noexcept { return nullptr; }
 };
 
-// A path or URI owned by Karu. Local files stay open for positional reads;
-// remote sources expose their locator for batched prefetch.
+// A path or URI resolved by Karu. The source owns identity only; transport
+// state belongs to the operation-scoped TransportSession.
 class TransportSource final : public Source {
 public:
     [[nodiscard]] static std::expected<std::unique_ptr<TransportSource>, std::string>
@@ -488,16 +513,19 @@ public:
     ~TransportSource() override;
 
     [[nodiscard]] std::size_t
-    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept override;
+    read(TransportSession& transport, std::uint64_t offset,
+         std::size_t count, void* buffer) noexcept override;
 
-    [[nodiscard]] std::uint64_t size() const noexcept override;
+    [[nodiscard]] std::expected<std::uint64_t, std::string>
+    size(TransportSession& transport) const override;
 
     [[nodiscard]] const karu_locator*
     remote_locator() const noexcept override;
 
 private:
     TransportSource() = default;
-    karu_source* source_{};
+    karu_locator* locator_{};
+    bool          remote_{};
 };
 
 // Borrowed memory buffer; the caller keeps it alive with the source.
@@ -507,9 +535,11 @@ public:
         : data_(static_cast<const std::byte*>(data)), size_(size) {}
 
     [[nodiscard]] std::size_t
-    read(std::uint64_t offset, std::size_t count, void* buffer) noexcept override;
+    read(TransportSession& transport, std::uint64_t offset,
+         std::size_t count, void* buffer) noexcept override;
 
-    [[nodiscard]] std::uint64_t size() const noexcept override { return size_; }
+    [[nodiscard]] std::expected<std::uint64_t, std::string>
+    size(TransportSession&) const override { return size_; }
 
 private:
     const std::byte* data_;
@@ -561,6 +591,8 @@ struct FrameTask {
 struct Plan {
     std::vector<FrameTask> tasks;
     FrameSpec              spec;
+    // Borrowed for the synchronous lifetime of Executor::run().
+    TransportSession*      transport{};
     // Backing storage for FrameTask plane offsets.
     std::vector<std::int64_t> src_offset;
     std::vector<std::int64_t> dst_offset;
@@ -674,11 +706,6 @@ int set_num_threads(int n) noexcept;
 
 // Return and reset the detailed status of the latest read on this thread.
 [[nodiscard]] rumi_status take_read_status() noexcept;
-
-// Rejects a header whose frames run past the end of the source, a truncated file
-// or a blob with inflated byte counts, before any frame buffer is allocated.
-[[nodiscard]] std::expected<void, std::string>
-check_data_fits(const Header& h, const Source& src);
 
 // Compute required ranges from the external header without I/O.
 [[nodiscard]] std::vector<Range>

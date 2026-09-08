@@ -115,7 +115,7 @@ class TestAgreement:
 
 
 class TestSources:
-    def test_remote_uris_use_the_internal_transport(self, square):
+    def test_remote_uris_use_the_internal_transport(self, square, monkeypatch):
         paths = [item[0] for item in square[:2]]
         headers = [item[1] for item in square[:2]]
         data = [item[2] for item in square[:2]]
@@ -123,7 +123,7 @@ class TestSources:
             f"/scene{i}.rumi": Path(path).read_bytes()
             for i, path in enumerate(paths)
         }
-        state = {"gets": 0, "heads": 0}
+        state = {"gets": 0, "heads": 0, "operation_headers": []}
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -134,6 +134,8 @@ class TestSources:
 
             def do_GET(self):
                 state["gets"] += 1
+                state["operation_headers"].append(
+                    self.headers.get("X-Rumi-Operation"))
                 payload = objects.get(self.path)
                 match = re.fullmatch(r"bytes=(\d+)-(\d+)",
                                      self.headers.get("Range", ""))
@@ -164,7 +166,9 @@ class TestSources:
             base = f"http://127.0.0.1:{server.server_port}"
             urls = [f"{base}/scene{i}.rumi" for i in range(2)]
             windows = [(0, 0, 32, 32), (32, 32, 32, 32)]
+            monkeypatch.setenv("GDAL_HTTP_HEADERS", "X-Rumi-Operation: batch")
             got = rumi.read_many(urls, headers, windows=windows)
+            monkeypatch.setenv("GDAL_HTTP_HEADERS", "X-Rumi-Operation: single")
             one = rumi.read(urls[0], headers[0], window=windows[0])
             with pytest.raises(ValueError, match="external header"):
                 rumi.read_many(urls, windows=windows)
@@ -176,7 +180,10 @@ class TestSources:
         assert np.array_equal(got[0], data[0][:, :32, :32])
         assert np.array_equal(got[1], data[1][:, 32:64, 32:64])
         assert np.array_equal(one, data[0][:, :32, :32])
-        assert state == {"gets": 3, "heads": 0}
+        assert state["gets"] == 3
+        assert state["heads"] == 0
+        assert state["operation_headers"].count("batch") == 2
+        assert state["operation_headers"].count("single") == 1
 
     def test_scenes_of_different_extents_share_a_batch(self, scenes):
         small_path, small_header, small_data = scenes[0]

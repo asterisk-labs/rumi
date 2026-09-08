@@ -116,6 +116,7 @@ void say(std::string& out, const char* fmt, ...) noexcept
 }
 
 rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
+                         TransportSession* transport,
                          std::string& msg) noexcept
 {
     char item[24] = "";
@@ -129,6 +130,10 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
 
     const std::byte* compressed = t.compressed;
     if (!compressed) {
+        if (!transport) {
+            say(msg, "rumi: read plan has no transport session%s", item);
+            return RUMI_ERR_IO;
+        }
         if (ws.compressed.size() < t.compressed_size) {
             try {
                 ws.compressed.resize(t.compressed_size);
@@ -140,7 +145,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
 
         // Local and memory sources read positionally in the decode worker.
         const std::size_t got = t.source->read(
-            t.offset, t.compressed_size, ws.compressed.data());
+            *transport, t.offset, t.compressed_size, ws.compressed.data());
         if (got != t.compressed_size) {
             say(msg, "rumi: short read at %llu: %llu of %llu%s",
                 static_cast<unsigned long long>(t.offset),
@@ -238,7 +243,7 @@ bool Executor::run(const Plan& plan) const
     const auto run_one = [&st, &first, this, &plan](const FrameTask& t) {
         if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
         std::string msg;
-        const rumi_status r = execute_task(t, plan.spec, msg);
+        const rumi_status r = execute_task(t, plan.spec, plan.transport, msg);
         if (r != RUMI_OK) {
             int expected = RUMI_OK;
             if (st.compare_exchange_strong(expected, r,

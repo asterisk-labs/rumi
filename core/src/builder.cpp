@@ -25,10 +25,11 @@ std::unexpected<std::string> err(const char* fmt, ...)
     return std::unexpected(std::string(buf));
 }
 
-bool read_at(Source& source, std::uint64_t off, void* dst,
+bool read_at(Source& source, TransportSession& transport,
+             std::uint64_t off, void* dst,
              std::size_t n) noexcept
 {
-    return source.read(off, n, dst) == n;
+    return source.read(transport, off, n, dst) == n;
 }
 
 // Parsed IFD entry. Values up to eight bytes are inline.
@@ -64,9 +65,14 @@ std::uint64_t read_uint(const std::byte* p, std::size_t sz) noexcept
 std::expected<std::vector<std::byte>, std::string>
 build_blob_from_source(Source& source, FileGeo* geo, TimeAxis* time) noexcept
 try {
+    TransportSession transport;
+    auto source_size = source.size(transport);
+    if (!source_size) return std::unexpected(source_size.error());
+    const std::uint64_t on_disk = *source_size;
+
     // Read and validate the fixed 16-byte file header.
     unsigned char hdr[16];
-    if (!read_at(source, 0, hdr, sizeof(hdr))) {
+    if (!read_at(source, transport, 0, hdr, sizeof(hdr))) {
         return err("could not read the 16-byte rumi file header");
     }
     std::uint32_t magic = 0;
@@ -96,7 +102,7 @@ try {
 
     // rumi permits exactly one IFD.
     std::uint64_t n_entries;
-    if (!read_at(source, ifd_offset, &n_entries, 8)) {
+    if (!read_at(source, transport, ifd_offset, &n_entries, 8)) {
         return err("could not read the IFD entry count");
     }
     if (n_entries != 13) {
@@ -111,11 +117,13 @@ try {
         return err("allocation failed for %llu IFD entries",
                    static_cast<unsigned long long>(n_entries));
     }
-    if (!read_at(source, ifd_offset + 8, raw_entries.data(), raw_entries.size())) {
+    if (!read_at(source, transport, ifd_offset + 8,
+                 raw_entries.data(), raw_entries.size())) {
         return err("could not read the IFD entries");
     }
     std::uint64_t next_ifd;
-    if (!read_at(source, ifd_offset + 8 + raw_entries.size(), &next_ifd, 8)) {
+    if (!read_at(source, transport, ifd_offset + 8 + raw_entries.size(),
+                 &next_ifd, 8)) {
         return err("could not read the next-IFD offset");
     }
     if (next_ifd != 0) {
@@ -221,7 +229,9 @@ try {
         } else {
             std::uint64_t off;
             std::memcpy(&off, e->value, 8);
-            if (!read_at(source, off, buf, ts)) return err("could not read tag %u", tag);
+            if (!read_at(source, transport, off, buf, ts)) {
+                return err("could not read tag %u", tag);
+            }
         }
         return read_uint(buf, ts);
     };
@@ -254,7 +264,8 @@ try {
         } else {
             std::uint64_t off;
             std::memcpy(&off, e->value, 8);
-            if (!read_at(source, off, rawv.data(), static_cast<std::size_t>(total))) {
+            if (!read_at(source, transport, off, rawv.data(),
+                         static_cast<std::size_t>(total))) {
                 return err("could not read the tag %u array", tag);
             }
         }
@@ -456,10 +467,10 @@ try {
     }
     // Every frame occupies at least one byte, so frame count cannot exceed
     // file size.
-    if (n_frames > source.size()) {
+    if (n_frames > on_disk) {
         return err("%llu frames need at least that many bytes, the file has %llu",
                    static_cast<unsigned long long>(n_frames),
-                   static_cast<unsigned long long>(source.size()));
+                   static_cast<unsigned long long>(on_disk));
     }
     if (n_frames > max_frame_bytes() / 12) {
         return err("indexing %llu frames needs %llu bytes, past the %llu this "
@@ -521,7 +532,6 @@ try {
     }
 
     // The time trailer starts immediately after the final frame.
-    const std::uint64_t on_disk = source.size();
     if (on_disk < running + TRAILER_SIZE) {
         return err("frames end at %llu, leaving no room for the %zu-byte time "
                    "trailer in a file of %llu bytes",
@@ -530,7 +540,7 @@ try {
     }
 
     TimeTrailer tt{};
-    if (!read_at(source, running, &tt, sizeof tt)) {
+    if (!read_at(source, transport, running, &tt, sizeof tt)) {
         return err("could not read the time trailer");
     }
     if (tt.magic != TIME_MAGIC) {
@@ -556,7 +566,7 @@ try {
     // Use the normal decoder to validate canonical encoding and coordinate
     // order while building the external header.
     std::vector<std::byte> tail(static_cast<std::size_t>(TRAILER_SIZE + packed));
-    if (!read_at(source, running, tail.data(), tail.size())) {
+    if (!read_at(source, transport, running, tail.data(), tail.size())) {
         return err("could not read the time trailer");
     }
     auto axis = decode_time(tail, time_count);

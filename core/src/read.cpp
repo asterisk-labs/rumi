@@ -245,70 +245,6 @@ rumi_status take_read_status() noexcept
 }
 
 
-std::expected<void, std::string>
-check_data_fits(const Header& h, const Source& src)
-{
-    const std::uint64_t size = src.size();
-    const std::uint64_t need = h.data_end();
-    if (need > size) {
-        return errf("frame data needs %llu bytes, source has %llu",
-                    static_cast<unsigned long long>(need),
-                    static_cast<unsigned long long>(size));
-    }
-    return {};
-}
-
-
-// Sources
-
-std::expected<std::unique_ptr<TransportSource>, std::string>
-TransportSource::open(const char* path) noexcept
-{
-    std::unique_ptr<TransportSource> src(new (std::nothrow) TransportSource);
-    if (!src) return errf("out of memory opening %s", path);
-    const karu_status status = karu_source_open(path, &src->source_);
-    if (status != KARU_OK) {
-        const char* detail = karu_last_error();
-        return errf("could not open %s: %s", path,
-                    detail && *detail ? detail : karu_status_string(status));
-    }
-    return src;
-}
-
-TransportSource::~TransportSource()
-{
-    karu_source_free(source_);
-}
-
-std::size_t
-TransportSource::read(std::uint64_t offset, std::size_t count,
-                      void* buffer) noexcept
-{
-    std::size_t got = 0;
-    return karu_source_read_at(source_, offset, buffer, count, &got) == KARU_OK
-        ? got : 0;
-}
-
-std::uint64_t TransportSource::size() const noexcept
-{
-    return karu_source_size(source_);
-}
-
-const karu_locator* TransportSource::remote_locator() const noexcept
-{
-    return karu_source_is_remote(source_) ? karu_source_locator(source_) : nullptr;
-}
-
-std::size_t
-MemorySource::read(std::uint64_t offset, std::size_t count, void* buffer) noexcept
-{
-    if (offset >= size_) return 0;
-    const std::size_t n =
-        std::min<std::uint64_t>(count, size_ - offset);
-    std::memcpy(buffer, data_ + offset, n);
-    return n;
-}
-
 namespace {
 
 FrameSpec make_frame_spec(const Header& h) noexcept
@@ -539,8 +475,22 @@ struct KaruBatchFree {
     void operator()(karu_batch* batch) const noexcept { karu_batch_free(batch); }
 };
 
+std::expected<std::uint64_t, std::string>
+readable_size(Source& source, TransportSession& transport)
+{
+    if (const karu_locator* locator = source.remote_locator()) {
+        const std::uint64_t window = karu_locator_window_length(locator);
+        // An external header already carries every byte range needed for a
+        // normal remote read. Avoid a separate metadata request unless the
+        // URI itself fixes a smaller addressable window.
+        return window == KARU_TO_END
+            ? std::numeric_limits<std::uint64_t>::max() : window;
+    }
+    return source.size(transport);
+}
+
 std::expected<std::vector<KaruBuffer>, std::string>
-fetch_remote_frames(Plan& plan)
+fetch_remote_frames(Plan& plan, TransportSession& transport)
 {
     std::vector<karu_req> requests;
     requests.reserve(plan.tasks.size());
@@ -553,13 +503,22 @@ fetch_remote_frames(Plan& plan)
             task.compressed_size,
             nullptr,
             &task,
+            nullptr,
         });
     }
     if (requests.empty()) return std::vector<KaruBuffer>{};
 
+    karu_client* client = transport.client();
+    if (!client) {
+        const char* detail = karu_last_error();
+        return errf("transport initialization failed: %s",
+                    detail && *detail ? detail
+                                      : karu_status_string(transport.status()));
+    }
+
     karu_batch* raw_batch = nullptr;
     const karu_status submitted =
-        karu_submit(requests.data(), requests.size(), &raw_batch);
+        karu_client_submit(client, requests.data(), requests.size(), &raw_batch);
     if (submitted != KARU_OK) {
         const char* detail = karu_last_error();
         return errf("transport submit failed: %s",
@@ -572,7 +531,7 @@ fetch_remote_frames(Plan& plan)
     std::size_t completed = 0;
     for (;;) {
         karu_done done{};
-        const karu_status step = karu_next(batch.get(), &done, -1);
+        const karu_status step = karu_batch_next(batch.get(), &done, -1);
         if (step == KARU_END) break;
         if (step != KARU_OK) {
             const char* detail = karu_last_error();
@@ -580,7 +539,7 @@ fetch_remote_frames(Plan& plan)
                         detail && *detail ? detail : karu_status_string(step));
         }
 
-        KaruBuffer buffer(done.buf);
+        KaruBuffer buffer(done.buffer);
         auto* task = static_cast<FrameTask*>(done.tag);
         if (!task) return err("transport returned a completion without a task");
         if (done.status != KARU_OK) {
@@ -590,13 +549,13 @@ fetch_remote_frames(Plan& plan)
                         detail && *detail ? detail
                                           : karu_status_string(done.status));
         }
-        if (done.got != task->compressed_size || !done.buf) {
+        if (done.got != task->compressed_size || !done.buffer) {
             return errf("transport short read at %llu: %llu of %u",
                         static_cast<unsigned long long>(task->offset),
                         static_cast<unsigned long long>(done.got),
                         task->compressed_size);
         }
-        task->compressed = static_cast<const std::byte*>(done.buf);
+        task->compressed = static_cast<const std::byte*>(done.buffer);
         buffers.push_back(std::move(buffer));
         ++completed;
     }
@@ -663,8 +622,10 @@ read_items(std::span<const ReadItem> items,
     const std::size_t n_stride =
         static_cast<std::size_t>(layout.stride[OUT_N]) * bps;
 
+    TransportSession transport;
     Plan plan;
     plan.spec = make_frame_spec(ref);
+    plan.transport = &transport;
     for (const ReadItem& item : items) {
         if (!item.source || !item.header) return err("null source or header");
         plan.spec.frame_bytes =
@@ -684,13 +645,27 @@ read_items(std::span<const ReadItem> items,
             }
             return ok;
         }
-        if (auto ok = check_data_fits(h, *item.source); !ok) {
-            g_read_status = RUMI_ERR_FORMAT;
+        auto available = readable_size(*item.source, transport);
+        if (!available) {
+            g_read_status = RUMI_ERR_IO;
             if (item_name) {
                 return errf("%s %zu: %s", item_name, item.label,
-                            ok.error().c_str());
+                            available.error().c_str());
             }
-            return ok;
+            return std::unexpected(available.error());
+        }
+        const std::uint64_t need = h.data_end();
+        if (need > *available) {
+            g_read_status = RUMI_ERR_FORMAT;
+            if (item_name) {
+                return errf("%s %zu: frame data needs %llu bytes, source has %llu",
+                            item_name, item.label,
+                            static_cast<unsigned long long>(need),
+                            static_cast<unsigned long long>(*available));
+            }
+            return errf("frame data needs %llu bytes, source has %llu",
+                        static_cast<unsigned long long>(need),
+                        static_cast<unsigned long long>(*available));
         }
 
         append_read_plan(
@@ -706,7 +681,7 @@ read_items(std::span<const ReadItem> items,
     // Karu sees the complete remote workload at once, so it can group by
     // object, coalesce ranges, and fill the network independently of decode
     // thread count. The returned buffers stay alive through execution.
-    auto remote_buffers = fetch_remote_frames(plan);
+    auto remote_buffers = fetch_remote_frames(plan, transport);
     if (!remote_buffers) {
         g_read_status = RUMI_ERR_IO;
         return std::unexpected(remote_buffers.error());

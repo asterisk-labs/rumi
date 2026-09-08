@@ -76,6 +76,7 @@ set(RUMI_SOURCES
     src/geokeys.cpp
     src/write.cpp
     src/plan.cpp
+    src/source.cpp
     src/read.cpp
     src/pattern.cpp
     src/time.cpp
