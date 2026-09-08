@@ -94,6 +94,11 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: bindings/python/pyproject.toml
+      - name: Install transport dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev libssl-dev
       - name: Check release metadata
         if: matrix.python == '3.12'
         run: python tools/check_release.py
