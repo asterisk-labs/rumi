@@ -25,17 +25,23 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fuzz:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
       CLANG: /usr/bin/clang-19
       CLANGXX: /usr/bin/clang++-19
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
+          persist-credentials: false
       - name: Install fuzz toolchain
         run: |
           sudo apt-get update
@@ -45,7 +51,7 @@ jobs:
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
       - name: Restore corpora
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: fuzz/corpus
           key: rumi-fuzz-corpus-${{ github.run_id }}
@@ -66,13 +72,13 @@ jobs:
         run: make fuzz-check
       - name: Save corpora
         if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: fuzz/corpus
           key: rumi-fuzz-corpus-${{ github.run_id }}
       - name: Upload findings
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-findings
           path: |

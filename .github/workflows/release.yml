@@ -8,19 +8,25 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   validate:
     name: Validate release metadata
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
+          persist-credentials: false
       - id: version
-        name: Check VERSION, changelog, GeoZL, and tag
+        name: Check VERSION, changelog, dependencies, and tag
         shell: bash
         run: |
           set -euo pipefail
@@ -36,17 +42,19 @@ jobs:
     name: librumi (linux-x86_64)
     needs: validate
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     container: quay.io/pypa/manylinux_2_28_x86_64
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
+          persist-credentials: false
       - name: Init native dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2
         with:
           environment-name: build
           create-args: >-
@@ -57,7 +65,7 @@ jobs:
       - name: Build and stage library
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: librumi-linux-x86_64
           path: staged/
@@ -67,18 +75,20 @@ jobs:
     name: librumi (macos-arm64)
     needs: validate
     runs-on: macos-15
+    timeout-minutes: 45
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
+          persist-credentials: false
       - name: Init native dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2
         with:
           environment-name: build
           create-args: >-
@@ -89,7 +99,7 @@ jobs:
       - name: Build and stage library
         shell: bash -el {0}
         run: make stage-lib STAGE_DIR=staged
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: librumi-macos-arm64
           path: staged/
@@ -99,14 +109,17 @@ jobs:
     name: Wheel (linux-x86_64)
     needs: [validate, build-lib-linux]
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     container: quay.io/pypa/manylinux_2_28_x86_64
     steps:
-      - uses: actions/checkout@v7
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2
         with:
           environment-name: build
           create-args: python=3.12
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: librumi-linux-x86_64
           path: lib-bin/
@@ -138,7 +151,7 @@ jobs:
           python -m pip install -q pytest "geozl>=0.16.0,<0.17"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheel-linux-x86_64
           path: wheelhouse/*.whl
@@ -148,14 +161,17 @@ jobs:
     name: Wheel (macos-arm64)
     needs: [validate, build-lib-macos]
     runs-on: macos-15
+    timeout-minutes: 30
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: librumi-macos-arm64
           path: lib-bin/
@@ -182,7 +198,7 @@ jobs:
           python -m pip install -q pytest "geozl>=0.16.0,<0.17"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheel-macos-arm64
           path: wheelhouse/*.whl
@@ -192,9 +208,12 @@ jobs:
     name: Check release wheels
     needs: [build-wheel-linux, build-wheel-macos]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: wheel-*
           path: wheels/
@@ -242,14 +261,15 @@ jobs:
       - check-wheels
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: librumi-*
           path: artifacts/
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: wheel-*
           path: wheels/
@@ -265,7 +285,7 @@ jobs:
             (cd "$platform_dir" && tar czf "$OLDPWD/release-files/${package}.tar.gz" .)
           done
           ls -l release-files/ wheels/
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
             release-files/*
@@ -279,14 +299,15 @@ jobs:
     needs: [build-wheel-linux, build-wheel-macos, check-wheels]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: wheel-*
           path: dist/
           merge-multiple: true
       - run: ls -l dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

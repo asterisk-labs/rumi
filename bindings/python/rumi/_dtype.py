@@ -1,3 +1,4 @@
+import importlib
 from dataclasses import dataclass
 from types import ModuleType
 
@@ -44,7 +45,7 @@ _ML_SCALARS: dict[tuple[int, int], str] = {
 
 _ml_dtypes: ModuleType | None
 try:
-    import ml_dtypes as _ml_dtypes
+    _ml_dtypes = importlib.import_module("ml_dtypes")
 except ImportError:
     _ml_dtypes = None
 

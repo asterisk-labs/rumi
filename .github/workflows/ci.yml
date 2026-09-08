@@ -10,13 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   core:
     name: Core (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -37,15 +38,16 @@ jobs:
             cc: gcc
             cxx: g++
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
+          persist-credentials: false
       - name: Init OpenZL dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2
         with:
           environment-name: build
           create-args: >-
@@ -72,20 +74,22 @@ jobs:
   python-linux:
     name: Python ${{ matrix.python }} (Linux)
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         python: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
+          persist-credentials: false
       - name: Init OpenZL dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip

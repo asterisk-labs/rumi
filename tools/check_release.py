@@ -35,9 +35,10 @@ def next_minor_constraint(version: str) -> str:
     return f"geozl>={version},<{major}.{int(minor) + 1}"
 
 
-def check(tag: str | None) -> tuple[str, str]:
+def check(tag: str | None) -> tuple[str, str, str]:
     rumi_version = read_version(ROOT / "VERSION", "RUMI VERSION")
     geozl_version = read_version(ROOT / "extern/geozl/VERSION", "GeoZL VERSION")
+    karu_version = read_version(ROOT / "extern/karu/VERSION", "Karu VERSION")
 
     if tag is not None:
         tag_version = tag.removeprefix("refs/tags/").removeprefix("v")
@@ -89,7 +90,11 @@ def check(tag: str | None) -> tuple[str, str]:
         if not (ROOT / notice).is_file():
             fail(f"missing release notice: {notice}")
 
-    return rumi_version, geozl_version
+    notice = (ROOT / "NOTICE").read_text()
+    if f"Karu {karu_version}" not in notice:
+        fail(f"NOTICE does not name the pinned Karu version {karu_version}")
+
+    return rumi_version, geozl_version, karu_version
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,11 +102,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tag", help="release tag or refs/tags/vX.Y.Z")
     args = parser.parse_args(argv)
     try:
-        rumi_version, geozl_version = check(args.tag)
+        rumi_version, geozl_version, karu_version = check(args.tag)
     except (KeyError, OSError, tomllib.TOMLDecodeError, ValueError) as exc:
         print(f"release metadata error: {exc}", file=sys.stderr)
         return 1
-    print(f"release metadata OK: rumi {rumi_version}, geozl {geozl_version}")
+    print(
+        f"release metadata OK: rumi {rumi_version}, "
+        f"geozl {geozl_version}, karu {karu_version}"
+    )
     return 0
 
 

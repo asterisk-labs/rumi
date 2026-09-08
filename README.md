@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml"><img src="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="https://pypi.org/project/rumi-eo/"><img src="https://img.shields.io/pypi/v/rumi-eo.svg?color=2b8a3e" alt="PyPI"/></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-blue" alt="Linux and macOS"/>
   <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-green.svg" alt="GPLv3"/></a>
@@ -79,6 +80,43 @@ batch = rumi.read_many(
     framework="torch",
 )
 ```
+
+## Cloud sources
+
+Rumi reads remote files through its internal Karu transport. Both URI and GDAL
+VSI spellings are accepted:
+
+| Storage | URI | VSI path |
+|---|---|---|
+| Amazon S3 | `s3://bucket/key` | `/vsis3/bucket/key` |
+| Google Cloud Storage | `gs://bucket/key` | `/vsigs/bucket/key` |
+| Azure Blob Storage | `az://container/key` | `/vsiaz/container/key` |
+| Azure Data Lake | `abfs://container/key` | `/vsiadls/container/key` |
+
+Credentials and endpoints use the familiar GDAL/AWS/GCP/Azure environment
+variables. For example:
+
+```python
+import os
+import rumi
+
+os.environ["AWS_PROFILE"] = "training"
+os.environ["AWS_REGION"] = "us-west-2"
+
+chip = rumi.read("s3://imagery/scene.rumi", header, window=(0, 0, 256, 256))
+```
+
+Common entry points are `GOOGLE_APPLICATION_CREDENTIALS` for GCS and
+`AZURE_STORAGE_CONNECTION_STRING` (or the standard Azure identity variables)
+for Azure. Anonymous access must be explicit with `AWS_NO_SIGN_REQUEST=YES`,
+`GS_NO_SIGN_REQUEST=YES`, or `AZURE_NO_SIGN_REQUEST=YES`.
+
+Each `read`, `read_many`, or `info(source=...)` operation snapshots the
+environment into one private transport client. `read_many` shares that client
+across all its sources so ranges can be batched, while no object bytes,
+metadata, errors, or global client state survive the operation. Remote reads
+require the external Rumi header; with it, Rumi does not issue a separate size
+or existence request before fetching frame ranges.
 
 ## Metadata
 
