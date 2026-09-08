@@ -42,10 +42,11 @@ jobs:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
           submodules: true
           persist-credentials: false
-      - name: Install fuzz toolchain
+      - name: Install fuzz toolchain and transport dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-19 libclang-rt-19-dev
+          sudo apt-get install -y --no-install-recommends \
+            clang-19 libclang-rt-19-dev libcurl4-openssl-dev libssl-dev
       - name: Init OpenZL dependencies
         run: |
           git -C extern/geozl submodule update --init extern/openzl
