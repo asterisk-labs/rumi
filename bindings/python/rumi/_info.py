@@ -4,7 +4,7 @@ import numpy as np
 
 from ._dtype import numpy_dtype
 from ._ffi import PathLike, _check, _Source, ffi, lib
-from ._pattern import frame_count, index_axes, layout_name
+from ._pattern import index_axes, layout_name
 from ._time import INSTANT, INTERVAL, _from_seconds
 
 Header = bytes | bytearray | memoryview
@@ -68,7 +68,8 @@ def info(*, source: InfoSource | None = None,
 
     Source metadata includes georeferencing and time. An external header alone
     contains only the fields needed for reading, so its ``time``, ``transform``
-    and ``pixel_is_point`` values are ``None``.
+    and ``pixel_is_point`` values are ``None``. ``shape`` follows ``(B, Y, X)``
+    or ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``.
     """
     result = _native_info(source=source, header=header)
     try:
@@ -98,19 +99,24 @@ def info(*, source: InfoSource | None = None,
         if has_source and crs is not None:
             transform = tuple(float(value) for value in result.transform)
 
+        index_order = index_axes(
+            h.frame_unit, h.samples_per_pixel, h.time_count)
+        frames = int(h.tiles_across) * int(h.tiles_down)
+        if "b" in index_order:
+            frames *= int(h.samples_per_pixel)
+        if "t" in index_order:
+            frames *= int(h.time_count)
+
         return Metadata(
             header=bytes(ffi.buffer(result.blob, result.blob_size)),
             shape=shape,
             time_count=int(h.time_count),
             dtype=numpy_dtype(h.dtype),
-            tile=(int(h.tile_width), int(h.tile_length)),
+            tile=(int(h.tile_length), int(h.tile_width)),
             frame_layout=layout_name(
                 h.frame_unit, h.samples_per_pixel, h.time_count),
-            index_order=index_axes(
-                h.frame_unit, h.samples_per_pixel, h.time_count),
-            frames=frame_count(
-                h.frame_unit, h.image_width, h.image_length, h.tile_width,
-                h.samples_per_pixel, h.time_count)[2],
+            index_order=index_order,
+            frames=frames,
             time=steps,
             time_kind=kind,
             transform=transform,

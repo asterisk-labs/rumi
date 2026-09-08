@@ -121,7 +121,6 @@ class FrameTable:
                  "_extra", "image_width", "image_length", "tile_size", "bands",
                  "time_count", "dtype", "pattern", "frame_unit")
 
-
     def __init__(self, data, *, image_width, image_length, tile_size, bands,
                  dtype, pattern, time_count=1):
         self.pattern = (pattern if not isinstance(pattern, str)
@@ -290,8 +289,8 @@ class FrameTable:
     def attach(self, name, values):
         """Attach values per frame or per grid position.
 
-        Per-position values are repeated for every frame in that cell. Attached columns
-        are not written to the rumi file.
+        Per-position values are repeated for every frame in that cell. Attached
+        columns are not written to the rumi file.
         """
         if not isinstance(name, str) or not name.isidentifier():
             raise ValueError(f"name must be an identifier, got {name!r}")

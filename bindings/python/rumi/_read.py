@@ -54,7 +54,9 @@ class RumiArray:
     """Decoded samples with helpers for NumPy and tensor frameworks.
 
     Most results are exported without a copy through DLPack. Padded sub-byte
-    dtypes use a NumPy array because DLPack consumers cannot import them.
+    dtypes use a NumPy array because DLPack consumers cannot import them. A
+    DLPack-backed instance can be converted once; conversion transfers its
+    storage to the receiving framework.
     """
 
     def __init__(self, tensor, shape, dtype_code, array=None):
@@ -98,19 +100,23 @@ class RumiArray:
         return capsule
 
     def numpy(self):
+        """Return a NumPy array, transferring DLPack-backed storage if present."""
         if self._array is not None:
             return self._array
         return np.from_dlpack(self)
 
     def torch(self):
+        """Transfer the decoded samples to a PyTorch tensor."""
         import torch
         return torch.from_dlpack(self)
 
     def jax(self):
+        """Transfer the decoded samples to a JAX array."""
         import jax.numpy as jnp
         return jnp.from_dlpack(self)
 
     def tensorflow(self):
+        """Transfer the decoded samples to a TensorFlow tensor."""
         from tensorflow.experimental import dlpack as tf_dlpack
         return tf_dlpack.from_dlpack(self.__dlpack__(max_version=(0, 8)))
 
@@ -236,9 +242,9 @@ def _read_one(src: _Source, spec: _Spec, pattern: str | None,
                else h.samples_per_pixel)
     n_times = len(times) if times is not None else h.time_count
     # The file controls which axes exist; selections only change their lengths.
-    # NULL lets the read API choose its own default using the file's complete
-    # time axis. Sub-byte storage needs the shape before reading, so only that
-    # fallback asks the core to compile the same explicit default first.
+    # NULL lets the read API choose its default from the file's complete time
+    # axis. Sub-byte storage needs the shape before reading, so that fallback
+    # asks the core to compile the equivalent explicit default first.
     output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
 
     times_c, n_times_c = _to_c(times)
@@ -369,8 +375,8 @@ def read(source: _ReadSource, header: Header | None = None, *,
     """Read one rumi raster.
 
     ``source`` may be a local path, a remote URI, or the file's bytes. Remote
-    transport is handled inside librumi; remote sources require external
-    headers. Use ``read_many`` to read more than one source.
+    sources require external headers. Use ``read_many`` to read more than one
+    source.
 
     ``header`` is the value returned by ``write``. It can be omitted for local
     paths, where rumi rebuilds it from the file.

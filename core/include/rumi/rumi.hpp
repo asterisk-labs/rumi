@@ -692,8 +692,8 @@ plan_ranges_checked(const Header& h, std::span<const int> times,
                     std::span<const int> bands,
                     int y_off, int y_size, int x_off, int x_size);
 
-// Read a validated window into dst. Band and time indices are 1-based.
-// num_threads <= 0 uses the process-wide count; 1 runs serially.
+// Read a validated window into dst. Band and time indices are 1-based. Work is
+// scheduled on the process-wide pool.
 [[nodiscard]] std::expected<void, std::string>
 read_window(Source& src, const Header& h,
             std::span<const int> times, std::span<const int> bands,

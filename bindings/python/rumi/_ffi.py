@@ -351,7 +351,7 @@ class _Spec:
         buf = ffi.from_buffer("unsigned char[]", header)
         out = ffi.new("rumi_spec**")
         _check(lib.rumi_spec_parse(buf, len(header), out))
-        # Register ownership immediately so later initialization errors do not leak.
+        # Register ownership before another native call can fail.
         self.handle = ffi.gc(out[0], lib.rumi_spec_destroy)
 
         fields = ffi.new("rumi_header*")

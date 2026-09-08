@@ -500,6 +500,7 @@ extern "C" void rumi_metadata_free(rumi_metadata* metadata)
     if (!metadata) return;
     std::free(metadata->blob);
     std::free(metadata->time);
+    // A cleared value is safe to inspect or release again.
     std::memset(metadata, 0, sizeof(*metadata));
 }
 
@@ -543,6 +544,7 @@ rumi_info(rumi_source* source,
             return RUMI_ERR_PARSE;
         }
 
+        // Publish only a complete result so out stays unchanged on failure.
         rumi_metadata result{};
         fill_header(*parsed, &result.fields);
         result.has_source = source ? 1 : 0;

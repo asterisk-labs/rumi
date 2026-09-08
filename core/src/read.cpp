@@ -485,8 +485,7 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                 task.item            = item;
                 // Decode straight into the result whenever the entire frame
                 // maps byte-for-byte onto one contiguous output region. This
-                // includes the common one-chip b-h-w training sample, not just
-                // frames containing a single plane.
+                // includes a one-chip b-h-w training sample.
                 bool direct = full_tile && one_sample_stride &&
                     line_space == static_cast<std::int64_t>(ex_w)
                                 * static_cast<std::int64_t>(bps) &&

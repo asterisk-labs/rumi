@@ -607,6 +607,18 @@ def test_an_unaligned_tile_size_is_accepted(tmp_path):
     assert rumi.info(source=path).tile == (20, 20)
 
 
+def test_rectangular_tile_metadata_uses_height_width_order(tmp_path):
+    tiles = [b"x" * 8] * 6
+    entries = spec_entries(40, 30, 20, 1, tiles)
+    entries[323] = (SHORT, [10])
+    path = tmp_path / "rectangular.rumi"
+    path.write_bytes(build_tiff(entries, tiles, bands=1))
+
+    metadata = rumi.info(source=path)
+    assert metadata.tile == (10, 20)
+    assert metadata.frames == 6
+
+
 def test_an_overflowing_tile_frame_count_is_rejected(tmp_path):
     entries = spec_entries(0xFFFFFFFF, 0xFFFFFFFF, 16, 256, [])
     _rejects(tmp_path, entries, [], "overflows", bands=256)

@@ -412,10 +412,6 @@ try {
 
     const std::uint64_t grid_positions =
         static_cast<std::uint64_t>(tiles_across) * tiles_down;
-    if (grid_positions > std::numeric_limits<std::uint64_t>::max() / spp) {
-        return err("frame count overflows uint64");
-    }
-    const std::uint64_t tile_frames = grid_positions * spp;
 
     // FrameUnit and both frame-table counts must describe the same layout.
     auto time_e = scalar(TAG_TIME_COUNT, 1);
@@ -446,7 +442,6 @@ try {
                         static_cast<std::uint32_t>(time_count), &want_frames)) {
         return err("the frame count for this grid overflows uint64");
     }
-    (void)tile_frames;
     if (offs_entry->count != want_frames) {
         return err("TileOffsets has %llu entries, but frame_unit %u wants %llu",
                    static_cast<unsigned long long>(offs_entry->count),

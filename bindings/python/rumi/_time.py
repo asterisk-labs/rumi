@@ -24,7 +24,7 @@ def _to_seconds(value):
         if whole.astype(value.dtype) != value:
             raise ValueError(
                 f"{value} carries a fraction of a second; rumi records whole "
-                f"seconds, so round it yourself rather than have it dropped")
+                f"seconds; round the value before writing")
         value = whole.astype(dt.datetime)
 
     if isinstance(value, dt.datetime):
@@ -34,8 +34,7 @@ def _to_seconds(value):
         if value.microsecond:
             raise ValueError(
                 f"{value.isoformat()} carries a fraction of a second; rumi "
-                f"records whole seconds, so round it yourself rather than "
-                f"have it dropped")
+                f"records whole seconds; round the value before writing")
         return int(value.replace(tzinfo=dt.UTC).timestamp())
     if isinstance(value, dt.date):
         return (value - EPOCH).days * DAY

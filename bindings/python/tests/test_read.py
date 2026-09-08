@@ -12,6 +12,10 @@ geozl = pytest.importorskip("geozl")
 GRAPH = "planar>zigzag>zstd"
 
 
+def test_rumi_array_is_public():
+    assert rumi.RumiArray.__module__ == "rumi._read"
+
+
 def test_public_read_signature_has_one_set_of_selectors():
     assert tuple(inspect.signature(rumi.read).parameters) == (
         "source", "header", "framework", "pattern", "time", "bands", "window"
