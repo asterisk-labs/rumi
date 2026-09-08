@@ -119,7 +119,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
                          TransportSession* transport,
                          std::string& msg) noexcept
 {
-    char item[24] = "";
+    char item[32] = "";
     if (t.item) std::snprintf(item, sizeof item, " (item %zu)", t.item);
 
     WorkerState& ws = worker_state();

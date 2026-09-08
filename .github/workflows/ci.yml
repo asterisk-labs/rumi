@@ -61,6 +61,8 @@ jobs:
         run: >-
           cmake -S core -B core/build-ci -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCURL_ROOT="$CONDA_PREFIX"
+          -DOPENSSL_ROOT_DIR="$CONDA_PREFIX"
           -DRUMI_BUILD_TESTS=ON
           -DRUMI_WERROR=${{ matrix.werror }}
           -DRUMI_SANITIZE=${{ matrix.sanitize }}

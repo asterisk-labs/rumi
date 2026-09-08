@@ -64,7 +64,10 @@ jobs:
             make
       - name: Build and stage library
         shell: bash -el {0}
-        run: make stage-lib STAGE_DIR=staged
+        run: >-
+          make stage-lib STAGE_DIR=staged
+          CMAKE_FLAGS="-DCURL_ROOT=$CONDA_PREFIX
+          -DOPENSSL_ROOT_DIR=$CONDA_PREFIX"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: librumi-linux-x86_64
@@ -98,7 +101,10 @@ jobs:
             make
       - name: Build and stage library
         shell: bash -el {0}
-        run: make stage-lib STAGE_DIR=staged
+        run: >-
+          make stage-lib STAGE_DIR=staged
+          CMAKE_FLAGS="-DCURL_ROOT=$CONDA_PREFIX
+          -DOPENSSL_ROOT_DIR=$CONDA_PREFIX"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: librumi-macos-arm64
