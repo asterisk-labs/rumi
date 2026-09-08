@@ -4,44 +4,37 @@
 
 <p align="center">
   <a href="https://pypi.org/project/rumi-eo/"><img src="https://img.shields.io/pypi/v/rumi-eo.svg?color=2b8a3e" alt="PyPI"/></a>
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-blue" alt="Platform"/>
-  <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-green.svg" alt="License: GPLv3"/></a>
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-blue" alt="Linux and macOS"/>
+  <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-green.svg" alt="GPLv3"/></a>
 </p>
 
 <p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
-rumi is a GeoTIFF-inspired raster format for machine-learning datasets. It stores an image `(B, Y, X)` or a time series `(T, B, Y, X)` in one file, and reads complete rasters or small windows directly into NumPy, PyTorch, JAX, and TensorFlow.
+Rumi is an experimental raster format for machine-learning datasets. It stores
+images as `(B, Y, X)` and time series as `(T, B, Y, X)`. Each frame can use a
+different OpenZL compression graph, letting one file adapt compression to its
+bands, times, or regions.
 
-rumi stores each image as independently compressed [OpenZL](https://github.com/facebook/openzl) frames. A read decodes only the frames it needs.
-
-rumi files use the `.rumi` extension. The exact binary layout is defined in the [format specification](SPEC.md).
-
-<p align="center">
-  <img src="img/rumi-index.svg" alt="rumi index" width="720"/>
-</p>
-<p align="center"><sub>rumi has one canonical structure. That simplicity makes it easier to optimize.</sub></p>
+> [!WARNING]
+> Rumi is not stable yet. The format and APIs may change before 1.0. It currently
+> supports Linux and macOS only; Windows support depends on GeoZL supporting
+> Windows.
 
 ## Install
-
-To read rumi files:
 
 ```bash
 pip install rumi-eo
 ```
 
-To write them as well, install the OpenZL writer dependency:
+Writing also needs GeoZL:
 
 ```bash
 pip install "rumi-eo[write]"
 ```
 
-Requires Python 3.11+. Wheels are available for Linux x86-64 and macOS arm64.
+Python 3.11 or newer is required.
 
-## Write and read an image
-
-Writing has three steps: split the array into frames, compress each frame with `geozl`, and write the file.
-
-The split is written as a pattern. It names the axes of your array, cuts the spatial ones into a grid, and says what one frame holds.
+## Quick start
 
 ```python
 import geozl
@@ -52,252 +45,62 @@ image = np.random.default_rng(0).integers(
     0, 4096, size=(4, 1024, 1024), dtype=np.uint16
 )
 
-# 1. Split the image into frames.
-frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
-
-# 2. Compress every frame.
-for frame in frames:
-    graph = geozl.graph(frame.data, "planar>zigzag>zstd")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
-
-# 3. Write the file. Keep the returned header for fast later reads.
-path, header = rumi.write("scene.rumi", frames)
-
-# Read the complete image as NumPy.
-result = rumi.read(path, header)
-
-# Read bands 0 and 3 from a 512 x 512 window.
-chip = rumi.read(path, header, bands=[0, 3], window=(0, 0, 512, 512))
-```
-
-Selections are zero-based. A window is `(row, column, height, width)`.
-
-## Frame layouts
-
-The trailing group of the pattern is the frame, and its axis order decides what `geozl` can model and what a read can reach without touching the rest.
-
-```python
-"b (row h) (col w) -> row col (b h w)"   # every band, band planar
-"b (row h) (col w) -> row col (h w b)"   # every band, the pixel's spectrum contiguous
-"b (row h) (col w) -> row col b (h w)"   # one band per frame
-```
-
-Sampling policy stays in the dataset. Build the windows, bands and time steps
-your training task needs, then pass them to `read` or `read_many`.
-
-Only `b` and `t` are reserved, so the names a split introduces are yours. The left side names your array, so an input in `(rows, columns, bands)` order needs no transpose first:
-
-```python
-frames = rumi.frames(image, "(row h) (col w) b -> row col (b h w)", tile_size=512)
-```
-
-Unlike einops, the split does not require the image to divide evenly. Edge frames are simply smaller.
-
-## Time series
-
-A `t` axis makes the file a cube. Nothing else about the API changes: the pattern names one more axis, and where you place it decides what the compressor may model.
-
-```python
-cube = np.random.default_rng(0).integers(
-    0, 4096, size=(6, 4, 512, 512), dtype=np.uint16
+frames = rumi.frames(
+    image,
+    "b (row h) (col w) -> row col (b h w)",
+    tile_size=512,
 )
 
-# One frame per tile holding every band and step, time varying between planes.
-frames = rumi.frames(cube, "t b (row h) (col w) -> row col (b t h w)", tile_size=256)
 for frame in frames:
     graph = geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = geozl.compress(frame.data, graph=graph)
 
-path, header = rumi.write("series.rumi", frames, time=[
-    "2024-05-01", "2024-06-01", "2024-07-01",
-    "2024-08-01", "2024-09-01", "2024-10-01",
-])
+path, header = rumi.write("scene.rumi", frames)
 
-series = rumi.read(path, header)              # (6, 4, 512, 512)
-summer = rumi.read(path, header, time=[2, 3], bands=[0])
-metadata = rumi.info(source=path)
-when = metadata.time                         # [date(2024, 5, 1), ...]
-where = metadata.crs, metadata.transform     # (None, None): no CRS was written
+result = rumi.read(path, header)
+chip = rumi.read(
+    path,
+    header,
+    bands=[0, 3],
+    window=(0, 0, 512, 512),
+)
 ```
 
-## Georeferencing
+Selections are zero-based. A window is
+`(row, column, height, width)`.
 
-Pass an affine transform and an EPSG code together, or neither.
+Use `read_many` when each source needs its own window:
 
 ```python
-transform = (10.0, 0.0, 300000.0, 0.0, -10.0, 8100000.0)
-path, header = rumi.write("utm.rumi", frames, transform=transform, crs=32718)
+batch = rumi.read_many(
+    paths,
+    headers,
+    windows=[(row, column, 256, 256) for row, column in positions],
+    framework="torch",
+)
 ```
 
-The transform is `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`. `crs` takes an `int`, an `"EPSG:32718"` string, or any object with a `to_epsg()`. Pass `pixel_is_point=True` to anchor a pixel at its centre rather than its top-left corner.
+## Metadata
 
-## Metadata and external headers
-
-`info` is the single metadata entry point. A source provides all metadata,
-including time and georeferencing:
+`info` is the only metadata entry point:
 
 ```python
 metadata = rumi.info(source="scene.rumi")
-header = metadata.header
-```
-
-An external header alone provides the structural fields needed for a read, but
-not time or georeferencing because those remain in the source:
-
-```python
 metadata = rumi.info(header=header)
-```
-
-Passing both validates that the header is the exact canonical header rebuilt
-from that source. This checks synchronization without adding an identity field
-to the format:
-
-```python
 metadata = rumi.info(source="scene.rumi", header=header)
 ```
 
-It validates the index, not payload identity: two sources with the same shape,
-layout and compressed frame sizes intentionally have the same external header.
+Passing both validates that the external header matches the canonical index
+reconstructed from the source. The check validates the index, not payload
+identity.
 
-The header is a small binary index. Store it next to the file path in Parquet
-or another catalog and pass both values to `rumi.read`. If you omit it, rumi
-can rebuild it from a local file:
-
-```python
-result = rumi.read("scene.rumi")
-```
-
-The file names its own frame layout, so a rebuilt header reads the same samples as the one `write` returned. Keeping the header only saves the parse.
-
-## PyTorch
-
-Return a tensor by selecting the framework:
-
-```python
-tensor = rumi.read(path, header, framework="torch")
-```
-
-### Reading many windows
-
-`read_many` pairs each source with its own window and returns the items along
-the `n` axis. One call builds a native plan for the whole set.
-
-```python
-batch = rumi.read_many(paths, headers,
-                       windows=[(y, x, 256, 256) for y, x in positions],
-                       framework="torch")          # (n, b, 256, 256)
-```
-
-`read` always reads exactly one source. To apply the same window to several
-sources, repeat it once per item:
-
-```python
-batch = rumi.read_many(paths, headers, windows=[window] * len(paths))
-```
-
-PyTorch's [`DataLoader`](https://docs.pytorch.org/docs/stable/data.html) uses
-the optional batched `Dataset.__getitems__` hook when the dataset defines it:
-
-```python
-class Chips(torch.utils.data.Dataset):
-    def __init__(self, samples, size=256, threads=8):
-        rumi.set_num_threads(threads)     # before the first read: it pins there
-        self.samples, self.size = samples, size
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, i):
-        return self.__getitems__([i])[0]
-
-    def __getitems__(self, idx):
-        picked = [self.samples[i] for i in idx]
-        return rumi.read_many(
-            [s.path for s in picked],
-            [s.header for s in picked],
-            windows=[(s.y, s.x, self.size, self.size) for s in picked],
-            framework="torch",
-        )
-
-loader = torch.utils.data.DataLoader(
-    Chips(samples), batch_size=64, num_workers=0,
-    collate_fn=lambda batch: batch, pin_memory=True,
-)
-```
-
-The identity `collate_fn` keeps the tensor `read_many` produced instead of
-stacking it again. Set `batch_size`; `batch_size=None` reads samples through
-`__getitem__` one at a time.
-
-`read_many` submits the frames from every item to the same pool. Set the
-thread count before the first parallel read with `set_num_threads`,
-`RUMI_NUM_THREADS`, or `RUMI_NUM_THREADS=ALL_CPUS`. When using several
-`DataLoader` worker processes, keep rumi at one thread per worker to avoid
-oversubscribing the CPU.
-
-### Full-image reads
-
-For an interactive full-image read, a wider pool can decode several frames at
-once:
-
-```python
-rumi.set_num_threads(8)
-image = rumi.read(path, header)
-```
-
-## Remote data
-
-Remote transport uses the same API as local files. Keep the external header in
-the dataset manifest and pass the object URI directly:
-
-```python
-chip = rumi.read(
-    "s3://bucket/scene.rumi", header,
-    bands=[0, 1, 2], window=(row, column, 256, 256),
-)
-```
-
-Karu handles local files, HTTP and object storage inside the native library.
-Rumi chooses the frames and decodes them; Karu fetches the byte ranges, combines
-nearby requests and manages connections and retries. The Python, R and Julia
-bindings only need Rumi's C API.
-
-At the C level, `rumi_source_file` accepts either a path or a URI. Karu is
-compiled into `librumi`; none of its headers or symbols are installed.
-
-## Current limits
-
-- rumi is beta software. Version 0.17 is its current compatibility baseline.
-- A CRS must be an EPSG code, or be omitted.
-- Remote reads require an external header; automatic indexing currently applies
-  only to local files.
-- Object-store URIs currently cover public objects. Use a signed HTTPS URL when
-  credentials are required; `hf://` also accepts `HF_TOKEN`.
-
-> [!NOTE]
-> Create files with rumi's writer, available as `rumi.write` in Python and
-> `rumi_write` in C. Independent readers are supported; independent writers are
-> not. See the [compatibility policy](COMPATIBILITY.md) for details.
-
-## Learn more
+## Documentation
 
 - [Format specification](SPEC.md)
-- [Changelog](CHANGELOG.md)
 - [Compatibility policy](COMPATIBILITY.md)
-- [Design notes](WHATWELEARN.md)
+- [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md)
-- [Ten-minute notebook](examples/rumi-demo.ipynb)
-- [Issue tracker](https://github.com/asterisk-labs/rumi/issues)
 
 ## License
 
 GPL-3.0
-
-<div align="center">
-  <br>
-  Made with &#9829; by
-  <br><br>
-  <a href="https://asterisk.coop">
-    <img src="img/asterisk_banner.svg" alt="Asterisk Labs" width="400"/>
-  </a>
-</div>

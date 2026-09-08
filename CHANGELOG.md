@@ -4,10 +4,73 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `rumi.info(source=..., header=...)` is the single metadata operation. It can
+  inspect either input and validates their synchronization when both are
+  supplied. `Metadata` combines the external header, shape, dtype, tile and
+  frame layout with time and georeferencing when a source is available.
+- `rumi_info` exposes the same operation for C, R and Julia over any
+  `rumi_source`, including Karu-backed paths and URIs and borrowed memory.
+
+- `rumi.read_many` reads one fixed-size window per source:
+  `windows[i]` is the `(row, column, height, width)` taken from `sources[i]`.
+  Every window must be the same size, and items come back along the `n` axis
+  in the order given, including a one-item call. Sources must agree on tile
+  size, band count, dtype, time step count, and which of band and time a frame
+  holds; image dimensions may differ.
+
+- `rumi_read_many` and `rumi_read_many_dlpack` expose the same operation through
+  an array of `rumi_read_item` structs. The struct keeps each source, header and
+  window origin together, making the ABI straightforward to bind from R and
+  Julia.
+
+- Local paths and remote object URIs now share `rumi_source_file`. Karu handles
+  byte-range transport inside `librumi`; its headers and symbols are not
+  installed.
+
+### Performance
+
+- Full frames whose decoded byte order exactly matches the requested output now
+  decode directly into the result. This removes the scratch-buffer copy for the
+  common one-chip `b h w` training layout. Batched plan vectors also grow
+  geometrically and reserve their plane offsets up front.
+
+### Changed
+
+- Buffer and DLPack forms of single and multi-item reads now share one C++
+  preparation path for selections, default layouts, and output sizing. Python
+  DLPack reads consume the shape produced by the core instead of compiling the
+  layout a second time.
+- The C header now states the concurrent-read and borrowed-buffer contract, and
+  a C11 compile check protects the surface intended for future R and Julia
+  bindings.
+
+### Removed
+
+- `rumi.chunks`; applications own their sampling policy and pass selections to
+  `read` or `read_many`.
+- `RumiHeader`, `Geo`, `Time`, `read_geo`, and `read_time`. Their overlapping
+  metadata responsibilities are replaced by `Metadata` and `info`.
+- `rumi_index_file`, `rumi_read_geo`, and `rumi_read_time`; `rumi_info` replaces
+  all three without restricting metadata inspection to local paths.
+
+- The Python read API no longer accepts `n`, `t`, `b`, `y`, or `x`. Use
+  `time`, `bands`, and `window` for one source, and order the sources passed to
+  `read_many` for the `n` axis.
+- `rumi.read` no longer accepts a sequence of sources. `rumi.read_many` is the
+  only multi-source Python operation; repeat a window to apply it to several
+  sources.
+- `rumi_read_stack`, `rumi_read_stack_dlpack`, and the C++ `read_stack` entry
+  point were removed. The unstable C API remains at version 1 until Rumi 1.0.
+
 ### Fixed
 
 - Invalid read selections now return `RUMI_ERR_INVALID` instead of reporting
   an I/O failure.
+- Remote range limits count only axes stored as separate frames, so a valid
+  cell-frame plan is not rejected for ranges it would never allocate.
+- Read-plan dimensions and vector growth use checked, portable arithmetic.
 
 ## [0.19.0] - 2026-09-01
 
