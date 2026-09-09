@@ -4,6 +4,13 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-09-09
+
+### Fixed
+
+- Linux wheels now discover the host system's CA bundle instead of retaining
+  the certificate path from the build container.
+
 ## [0.20.0] - 2026-09-09
 
 ### Added
@@ -284,7 +291,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/asterisk-labs/rumi/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/asterisk-labs/rumi/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/asterisk-labs/rumi/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/asterisk-labs/rumi/compare/v0.17.0...v0.18.0
