@@ -45,6 +45,8 @@ jobs:
     timeout-minutes: 45
     container: quay.io/pypa/manylinux_2_28_x86_64
     steps:
+      - name: Install SSH client
+        run: dnf install -y openssh-clients
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.KARU_DEPLOY_KEY }}
