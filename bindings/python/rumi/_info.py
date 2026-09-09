@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import numpy as np
 
@@ -42,11 +42,9 @@ class Metadata:
 
     def _attrs(self):
         """Every attribute and its value, in the order the reprs show them."""
-        names = ("shape", "dtype", "tile", "frame_layout", "index_order",
-                 "frames", "time_count", "time", "time_kind", "transform",
-                 "crs", "pixel_is_point")
-        rows = [(name, _shown(getattr(self, name))) for name in names]
-        return [*rows, ("header", _human(len(self.header)))]
+        rows = [(field.name, _shown(getattr(self, field.name)))
+                for field in fields(self)]
+        return sorted(rows, key=lambda row: row[0] == "header")
 
     def _states(self):
         """A face with no compression state; the grid is only a drawing."""
@@ -68,6 +66,8 @@ def _shown(value) -> str:
     """One attribute value on one line, never the whole time axis."""
     if value is None:
         return "\u2014"
+    if isinstance(value, bytes):
+        return _human(len(value))
     if isinstance(value, type):
         return np.dtype(value).name
     if isinstance(value, list):
@@ -118,7 +118,9 @@ def info(*, source: InfoSource | None = None,
     and ``pixel_is_point`` values are ``None``. ``shape`` follows ``(B, Y, X)``
     or ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. When ``source``
     is given, ``Metadata.header`` contains its canonical external header.
-    Printing the result lists every attribute.
+    ``index_order`` contains the band and time axes walked by the frame index,
+    outermost first. Its text and notebook representations list every
+    attribute.
     """
     result = _native_info(source=source, header=header)
     try:

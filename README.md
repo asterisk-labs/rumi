@@ -141,8 +141,8 @@ metadata = rumi.info(header=header)
 metadata = rumi.info(source="scene.rumi", header=header)
 ```
 
-Printing the result lists every attribute it carries, as a table with the
-raster's shape in a notebook and as aligned text elsewhere.
+`Metadata` displays every attribute it carries. Notebooks show a table and tile
+grid; `repr()` and `print()` use aligned text.
 
 `info(source=...).header` rebuilds the external header for an existing file.
 Passing both validates that the external header matches the canonical index

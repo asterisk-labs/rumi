@@ -50,6 +50,10 @@ def test_the_file_records_the_layout_it_was_given(name, tmp_path):
     h = rumi.info(header=header)
     assert tf.frame_unit == unit
     assert h.frame_layout == layout
+    assert h.index_order == {
+        "tile_bt": ("b", "t"),
+        "tile_tb": ("t", "b"),
+    }.get(name, ())
     assert h.shape == (T, B, Y, X)
     assert h.time_count == T
 

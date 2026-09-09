@@ -1,4 +1,5 @@
 import datetime as dt
+from dataclasses import fields
 
 import numpy as np
 import pytest
@@ -31,6 +32,7 @@ def test_source_returns_complete_metadata(tmp_path):
     assert metadata.dtype is np.uint16
     assert metadata.tile == (16, 16)
     assert metadata.frame_layout == "b h w"
+    assert metadata.index_order == ()
     assert metadata.time == [dt.date(2024, 8, 25)]
     assert metadata.time_kind == "instant"
     assert metadata.transform == TRANSFORM
@@ -72,9 +74,13 @@ def test_info_requires_an_input():
 
 def test_metadata_repr_does_not_dump_the_binary_header(tmp_path):
     _path, header = stored(tmp_path)
-    text = repr(rumi.info(header=header))
+    metadata = rumi.info(header=header)
+    text = repr(metadata)
     assert text.startswith("<rumi.Metadata (2, 32, 32)>")
     assert "dtype          : uint16" in text
+    pad = max(len(field.name) for field in fields(metadata))
+    for field in fields(metadata):
+        assert f"\n  {field.name.ljust(pad)} :" in text
     assert repr(header) not in text
 
 
@@ -83,7 +89,8 @@ def test_metadata_html_lists_every_attribute(tmp_path):
     metadata = rumi.info(source=path)
     body = metadata._repr_html_()
 
-    for name in ("shape", "dtype", "tile", "frame_layout", "index_order",
-                 "frames", "time", "transform", "crs", "pixel_is_point"):
-        assert f">{name}</td>" in body
+    for field in fields(metadata):
+        assert f">{field.name}</td>" in body
     assert "<svg" in body
+    assert "compressed" not in body
+    assert repr(metadata.header) not in body

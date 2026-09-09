@@ -134,11 +134,13 @@ def _face(f, states):
         for cy in range(ny) for cx in range(nx))
 
 
-def _frame_cube(f, states):
+def _frame_cube(f, states, *, show_progress=True):
+    progress = (f', {f["done"]} of {f["n"]} compressed'
+                if show_progress else "")
     return (
         '<svg width="100%" viewBox="0 0 215 205" role="img" '
         f'aria-label="rumi tile grid, {f["across"]} by {f["down"]}, '
-        f'{f["done"]} of {f["n"]} compressed">'
+        f'shape {shape_of(f)}{progress}">'
         f'<polygon points="55,72 88,39 178,39 145,72" fill="{_TOP}" '
         f'stroke="{_LINE}" stroke-width="1.3"/>'
         f'<polygon points="145,72 178,39 178,152 145,185" fill="{_SIDE}" '
@@ -202,5 +204,6 @@ def meta_html(f, attrs, states, fallback):
             f'<table>{table}</table></div>')
     return (f'<div class="rumi-md"><style>{_META_CSS}</style>'
             f'<pre class="fallback">{e(fallback)}</pre>'
-            f'<div class="box">{meta}<div class="g">{_frame_cube(f, states)}'
+            f'<div class="box">{meta}<div class="g">'
+            f'{_frame_cube(f, states, show_progress=False)}'
             f'</div></div></div>')

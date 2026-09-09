@@ -6,8 +6,8 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
-- `Metadata` prints every attribute it carries, with an HTML table and a tile
-  grid in notebooks.
+- `Metadata` displays every attribute it carries. Notebooks show an HTML table
+  and tile grid; its text representation is aligned.
 
 ## [0.21.0] - 2026-09-09
 
