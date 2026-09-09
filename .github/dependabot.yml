@@ -1,0 +1,56 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Lima
+    groups:
+      actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: ci
+
+  # extern/geozl and extern/karu are first-party and pinned by commit. Without
+  # this, a pin drifts silently until someone reads the gitlink by hand.
+  # Dependabot needs read access to the private karu repository to raise the
+  # second one.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Lima
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: pip
+    directory: /bindings/python
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: monthly
+    groups:
+      docs:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: docs
