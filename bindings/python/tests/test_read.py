@@ -17,12 +17,16 @@ def test_rumi_array_is_public():
 
 
 def test_public_read_signature_has_one_set_of_selectors():
-    assert tuple(inspect.signature(rumi.read).parameters) == (
+    read_parameters = inspect.signature(rumi.read).parameters
+    many_parameters = inspect.signature(rumi.read_many).parameters
+    assert tuple(read_parameters) == (
         "source", "header", "framework", "pattern", "time", "bands", "window"
     )
-    assert tuple(inspect.signature(rumi.read_many).parameters) == (
+    assert tuple(many_parameters) == (
         "sources", "headers", "windows", "framework", "pattern", "time", "bands"
     )
+    assert read_parameters["header"].default is inspect.Parameter.empty
+    assert many_parameters["headers"].default is inspect.Parameter.empty
 
 PATTERNS = {"tile": "b (row h) (col w) -> row col b (h w)",
             "cell": "b (row h) (col w) -> row col (b h w)",
@@ -104,11 +108,10 @@ def test_memoryview_and_bytearray(image):
         assert np.array_equal(rumi.read(form, header), data)
 
 
-def test_bytes_need_the_header(image):
-    path, header, _data = image
-    blob = open(path, "rb").read()
-    with pytest.raises(ValueError, match="header"):
-        rumi.read(blob)
+def test_read_requires_the_header(image):
+    path, _header, _data = image
+    with pytest.raises(TypeError, match="'header'"):
+        rumi.read(path)
 
 
 def test_read_many_mixes_paths_and_bytes(image):
@@ -289,19 +292,20 @@ def test_a_file_names_its_own_layout(tmp_path, unit):
     rng = np.random.default_rng(5)
     data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
     path, header = _write(tmp_path, unit, data, unit, tile=32)
+    rebuilt = rumi.info(source=path)
     assert np.array_equal(rumi.read(path, header), data)
-    assert np.array_equal(rumi.read(path), data)
-    assert (rumi.info(source=path).frame_layout
-            == rumi.info(header=header).frame_layout)
+    assert np.array_equal(rumi.read(path, rebuilt.header), data)
+    assert rebuilt.header == header
+    assert rebuilt.frame_layout == rumi.info(header=header).frame_layout
 
 
-def test_read_many_needs_no_headers(tmp_path):
-    """A batch may rebuild headers for files with different frame layouts."""
+def test_read_many_accepts_headers_rebuilt_from_each_file(tmp_path):
     rng = np.random.default_rng(6)
     data = rng.integers(0, 3000, (4, 70, 90)).astype(np.uint16)
     paths = [_write(tmp_path, u, data, u, tile=32)[0] for u in ("cell", "chunky")]
+    headers = [rumi.info(source=path).header for path in paths]
     got = np.asarray(rumi.read_many(
-        paths, windows=[(0, 0, 70, 90)] * len(paths)))
+        paths, headers, windows=[(0, 0, 70, 90)] * len(paths)))
     assert np.array_equal(got[0], data) and np.array_equal(got[1], data)
 
 

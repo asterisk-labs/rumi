@@ -5,9 +5,9 @@ canonical files written by 0.18.0 and later. Earlier versions are not
 supported. The format may still change before 1.0; any compatibility break
 will be recorded in the changelog.
 
-A Rumi file names its own frame layout, so any supported file can be read from
-the source alone. The header returned by the writer avoids reparsing; it is not
-needed to interpret the samples.
+A Rumi file contains everything needed to rebuild its external header. Use
+`rumi.info(source=...).header` in Python, or `rumi_info` in C, when the header
+returned by the writer is unavailable.
 
 ## Writers and readers
 

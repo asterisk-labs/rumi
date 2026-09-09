@@ -39,6 +39,8 @@ Notable user-visible changes are recorded here.
 
 ### Changed
 
+- `rumi.read` and `rumi.read_many` now require a header for every source. Use
+  `rumi.info(source=...).header` to rebuild one from an existing file.
 - Updated the internal Karu transport to 0.2.0 and its explicit API v2. Each
   Rumi operation owns one client shared by all of its sources; sources retain
   only immutable locators, and no object data or metadata is cached.

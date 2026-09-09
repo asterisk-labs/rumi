@@ -54,5 +54,5 @@ def test_the_quick_start_writes_a_file_that_reads_back(tmp_path, monkeypatch):
     assert np.array_equal(env["result"], env["image"])
     assert np.asarray(env["chip"]).shape == (2, 512, 512)
 
-    # The file names its own frame layout, so no header is needed to read it.
-    assert np.array_equal(rumi.read(str(scene)), env["image"])
+    rebuilt = rumi.info(source=scene).header
+    assert np.array_equal(rumi.read(str(scene), rebuilt), env["image"])

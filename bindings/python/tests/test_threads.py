@@ -40,7 +40,7 @@ def run(image, body, **env):
         import os, sys, time, warnings
         import rumi
         PATH = {image!r}
-        HDR = rumi._read._header_of(PATH)
+        HDR = rumi.info(source=PATH).header
     """) + textwrap.dedent(body)
     # A deadlock would hang forever, so the snippets bound their own waits and
     # this timeout is only the backstop.

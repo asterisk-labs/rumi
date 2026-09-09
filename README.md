@@ -83,8 +83,7 @@ batch = rumi.read_many(
 
 ## Cloud sources
 
-Rumi accepts remote URIs and GDAL VSI paths. Pass the header returned by
-`write` when reading a remote source.
+Rumi accepts remote URIs and GDAL VSI paths:
 
 | Storage | URI | VSI path |
 |---|---|---|
@@ -134,6 +133,7 @@ metadata = rumi.info(header=header)
 metadata = rumi.info(source="scene.rumi", header=header)
 ```
 
+`info(source=...).header` rebuilds the external header for an existing file.
 Passing both validates that the external header matches the canonical index
 reconstructed from the source. The check validates the index, not payload
 identity.

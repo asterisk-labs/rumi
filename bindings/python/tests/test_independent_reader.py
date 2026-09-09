@@ -250,4 +250,4 @@ def test_the_reader_follows_the_offsets_the_file_carries(tmp_path):
                           before[0, 0, :TILE, :TILE])
 
     with pytest.raises((ValueError, IOError)):
-        rumi.read(moved)
+        rumi.info(source=moved)

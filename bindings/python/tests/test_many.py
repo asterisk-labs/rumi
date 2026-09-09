@@ -170,7 +170,7 @@ class TestSources:
             got = rumi.read_many(urls, headers, windows=windows)
             monkeypatch.setenv("GDAL_HTTP_HEADERS", "X-Rumi-Operation: single")
             one = rumi.read(urls[0], headers[0], window=windows[0])
-            with pytest.raises(ValueError, match="external header"):
+            with pytest.raises(TypeError, match="'headers'"):
                 rumi.read_many(urls, windows=windows)
         finally:
             server.shutdown()
@@ -195,12 +195,14 @@ class TestSources:
         assert np.array_equal(batch[0], small_data[:, 0:32, 0:32])
         assert np.array_equal(batch[1], wide_data[:, 0:32, 128:160])
 
-    def test_headers_may_be_omitted_for_paths(self, square):
+    def test_info_rebuilds_the_headers_for_existing_paths(self, square):
         paths = [p for p, _h, _d in square]
         headers = [h for _p, h, _d in square]
+        rebuilt = [rumi.info(source=path).header for path in paths]
         windows = [(0, 0, 32, 32)] * 4
+        assert rebuilt == headers
         assert np.array_equal(
-            rumi.read_many(paths, windows=windows),
+            rumi.read_many(paths, rebuilt, windows=windows),
             rumi.read_many(paths, headers, windows=windows),
         )
 

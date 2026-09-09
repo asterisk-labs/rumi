@@ -53,15 +53,6 @@ def _native_info(source=None, header: Header | None = None):
     return result
 
 
-def _info_blob(source) -> bytes:
-    """Build an external header through the same native metadata path."""
-    result = _native_info(source=source)
-    try:
-        return bytes(ffi.buffer(result.blob, result.blob_size))
-    finally:
-        lib.rumi_metadata_free(result)
-
-
 def info(*, source: InfoSource | None = None,
          header: Header | None = None) -> Metadata:
     """Inspect a source or header, validating their match when both are given.
@@ -69,7 +60,8 @@ def info(*, source: InfoSource | None = None,
     Source metadata includes georeferencing and time. An external header alone
     contains only the fields needed for reading, so its ``time``, ``transform``
     and ``pixel_is_point`` values are ``None``. ``shape`` follows ``(B, Y, X)``
-    or ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``.
+    or ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. When ``source``
+    is given, ``Metadata.header`` contains its canonical external header.
     """
     result = _native_info(source=source, header=header)
     try:

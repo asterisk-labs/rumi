@@ -8,7 +8,6 @@ import numpy as np
 from ._dtype import is_subbyte, numpy_dtype
 from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _Source, _Spec, ffi, lib
-from ._info import _info_blob
 
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
@@ -193,18 +192,6 @@ def _to_c(lst: list[int] | None):
     return ffi.new("int[]", lst), len(lst)
 
 
-def _header_of(source) -> bytes:
-    if isinstance(source, (bytes, bytearray, memoryview)):
-        raise ValueError(
-            "reading from bytes needs the header passed in; it cannot be "
-            "recovered from the buffer alone")
-    location = os.fspath(source)
-    if isinstance(location, str) and (
-            "://" in location or location.startswith("/vsi")):
-        raise ValueError("remote sources need their external header passed in")
-    return _info_blob(source)
-
-
 def _pattern_for(pattern: str | None, n_items: int, times: int) -> bytes:
     """Use the requested output pattern, or the default for this shape."""
     if pattern is not None:
@@ -369,17 +356,16 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
     return RumiArray(out[0], _dlpack_shape(out[0]), specs[0].fields.dtype)
 
 
-def read(source: _ReadSource, header: Header | None = None, *,
+def read(source: _ReadSource, header: Header, *,
          framework: str | None = "numpy", pattern: str | None = None,
          time: Axis = None, bands: Axis = None, window: Window = None):
     """Read one rumi raster.
 
-    ``source`` may be a local path, a remote URI, or the file's bytes. Remote
-    sources require external headers. Use ``read_many`` to read more than one
-    source.
+    ``source`` may be a local path, a remote URI, or the file's bytes. Use
+    ``read_many`` to read more than one source.
 
-    ``header`` is the value returned by ``write``. It can be omitted for local
-    paths, where rumi rebuilds it from the file.
+    ``header`` is the value returned by ``write``. For an existing file, use
+    ``info(source=...).header`` to rebuild it.
 
     ``time`` and ``bands`` accept a list of indices or a half-open
     ``(start, stop)`` range. ``window`` is ``(row, column, height, width)``.
@@ -392,17 +378,15 @@ def read(source: _ReadSource, header: Header | None = None, *,
     if not isinstance(source, (str, os.PathLike,
                                bytes, bytearray, memoryview)):
         raise TypeError("read takes one source; use read_many for multiple sources")
-    if header is not None and not isinstance(
-            header, (bytes, bytearray, memoryview)):
+    if not isinstance(header, (bytes, bytearray, memoryview)):
         raise TypeError("read needs one bytes-like header")
-    raw_header = header if header is not None else _header_of(source)
-    arr = _read_one(_Source(source), _Spec(raw_header), pattern,
+    arr = _read_one(_Source(source), _Spec(header), pattern,
                     time, bands, window)
     return _to_framework(arr, framework)
 
 
 def read_many(sources: Sequence[_ReadSource],
-              headers: Sequence[Header] | None = None, *,
+              headers: Sequence[Header], *,
               windows: Sequence[tuple[int, int, int, int]],
               framework: str | None = "numpy", pattern: str | None = None,
               time: Axis = None, bands: Axis = None):
@@ -424,22 +408,16 @@ def read_many(sources: Sequence[_ReadSource],
     Reads use rumi's process-wide thread pool. Call ``set_num_threads`` before
     the first parallel read to set its size.
 
-    ``headers`` may be omitted for local paths, where rumi rebuilds each one
-    from the file. Passing them avoids rebuilding the indexes. A source may
-    also be bytes or a remote URI; both forms require a header unless the
-    source is a local path.
+    ``headers[i]`` is the header returned with ``sources[i]`` by ``write``.
+    For an existing file, use ``info(source=...).header`` to rebuild it.
     """
     if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
         raise TypeError("read_many takes a sequence of sources; use read for one")
     sources = list(sources)
 
-    raw_headers: list[Header]
-    if headers is None:
-        raw_headers = [_header_of(s) for s in sources]
-    elif isinstance(headers, (bytes, bytearray, memoryview)):
+    if headers is None or isinstance(headers, (bytes, bytearray, memoryview)):
         raise TypeError("read_many needs one header per source")
-    else:
-        raw_headers = list(headers)
+    raw_headers = list(headers)
 
     specs = [_Spec(raw) for raw in raw_headers]
     arr = _read_many([_Source(s) for s in sources], specs, windows, pattern,
