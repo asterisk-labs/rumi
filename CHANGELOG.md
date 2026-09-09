@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-09
+
 ### Added
 
 - `rumi.info(source=..., header=...)` is the single metadata operation. It can
@@ -31,6 +33,9 @@ Notable user-visible changes are recorded here.
 
 ### Performance
 
+- Remote frames are decoded as Karu completes them, overlapping network reads
+  with CPU decoding while preserving item order. A decode failure cancels
+  outstanding transfers.
 - Successive reads on the same calling thread reuse Karu's connection pool
   while their complete transport configuration remains unchanged. Environment
   changes still take effect on the next operation.
@@ -279,7 +284,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/asterisk-labs/rumi/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/asterisk-labs/rumi/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/asterisk-labs/rumi/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/asterisk-labs/rumi/compare/v0.16.0...v0.17.0
