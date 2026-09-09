@@ -4,6 +4,13 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-09
+
+### Changed
+
+- Updated Karu to 0.2.0. VSI paths and chaining are unchanged; HTTP and GCS
+  configuration now use Karu-owned option names.
+
 ## [0.20.1] - 2026-09-09
 
 ### Fixed
@@ -291,7 +298,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/asterisk-labs/rumi/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/asterisk-labs/rumi/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/asterisk-labs/rumi/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/asterisk-labs/rumi/compare/v0.18.0...v0.19.0

@@ -196,7 +196,7 @@ jobs:
           source /tmp/rumi-portability-test/bin/activate
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
-          env -u GDAL_CURL_CA_BUNDLE -u CURL_CA_BUNDLE -u SSL_CERT_FILE \
+          env -u KARU_HTTP_CA_BUNDLE -u CURL_CA_BUNDLE -u SSL_CERT_FILE \
             python - <<'PY'
           import rumi
 

@@ -217,9 +217,9 @@ class TestSources:
             base = f"http://127.0.0.1:{server.server_port}"
             urls = [f"{base}/scene{i}.rumi" for i in range(2)]
             windows = [(0, 0, 32, 32), (32, 32, 32, 32)]
-            monkeypatch.setenv("GDAL_HTTP_HEADERS", "X-Rumi-Operation: batch")
+            monkeypatch.setenv("KARU_HTTP_HEADERS", "X-Rumi-Operation: batch")
             got = rumi.read_many(urls, headers, windows=windows)
-            monkeypatch.setenv("GDAL_HTTP_HEADERS", "X-Rumi-Operation: single")
+            monkeypatch.setenv("KARU_HTTP_HEADERS", "X-Rumi-Operation: single")
             one = rumi.read(urls[0], headers[0], window=windows[0])
             with pytest.raises(TypeError, match="'headers'"):
                 rumi.read_many(urls, windows=windows)
