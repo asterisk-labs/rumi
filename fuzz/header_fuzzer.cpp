@@ -5,9 +5,17 @@
 #include <cstddef>
 #include <cstdint>
 
+namespace {
+
+constexpr std::uint64_t MAX_ALLOCATION_BYTES = 1u << 20;
+
+}  // namespace
+
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
                                       std::size_t size)
 {
+    rumi_set_max_frame_bytes(MAX_ALLOCATION_BYTES);
+
     rumi_spec* spec = nullptr;
     const rumi_status status = rumi_spec_parse(data, size, &spec);
     if (status == RUMI_OK) {
@@ -34,6 +42,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
         }
     }
     rumi_spec_destroy(spec);
+    rumi_set_max_frame_bytes(0);
     rumi_clear_error();
     return 0;
 }
