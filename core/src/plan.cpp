@@ -233,17 +233,24 @@ Executor::Executor(ThreadPool* pool) noexcept : pool_(pool) {}
 
 bool Executor::run(const Plan& plan) const
 {
+    return run(plan.tasks, plan.spec, plan.transport);
+}
+
+bool Executor::run(std::span<const FrameTask> tasks,
+                   const FrameSpec& spec,
+                   TransportSession* transport) const
+{
     status_ = RUMI_OK;
     error_.clear();
-    if (plan.tasks.empty()) return true;
+    if (tasks.empty()) return true;
 
     std::atomic<int> st{RUMI_OK};
     std::mutex       first;
 
-    const auto run_one = [&st, &first, this, &plan](const FrameTask& t) {
+    const auto run_one = [&st, &first, this, &spec, transport](const FrameTask& t) {
         if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
         std::string msg;
-        const rumi_status r = execute_task(t, plan.spec, plan.transport, msg);
+        const rumi_status r = execute_task(t, spec, transport, msg);
         if (r != RUMI_OK) {
             int expected = RUMI_OK;
             if (st.compare_exchange_strong(expected, r,
@@ -254,7 +261,7 @@ bool Executor::run(const Plan& plan) const
         }
     };
 
-    if (pool_ != nullptr && plan.tasks.size() > 1) {
+    if (pool_ != nullptr && tasks.size() > 1) {
         // Submit one draining job per worker. The atomic task index balances
         // uneven frame sizes without queuing one function per frame.
         std::atomic<std::size_t> next{0};
@@ -262,19 +269,19 @@ bool Executor::run(const Plan& plan) const
             for (;;) {
                 if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
                 const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
-                if (i >= plan.tasks.size()) return;
-                run_one(plan.tasks[i]);
+                if (i >= tasks.size()) return;
+                run_one(tasks[i]);
             }
         };
 
         ThreadPool::Batch batch(*pool_);
-        const std::size_t workers = std::min(pool_->size(), plan.tasks.size());
+        const std::size_t workers = std::min(pool_->size(), tasks.size());
         for (std::size_t i = 0; i < workers; ++i) {
             batch.submit(drain);
         }
         batch.wait();
     } else {
-        for (const FrameTask& t : plan.tasks) {
+        for (const FrameTask& t : tasks) {
             run_one(t);
             if (st.load(std::memory_order_relaxed) != RUMI_OK) break;
         }

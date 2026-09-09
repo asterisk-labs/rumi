@@ -610,6 +610,9 @@ class Executor {
 public:
     explicit Executor(ThreadPool* pool) noexcept;
     [[nodiscard]] bool run(const Plan& plan) const;
+    [[nodiscard]] bool run(std::span<const FrameTask> tasks,
+                           const FrameSpec& spec,
+                           TransportSession* transport) const;
 
     // Status of the most recent run. RUMI_OK when run() returned true.
     [[nodiscard]] rumi_status status() const noexcept;

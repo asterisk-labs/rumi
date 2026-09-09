@@ -2,6 +2,7 @@
 
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -235,6 +236,66 @@ class TestSources:
         assert state["operation_headers"].count("batch") == 2
         assert state["operation_headers"].count("single") == 1
 
+    def test_remote_completion_order_does_not_change_item_order(
+            self, square, monkeypatch):
+        paths = [item[0] for item in square[:2]]
+        headers = [item[1] for item in square[:2]]
+        data = [item[2] for item in square[:2]]
+        payloads = {
+            "/slow.rumi": Path(paths[0]).read_bytes(),
+            "/fast.rumi": Path(paths[1]).read_bytes(),
+        }
+        fast_finished = threading.Event()
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                payload = payloads.get(self.path)
+                match = re.fullmatch(r"bytes=(\d+)-(\d+)",
+                                     self.headers.get("Range", ""))
+                if payload is None or match is None:
+                    self.send_error(400)
+                    return
+                first, last = map(int, match.groups())
+                if self.path == "/slow.rumi" and not fast_finished.wait(timeout=2):
+                    self.send_error(503)
+                    return
+                body = payload[first:last + 1]
+                self.send_response(206)
+                self.send_header("Content-Range",
+                                 f"bytes {first}-{last}/{len(payload)}")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(body)
+                if self.path == "/fast.rumi":
+                    fast_finished.set()
+
+            def log_message(self, _format, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            window = (0, 0, 32, 32)
+            monkeypatch.setenv("KARU_CONCURRENCY", "2")
+            monkeypatch.setenv("KARU_MAX_ATTEMPTS", "1")
+            result = rumi.read_many(
+                [f"{base}/slow.rumi", f"{base}/fast.rumi"],
+                headers, windows=[window, window],
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+        assert fast_finished.is_set()
+        assert np.array_equal(result[0], data[0][:, :32, :32])
+        assert np.array_equal(result[1], data[1][:, :32, :32])
+
     def test_remote_errors_keep_the_transport_detail(self, square):
         _path, header, _data = square[0]
         body = b"x" * 170 + b"transport-detail" + b"y" * 20
@@ -260,6 +321,71 @@ class TestSources:
             url = f"http://127.0.0.1:{server.server_port}/unavailable.rumi"
             with pytest.raises(IOError, match="transport-detail"):
                 rumi.read(url, header, window=(0, 0, 32, 32))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_decode_failure_cancels_an_inflight_remote_read(
+            self, square, monkeypatch):
+        path, header, _data = square[0]
+        payload = Path(path).read_bytes()
+        slow_started = threading.Event()
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                match = re.fullmatch(r"bytes=(\d+)-(\d+)",
+                                     self.headers.get("Range", ""))
+                if match is None:
+                    self.send_error(400)
+                    return
+                first, last = map(int, match.groups())
+                body = payload[first:last + 1]
+                if self.path == "/slow.rumi":
+                    slow_started.set()
+                    time.sleep(4)
+                elif self.path == "/corrupt.rumi":
+                    if not slow_started.wait(timeout=2):
+                        self.send_error(503)
+                        return
+                    body = bytes(len(body))
+                else:
+                    self.send_error(404)
+                    return
+
+                self.send_response(206)
+                self.send_header("Content-Range",
+                                 f"bytes {first}-{last}/{len(payload)}")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, _format, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            window = (0, 0, 32, 32)
+            monkeypatch.setenv("KARU_CONCURRENCY", "2")
+            monkeypatch.setenv("KARU_MAX_ATTEMPTS", "1")
+            started = time.perf_counter()
+            with pytest.raises(IOError, match="OpenZL decode failed"):
+                rumi.read_many(
+                    [f"{base}/corrupt.rumi", f"{base}/slow.rumi"],
+                    [header, header], windows=[window, window],
+                )
+            elapsed = time.perf_counter() - started
+            assert slow_started.is_set()
+            assert elapsed < 2
         finally:
             server.shutdown()
             server.server_close()

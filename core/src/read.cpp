@@ -498,27 +498,45 @@ readable_size(Source& source, TransportSession& transport)
     return source.size(transport);
 }
 
-std::expected<std::vector<KaruBuffer>, std::string>
-fetch_remote_frames(Plan& plan, TransportSession& transport)
+std::expected<void, std::string>
+decode_tasks(Executor& executor, const Plan& plan,
+             std::span<const FrameTask> tasks)
+{
+    if (executor.run(tasks, plan.spec, plan.transport)) return {};
+    g_read_status = executor.status();
+    return err(executor.error().empty() ? std::string("read failed")
+                                        : executor.error());
+}
+
+std::expected<void, std::string>
+execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
 {
     std::vector<karu_req> requests;
+    std::vector<FrameTask> local_tasks;
     requests.reserve(plan.tasks.size());
+    local_tasks.reserve(plan.tasks.size());
     for (FrameTask& task : plan.tasks) {
         const karu_locator* locator = task.source->remote_locator();
-        if (!locator) continue;
-        requests.push_back({
-            locator,
-            task.offset,
-            task.compressed_size,
-            nullptr,
-            &task,
-            nullptr,
-        });
+        if (locator) {
+            requests.push_back({
+                locator,
+                task.offset,
+                task.compressed_size,
+                nullptr,
+                &task,
+                nullptr,
+            });
+        } else {
+            local_tasks.push_back(task);
+        }
     }
-    if (requests.empty()) return std::vector<KaruBuffer>{};
+
+    Executor executor(pool);
+    if (requests.empty()) return decode_tasks(executor, plan, plan.tasks);
 
     karu_client* client = transport.client();
     if (!client) {
+        g_read_status = RUMI_ERR_IO;
         return transport_error("transport initialization failed",
                                transport.status());
     }
@@ -527,44 +545,83 @@ fetch_remote_frames(Plan& plan, TransportSession& transport)
     const karu_status submitted =
         karu_client_submit(client, requests.data(), requests.size(), &raw_batch);
     if (submitted != KARU_OK) {
+        g_read_status = RUMI_ERR_IO;
         return transport_error("transport submit failed", submitted);
     }
     std::unique_ptr<karu_batch, KaruBatchFree> batch(raw_batch);
 
+    // Submit the entire remote workload before doing any decoding. Karu keeps
+    // its full opportunity to group and coalesce ranges while its I/O thread
+    // progresses independently of local reads and CPU decode.
+    if (auto decoded = decode_tasks(executor, plan, local_tasks); !decoded)
+        return decoded;
+
     std::vector<KaruBuffer> buffers;
     buffers.reserve(requests.size());
+    std::vector<FrameTask> ready;
+    ready.reserve(requests.size());
     std::size_t completed = 0;
-    for (;;) {
+
+    bool ended = false;
+    while (!ended) {
+        ready.clear();
         karu_done done{};
         const karu_status step = karu_batch_next(batch.get(), &done, -1);
         if (step == KARU_END) break;
         if (step != KARU_OK) {
+            g_read_status = RUMI_ERR_IO;
             return transport_error("transport failed", step);
         }
 
-        KaruBuffer buffer(done.buffer);
-        auto* task = static_cast<FrameTask*>(done.tag);
-        if (!task) return err("transport returned a completion without a task");
-        if (done.status != KARU_OK) {
-            std::string message = "transport read failed at ";
-            message += std::to_string(task->offset);
-            return transport_error(std::move(message), done.status);
+        for (;;) {
+            KaruBuffer buffer(done.buffer);
+            auto* task = static_cast<FrameTask*>(done.tag);
+            if (!task) {
+                g_read_status = RUMI_ERR_IO;
+                return err("transport returned a completion without a task");
+            }
+            if (done.status != KARU_OK) {
+                g_read_status = RUMI_ERR_IO;
+                std::string message = "transport read failed at ";
+                message += std::to_string(task->offset);
+                return transport_error(std::move(message), done.status);
+            }
+            if (done.got != task->compressed_size || !done.buffer) {
+                g_read_status = RUMI_ERR_IO;
+                return errf("transport short read at %llu: %llu of %u",
+                            static_cast<unsigned long long>(task->offset),
+                            static_cast<unsigned long long>(done.got),
+                            task->compressed_size);
+            }
+            task->compressed = static_cast<const std::byte*>(done.buffer);
+            buffers.push_back(std::move(buffer));
+            ready.push_back(*task);
+            ++completed;
+
+            done = {};
+            const karu_status available = karu_batch_next(batch.get(), &done, 0);
+            if (available == KARU_OK) continue;
+            if (available == KARU_END) {
+                ended = true;
+            } else if (available != KARU_TIMEOUT) {
+                g_read_status = RUMI_ERR_IO;
+                return transport_error("transport failed", available);
+            }
+            break;
         }
-        if (done.got != task->compressed_size || !done.buffer) {
-            return errf("transport short read at %llu: %llu of %u",
-                        static_cast<unsigned long long>(task->offset),
-                        static_cast<unsigned long long>(done.got),
-                        task->compressed_size);
-        }
-        task->compressed = static_cast<const std::byte*>(done.buffer);
-        buffers.push_back(std::move(buffer));
-        ++completed;
+
+        // Decode every completion already available as one wave. While this
+        // call uses the Rumi workers, Karu's I/O thread keeps filling the next
+        // wave in the background.
+        if (auto decoded = decode_tasks(executor, plan, ready); !decoded)
+            return decoded;
     }
     if (completed != requests.size()) {
+        g_read_status = RUMI_ERR_IO;
         return errf("transport completed %zu of %zu frame reads",
                     completed, requests.size());
     }
-    return buffers;
+    return {};
 }
 
 std::expected<void, std::string>
@@ -679,22 +736,9 @@ read_items(std::span<const ReadItem> items,
     }
     bind_offsets(plan);
 
-    // Karu sees the complete remote workload at once, so it can group by
-    // object, coalesce ranges, and fill the network independently of decode
-    // thread count. The returned buffers stay alive through execution.
-    auto remote_buffers = fetch_remote_frames(plan, transport);
-    if (!remote_buffers) {
-        g_read_status = RUMI_ERR_IO;
-        return std::unexpected(remote_buffers.error());
-    }
-
     ThreadPool* pool = pool_for(plan.tasks.size());
-    Executor exec(pool);
-    if (!exec.run(plan)) {
-        g_read_status = exec.status();
-        return err(exec.error().empty() ? std::string("read failed")
-                                        : exec.error());
-    }
+    if (auto executed = execute_plan(plan, transport, pool); !executed)
+        return executed;
     g_read_status = RUMI_OK;
     return {};
 }
