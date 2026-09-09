@@ -148,3 +148,12 @@ identity.
 ## License
 
 GPL-3.0
+
+<div align="center">
+  <br>
+  Made with ♥ by
+  <br><br>
+  <a href="https://asterisk.coop">
+    <img src="https://raw.githubusercontent.com/asterisk-labs/cozip/refs/heads/main/images/asterisk_logo.svg" alt="Asterisk Labs" width="320"/>
+  </a>
+</div>
