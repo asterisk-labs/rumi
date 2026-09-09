@@ -43,7 +43,7 @@ def main() -> int:
         print(f"::error::header says {facts}")
         return 1
 
-    print(f"wrote and re-read EPSG:{CRS}, {facts['frames']} frames, "
+    print(f"wrote and re-read EPSG:{CRS}, {facts.frames} frames, "
           f"{len(header)} byte header, {len(blob)} byte file")
     return 0
 
