@@ -16,6 +16,8 @@ NOTICES = (
     "LICENSE.Zstandard",
     "LICENSE.LZ4",
     "LICENSE.Karu",
+    "LICENSE.curl",
+    "LICENSE.OpenSSL",
 )
 LIB_SUFFIXES = (".so", ".dylib", ".dll")
 EXPECTED_NAME = "rumi-eo"

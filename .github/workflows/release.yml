@@ -64,12 +64,23 @@ jobs:
             cmake
             ninja
             make
+            libcurl=8.22.0
+            openssl=3.6.4
+      - name: Build pinned static libcurl
+        shell: bash -el {0}
+        run: bash tools/build_static_curl.sh "$RUNNER_TEMP/curl"
       - name: Build and stage library
         shell: bash -el {0}
-        run: >-
-          make stage-lib STAGE_DIR=staged
-          CMAKE_FLAGS="-DCURL_ROOT=$CONDA_PREFIX
-          -DOPENSSL_ROOT_DIR=$CONDA_PREFIX"
+        run: |
+          set -euo pipefail
+          make stage-lib STAGE_DIR=staged \
+            CMAKE_FLAGS="-DCURL_ROOT=$RUNNER_TEMP/curl \
+            -DCURL_DIR=$RUNNER_TEMP/curl/lib/cmake/CURL \
+            -DOPENSSL_ROOT_DIR=$CONDA_PREFIX"
+          if readelf -d staged/librumi.so | grep -q 'libcurl'; then
+            echo '::error::Linux librumi must not depend on shared libcurl'
+            exit 1
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: librumi-linux-x86_64
@@ -101,6 +112,8 @@ jobs:
             cmake
             ninja
             make
+            libcurl=8.22.0
+            openssl=3.6.4
       - name: Build and stage library
         shell: bash -el {0}
         run: >-
@@ -128,8 +141,7 @@ jobs:
           environment-name: build
           create-args: >-
             python=3.12
-            libcurl
-            openssl
+            openssl=3.6.4
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: librumi-linux-x86_64
@@ -186,8 +198,8 @@ jobs:
           environment-name: wheel
           create-args: >-
             python=3.12
-            libcurl
-            openssl
+            libcurl=8.22.0
+            openssl=3.6.4
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: librumi-macos-arm64

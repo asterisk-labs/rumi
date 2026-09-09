@@ -12,5 +12,10 @@ Licensed under the GNU General Public License version 3, see LICENSE.
 
 Only LZ4's BSD-licensed `lib` directory is built.
 
+Release wheels also bundle the transport runtimes:
+
+  curl 8.22.0             curl license     licenses/LICENSE.curl
+  OpenSSL 3.x             Apache 2.0       licenses/LICENSE.OpenSSL
+
 Python wheels include these license texts under `dist-info/licenses/`; native
 archives use `licenses/`.

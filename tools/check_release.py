@@ -86,6 +86,8 @@ def check(tag: str | None) -> tuple[str, str, str]:
         "licenses/LICENSE.Zstandard",
         "licenses/LICENSE.LZ4",
         "licenses/LICENSE.Karu",
+        "licenses/LICENSE.curl",
+        "licenses/LICENSE.OpenSSL",
     ):
         if not (ROOT / notice).is_file():
             fail(f"missing release notice: {notice}")
