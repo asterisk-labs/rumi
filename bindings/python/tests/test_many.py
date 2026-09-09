@@ -185,6 +185,36 @@ class TestSources:
         assert state["operation_headers"].count("batch") == 2
         assert state["operation_headers"].count("single") == 1
 
+    def test_remote_errors_keep_the_transport_detail(self, square):
+        _path, header, _data = square[0]
+        body = b"x" * 170 + b"transport-detail" + b"y" * 20
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/unavailable.rumi"
+            with pytest.raises(IOError, match="transport-detail"):
+                rumi.read(url, header, window=(0, 0, 32, 32))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
     def test_scenes_of_different_extents_share_a_batch(self, scenes):
         small_path, small_header, small_data = scenes[0]
         wide_path, wide_header, wide_data = scenes[4]

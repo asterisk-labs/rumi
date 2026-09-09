@@ -25,6 +25,15 @@ std::unexpected<std::string> err(std::string msg)
     return std::unexpected(std::move(msg));
 }
 
+std::unexpected<std::string>
+transport_error(std::string message, karu_status status)
+{
+    const char* detail = karu_last_error();
+    message += ": ";
+    message += detail && *detail ? detail : karu_status_string(status);
+    return err(std::move(message));
+}
+
 // printf-format checked error helper. A fixed buffer avoids newer libstdc++
 // symbols that would raise the wheel's platform requirement.
 RUMI_PRINTF_LIKE(1, 2)
@@ -510,19 +519,15 @@ fetch_remote_frames(Plan& plan, TransportSession& transport)
 
     karu_client* client = transport.client();
     if (!client) {
-        const char* detail = karu_last_error();
-        return errf("transport initialization failed: %s",
-                    detail && *detail ? detail
-                                      : karu_status_string(transport.status()));
+        return transport_error("transport initialization failed",
+                               transport.status());
     }
 
     karu_batch* raw_batch = nullptr;
     const karu_status submitted =
         karu_client_submit(client, requests.data(), requests.size(), &raw_batch);
     if (submitted != KARU_OK) {
-        const char* detail = karu_last_error();
-        return errf("transport submit failed: %s",
-                    detail && *detail ? detail : karu_status_string(submitted));
+        return transport_error("transport submit failed", submitted);
     }
     std::unique_ptr<karu_batch, KaruBatchFree> batch(raw_batch);
 
@@ -534,20 +539,16 @@ fetch_remote_frames(Plan& plan, TransportSession& transport)
         const karu_status step = karu_batch_next(batch.get(), &done, -1);
         if (step == KARU_END) break;
         if (step != KARU_OK) {
-            const char* detail = karu_last_error();
-            return errf("transport failed: %s",
-                        detail && *detail ? detail : karu_status_string(step));
+            return transport_error("transport failed", step);
         }
 
         KaruBuffer buffer(done.buffer);
         auto* task = static_cast<FrameTask*>(done.tag);
         if (!task) return err("transport returned a completion without a task");
         if (done.status != KARU_OK) {
-            const char* detail = karu_last_error();
-            return errf("transport read failed at %llu: %s",
-                        static_cast<unsigned long long>(task->offset),
-                        detail && *detail ? detail
-                                          : karu_status_string(done.status));
+            std::string message = "transport read failed at ";
+            message += std::to_string(task->offset);
+            return transport_error(std::move(message), done.status);
         }
         if (done.got != task->compressed_size || !done.buffer) {
             return errf("transport short read at %llu: %llu of %u",
