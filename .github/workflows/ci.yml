@@ -96,6 +96,8 @@ jobs:
           cache-dependency-path: bindings/python/pyproject.toml
       - name: Install transport dependencies
         run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libcurl4-openssl-dev libssl-dev

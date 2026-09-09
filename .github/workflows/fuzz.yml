@@ -43,6 +43,8 @@ jobs:
           persist-credentials: false
       - name: Install fuzz toolchain and transport dependencies
         run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             clang-19 libclang-rt-19-dev libcurl4-openssl-dev libssl-dev
