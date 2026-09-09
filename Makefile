@@ -61,7 +61,7 @@ $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt:
 submodules:
 	git submodule update --init --recursive
 
-$(BUILD_DIR)/CMakeCache.txt: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
+$(BUILD_DIR)/CMakeCache.txt: VERSION $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
 	cmake -S $(CORE) -B $(BUILD_DIR) $(CMAKE_OPTS)
 
 configure: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
