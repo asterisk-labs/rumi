@@ -46,7 +46,7 @@ jobs:
         run: |
           git -C extern/geozl submodule update --init extern/openzl
           git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
-      - uses: mamba-org/setup-micromamba@add3a49764cedee8ee24e82dfde87f5bc2914462 # v2
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
         with:
           environment-name: build
           create-args: >-
