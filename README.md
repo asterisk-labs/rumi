@@ -141,6 +141,9 @@ metadata = rumi.info(header=header)
 metadata = rumi.info(source="scene.rumi", header=header)
 ```
 
+Printing the result lists every attribute it carries, as a table with the
+raster's shape in a notebook and as aligned text elsewhere.
+
 `info(source=...).header` rebuilds the external header for an existing file.
 Passing both validates that the external header matches the canonical index
 reconstructed from the source. The check validates the index, not payload

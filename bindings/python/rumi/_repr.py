@@ -178,3 +178,29 @@ def frame_html(f, rows, states, cols, fallback):
             f'<pre class="fallback">{e(fallback)}</pre>'
             f'<div class="box">{meta}<div class="g">{_frame_cube(f, states)}</div>'
             f'</div>{grid}</div>')
+
+
+_META_CSS = _CSS.replace("#ID", ".rumi-md") + """
+.rumi-md .fallback{display:none}
+.rumi-md td.k{white-space:nowrap}
+.rumi-md td.v{font-variant-numeric:tabular-nums}
+"""
+
+
+def meta_text(f, attrs):
+    pad = max(len(k) for k, _ in attrs)
+    return "\n".join([f"<rumi.Metadata {shape_of(f)}>",
+                      *(f"  {k.ljust(pad)} : {v}" for k, v in attrs)])
+
+
+def meta_html(f, attrs, states, fallback):
+    e = html.escape
+    table = "".join(f'<tr><td class="k">{k}</td><td class="v">{e(v)}</td></tr>'
+                    for k, v in attrs)
+    meta = (f'<div><div class="hdr"><span class="cls">rumi.Metadata</span> '
+            f'<span class="dim">{shape_of(f)}</span></div>'
+            f'<table>{table}</table></div>')
+    return (f'<div class="rumi-md"><style>{_META_CSS}</style>'
+            f'<pre class="fallback">{e(fallback)}</pre>'
+            f'<div class="box">{meta}<div class="g">{_frame_cube(f, states)}'
+            f'</div></div></div>')

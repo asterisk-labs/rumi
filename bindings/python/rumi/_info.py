@@ -5,7 +5,10 @@ import numpy as np
 from ._dtype import numpy_dtype
 from ._ffi import PathLike, _check, _Source, ffi, lib
 from ._pattern import index_axes, layout_name
+from ._repr import _human, meta_html, meta_text
 from ._time import INSTANT, INTERVAL, _from_seconds
+
+_MAX_CELLS = 24  # the drawn face bins past this, one cell per block
 
 Header = bytes | bytearray | memoryview
 InfoSource = PathLike | bytes | bytearray | memoryview
@@ -29,10 +32,63 @@ class Metadata:
     crs: int | None
     pixel_is_point: bool | None
 
+    def _facts(self):
+        steps, b, y, x = (self.shape if len(self.shape) == 4
+                          else (1, *self.shape))
+        height, width = self.tile
+        return {"b": b, "y": y, "x": x, "steps": steps,
+                "across": -(-x // width), "down": -(-y // height),
+                "done": 0, "n": self.frames}
+
+    def _attrs(self):
+        """Every attribute and its value, in the order the reprs show them."""
+        names = ("shape", "dtype", "tile", "frame_layout", "index_order",
+                 "frames", "time_count", "time", "time_kind", "transform",
+                 "crs", "pixel_is_point")
+        rows = [(name, _shown(getattr(self, name))) for name in names]
+        return [*rows, ("header", _human(len(self.header)))]
+
+    def _states(self):
+        """A face with no compression state; the grid is only a drawing."""
+        f = self._facts()
+        step = max(1, -(-max(f["across"], f["down"]) // _MAX_CELLS))
+        return np.zeros((-(-f["down"] // step), -(-f["across"] // step)),
+                        np.int64)
+
     def __repr__(self) -> str:
-        dtype = np.dtype(self.dtype).name
-        return (f"<rumi.Metadata shape={self.shape} dtype={dtype} "
-                f"tile={self.tile} frame_layout={self.frame_layout!r}>")
+        return meta_text(self._facts(), self._attrs())
+
+    def _repr_html_(self) -> str:
+        f, attrs = self._facts(), self._attrs()
+        return meta_html(f, attrs, self._states(),
+                         meta_text(f, attrs))
+
+
+def _shown(value) -> str:
+    """One attribute value on one line, never the whole time axis."""
+    if value is None:
+        return "\u2014"
+    if isinstance(value, type):
+        return np.dtype(value).name
+    if isinstance(value, list):
+        return _shown_axis(value)
+    return str(value)
+
+
+def _shown_axis(steps) -> str:
+    """The ends of a time axis, with its length."""
+    if not steps:
+        return "[]"
+    ends = steps[:1] if len(steps) == 1 else [steps[0], steps[-1]]
+    shown = " \u2026 ".join(_shown_step(s) for s in ends)
+    return f"{shown}  ({len(steps)})"
+
+
+def _shown_step(step) -> str:
+    """One coordinate; an interval keeps both of its ends."""
+    if isinstance(step, tuple):
+        return f"{step[0]}/{step[1]}"
+    return str(step)
 
 
 def _native_info(source=None, header: Header | None = None):
@@ -62,6 +118,7 @@ def info(*, source: InfoSource | None = None,
     and ``pixel_is_point`` values are ``None``. ``shape`` follows ``(B, Y, X)``
     or ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. When ``source``
     is given, ``Metadata.header`` contains its canonical external header.
+    Printing the result lists every attribute.
     """
     result = _native_info(source=source, header=header)
     try:

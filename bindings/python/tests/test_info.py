@@ -73,5 +73,17 @@ def test_info_requires_an_input():
 def test_metadata_repr_does_not_dump_the_binary_header(tmp_path):
     _path, header = stored(tmp_path)
     text = repr(rumi.info(header=header))
-    assert text.startswith("<rumi.Metadata shape=(2, 32, 32) dtype=uint16")
+    assert text.startswith("<rumi.Metadata (2, 32, 32)>")
+    assert "dtype          : uint16" in text
     assert repr(header) not in text
+
+
+def test_metadata_html_lists_every_attribute(tmp_path):
+    path, _header = stored(tmp_path)
+    metadata = rumi.info(source=path)
+    body = metadata._repr_html_()
+
+    for name in ("shape", "dtype", "tile", "frame_layout", "index_order",
+                 "frames", "time", "transform", "crs", "pixel_is_point"):
+        assert f">{name}</td>" in body
+    assert "<svg" in body
