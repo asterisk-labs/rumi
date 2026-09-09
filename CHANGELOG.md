@@ -26,9 +26,8 @@ Notable user-visible changes are recorded here.
 
 - Local paths and remote object URIs now share `rumi_source_file` and the same
   read operations.
-- The README documents S3, GCS, and Azure URI/VSI paths and the environment
-  variables used to select credentials, endpoints, profiles, or anonymous
-  access.
+- The README documents the supported cloud URI/VSI paths and links to the
+  transport configuration reference.
 
 ### Performance
 
@@ -41,11 +40,13 @@ Notable user-visible changes are recorded here.
 
 - `rumi.read` and `rumi.read_many` now require a header for every source. Use
   `rumi.info(source=...).header` to rebuild one from an existing file.
-- Updated the internal Karu transport to 0.2.0 and its explicit API v2. Each
-  Rumi operation owns one client shared by all of its sources; sources retain
-  only immutable locators, and no object data or metadata is cached.
-- GitHub Actions are commit-pinned, time-bounded, and do not persist checkout
-  credentials after fetching the private Karu submodule.
+- Updated the internal Karu transport with bounded range coalescing, strict
+  response validation, safer credential refresh, and Source Cooperative
+  paths. Each Rumi operation owns one client shared by all of its sources;
+  sources retain only immutable locators, and no object data or metadata is
+  cached.
+- GitHub Actions are commit-pinned, time-bounded, and fetch the public Karu
+  submodule without a deploy key or persisted checkout credentials.
 - Buffer and DLPack forms of single and multi-item reads now share one C++
   preparation path for selections, default layouts, and output sizing. Python
   DLPack reads consume the shape produced by the core instead of compiling the

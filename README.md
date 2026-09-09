@@ -92,6 +92,9 @@ Rumi accepts remote URIs and GDAL VSI paths:
 | Azure Blob Storage | `az://container/key` | `/vsiaz/container/key` |
 | Azure Data Lake | `abfs://container/key` | `/vsiadls/container/key` |
 | Hugging Face | `hf://datasets/org/repo/path` | `/vsihf/datasets/org/repo/path` |
+| Source Cooperative | `source://account/product/key` | `/vsisource/account/product/key` |
+
+Credentials and transport options follow [Karu's configuration](https://github.com/asterisk-labs/karu/blob/main/CONFIGURATION.md).
 
 ```python
 import os
@@ -120,6 +123,11 @@ adls = rumi.read(
 os.environ["HF_TOKEN"] = "your-token"
 hf = rumi.read(
     "hf://datasets/org/repo/scene.rumi", header, window=(0, 0, 256, 256)
+)
+
+# Source Cooperative public data
+source = rumi.read(
+    "source://account/product/scene.rumi", header, window=(0, 0, 256, 256)
 )
 ```
 

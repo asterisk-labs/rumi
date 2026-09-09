@@ -3,4 +3,4 @@
 	url = https://github.com/asterisk-labs/geozl.git
 [submodule "extern/karu"]
 	path = extern/karu
-	url = git@github.com:asterisk-labs/karu.git
+	url = https://github.com/asterisk-labs/karu.git

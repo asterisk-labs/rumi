@@ -27,7 +27,7 @@ option(RUMI_WERROR            "Treat warnings in rumi C++ as errors"            
 set(RUMI_GEOZL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/geozl"
     CACHE PATH "Path to the geozl submodule source")
 set(RUMI_KARU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../extern/karu"
-    CACHE PATH "Path to the private karu transport source")
+    CACHE PATH "Path to the internal karu transport source")
 
 # Examples: -DRUMI_SANITIZE=thread or -DRUMI_SANITIZE=address,undefined.
 set(RUMI_SANITIZE "" CACHE STRING "Sanitizer to compile and link with")
