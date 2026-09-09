@@ -31,6 +31,9 @@ Notable user-visible changes are recorded here.
 
 ### Performance
 
+- Successive reads on the same calling thread reuse Karu's connection pool
+  while their complete transport configuration remains unchanged. Environment
+  changes still take effect on the next operation.
 - Full frames whose decoded byte order exactly matches the requested output now
   decode directly into the result. This removes the scratch-buffer copy for the
   common one-chip `b h w` training layout. Batched plan vectors also grow

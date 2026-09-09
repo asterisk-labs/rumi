@@ -10,6 +10,8 @@
 namespace rumi {
 namespace {
 
+thread_local std::shared_ptr<karu_client> cached_transport_client;
+
 std::unexpected<std::string>
 transport_error(std::string_view action, const char* uri,
                 karu_status status)
@@ -28,23 +30,46 @@ transport_error(std::string_view action, const char* uri,
 }  // namespace
 
 
-TransportSession::~TransportSession()
-{
-    karu_client_free(client_);
-}
+TransportSession::~TransportSession() = default;
 
 karu_client* TransportSession::client() noexcept
 {
-    if (initialized_) return client_;
+    if (initialized_) return client_.get();
     initialized_ = true;
 
     karu_config* config = nullptr;
     status_ = karu_config_create(&config);
     if (status_ != KARU_OK) return nullptr;
 
-    status_ = karu_client_create(config, &client_);
+    if (cached_transport_client) {
+        int matches = 0;
+        status_ = karu_client_matches_config(cached_transport_client.get(),
+                                             config, &matches);
+        if (status_ != KARU_OK) {
+            karu_config_free(config);
+            return nullptr;
+        }
+        if (matches) {
+            client_ = cached_transport_client;
+            karu_config_free(config);
+            return client_.get();
+        }
+    }
+
+    karu_client* created = nullptr;
+    status_ = karu_client_create(config, &created);
     karu_config_free(config);
-    return status_ == KARU_OK ? client_ : nullptr;
+    if (status_ != KARU_OK) return nullptr;
+
+    try {
+        client_ = std::shared_ptr<karu_client>(created, karu_client_free);
+    } catch (...) {
+        karu_client_free(created);
+        status_ = KARU_ERR_NOMEM;
+        return nullptr;
+    }
+    cached_transport_client = client_;
+    return client_.get();
 }
 
 

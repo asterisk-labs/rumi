@@ -462,10 +462,10 @@ sample_to_dtype(std::uint8_t sample_format,
 // The C and C++ APIs share the exact range type, including its ABI layout.
 using Range = ::rumi_range;
 
-// One Karu client per Rumi operation. The client is created lazily, so reads
-// backed entirely by memory do not start transport workers. It owns connection
-// pools and a snapshot of the supported GDAL-style environment variables, but
-// no object data or semantic cache.
+// One Karu client lease per Rumi operation. A calling thread reuses its client
+// while the current GDAL-style environment snapshot still matches, retaining
+// connections but no object data or metadata. The client remains lazy, so
+// memory-backed reads do not start transport workers.
 class TransportSession {
 public:
     TransportSession() = default;
@@ -478,7 +478,7 @@ public:
     [[nodiscard]] karu_status status() const noexcept { return status_; }
 
 private:
-    karu_client* client_{};
+    std::shared_ptr<karu_client> client_;
     karu_status  status_{KARU_OK};
     bool         initialized_{};
 };

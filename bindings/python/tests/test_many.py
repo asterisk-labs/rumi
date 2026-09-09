@@ -115,6 +115,56 @@ class TestAgreement:
 
 
 class TestSources:
+    def test_successive_reads_reuse_the_connection(self, square):
+        path, header, data = square[0]
+        payload = Path(path).read_bytes()
+        state = {"connections": 0, "gets": 0}
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def setup(self):
+                super().setup()
+                state["connections"] += 1
+
+            def do_GET(self):
+                match = re.fullmatch(r"bytes=(\d+)-(\d+)",
+                                     self.headers.get("Range", ""))
+                if match is None:
+                    self.send_error(400)
+                    return
+                first, last = map(int, match.groups())
+                body = payload[first:last + 1]
+                state["gets"] += 1
+                self.send_response(206)
+                self.send_header("Content-Range",
+                                 f"bytes {first}-{last}/{len(payload)}")
+                self.send_header("Content-Length", str(len(body)))
+                if state["gets"] == 2:
+                    self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/scene.rumi"
+            window = (0, 0, 32, 32)
+            first = rumi.read(url, header, window=window)
+            second = rumi.read(url, header, window=window)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+        assert np.array_equal(first, data[:, :32, :32])
+        assert np.array_equal(second, first)
+        assert state == {"connections": 1, "gets": 2}
+
     def test_remote_uris_use_the_internal_transport(self, square, monkeypatch):
         paths = [item[0] for item in square[:2]]
         headers = [item[1] for item in square[:2]]
