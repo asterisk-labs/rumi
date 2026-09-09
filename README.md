@@ -83,8 +83,8 @@ batch = rumi.read_many(
 
 ## Cloud sources
 
-Rumi reads remote files through its internal Karu transport. Both URI and GDAL
-VSI spellings are accepted:
+Rumi accepts remote URIs and GDAL VSI paths. Pass the header returned by
+`write` when reading a remote source.
 
 | Storage | URI | VSI path |
 |---|---|---|
@@ -92,31 +92,37 @@ VSI spellings are accepted:
 | Google Cloud Storage | `gs://bucket/key` | `/vsigs/bucket/key` |
 | Azure Blob Storage | `az://container/key` | `/vsiaz/container/key` |
 | Azure Data Lake | `abfs://container/key` | `/vsiadls/container/key` |
-
-Credentials and endpoints use the familiar GDAL/AWS/GCP/Azure environment
-variables. For example:
+| Hugging Face | `hf://datasets/org/repo/path` | `/vsihf/datasets/org/repo/path` |
 
 ```python
 import os
 import rumi
 
+# Amazon S3
 os.environ["AWS_PROFILE"] = "training"
-os.environ["AWS_REGION"] = "us-west-2"
+s3 = rumi.read("s3://bucket/scene.rumi", header, window=(0, 0, 256, 256))
 
-chip = rumi.read("s3://imagery/scene.rumi", header, window=(0, 0, 256, 256))
+# Google Cloud Storage
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/path/service-account.json"
+gcs = rumi.read("gs://bucket/scene.rumi", header, window=(0, 0, 256, 256))
+
+# Azure Blob Storage
+os.environ["AZURE_STORAGE_CONNECTION_STRING"] = "your-connection-string"
+azure = rumi.read(
+    "az://container/scene.rumi", header, window=(0, 0, 256, 256)
+)
+
+# Azure Data Lake
+adls = rumi.read(
+    "abfs://container/scene.rumi", header, window=(0, 0, 256, 256)
+)
+
+# Hugging Face
+os.environ["HF_TOKEN"] = "your-token"
+hf = rumi.read(
+    "hf://datasets/org/repo/scene.rumi", header, window=(0, 0, 256, 256)
+)
 ```
-
-Common entry points are `GOOGLE_APPLICATION_CREDENTIALS` for GCS and
-`AZURE_STORAGE_CONNECTION_STRING` (or the standard Azure identity variables)
-for Azure. Anonymous access must be explicit with `AWS_NO_SIGN_REQUEST=YES`,
-`GS_NO_SIGN_REQUEST=YES`, or `AZURE_NO_SIGN_REQUEST=YES`.
-
-Each `read`, `read_many`, or `info(source=...)` operation snapshots the
-environment into one private transport client. `read_many` shares that client
-across all its sources so ranges can be batched, while no object bytes,
-metadata, errors, or global client state survive the operation. Remote reads
-require the external Rumi header; with it, Rumi does not issue a separate size
-or existence request before fetching frame ranges.
 
 ## Metadata
 
