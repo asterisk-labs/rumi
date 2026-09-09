@@ -148,7 +148,8 @@ jobs:
           python -m wheel tags --python-tag py3 --abi-tag none \
             --remove wheelhouse-raw/*.whl
           mkdir -p wheelhouse
-          LD_LIBRARY_PATH="$CONDA_PREFIX/lib" \
+          compiler_runtime=$(dirname "$(g++ -print-file-name=libstdc++.so.6)")
+          LD_LIBRARY_PATH="$compiler_runtime:$CONDA_PREFIX/lib" \
             auditwheel repair -w wheelhouse wheelhouse-raw/*.whl
           python bindings/python/check_wheel.py wheelhouse/*.whl
       - name: Test installed wheel
