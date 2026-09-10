@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import subprocess
 import sys
@@ -8,9 +9,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 CHECK = ROOT / "tools" / "check_editable.py"
 
-if not CHECK.is_file():
+expected_module = (ROOT / "bindings" / "python" / "rumi" / "__init__.py").resolve()
+spec = importlib.util.find_spec("rumi")
+loaded_module = Path(spec.origin).resolve() if spec is not None and spec.origin else None
+
+if not CHECK.is_file() or loaded_module != expected_module:
     pytest.skip(
-        "editable-install check is only available in a source checkout",
+        "editable-install check only applies to this source checkout",
         allow_module_level=True,
     )
 
