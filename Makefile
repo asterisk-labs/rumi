@@ -92,7 +92,7 @@ python: lib
 	@$(PYTHON) -c 'import numpy, cffi' 2>/dev/null \
 	  || { echo "missing runtime deps, install: numpy cffi"; exit 1; }
 	$(PYTHON) -m pip install -e $(PY_DIR) -q
-	$(PYTHON) -c "import rumi; print('rumi', rumi.__version__)"
+	$(PYTHON) tools/check_editable.py
 
 # Python tests use geozl to create compressed frame payloads.
 test: python
@@ -108,7 +108,8 @@ lint:
 	  || { echo "ruff not installed"; exit 1; }
 	@$(PYTHON) -c 'import mypy' 2>/dev/null \
 	  || { echo "mypy not installed"; exit 1; }
-	$(PYTHON) -m ruff check --config $(PY_DIR)/pyproject.toml $(PY_DIR)
+	$(PYTHON) -m ruff check --config $(PY_DIR)/pyproject.toml \
+	  $(PY_DIR) tools/check_editable.py
 	$(PYTHON) -m mypy --config-file $(PY_DIR)/pyproject.toml $(PY_DIR)/rumi
 
 # Component tests use an independent build directory.
