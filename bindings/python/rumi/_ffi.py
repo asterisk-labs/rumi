@@ -331,6 +331,7 @@ class _Source:
         out = ffi.new("rumi_source**")
         if isinstance(target, (bytes, bytearray, memoryview)):
             buffer = ffi.from_buffer(target)
+            # The native memory source borrows this export for its lifetime.
             self._keep = buffer
             _check(lib.rumi_source_memory(buffer, len(buffer), out))
         else:

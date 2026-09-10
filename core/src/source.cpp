@@ -10,6 +10,8 @@
 namespace rumi {
 namespace {
 
+// Each calling thread reuses its own connection pool. A configuration change
+// is noticed when the next TransportSession asks for the client.
 thread_local std::shared_ptr<karu_client> cached_transport_client;
 
 std::unexpected<std::string>

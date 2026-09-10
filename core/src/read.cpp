@@ -557,6 +557,8 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
         return decoded;
 
     std::vector<KaruBuffer> buffers;
+    // FrameTask borrows the completed payload. Keep every Karu allocation alive
+    // until the whole plan has stopped using its task list.
     buffers.reserve(requests.size());
     std::vector<FrameTask> ready;
     ready.reserve(requests.size());
