@@ -4,17 +4,23 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-10
+
 ### Added
 
 - `Metadata` displays every attribute it carries. Notebooks show an HTML table
   and tile grid; its text representation is aligned.
 
-## [0.21.0] - 2026-09-09
-
 ### Changed
 
 - Updated Karu to 0.2.0. VSI paths and chaining are unchanged; HTTP and GCS
-  configuration now use Karu-owned option names.
+  configuration now use Karu-owned option names. Credential discovery for
+  independent cloud paths no longer blocks the network scheduler.
+
+### Fixed
+
+- `make python` now verifies that the editable install loads this checkout and
+  its matching native library instead of accepting an unrelated `rumi` module.
 
 ## [0.20.1] - 2026-09-09
 
