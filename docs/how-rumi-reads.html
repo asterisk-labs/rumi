@@ -26,24 +26,27 @@
     <main class="manual-layout">
       <aside class="manual-nav" aria-label="Learning path">
         <p class="here">How Rumi Reads</p>
-        <p>From Python call to tensor</p>
+        <p>From first concepts to internals</p>
         <ol class="guide-route">
+          <li><a href="#parts"><i>00</i><span><b>Meet the parts</b>Rumi and its dependencies</span></a></li>
           <li><a href="#start"><i>01</i><span><b>Start here</b>The complete call path</span></a></li>
-          <li><a href="#python"><i>02</i><span><b>Enter through Python</b>Inputs and native handles</span></a></li>
-          <li><a href="#plan"><i>03</i><span><b>Build the plan</b>Selection to FrameTask</span></a></li>
-          <li><a href="#karu"><i>04</i><span><b>Fetch with Karu</b>Memory, local, remote</span></a></li>
-          <li><a href="#decode"><i>05</i><span><b>Decode a frame</b>OpenZL with GeoZL</span></a></li>
-          <li><a href="#output"><i>06</i><span><b>Build the result</b>Placement and DLPack</span></a></li>
-          <li><a href="#many"><i>07</i><span><b>Read a batch</b>One plan, many items</span></a></li>
-          <li><a href="#map"><i>08</i><span><b>Follow the source</b>Files and responsibilities</span></a></li>
+          <li><a href="#python"><i>02</i><span><b>Understand the API</b>Arguments and Python work</span></a></li>
+          <li><a href="#boundary"><i>03</i><span><b>Cross into C++</b>Handles, errors, allocation</span></a></li>
+          <li><a href="#plan"><i>04</i><span><b>Build the plan</b>Selection to FrameTask</span></a></li>
+          <li><a href="#karu"><i>05</i><span><b>Fetch with Karu</b>Memory, local, remote</span></a></li>
+          <li><a href="#concurrency"><i>06</i><span><b>Overlap the work</b>I/O and CPU concurrency</span></a></li>
+          <li><a href="#decode"><i>07</i><span><b>Decode a frame</b>OpenZL with GeoZL</span></a></li>
+          <li><a href="#output"><i>08</i><span><b>Build the result</b>Placement and DLPack</span></a></li>
+          <li><a href="#many"><i>09</i><span><b>Read a batch</b>One plan, many items</span></a></li>
+          <li><a href="#map"><i>10</i><span><b>Follow the source</b>Files and responsibilities</span></a></li>
         </ol>
-        <div class="nav-note"><b>What this page is</b><p>A tour of the implementation. The binary layout and frame-index formulas live in the Spec.</p></div>
+        <div class="nav-note"><b>Short route</b><p>Read 00 through 08 for one complete read. Continue to 09 for batches and 10 to navigate the source.</p></div>
       </aside>
 
       <article class="journey">
         <p class="guide-kicker">A source-code guide</p>
         <h1 id="top">How Rumi Reads</h1>
-        <p class="lede">This guide follows one real <code>rumi.read()</code> call through the code: Python validates the request, Rumi turns it into frame tasks, Karu retrieves the compressed ranges, one OpenZL context extended by GeoZL decodes them, and Rumi returns the requested tensor.</p>
+        <p class="lede">This guide begins with no assumed knowledge of Rumi, Karu, OpenZL, GeoZL, or C++. It follows one real <code>rumi.read()</code> call until the selected samples become a framework tensor.</p>
         <div class="level-map" aria-label="Guide progression">
           <span>Normalize the call</span>
           <span>Plan the frames</span>
@@ -51,7 +54,62 @@
           <span>Transfer the result</span>
         </div>
 
-        <section class="guide-section first" id="start">
+        <section class="guide-section first" id="parts">
+          <div class="section-label"><span>00</span><small>Meet the parts</small></div>
+          <h2>Four responsibilities make one read</h2>
+          <p class="section-intro">Rumi is a raster format and reader. It understands array dimensions, tiles, bands, time positions, and output layout. It delegates byte transport and frame decompression to smaller libraries with narrower jobs.</p>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 274" role="img" aria-labelledby="parts-title parts-desc">
+              <title id="parts-title">Rumi and the libraries used by a read</title>
+              <desc id="parts-desc">Python calls Rumi. Rumi asks Karu for byte ranges and asks an OpenZL context containing GeoZL extensions to decode those bytes. Rumi places the resulting samples in an array.</desc>
+              <defs><marker id="arrow-parts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+
+              <g class="figure-card"><rect x="18" y="89" width="126" height="72" rx="6"/><text x="81" y="114">Python caller</text><text class="sub" x="81" y="134">source + header</text><text class="sub" x="81" y="148">selection</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-parts)" d="M144 125H182"/>
+              <g class="figure-card accent"><rect x="186" y="79" width="150" height="92" rx="6"/><text x="261" y="105">Rumi</text><text class="sub" x="261" y="126">plans frames</text><text class="sub" x="261" y="142">coordinates work</text><text class="sub" x="261" y="157">places samples</text></g>
+
+              <path class="figure-arrow" marker-end="url(#arrow-parts)" d="M336 112H382V62H414"/>
+              <g class="figure-card"><rect x="418" y="28" width="160" height="68" rx="6"/><text x="498" y="52">Karu</text><text class="sub" x="498" y="71">read-only byte-range</text><text class="sub" x="498" y="84">transport</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-parts)" d="M498 96V113"/>
+              <text class="figure-note" x="624" y="69">compressed bytes</text>
+
+              <path class="figure-arrow" marker-end="url(#arrow-parts)" d="M336 138H382V194H414"/>
+              <rect class="diagram-panel" x="418" y="116" width="210" height="130" rx="9"/>
+              <text class="figure-stage" x="438" y="139">OPENZL DECODER CONTEXT</text>
+              <g class="figure-card"><rect x="440" y="152" width="166" height="38" rx="5"/><text x="523" y="169">OpenZL runtime</text><text class="sub" x="523" y="183">executes the frame graph</text></g>
+              <g class="figure-card accent"><rect x="440" y="198" width="166" height="34" rx="5"/><text x="523" y="213">GeoZL extensions</text><text class="sub" x="523" y="226">raster codec nodes</text></g>
+
+              <path class="figure-arrow" marker-end="url(#arrow-parts)" d="M628 181H666"/>
+              <g class="figure-card accent"><rect x="670" y="146" width="76" height="70" rx="6"/><text x="708" y="170">array</text><text class="sub" x="708" y="188">requested</text><text class="sub" x="708" y="201">layout</text></g>
+              <text class="figure-note" x="380" y="267">Rumi supplies meaning; Karu supplies ranges; OpenZL with GeoZL supplies decoded values.</text>
+            </svg>
+            <figcaption>These boundaries are visible in the code. Rumi never asks Karu to understand a raster, and it never implements a second GeoZL decoder beside OpenZL.</figcaption>
+          </figure>
+
+          <div class="definition-grid">
+            <div><b>Rumi</b><p>The orchestrator. It maps a tensor selection to compressed frames and maps decoded samples to an output array.</p></div>
+            <div><b>Karu</b><p>A read-only transport library. Given a locator, offset, and length, it retrieves those bytes from memory, a local file, HTTP, or supported object storage.</p></div>
+            <div><b>OpenZL + GeoZL</b><p>OpenZL is the graph-based compression runtime. GeoZL extends that runtime with raster-aware codec nodes registered into the same decoder context.</p></div>
+          </div>
+
+          <h3>Six nouns used throughout the guide</h3>
+          <div class="definition-grid">
+            <div><b>Source</b><p>The bytes of one <code>.rumi</code> file, supplied as memory, a path, or a URI.</p></div>
+            <div><b>Header</b><p>The small external index that tells Rumi the array shape, frame layout, and compressed byte counts.</p></div>
+            <div><b>Selection</b><p>The requested time positions, bands, spatial window, and output axis pattern.</p></div>
+            <div><b>Frame</b><p>One independently compressed unit. Rumi fetches and decodes whole frames, then keeps only requested samples.</p></div>
+            <div><b>FrameTask</b><p>Rumi’s in-memory work record: where a frame lives, how large it is, and where its samples must go.</p></div>
+            <div><b>Completion</b><p>Karu’s report that one requested range finished, including its status, byte count, buffer, and caller tag.</p></div>
+          </div>
+
+          <div class="technical-note">
+            <span>How to read the code names</span>
+            <p><code>read()</code> is a function. <code>TransportSource::read()</code> is a method owned by the C++ type <code>TransportSource</code>. A name such as <code>rumi_source*</code> is an opaque native handle from Python’s point of view: Python can retain or release it but does not inspect the C++ object behind it.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="start">
           <div class="section-label"><span>01</span><small>Start here</small></div>
           <h2>One read, seen from end to end</h2>
           <p class="section-intro">Suppose a model asks for one spatial window, one time position, and two bands. The public call is small because the implementation carries those choices through every layer.</p>
@@ -102,9 +160,27 @@
         </section>
 
         <section class="guide-section" id="python">
-          <div class="section-label"><span>02</span><small>Enter through Python</small></div>
-          <h2>Turn public arguments into native handles</h2>
-          <p class="section-intro"><code>read()</code> in <code>bindings/python/rumi/_read.py</code> is deliberately thin. It creates a source, parses the external header, normalizes the selection, then crosses the C boundary.</p>
+          <div class="section-label"><span>02</span><small>Understand the API</small></div>
+          <h2>Turn a user request into native values</h2>
+          <p class="section-intro"><code>rumi.read()</code> is synchronous: it returns a finished array or raises an exception. Its arguments describe three different things—the bytes to read, the samples to keep, and the array to return.</p>
+
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Argument</th><th>Meaning</th><th>What the code does with it</th></tr></thead>
+              <tbody>
+                <tr><td><code>source</code></td><td>A bytes-like object, local path, or remote URI</td><td>Wraps it as <code>MemorySource</code> or <code>TransportSource</code></td></tr>
+                <tr><td><code>header</code></td><td>The external index returned by <code>write()</code> or rebuilt by <code>info()</code></td><td>Parses shape, dtype, tile layout, frame axes, and compressed sizes</td></tr>
+                <tr><td><code>time</code>, <code>bands</code></td><td>Zero-based lists or half-open <code>(start, stop)</code> ranges; <code>None</code> means all</td><td>Validates them and converts them to the C API’s one-based indices</td></tr>
+                <tr><td><code>window</code></td><td><code>(row, column, height, width)</code>; <code>None</code> means the whole image</td><td>Checks bounds and converts it to offsets plus sizes</td></tr>
+                <tr><td><code>pattern</code></td><td>The order of output axes such as band, time, row, and column</td><td>Compiles shape and byte strides before any frame runs</td></tr>
+                <tr><td><code>framework</code></td><td><code>numpy</code>, <code>torch</code>, <code>jax</code>, <code>tensorflow</code>, or <code>None</code></td><td>Chooses the final array adapter; numeric results transfer through DLPack, while <code>None</code> leaves a <code>RumiArray</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>The data file and header are separate on purpose. Rumi can plan exact byte ranges from the small header before touching the potentially large data source. A caller that already has the header can therefore begin a remote read without first downloading metadata from the data object.</p>
+
+          <p><code>read()</code> in <code>bindings/python/rumi/_read.py</code> first checks the broad Python types. It then creates two short-lived wrappers from <code>bindings/python/rumi/_ffi.py</code>, normalizes the selection, and crosses the native boundary.</p>
 
           <pre><code>arr = _read_one(
     _Source(source),
@@ -143,29 +219,73 @@ return _to_framework(arr, framework)</code></pre>
             <figcaption>Only memory sources bypass Karu. A local path and a remote URI both enter through <code>TransportSource</code>; Karu resolves which transport they need.</figcaption>
           </figure>
 
-          <p><code>_resolve_axis()</code> validates Python’s zero-based band and time indices and converts them to the C API’s one-based convention. <code>_resolve_window()</code> checks <code>(row, column, height, width)</code> against the image dimensions. <code>_Spec</code> calls <code>rumi_spec_parse()</code> once and keeps the parsed native header alive for the read.</p>
+          <p><code>_resolve_axis()</code> expands a half-open range when necessary, validates Python’s zero-based band and time indices, and converts them to the C API’s one-based convention. A null pointer plus count zero means “all.” <code>_resolve_window()</code> turns <code>(row, column, height, width)</code> into the row and column offsets and sizes expected by C.</p>
+
+          <p><code>_Source</code> owns the native source handle. For in-memory input, the C++ <code>MemorySource</code> only borrows the Python buffer, so <code>_Source._keep</code> keeps that buffer alive until the native source is released. <code>_Spec</code> calls <code>rumi_spec_parse()</code>, arranges for the native object to be freed with <code>ffi.gc()</code>, and exposes the parsed fields needed for Python-side bounds checks.</p>
+
+          <div class="technical-note">
+            <span>Why validate twice?</span>
+            <p>Python rejects mistakes with familiar <code>TypeError</code> and <code>ValueError</code> messages. The C API validates again because it is a public boundary that can also be called without Python. The core then checks format-dependent invariants near the code that uses them.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="boundary">
+          <div class="section-label"><span>03</span><small>Cross into C++</small></div>
+          <h2>Share a stable C boundary, then allocate exactly once</h2>
+          <p class="section-intro">CFFI, Python’s C foreign-function bridge, calls the public C API in <code>core/src/capi.cpp</code>. That API deliberately exposes plain handles, integers, pointers, and status codes—not C++ classes or exceptions.</p>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 250" role="img" aria-labelledby="boundary-title boundary-desc">
+              <title id="boundary-title">The Python to C++ boundary of a normal Rumi read</title>
+              <desc id="boundary-desc">Python passes native handles and normalized values to rumi_read_dlpack. prepare_selection validates the request, creates the layout, and calculates the exact size. The C API allocates output, calls the C++ reader, and wraps the completed allocation as DLPack.</desc>
+              <defs><marker id="arrow-boundary" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+              <text class="figure-stage" x="18" y="20">PYTHON / CFFI</text>
+              <text class="figure-stage" x="201" y="20">PUBLIC C API</text>
+              <text class="figure-stage" x="506" y="20">C++ CORE</text>
+
+              <g class="figure-card"><rect x="16" y="38" width="152" height="76" rx="6"/><text x="92" y="61">handles + selection</text><text class="sub" x="92" y="80">source · spec · axes</text><text class="sub" x="92" y="96">window · pattern</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M168 76H192"/>
+              <g class="figure-card accent"><rect x="196" y="38" width="168" height="76" rx="6"/><text x="280" y="61">rumi_read_dlpack()</text><text class="sub" x="280" y="80">prepare_selection()</text><text class="sub" x="280" y="96">SelectionSetup</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M364 76H388"/>
+              <g class="figure-card"><rect x="392" y="38" width="126" height="76" rx="6"/><text x="455" y="61">malloc(need)</text><text class="sub" x="455" y="80">exact checked</text><text class="sub" x="455" y="96">output size</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M518 76H542"/>
+              <g class="figure-card accent"><rect x="546" y="38" width="198" height="76" rx="6"/><text x="645" y="61">read_window()</text><text class="sub" x="645" y="80">source + header + setup</text><text class="sub" x="645" y="96">write completed output</text></g>
+
+              <path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M645 114V145H516"/>
+              <g class="figure-card"><rect x="340" y="134" width="176" height="62" rx="6"/><text x="428" y="157">finish_dlpack()</text><text class="sub" x="428" y="176">wrap, do not copy</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M340 165H310"/>
+              <g class="figure-card accent"><rect x="164" y="134" width="142" height="62" rx="6"/><text x="235" y="157">RumiArray</text><text class="sub" x="235" y="176">owns native tensor</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M196 213H546"/>
+              <text class="figure-note" x="371" y="232">On failure: C++ exception → C status → Python exception; the allocation is freed.</text>
+            </svg>
+            <figcaption><code>SelectionSetup</code> carries the selected one-based axes, compiled <code>LayoutPlan</code>, and exact output byte count. The core receives a destination that is already valid and large enough.</figcaption>
+          </figure>
+
+          <p><code>prepare_selection()</code> centralizes pointer/count checks, selected-axis resolution, output-layout compilation, and overflow-safe size calculation. Both <code>rumi_read()</code>, where the caller supplies storage, and <code>rumi_read_dlpack()</code>, where Rumi allocates storage, use this same preparation. The two entry points cannot silently disagree about shape or required bytes.</p>
+
+          <p>The normal numeric path allocates exactly <code>need</code> bytes, invokes <code>read_window()</code>, and only then wraps the allocation with <code>finish_dlpack()</code>. Every failure path frees the allocation. Padded sub-byte dtypes take the other entry point: Python preallocates byte-backed NumPy storage and passes it to <code>rumi_read()</code>, because DLPack consumers cannot describe those padded values.</p>
 
           <div class="callout">
-            <span>Two output paths, one reader</span>
-            <p>Normal numeric dtypes call <code>rumi_read_dlpack()</code>. Padded sub-byte dtypes preallocate NumPy storage and call <code>rumi_read()</code>, because DLPack consumers cannot represent those padded values. Both C functions continue through the same core read path.</p>
+            <span>Exceptions stop at the boundary</span>
+            <p><code>capi_call()</code> catches C++ exceptions and records a Rumi status plus error text. Back in Python, <code>_check()</code> maps that status to an appropriate Python exception. No C++ exception or partially initialized tensor crosses the C ABI.</p>
           </div>
         </section>
 
         <section class="guide-section" id="plan">
-          <div class="section-label"><span>03</span><small>Build the plan</small></div>
+          <div class="section-label"><span>04</span><small>Build the plan</small></div>
           <h2>Compile the selection into frame tasks</h2>
-          <p class="section-intro">The C API first fixes the output layout and allocation size. The core then creates one <code>FrameTask</code> for every compressed frame that can contribute samples.</p>
+          <p class="section-intro">With shape and storage settled, the core turns the logical selection into one <code>FrameTask</code> for every compressed frame that can contribute samples.</p>
 
           <figure class="story-figure">
             <svg viewBox="0 0 760 250" role="img" aria-labelledby="plan-title plan-desc">
               <title id="plan-title">How Rumi creates a frame plan</title>
-              <desc id="plan-desc">prepare_selection resolves axes, compiles the output layout, and checks the allocation. read_items validates each item, append_read_plan walks intersecting tiles, and a Plan collects FrameTasks.</desc>
+              <desc id="plan-desc">read_window creates one ReadItem. read_items validates it and append_read_plan walks intersecting tiles. A Plan collects the resulting FrameTasks.</desc>
               <defs><marker id="arrow-plan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
-              <text class="figure-stage" x="18" y="20">SHAPE THE RESULT</text>
+              <text class="figure-stage" x="18" y="20">CREATE ONE ITEM</text>
               <text class="figure-stage" x="282" y="20">WALK THE SELECTION</text>
               <text class="figure-stage" x="570" y="20">STORE THE WORK</text>
 
-              <g class="figure-card accent"><rect x="16" y="37" width="190" height="82" rx="6"/><text x="111" y="59">prepare_selection()</text><text class="sub" x="111" y="78">resolve bands and times</text><text class="sub" x="111" y="94">compile_layout()</text><text class="sub" x="111" y="108">checked_read_size()</text></g>
+              <g class="figure-card accent"><rect x="16" y="37" width="190" height="82" rx="6"/><text x="111" y="59">read_window()</text><text class="sub" x="111" y="78">source + header</text><text class="sub" x="111" y="94">window offsets</text><text class="sub" x="111" y="108">one ReadItem</text></g>
               <path class="figure-arrow" marker-end="url(#arrow-plan)" d="M206 78H254"/>
               <g class="figure-card"><rect x="258" y="37" width="220" height="82" rx="6"/><text x="368" y="59">read_items()</text><text class="sub" x="368" y="78">validate_request()</text><text class="sub" x="368" y="94">check readable size</text><text class="sub" x="368" y="108">append_read_plan()</text></g>
               <path class="figure-arrow" marker-end="url(#arrow-plan)" d="M478 78H526"/>
@@ -181,7 +301,9 @@ return _to_framework(arr, framework)</code></pre>
             <figcaption>A <code>FrameTask</code> is the unit shared by planning, transport, decoding, and placement. Its tag lets a Karu completion return to the exact task that requested it.</figcaption>
           </figure>
 
-          <p><code>append_read_plan()</code> walks only the tile rows and columns intersecting the window. For each relevant band and time combination it calls <code>Header::frame_index()</code>, then obtains the compressed range with <code>frame_offset()</code> and <code>frame_byte_count()</code>. It also precomputes where every selected plane belongs in the output.</p>
+          <p>The header’s <code>frame_unit</code> records a choice made when the file was written: a frame may hold several bands or times, or those axes may select separate frames. <code>append_read_plan()</code> walks an axis only when that axis changes the frame index. Selected planes that live together remain members of one task, avoiding a separate fetch for every plane inside that frame.</p>
+
+          <p>The function walks only the tile rows and columns intersecting the window. For each relevant band and time combination it calls <code>Header::frame_index()</code>, then obtains the compressed range with <code>frame_offset()</code> and <code>frame_byte_count()</code>. It also precomputes where every selected plane belongs in the output.</p>
 
           <pre><code>idx = h.frame_index(tile_row, tile_col, band, time)
 task.offset = h.frame_offset(idx)
@@ -196,9 +318,11 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
         </section>
 
         <section class="guide-section" id="karu">
-          <div class="section-label"><span>04</span><small>Fetch with Karu</small></div>
-          <h2>Route each task without changing its meaning</h2>
-          <p class="section-intro"><code>execute_plan()</code> divides the plan by source behavior. Memory, local paths, and remote objects reach the same decoder, but they do not take the same route to get there.</p>
+          <div class="section-label"><span>05</span><small>Fetch with Karu</small></div>
+          <h2>Ask for byte ranges, not raster concepts</h2>
+          <p class="section-intro">Karu is a read-only transport library. Rumi gives it a locator plus <code>offset</code> and <code>length</code>; Karu returns exactly that byte range. It does not know about bands, tiles, frames, or output arrays.</p>
+
+          <p>A locator is Karu’s transport-independent description of where bytes live. <code>karu_resolve()</code> turns a local path, HTTP URL, or supported cloud URI into that description once when <code>TransportSource::open()</code> runs. Reads are positional rather than cursor-based, so independent frame tasks can request different parts of the same object concurrently.</p>
 
           <figure class="story-figure">
             <svg viewBox="0 0 760 310" role="img" aria-labelledby="karu-title karu-desc">
@@ -231,7 +355,9 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
             <figcaption>A path or URI was already resolved by <code>karu_resolve()</code>. At execution time, <code>remote_locator()</code> decides whether the task joins the remote batch.</figcaption>
           </figure>
 
-          <p>For remote work, Rumi creates one <code>karu_req</code> per frame and stores <code>&amp;task</code> in its tag. It submits the complete remote workload before decoding local tasks. This gives Karu the full set of ranges to schedule while Rumi’s CPU workers remain busy.</p>
+          <p><code>execute_plan()</code> asks each source for <code>remote_locator()</code>. A memory source returns no locator and later performs a bounded <code>memcpy</code>. A local <code>TransportSource</code> also joins <code>local_tasks</code>; its Rumi worker calls the blocking convenience function <code>karu_client_fetch()</code>. Only a genuinely remote locator enters the asynchronous batch route.</p>
+
+          <p>For remote work, Rumi creates one <code>karu_req</code> per frame and stores <code>&amp;task</code> in its caller-controlled tag. It submits the complete remote workload before decoding local tasks. Seeing every range at once lets Karu schedule and coalesce compatible requests while Rumi’s CPU workers remain busy.</p>
 
           <p><code>karu_batch_next()</code> returns completions as they become ready. Rumi checks the Karu status and exact byte count, recovers the <code>FrameTask</code> from the tag, attaches the compressed buffer, and sends the ready tasks to the decoder in waves. Karu’s I/O thread continues filling the next wave while Rumi decodes the current one.</p>
 
@@ -239,12 +365,78 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
             <div><b>Karu knows</b><p>The locator, byte offset, byte count, destination or returned buffer, status, and caller tag.</p></div>
             <div><b>Rumi knows</b><p>Why that range is a frame, how it must decode, and where its selected samples belong.</p></div>
           </div>
+
+          <div class="technical-note">
+            <span>One session per read, one compatible client per calling thread</span>
+            <p><code>read_items()</code> creates a <code>TransportSession</code> for the operation. The session lazily obtains a Karu client only when transport is needed; a thread-local cache can reuse that client on later reads when its configuration still matches. Pure memory reads never start the transport runtime.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="concurrency">
+          <div class="section-label"><span>06</span><small>Overlap the work</small></div>
+          <h2>The API is synchronous; the engine is concurrent</h2>
+          <p class="section-intro">There is no <code>await rumi.read(...)</code>. The Python call blocks until every requested sample is ready. The asynchronous work lives underneath that call, where Karu can progress remote I/O while Rumi workers read local frames and decode completed ones.</p>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 350" role="img" aria-labelledby="concurrency-title concurrency-desc">
+              <title id="concurrency-title">Where work overlaps inside one synchronous Rumi read</title>
+              <desc id="concurrency-desc">The caller plans and submits remote requests, Rumi workers process local tasks, and Karu's background threads perform remote I/O and credential or file work. The caller waits for completions, drains ready frames into waves, and returns only after all waves finish.</desc>
+              <defs><marker id="arrow-concurrency" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+              <text class="figure-stage" x="12" y="21">TIME →</text>
+              <text class="figure-stage" x="12" y="60">CALLER</text>
+              <text class="figure-stage" x="12" y="132">KARU I/O</text>
+              <text class="figure-stage" x="12" y="204">RUMI POOL</text>
+              <text class="figure-stage" x="12" y="276">KARU HELPERS</text>
+
+              <path class="figure-arrow" d="M102 64H742M102 136H742M102 208H742M102 280H742"/>
+
+              <g class="figure-card accent"><rect x="112" y="39" width="112" height="48" rx="5"/><text x="168" y="58">plan + submit</text><text class="sub" x="168" y="74">client_submit()</text></g>
+              <g class="figure-card"><rect x="238" y="39" width="142" height="48" rx="5"/><text x="309" y="58">run local tasks</text><text class="sub" x="309" y="74">decode_tasks()</text></g>
+              <g class="figure-card"><rect x="394" y="39" width="126" height="48" rx="5"/><text x="457" y="58">wait for first</text><text class="sub" x="457" y="74">batch_next(-1)</text></g>
+              <g class="figure-card accent"><rect x="534" y="39" width="116" height="48" rx="5"/><text x="592" y="58">drain ready</text><text class="sub" x="592" y="74">batch_next(0)</text></g>
+              <g class="figure-card"><rect x="664" y="39" width="72" height="48" rx="5"/><text x="700" y="58">repeat</text><text class="sub" x="700" y="74">then return</text></g>
+
+              <path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M224 63H238M380 63H394M520 63H534M650 63H664"/>
+              <path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M196 87V111H248"/>
+              <g class="figure-card accent"><rect x="252" y="111" width="430" height="48" rx="5"/><text x="467" y="130">remote ranges progress independently</text><text class="sub" x="467" y="146">connection · retry · completion queues</text></g>
+
+              <path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M309 87V183"/>
+              <g class="figure-card"><rect x="246" y="183" width="140" height="48" rx="5"/><text x="316" y="202">local task wave</text><text class="sub" x="316" y="218">read + OpenZL decode</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M592 87V175H566V183"/>
+              <g class="figure-card accent"><rect x="536" y="183" width="116" height="48" rx="5"/><text x="594" y="202">ready wave 1</text><text class="sub" x="594" y="218">OpenZL decode</text></g>
+              <g class="figure-card"><rect x="666" y="183" width="70" height="48" rx="5"/><text x="701" y="202">wave 2</text><text class="sub" x="701" y="218">decode</text></g>
+
+              <g class="figure-card"><rect x="282" y="255" width="166" height="48" rx="5"/><text x="365" y="274">credential workers</text><text class="sub" x="365" y="290">blocking preparation</text></g>
+              <g class="figure-card"><rect x="464" y="255" width="166" height="48" rx="5"/><text x="547" y="274">file workers</text><text class="sub" x="547" y="290">local Karu reads</text></g>
+              <text class="figure-note" x="422" y="335">The Python caller sees one blocking function; these lanes can overlap inside it.</text>
+            </svg>
+            <figcaption>Remote requests are submitted first. While Karu’s I/O thread progresses them, <code>decode_tasks(local_tasks)</code> uses the Rumi pool. Ready remote frames are then decoded in waves while Karu keeps filling the next wave.</figcaption>
+          </figure>
+
+          <h3>Which thread owns what?</h3>
+          <div class="definition-grid">
+            <div><b>Calling thread</b><p>Builds the plan, submits the remote batch, waits for Karu completions, groups currently ready frames, and returns the final result.</p></div>
+            <div><b>Karu I/O thread</b><p>Owns active remote transfers, connection reuse, retries, and completion delivery. It continues running while Rumi decodes.</p></div>
+            <div><b>Rumi worker pool</b><p>When enabled, runs <code>execute_task()</code>: positional local or memory reads when needed, OpenZL decompression, validation, and output placement.</p></div>
+            <div><b>Karu helper workers</b><p>Keep blocking local-file and cloud-credential preparation away from the remote event loop.</p></div>
+          </div>
+
+          <p><code>karu_batch_next(batch, -1)</code> blocks the coordinator until the first completion is available. Rumi then calls <code>karu_batch_next(batch, 0)</code> repeatedly to drain everything already ready without waiting. That group becomes one decoder wave. The loop repeats until Karu reports the batch ended.</p>
+
+          <p>The Rumi thread pool is process-wide and is created only when a plan has more than one frame task. Its default size is one unless <code>RUMI_NUM_THREADS</code> or <code>rumi.set_num_threads()</code> changes it; without a pool, <code>Executor::run()</code> performs the same tasks serially on the calling thread. The first genuinely parallel read fixes the pool size, so configuration must happen before that read. Each call submits its own <code>ThreadPool::Batch</code> and waits only for that batch.</p>
+
+          <div class="callout">
+            <span>Concurrency does not change the answer</span>
+            <p><code>append_read_plan()</code> fixes every destination before execution, and each frame decodes independently. Workers claim tasks through an atomic index; remote completions may arrive in any order, but they write to disjoint planned locations. Scheduling changes when bytes arrive, not where samples land.</p>
+          </div>
         </section>
 
         <section class="guide-section" id="decode">
-          <div class="section-label"><span>05</span><small>Decode a frame</small></div>
+          <div class="section-label"><span>07</span><small>Decode a frame</small></div>
           <h2>Use one OpenZL runtime extended by GeoZL</h2>
-          <p class="section-intro">GeoZL is not a second decoder beside OpenZL. Each Rumi worker owns one OpenZL decompression context, and GeoZL registers its raster codec implementations into that context.</p>
+          <p class="section-intro">OpenZL is the compression runtime that understands the graph stored inside a compressed frame. GeoZL is an extension library that adds raster-oriented transform nodes to that runtime. They are one decoding path, not two competing decoders.</p>
+
+          <p>An OpenZL frame carries the graph and parameters needed to reconstruct its values. Here, a graph is a recipe of connected transform nodes: the output of one operation becomes the input of another. Built-in nodes implement general operations; GeoZL contributes nodes designed for geospatial raster data. Rumi does not choose or rebuild that graph during a read—it supplies the compressed frame to OpenZL and validates the result against the Rumi header.</p>
 
           <pre><code>struct WorkerState {
     ZL_DCtx* dctx = ZL_DCtx_create();
@@ -277,7 +469,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
             <figcaption><code>geozl_register_decoders(dctx)</code> is the integration point. After registration, OpenZL can execute graphs that contain both built-in nodes and GeoZL custom raster nodes.</figcaption>
           </figure>
 
-          <p><code>WorkerState</code> in <code>core/src/plan.cpp</code> is thread-local. It reuses the OpenZL context plus compressed and decoded scratch buffers across tasks on that worker. Frames remain independent; the reusable state avoids rebuilding the runtime and reallocating scratch for every frame.</p>
+          <p><code>WorkerState</code> in <code>core/src/plan.cpp</code> is declared <code>thread_local</code>: every worker thread receives its own instance the first time it decodes. The worker can reuse its OpenZL context plus compressed and decoded scratch buffers for later tasks, but no two threads share that mutable decoder state. Frames remain independent; reuse avoids rebuilding the runtime and reallocating scratch for every frame.</p>
 
           <p><code>execute_task()</code> calls <code>ZL_DCtx_decompressTyped()</code>, then checks that OpenZL produced numeric samples with the expected fixed width and exact decoded byte size. Sub-byte samples receive one additional check: unused high bits must be zero. Only a validated frame can reach output placement.</p>
 
@@ -288,7 +480,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
         </section>
 
         <section class="guide-section" id="output">
-          <div class="section-label"><span>06</span><small>Build the result</small></div>
+          <div class="section-label"><span>08</span><small>Build the result</small></div>
           <h2>Decode directly or copy the requested rectangle</h2>
           <p class="section-intro">The output buffer and all of its strides were fixed before the plan ran. A completed frame therefore already knows whether it can decode directly into its final location or needs a temporary decoded frame.</p>
 
@@ -319,7 +511,9 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
             <figcaption><code>copy_rect()</code> copies complete rows when both layouts are contiguous and falls back to sample-wise copies when the requested output pattern uses a different pixel stride.</figcaption>
           </figure>
 
-          <p>For the normal numeric path, <code>rumi_read_dlpack()</code> allocated the exact output size before calling the core. <code>finish_dlpack()</code> wraps that allocation in a versioned DLPack tensor. It does not copy the decoded array into a second framework-owned buffer.</p>
+          <p>The output <code>pattern</code> determines shape and strides. For example, <code>"t y x b"</code> places time first and band last; another order changes where a task must write without changing which source frames it needs. This is why <code>compile_layout()</code> runs before <code>append_read_plan()</code>.</p>
+
+          <p>For the normal numeric path, <code>rumi_read_dlpack()</code> allocated the exact output size before calling the core. <code>finish_dlpack()</code> wraps that allocation in a versioned DLPack tensor. DLPack is a small ownership-and-metadata protocol shared by array libraries: it describes the address, shape, strides, dtype, and device without copying the decoded array into a second framework-owned buffer.</p>
 
           <p>Python wraps the native tensor in <code>RumiArray</code>. Calling <code>numpy()</code>, <code>torch()</code>, <code>jax()</code>, or <code>tensorflow()</code> transfers that allocation through DLPack. <code>RumiArray.__dlpack__()</code> permits the transfer exactly once; if no consumer takes it, the wrapper frees the native tensor itself.</p>
 
@@ -330,9 +524,17 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
         </section>
 
         <section class="guide-section" id="many">
-          <div class="section-label"><span>07</span><small>Read a batch</small></div>
+          <div class="section-label"><span>09</span><small>Read a batch</small></div>
           <h2>Reuse the same engine for many windows</h2>
           <p class="section-intro"><code>read_many()</code> does not loop over <code>read()</code>. It turns every source, header, and window into a <code>ReadItem</code>, then sends all items through one <code>read_items()</code> call and one execution plan.</p>
+
+          <pre><code>batch = rumi.read_many(
+    ["north.rumi", "south.rumi"],
+    [north_header, south_header],
+    windows=[(0, 0, 256, 256), (512, 0, 256, 256)],
+    bands=[1, 3],
+    framework="torch",
+)</code></pre>
 
           <figure class="story-figure">
             <svg viewBox="0 0 760 220" role="img" aria-labelledby="many-title many-desc">
@@ -359,7 +561,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
         </section>
 
         <section class="guide-section" id="map">
-          <div class="section-label"><span>08</span><small>Follow the source</small></div>
+          <div class="section-label"><span>10</span><small>Follow the source</small></div>
           <h2>The read path by file</h2>
           <p class="section-intro">These are the implementation files to open in order when changing or debugging a read.</p>
 
@@ -373,6 +575,10 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/read.cpp"><code>core/src/read.cpp</code></a></td><td>Frame planning, source checks, Karu batching, and execution order</td><td><code>append_read_plan</code>, <code>read_items</code>, <code>execute_plan</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/source.cpp"><code>core/src/source.cpp</code></a></td><td>Memory sources, Karu locator resolution, and transport sessions</td><td><code>MemorySource</code>, <code>TransportSource</code>, <code>TransportSession</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/plan.cpp"><code>core/src/plan.cpp</code></a></td><td>Worker-local OpenZL context, GeoZL decoder registration, frame validation, and placement</td><td><code>WorkerState</code>, <code>execute_task</code>, <code>copy_rect</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/include/rumi/thread_pool.hpp"><code>core/include/rumi/thread_pool.hpp</code></a></td><td>Process-wide workers and operation-scoped batches</td><td><code>ThreadPool</code>, <code>ThreadPool::Batch</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/karu/blob/main/src/runtime/engine.cpp"><code>karu/src/runtime/engine.cpp</code></a></td><td>Remote event loop, local-file workers, credential workers, and completion queues</td><td><code>Engine::submit</code>, <code>io_loop</code>, <code>file_loop</code>, <code>credential_loop</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/geozl/blob/main/core/src/decoder_registry.c"><code>geozl/core/src/decoder_registry.c</code></a></td><td>Registration of GeoZL’s raster codecs into an OpenZL decoder context</td><td><code>geozl_register_decoders</code>, <code>geozl_owns_ctid</code></td></tr>
+                <tr><td><a href="https://github.com/facebook/openzl/blob/dev/src/openzl/decompress/decompress2.c"><code>openzl/decompress/decompress2.c</code></a></td><td>OpenZL graph decompression reached through its public decoder API</td><td><code>ZL_DCtx_decompressTyped</code></td></tr>
               </tbody>
             </table>
           </div>
