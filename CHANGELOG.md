@@ -4,6 +4,29 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-09-12
+
+### Added
+
+- `FrameTable` notebook output gives tile-frame layouts a compact square SVG.
+  It shows the independently addressable frames in their actual band/time
+  index order, distinguishing frame units `0` and `9` visually.
+
+### Changed
+
+- Changed the `FrameTable` SVGs.
+
+### Fixed
+
+- Files whose nominal tile is larger than the raster are validated using the
+  clipped edge dimensions that are actually decoded.
+- The writer now rejects variable-size frame indexes that exceed the reader's
+  fixed expansion budget before it creates an output file.
+- Time coordinates reconstructed from compact metadata have an independent,
+  predictable allocation limit.
+- Concurrent or interrupted DLPack exports cannot transfer the same decoded
+  allocation twice.
+
 ## [0.21.1] - 2026-09-10
 
 ### Fixed
@@ -316,7 +339,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.21.1...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.21.2...HEAD
+[0.21.2]: https://github.com/asterisk-labs/rumi/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/asterisk-labs/rumi/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/asterisk-labs/rumi/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/asterisk-labs/rumi/compare/v0.20.0...v0.20.1
