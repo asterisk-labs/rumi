@@ -399,6 +399,7 @@ class FrameTable:
                 "t": self.tile_size, "across": self.tiles_across,
                 "down": self.tiles_down, "n": len(self._data),
                 "layout": self.layout, "per": self._per_cell,
+                "frame_unit": int(self.frame_unit),
                 "steps": self.time_count,
                 "tiled": bool(self._walked),
                 "done": self.done, "dtype": str(self.dtype), "nbytes": nbytes,

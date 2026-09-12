@@ -48,7 +48,7 @@ _CSS = """
 #ID table{border-collapse:collapse;font-size:12.5px}
 #ID td.k{opacity:.6;padding:2px 16px 2px 0}
 #ID td.sub{opacity:.45;padding-left:10px}
-#ID .g{flex:0 0 auto;width:170px}
+#ID .g{flex:0 0 auto;width:190px;aspect-ratio:1;display:grid;place-items:center}
 """
 
 
@@ -158,6 +158,126 @@ def _frame_cube(f, states, *, show_progress=True):
         f'fill="currentColor" opacity=".7">B: {f["b"]}</text></svg>')
 
 
+_LAYOUT_COPY = {
+    (0, "h w"): ("Band-first tiles", "One frame per band and time step.",
+                  "Ordered by band, then time."),
+    (9, "h w"): ("Time-first tiles", "One frame per band and time step.",
+                  "Ordered by time, then band."),
+    (1, "b h w"): ("Band planes", "All bands share one frame as",
+                    "contiguous spatial planes."),
+    (1, "t h w"): ("Time planes", "All time steps share one frame as",
+                    "contiguous spatial planes."),
+    (2, "h w b"): ("Pixel spectra", "Every pixel keeps its complete",
+                    "spectrum together."),
+    (2, "h w t"): ("Pixel timelines", "Every pixel keeps its complete",
+                    "time series together."),
+    (3, "b t h w"): ("Band-first plane cube", "Time planes are contiguous",
+                      "inside each band."),
+    (4, "t b h w"): ("Time-first plane cube", "Band planes are contiguous",
+                      "inside each time step."),
+    (5, "b h w t"): ("Band planes with timelines", "Bands form spatial planes; time",
+                      "is interleaved within each pixel."),
+    (6, "t h w b"): ("Time planes with spectra", "Times form spatial planes; bands",
+                      "are interleaved within each pixel."),
+    (7, "h w b t"): ("Band-first pixel cubes", "Each pixel stores bands, with time",
+                      "varying inside each band."),
+    (8, "h w t b"): ("Time-first pixel cubes", "Each pixel stores times, with bands",
+                      "varying inside each time step."),
+}
+
+
+def _layout_copy(f):
+    """Name singleton tile layouts for the axis that actually varies."""
+    if f["layout"] != "h w":
+        return _LAYOUT_COPY[(f["frame_unit"], f["layout"])]
+    bands, times = f["b"], f["steps"]
+    if bands == 1 and times == 1:
+        return ("Spatial tiles", "One independently compressed frame",
+                "per spatial tile.")
+    if times == 1:
+        return ("Band tiles", "One frame per band and spatial tile.",
+                "Bands stay independently addressable.")
+    if bands == 1:
+        return ("Time tiles", "One frame per time step and spatial tile.",
+                "Times stay independently addressable.")
+    return _LAYOUT_COPY[(f["frame_unit"], f["layout"])]
+
+
+def _axis_box(axis, x, y, width):
+    colors = {"b": "#6249D8", "t": "#26745F", "h w": "#815D00"}
+    color = colors[axis]
+    return (f'<rect x="{x}" y="{y}" width="{width}" height="38" rx="4" '
+            f'fill="{color}" fill-opacity=".84"/>'
+            f'<text x="{x + width / 2}" y="{y + 24}" text-anchor="middle" '
+            f'font-size="12" font-weight="700" font-family="monospace" '
+            f'fill="white">{axis}</text>')
+
+
+def _axis_sequence(axes, y, center=107.5):
+    widths = [50 if axis == "h w" else 38 for axis in axes]
+    total = sum(widths) + 18 * (len(axes) - 1)
+    x = center - total / 2
+    parts = []
+    for i, (axis, width) in enumerate(zip(axes, widths, strict=True)):
+        parts.append(_axis_box(axis, x, y, width))
+        x += width
+        if i != len(axes) - 1:
+            parts.append(
+                f'<path d="M{x+4} {y+19}H{x+14}" stroke="currentColor" '
+                f'stroke-width="1.4"/><path d="M{x+10} {y+15}l4 4-4 4" '
+                f'fill="none" stroke="currentColor" stroke-width="1.4"/>')
+            x += 18
+    return "".join(parts)
+
+
+def _layout_frame(f):
+    """Show axis order, the OpenZL boundary, and its agreed description."""
+    unit, layout = f["frame_unit"], f["layout"]
+    name, line_one, line_two = _layout_copy(f)
+    axes = layout.replace("h w", "s").split()
+    axes = ["h w" if axis == "s" else axis for axis in axes]
+
+    if layout == "h w":
+        outside = []
+        if f["b"] > 1:
+            outside.append("b")
+        if f["steps"] > 1:
+            outside.append("t")
+        if unit == 9:
+            outside.reverse()
+        selectors = _axis_sequence(outside, 47) if outside else ""
+        frame = ('<rect x="52" y="102" width="111" height="62" rx="7" '
+                 'fill="none" stroke="currentColor" stroke-width="1.7"/>'
+                 + _axis_sequence(["h w"], 114))
+        connector = ('<path d="M107.5 88V98" stroke="currentColor" stroke-width="1.3"/>'
+                     '<path d="M103.5 94l4 4 4-4" fill="none" '
+                     'stroke="currentColor" stroke-width="1.3"/>') if outside else ""
+        drawing = selectors + connector + frame
+    else:
+        drawing = ('<rect x="12" y="54" width="191" height="82" rx="7" '
+                   'fill="none" stroke="currentColor" stroke-width="1.7"/>'
+                   + _axis_sequence(axes, 76))
+
+    description = f"{line_one} {line_two}"
+    return (
+        '<svg width="100%" viewBox="0 0 215 230" role="img" '
+        f'data-frame-figure="{unit}:{layout}" aria-label="{name}. {description}">'
+        f'<title>{name}. {description}</title>'
+        f'<text x="107.5" y="18" text-anchor="middle" font-size="12.5" '
+        f'font-family="monospace" font-weight="700" fill="currentColor">{name}</text>'
+        f'{drawing}'
+        f'<text x="107.5" y="177" text-anchor="middle" font-size="10.5" '
+        f'font-family="monospace" fill="currentColor" opacity=".78">{line_one}</text>'
+        f'<text x="107.5" y="193" text-anchor="middle" font-size="10.5" '
+        f'font-family="monospace" fill="currentColor" opacity=".78">{line_two}</text>'
+        f'<text x="107.5" y="218" text-anchor="middle" font-size="9.5" '
+        f'font-family="monospace" fill="currentColor" opacity=".52">{layout}</text></svg>')
+
+
+def _frame_figure(f, states, *, show_progress=True):
+    return _layout_frame(f)
+
+
 def frame_html(f, rows, states, cols, fallback):
     e = html.escape
     summary = "".join(f'<tr><td class="k">{k}</td><td>{e(v)}</td></tr>'
@@ -178,7 +298,7 @@ def frame_html(f, rows, states, cols, fallback):
 
     return (f'<div class="rumi-tf"><style>{_FRAME_CSS}</style>'
             f'<pre class="fallback">{e(fallback)}</pre>'
-            f'<div class="box">{meta}<div class="g">{_frame_cube(f, states)}</div>'
+            f'<div class="box">{meta}<div class="g">{_frame_figure(f, states)}</div>'
             f'</div>{grid}</div>')
 
 
