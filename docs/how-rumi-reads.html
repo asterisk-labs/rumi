@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Learn how Rumi turns a spatial, band, and time selection into exact byte ranges, independent OpenZL frames, and a model-ready tensor.">
+  <title>How Rumi Reads</title>
+  <link rel="icon" href="assets/svg/rumi-mark.svg">
+  <link rel="stylesheet" href="assets/css/guide.css?v=6">
+</head>
+<body>
+  <article class="guide-shell">
+    <header class="guide-header">
+      <a class="guide-lockup" href="index.html" aria-label="Rumi home">
+        <img src="assets/svg/rumi-mark.svg" alt="">
+        <strong>rumi</strong>
+      </a>
+      <nav class="guide-nav-main" aria-label="Documentation links">
+        <a href="how-rumi-reads.html" aria-current="page">How Rumi Reads</a>
+        <a href="examples.html">Examples</a>
+        <a href="index.html#/spec">Spec</a>
+        <a href="index.html#/deck">Deck</a>
+      </nav>
+    </header>
+
+    <main class="manual-layout">
+      <aside class="manual-nav" aria-label="Learning path">
+        <p class="here">How Rumi Reads</p>
+        <p>From model window to decoded tensor</p>
+        <ol class="guide-route">
+          <li><a href="#stack"><i>00</i><span><b>Meet the stack</b>Rumi, Karu, GeoZL</span></a></li>
+          <li><a href="#start"><i>01</i><span><b>Start here</b>The whole read</span></a></li>
+          <li><a href="#model"><i>02</i><span><b>See the model</b>Images, cubes, tiles</span></a></li>
+          <li><a href="#frames"><i>03</i><span><b>Choose frames</b>Tile or cell layout</span></a></li>
+          <li><a href="#header"><i>04</i><span><b>Open the index</b>The external header</span></a></li>
+          <li><a href="#select"><i>05</i><span><b>Plan a selection</b>Window to frame indexes</span></a></li>
+          <li><a href="#ranges"><i>06</i><span><b>Find the bytes</b>Counts, offsets, ranges</span></a></li>
+          <li><a href="#decode"><i>07</i><span><b>Decode frames</b>Karu and OpenZL</span></a></li>
+          <li><a href="#assemble"><i>08</i><span><b>Build the tensor</b>Crop, order, export</span></a></li>
+          <li><a href="#batch"><i>09</i><span><b>Read a batch</b>Training pipelines</span></a></li>
+          <li><a href="#trust"><i>10</i><span><b>Trust the result</b>Metadata and limits</span></a></li>
+        </ol>
+        <div class="nav-note"><b>Short route</b>Begin at 00 if the stack is new to you. Read 01 through 08 for one complete selective read, then open Examples for working code.</div>
+      </aside>
+
+      <article class="journey">
+        <p class="guide-kicker">From selection to tensor</p>
+        <h1 id="top">How Rumi Reads</h1>
+        <p class="lede">A model asks for a window, a few bands, or one moment in time. Rumi turns that selection into exact frame ranges, decodes only the frames that can contribute samples, and assembles the result in the tensor layout the caller needs.</p>
+        <div class="level-map" aria-label="Reading progression">
+          <span>Describe a selection</span>
+          <span>Locate its frames</span>
+          <span>Decode independently</span>
+          <span>Assemble the tensor</span>
+        </div>
+
+        <section class="guide-section first stack-intro" id="stack">
+          <div class="section-label"><span>00</span><small>Meet the stack</small></div>
+          <h2>Four layers, one selective read</h2>
+          <p class="section-intro">Rumi does not replace storage, transport, or compression. It gives those pieces a shared structure so a model can ask for part of a raster without reading and decoding the whole object.</p>
+
+          <div class="stack-flow" aria-label="The Rumi software stack">
+            <div class="stack-card rumi-layer">
+              <span>Format + planner</span>
+              <b>Rumi</b>
+              <p>Describes the raster, divides it into frames, maps a tensor selection to frame indexes, and assembles decoded samples.</p>
+            </div>
+            <div class="stack-connector" aria-hidden="true">asks for byte ranges</div>
+            <div class="stack-card karu-layer">
+              <span>Transport</span>
+              <b>Karu</b>
+              <p>Reads exact byte ranges from memory, local files, HTTP, and cloud object stores. It moves bytes without interpreting raster data.</p>
+            </div>
+            <div class="stack-connector" aria-hidden="true">returns compressed frames</div>
+            <div class="stack-card openzl-layer">
+              <span>Compression runtime</span>
+              <b>OpenZL</b>
+              <p>Stores compression as a graph of codec nodes. Every Rumi frame carries the graph and parameters needed to decode itself.</p>
+            </div>
+            <div class="stack-connector write-connector" aria-hidden="true">extended for raster data by</div>
+            <div class="stack-card geozl-layer">
+              <span>Raster-aware codecs</span>
+              <b>GeoZL</b>
+              <p>Adds numeric raster transforms and predictors to OpenZL, such as planar transforms, spatial deltas, quantization, and nodata handling.</p>
+            </div>
+          </div>
+
+          <div class="choice-grid stack-roles">
+            <div><b>When reading</b><p>Rumi plans the frames, Karu retrieves their ranges, and OpenZL executes the graph embedded in each frame. The reader does not need to guess how the data was compressed.</p></div>
+            <div><b>When writing</b><p>Rumi creates the frame layout. GeoZL helps choose raster-aware OpenZL graphs and compresses each frame before Rumi writes the file and its external header.</p></div>
+          </div>
+
+          <div class="technical-note">
+            <span>The boundary to remember</span>
+            <p><strong>Rumi knows which samples matter. Karu knows where to get their bytes. OpenZL and GeoZL know how those bytes become values.</strong></p>
+            <p>Because the layers keep separate responsibilities, the same Rumi selection works against a local file or a remote object, and different frames may use different compression graphs.</p>
+          </div>
+          <p class="bridge">With those roles in place, we can follow one request from a model window to the final tensor.</p>
+        </section>
+
+        <section class="guide-section" id="start">
+          <div class="section-label"><span>01</span><small>Start here</small></div>
+          <h2>One window, seen from end to end</h2>
+          <p class="section-intro">Imagine a Cube with three time steps, four bands, a 4 × 4 tile grid, and <code>frame_unit = 0</code>. An inference job requests one 256 × 256 window at time position 2 and needs only bands 1 and 3. Rumi can answer without decoding the other 190 frames.</p>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 188" role="img" aria-labelledby="overview-title overview-desc">
+              <title id="overview-title">The complete path of one Rumi read</title>
+              <desc id="overview-desc">A model selection becomes frame indexes, byte ranges, decoded OpenZL frames, and one output tensor.</desc>
+              <defs><marker id="arrow-overview" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+              <text class="figure-stage" x="10" y="20">SELECT</text>
+              <text class="figure-stage" x="206" y="20">PLAN</text>
+              <text class="figure-stage" x="402" y="20">FETCH + DECODE</text>
+              <text class="figure-stage" x="626" y="20">ASSEMBLE</text>
+              <g class="figure-card"><rect x="10" y="34" width="142" height="82" rx="6"/><text x="81" y="61">Window</text><text class="sub" x="81" y="81">t = 2 · b = 1, 3</text><text class="sub" x="81" y="98">row 512 · col 256</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-overview)" d="M152 75H198"/>
+              <g class="figure-card accent"><rect x="206" y="34" width="142" height="82" rx="6"/><text x="277" y="61">Header</text><text class="sub" x="277" y="81">frames 113, 119</text><text class="sub" x="277" y="98">offset + byte count</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-overview)" d="M348 75H394"/>
+              <g class="figure-card"><rect x="402" y="34" width="166" height="82" rx="6"/><text x="485" y="61">Karu + OpenZL</text><text class="sub" x="485" y="81">two exact ranges</text><text class="sub" x="485" y="98">two independent graphs</text></g>
+              <path class="figure-arrow" marker-end="url(#arrow-overview)" d="M568 75H618"/>
+              <g class="figure-card accent"><rect x="626" y="34" width="124" height="82" rx="6"/><text x="688" y="61">Tensor</text><text class="sub" x="688" y="81">requested samples</text><text class="sub" x="688" y="98">requested axis order</text></g>
+              <text class="figure-note" x="380" y="153">The selection keeps its meaning while each layer works in its own units.</text>
+            </svg>
+            <figcaption>Rumi decides which frames matter. Karu retrieves their byte ranges. OpenZL decodes each self-contained frame. Rumi places the requested samples in the output.</figcaption>
+          </figure>
+
+          <div class="process-strip" aria-label="Numerical selective read">
+            <div><b>Selection</b><span>t = 2<br>b = [1, 3]</span></div>
+            <div><b>Spatial tile</b><span>row = 2<br>column = 1</span></div>
+            <div><b>Frame indexes</b><span>113 and 119<br>two exact ranges</span></div>
+            <div><b>Work avoided</b><span>2 decoded<br>190 untouched</span></div>
+          </div>
+
+          <div class="technical-note">
+            <span>The three boundaries</span>
+            <p>The Rumi header describes array geometry and frame sizes. Karu knows how to move byte ranges from local or remote objects. OpenZL knows how to decode one frame from the compression graph stored inside it.</p>
+            <p>Keeping these contracts separate is what lets a read stay selective without forcing the transport to understand rasters or the file header to prescribe one codec.</p>
+          </div>
+          <p class="bridge">The useful mental model is simple: a Rumi read is not “open the file.” It is “map this tensor selection to the smallest set of independently decodable frames.”</p>
+        </section>
+
+        <section class="guide-section" id="model">
+          <div class="section-label"><span>02</span><small>See the model</small></div>
+          <h2>Begin with the array, not the file</h2>
+          <p class="section-intro">Rumi stores an Image as <code>(B, Y, X)</code> and a temporal Cube as <code>(T, B, Y, X)</code>. The spatial plane is divided into a regular grid. Band and time may either select separate frames or live inside each frame.</p>
+
+          <div class="definition-grid">
+            <div><b>Image</b><p>One grid with shape <code>(B, Y, X)</code>. Its time count is one.</p></div>
+            <div><b>Cube</b><p>Grid-aligned Images ordered along time, with shape <code>(T, B, Y, X)</code>.</p></div>
+            <div><b>Tile</b><p>One band and one time step at one grid position, with shape <code>(h, w)</code>.</p></div>
+            <div><b>Cell</b><p>All samples at one grid position: <code>(B,h,w)</code> or <code>(T,B,h,w)</code>.</p></div>
+            <div><b>Frame</b><p>The physical unit of compression and random access. It holds one tile or one cell.</p></div>
+            <div><b>Collection</b><p>A catalogue-level set of Images or Cubes. It is intentionally outside one file.</p></div>
+          </div>
+
+          <p>A tile and a cell name logical pieces of the array; a frame names the bytes that must be fetched and decoded together. Keeping those terms separate matters. Two files may represent the same Cube but choose different frame units because one is optimized for narrow band selection and the other for full-cell training samples.</p>
+
+          <h3>The grid at the image boundary</h3>
+          <p>Nominal tiles have one configured width and height, but edge tiles are clipped to the image bounds. They are never padded. A reader derives the real <code>h</code> and <code>w</code> of an edge frame from the image dimensions and its row and column.</p>
+          <p class="bridge">This is why the requested window stays an array concept. Rumi handles the tile boundaries and returns only the spatial extent the caller asked for.</p>
+        </section>
+
+        <section class="guide-section" id="frames">
+          <div class="section-label"><span>03</span><small>Choose frames</small></div>
+          <h2>The frame unit defines the cost of selection</h2>
+          <p class="section-intro"><code>frame_unit</code> says which axes are outside a frame and which are decoded together inside it. That choice connects compression opportunities to the future read pattern.</p>
+
+          <div class="choice-grid">
+            <div><b>Tile frames · units 0 and 9</b><p>Each band and time position is independently addressable at one tile location. Reading two bands can leave every other band compressed and untouched.</p></div>
+            <div><b>Cell frames · units 1 through 8</b><p>Band, time, or both live inside one decoded frame. OpenZL can model correlation across those axes, but selecting one value still requires decoding the cell.</p></div>
+          </div>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 254" role="img" aria-labelledby="unit-title unit-desc">
+              <title id="unit-title">Tile frames and cell frames</title>
+              <desc id="unit-desc">Tile frames keep band and time outside each frame, while cell frames store those axes together with the spatial tile.</desc>
+              <text class="figure-stage" x="24" y="22">TILE FRAMES · UNITS 0 AND 9</text>
+              <text class="figure-stage" x="414" y="22">CELL FRAMES · UNITS 1–8</text>
+
+              <rect class="diagram-panel" x="20" y="36" width="326" height="180" rx="9"/>
+              <g class="mini-frame green" transform="translate(43 62)">
+                <rect width="60" height="50" rx="4"/><path d="M20 0V50M40 0V50M0 16.7H60M0 33.4H60"/>
+                <text x="30" y="68">b0 · t0</text>
+              </g>
+              <g class="mini-frame violet" transform="translate(118 62)">
+                <rect width="60" height="50" rx="4"/><path d="M20 0V50M40 0V50M0 16.7H60M0 33.4H60"/>
+                <text x="30" y="68">b1 · t0</text>
+              </g>
+              <g class="mini-frame gold" transform="translate(193 62)">
+                <rect width="60" height="50" rx="4"/><path d="M20 0V50M40 0V50M0 16.7H60M0 33.4H60"/>
+                <text x="30" y="68">b0 · t1</text>
+              </g>
+              <g class="mini-frame terracotta" transform="translate(268 62)">
+                <rect width="54" height="50" rx="4"/><path d="M18 0V50M36 0V50M0 16.7H54M0 33.4H54"/>
+                <text x="27" y="68">b1 · t1</text>
+              </g>
+              <text class="diagram-copy" x="183" y="165">one independently addressable h × w frame</text>
+              <g class="axis-pill" transform="translate(91 181)"><rect width="72" height="22" rx="11"/><text x="36" y="15">band outside</text></g>
+              <g class="axis-pill" transform="translate(171 181)"><rect width="72" height="22" rx="11"/><text x="36" y="15">time outside</text></g>
+
+              <rect class="diagram-panel" x="406" y="36" width="334" height="180" rx="9"/>
+              <g class="cell-stack">
+                <rect x="462" y="63" width="206" height="92" rx="7" transform="translate(14 -12)"/>
+                <rect x="462" y="63" width="206" height="92" rx="7" transform="translate(7 -6)"/>
+                <rect class="front" x="462" y="63" width="206" height="92" rx="7"/>
+                <path d="M514 63V155M566 63V155M618 63V155M462 94H668M462 124H668"/>
+              </g>
+              <text class="cell-title" x="565" y="104">b × t × h × w</text>
+              <text class="diagram-copy" x="573" y="177">one cell · one range · one OpenZL graph</text>
+              <g class="axis-pill" transform="translate(493 187)"><rect width="72" height="22" rx="11"/><text x="36" y="15">band inside</text></g>
+              <g class="axis-pill" transform="translate(573 187)"><rect width="72" height="22" rx="11"/><text x="36" y="15">time inside</text></g>
+
+              <text class="figure-note" x="380" y="242">The same logical cell can become many selective frames or one correlation-rich frame.</text>
+            </svg>
+            <figcaption>Axes before <code>h w</code> are contiguous planes. Axes after <code>h w</code> are interleaved within pixels. The spatial axes remain together and in that order.</figcaption>
+          </figure>
+
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Expected workload</th><th>Useful starting point</th><th>Tradeoff to measure</th></tr></thead>
+              <tbody>
+                <tr><td>Inference selects a few bands or times</td><td>Tile frame, unit 0 or 9</td><td>More frames and less cross-axis correlation</td></tr>
+                <tr><td>Training always consumes the full cell</td><td>Cell frame, unit 1–8</td><td>More decoded samples per selective request</td></tr>
+                <tr><td>Mixed workloads</td><td>Benchmark representative reads</td><td>Compressed size, range count, and decode cost</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout">
+            <span>No universal winner</span>
+            <p>A smaller file is not automatically a faster dataset. The useful layout is the one that balances compression with the frames your real jobs must fetch and decode.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="header">
+          <div class="section-label"><span>04</span><small>Open the index</small></div>
+          <h2>A compact header makes the first read direct</h2>
+          <p class="section-intro">Writing creates a self-describing <code>.rumi</code> file and a compact external header blob. Its exact size is predictable from only two derived values. A catalogue can keep the blob next to object identity, so repeated reads can plan frame ranges before asking the file for metadata.</p>
+
+          <p>The two artifacts serve different moments in the workflow. The file is the durable object: it carries the canonical directory, compressed frames, georeferencing, and time trailer. The header is the small read index an application can place in a database row, catalogue item, or dataset manifest. Losing the header does not lose the raster because Rumi can reconstruct it from the file.</p>
+
+          <div class="choice-grid">
+            <div><b>The 32-byte fixed part</b><p>Image and tile dimensions, time and band counts, sample encoding, <code>frame_unit</code>, and the parameters used to unpack frame sizes.</p></div>
+            <div><b>The packed region</b><p>One compressed byte count per frame. Offsets are omitted because the canonical contiguous layout lets the reader reconstruct them.</p></div>
+          </div>
+
+          <div class="header-formula">
+            <span>Predictable header size</span>
+            <strong>32 + ceil(N × count_bits / 8)</strong>
+            <p><code>N</code> is the frame count derived from the tile grid and the band or time axes kept outside each frame. <code>count_bits</code> is the minimum width needed for the compressed-size residuals. Once those two values are known, no other metadata changes the header length.</p>
+          </div>
+
+          <h3>What stays in the file</h3>
+          <p>Georeferencing and time coordinates remain in the <code>.rumi</code> file. The file also contains the fixed IFD and all values needed to rebuild and validate the header. A frame read does not need to parse those structures first when a trusted header is already available.</p>
+
+          <div class="technical-note">
+            <span>GeoTIFF-inspired, not GeoTIFF</span>
+            <p>Rumi borrows familiar tag numbers and the 20-byte directory-entry shape from BigTIFF, then fixes their order, placement, and meaning. A <code>.rumi</code> file is not a TIFF, BigTIFF, or GeoTIFF file.</p>
+          </div>
+
+          <pre><code>metadata = rumi.info(source="scene.rumi")
+header = metadata.header
+
+# Passing both asks Rumi to validate the supplied index.
+checked = rumi.info(source="scene.rumi", header=header)</code></pre>
+
+          <p class="bridge">The external header removes an indexing round trip; it does not remove the file’s ability to describe itself.</p>
+        </section>
+
+        <section class="guide-section" id="select">
+          <div class="section-label"><span>05</span><small>Plan a selection</small></div>
+          <h2>Turn a model window into frame indexes</h2>
+          <p class="section-intro">A selection combines zero-based band and time positions with a window written as <code>(row, column, height, width)</code>. The window first resolves to the tile rows and columns it intersects.</p>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 270" role="img" aria-labelledby="grid-title grid-desc">
+              <title id="grid-title">A selected window on a four by four tile grid</title>
+              <desc id="grid-desc">Tile row two and column one is highlighted, producing spatial index nine and frame indexes 113 and 119 for the requested bands and time.</desc>
+              <text class="figure-stage" x="58" y="25">4 × 4 SPATIAL GRID</text>
+              <g class="tile-grid" transform="translate(58 45)">
+                <rect x="0" y="0" width="48" height="48"/><rect x="48" y="0" width="48" height="48"/><rect x="96" y="0" width="48" height="48"/><rect x="144" y="0" width="48" height="48"/>
+                <rect x="0" y="48" width="48" height="48"/><rect x="48" y="48" width="48" height="48"/><rect x="96" y="48" width="48" height="48"/><rect x="144" y="48" width="48" height="48"/>
+                <rect x="0" y="96" width="48" height="48"/><rect class="selected" x="48" y="96" width="48" height="48"/><rect x="96" y="96" width="48" height="48"/><rect x="144" y="96" width="48" height="48"/>
+                <rect x="0" y="144" width="48" height="48"/><rect x="48" y="144" width="48" height="48"/><rect x="96" y="144" width="48" height="48"/><rect x="144" y="144" width="48" height="48"/>
+                <text x="24" y="28">0</text><text x="72" y="28">1</text><text x="120" y="28">2</text><text x="168" y="28">3</text>
+                <text x="24" y="76">4</text><text x="72" y="76">5</text><text x="120" y="76">6</text><text x="168" y="76">7</text>
+                <text x="24" y="124">8</text><text x="72" y="124">9</text><text x="120" y="124">10</text><text x="168" y="124">11</text>
+                <text x="24" y="172">12</text><text x="72" y="172">13</text><text x="120" y="172">14</text><text x="168" y="172">15</text>
+              </g>
+              <g class="figure-card accent"><rect x="350" y="52" width="158" height="70" rx="6"/><text x="429" y="78">Spatial index 9</text><text class="sub" x="429" y="98">row 2 × 4 + column 1</text></g>
+              <g class="figure-card"><rect x="546" y="38" width="166" height="96" rx="6"/><text x="629" y="66">Tile frames</text><text class="sub" x="629" y="87">band 1, time 2 → 113</text><text class="sub" x="629" y="106">band 3, time 2 → 119</text></g>
+              <defs><marker id="arrow-grid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+              <path class="figure-arrow" marker-end="url(#arrow-grid)" d="M250 141C300 141 306 87 342 87"/>
+              <path class="figure-arrow" marker-end="url(#arrow-grid)" d="M508 87H538"/>
+              <text class="figure-note" x="531" y="184">Only these two frames can contribute samples.</text>
+              <text class="figure-note" x="531" y="205">The other 190 remain compressed.</text>
+            </svg>
+            <figcaption>The selected 256 × 256 window aligns with one tile at row 2, column 1. A larger or unaligned window would contribute every tile it intersects.</figcaption>
+          </figure>
+
+          <pre><code>tiles_across = ceil(1024 / 256) = 4
+spatial     = row * tiles_across + col
+            = 2 * 4 + 1 = 9
+
+# frame_unit = 0 walks band, then time
+index(b=1, t=2) = (9 * 4 + 1) * 3 + 2 = 113
+index(b=3, t=2) = (9 * 4 + 3) * 3 + 2 = 119</code></pre>
+
+          <div class="technical-note">
+            <span>Cell frames change the plan</span>
+            <p>When one frame contains the whole cell, its index is only <code>row * tiles_across + col</code>. Band and time selection then happen after that cell is decoded. The requested samples are the same; the amount of decoded work is different.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="ranges">
+          <div class="section-label"><span>06</span><small>Find the bytes</small></div>
+          <h2>Reconstruct offsets from one base and packed counts</h2>
+          <p class="section-intro">Rumi files store frames contiguously in increasing frame-index order. The external header therefore needs byte counts, not a second array of offsets.</p>
+
+          <pre><code>offset[0]     = base_frame_offset
+offset[k + 1] = offset[k] + frame_byte_counts[k]
+
+range(k) = [offset[k], offset[k] + frame_byte_counts[k])</code></pre>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 188" role="img" aria-labelledby="bytes-title bytes-desc">
+              <title id="bytes-title">Four contiguous frames reconstructed from byte counts</title>
+              <desc id="bytes-desc">A base offset of 500 and counts 100, 103, 101, and 100 produce offsets 500, 600, 703, and 804.</desc>
+              <text class="figure-stage" x="28" y="24">CONTIGUOUS FRAME RUN</text>
+              <g class="byte-strip">
+                <rect class="base" x="28" y="48" width="110" height="56" rx="5"/>
+                <rect class="f0" x="138" y="48" width="118" height="56"/>
+                <rect class="f1" x="256" y="48" width="122" height="56"/>
+                <rect class="f2" x="378" y="48" width="120" height="56"/>
+                <rect class="f3" x="498" y="48" width="118" height="56"/>
+                <rect class="base" x="616" y="48" width="116" height="56" rx="5"/>
+                <text x="83" y="80">IFD + values</text><text x="197" y="80">F0 · 100</text><text x="317" y="80">F1 · 103</text><text x="438" y="80">F2 · 101</text><text x="557" y="80">F3 · 100</text><text x="674" y="80">TIME</text>
+                <text x="138" y="130">500</text><text x="256" y="130">600</text><text x="378" y="130">703</text><text x="498" y="130">804</text><text x="616" y="130">904</text>
+              </g>
+              <text class="figure-note" x="380" y="160">Counts [100, 103, 101, 100] · base 500 · trailer begins at 904</text>
+            </svg>
+            <figcaption>Each prefix sum marks the next frame. The byte immediately after the final frame begins the time trailer.</figcaption>
+          </figure>
+
+          <p>The base itself is derived from the fixed 16-byte file header, the fixed 276-byte IFD, and the external values implied by band and frame counts. Files with the same <code>B</code> and <code>N</code> begin frame data at the same byte.</p>
+          <p>Byte counts are also compacted: Rumi stores the minimum count once and bit-packs each non-negative residual above it. With counts <code>[100, 103, 101, 100]</code>, the minimum is 100 and the residuals are <code>[0, 3, 1, 0]</code>, which need two bits each.</p>
+          <p class="bridge">At the end of planning, a frame index has become a closed piece of work: one offset, one length, and one independently decodable payload.</p>
+        </section>
+
+        <section class="guide-section" id="decode">
+          <div class="section-label"><span>07</span><small>Decode frames</small></div>
+          <h2>Karu moves ranges; OpenZL explains their bytes</h2>
+          <p class="section-intro">Once planning has produced offsets and lengths, Rumi no longer needs different raster logic for a laptop file and a cloud object. The frame indexes, byte counts, decoded shapes, and output positions are identical. Only the way Karu retrieves each range changes.</p>
+
+          <h3>When the source is local</h3>
+          <p>Rumi opens the local path through Karu and gives it the offset and length of every required frame. Karu performs positional reads: the byte position is an argument of each operation rather than a shared cursor that must be moved with <code>seek</code>. Reading frame 119 therefore cannot change the position used by frame 113.</p>
+          <p>This independence lets worker threads read different frames without serializing around one mutable file position. The operating system may satisfy a range from its page cache or read it from storage. Rumi receives the same bounded byte sequence either way. More concurrency is not always faster on a local device, so the thread count should reflect the storage and the surrounding workload.</p>
+
+          <h3>When the source is remote</h3>
+          <p>A remote URI still resolves to a finite byte object. The external Rumi header is especially valuable here: because dimensions and packed frame counts are already available, the first data requests can target selected frames instead of fetching the file directory before planning.</p>
+          <p>Karu resolves the URI and provider configuration, obtains credentials when necessary, and prepares an HTTP request for the exact byte interval. A frame at offset <code>o</code> with length <code>n</code> becomes the inclusive HTTP range <code>bytes=o-(o+n-1)</code>. Karu checks the response range and received byte count before Rumi passes the payload to OpenZL.</p>
+          <p>Several requests may remain in flight at once, allowing useful work to continue while another object is waiting on network latency. Karu can reuse connections and TLS sessions, retry temporary failures within bounded limits, and combine nearby ranges from the same object when one larger transfer is cheaper. A merged transfer is only a transport optimization: Rumi still receives and decodes the original frame payloads independently.</p>
+
+          <pre><code># The selection is the same; only the source changes.
+local = rumi.read("scene.rumi", header, window=(512, 256, 256, 256))
+remote = rumi.read(
+    "s3://training-data/scene.rumi",
+    header,
+    window=(512, 256, 256, 256),
+)</code></pre>
+
+          <div class="definition-grid">
+            <div><b>Rumi plans</b><p>Maps the requested tensor region to frame indexes, ranges, and output positions.</p></div>
+            <div><b>Karu retrieves</b><p>Moves and validates the requested ranges without interpreting their raster meaning.</p></div>
+            <div><b>OpenZL decodes</b><p>Executes the graph stored in each frame; Rumi interprets the resulting sample layout.</p></div>
+          </div>
+
+          <figure class="story-figure">
+            <svg viewBox="0 0 760 258" role="img" aria-labelledby="openzl-title openzl-desc">
+              <title id="openzl-title">Independent OpenZL graphs inside Rumi frames</title>
+              <desc id="openzl-desc">Three Rumi frames each carry a different OpenZL compression graph and can be decoded independently into a spatial tile.</desc>
+              <defs><marker id="arrow-openzl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+              <text class="figure-stage" x="25" y="22">SELF-CONTAINED FRAME</text>
+              <text class="figure-stage" x="254" y="22">OPENZL GRAPH STORED IN THAT FRAME</text>
+              <text class="figure-stage" x="661" y="22">DECODED</text>
+
+              <g class="graph-frame" transform="translate(22 43)">
+                <rect width="598" height="54" rx="7"/>
+                <text class="frame-index" x="18" y="22">FRAME 113</text><text class="frame-range" x="18" y="39">offset + length</text>
+                <g class="graph-node" transform="translate(182 14)"><rect width="72" height="27" rx="13.5"/><text x="36" y="18">planar</text></g>
+                <path class="graph-link" d="M254 27H278"/>
+                <g class="graph-node" transform="translate(278 14)"><rect width="72" height="27" rx="13.5"/><text x="36" y="18">zigzag</text></g>
+                <path class="graph-link" d="M350 27H374"/>
+                <g class="graph-node final" transform="translate(374 14)"><rect width="72" height="27" rx="13.5"/><text x="36" y="18">zstd</text></g>
+              </g>
+              <path class="figure-arrow" marker-end="url(#arrow-openzl)" d="M620 70H652"/>
+              <g class="decoded-tile green" transform="translate(662 50)"><rect width="67" height="40" rx="4"/><path d="M22 0V40M44 0V40M0 20H67"/></g>
+
+              <g class="graph-frame" transform="translate(22 108)">
+                <rect width="598" height="54" rx="7"/>
+                <text class="frame-index" x="18" y="22">FRAME 119</text><text class="frame-range" x="18" y="39">offset + length</text>
+                <g class="graph-node" transform="translate(230 14)"><rect width="72" height="27" rx="13.5"/><text x="36" y="18">delta</text></g>
+                <path class="graph-link" d="M302 27H326"/>
+                <g class="graph-node final" transform="translate(326 14)"><rect width="72" height="27" rx="13.5"/><text x="36" y="18">zstd</text></g>
+              </g>
+              <path class="figure-arrow" marker-end="url(#arrow-openzl)" d="M620 135H652"/>
+              <g class="decoded-tile violet" transform="translate(662 115)"><rect width="67" height="40" rx="4"/><path d="M22 0V40M44 0V40M0 20H67"/></g>
+
+              <g class="graph-frame" transform="translate(22 173)">
+                <rect width="598" height="54" rx="7"/>
+                <text class="frame-index" x="18" y="22">FRAME 120</text><text class="frame-range" x="18" y="39">offset + length</text>
+                <g class="graph-node" transform="translate(214 14)"><rect width="88" height="27" rx="13.5"/><text x="44" y="18">transpose</text></g>
+                <path class="graph-link" d="M302 27H326"/>
+                <g class="graph-node final" transform="translate(326 14)"><rect width="72" height="27" rx="13.5"/><text x="36" y="18">zstd</text></g>
+              </g>
+              <path class="figure-arrow" marker-end="url(#arrow-openzl)" d="M620 200H652"/>
+              <g class="decoded-tile terracotta" transform="translate(662 180)"><rect width="67" height="40" rx="4"/><path d="M22 0V40M44 0V40M0 20H67"/></g>
+
+              <text class="figure-note" x="380" y="247">No file-level codec switch and no decoder history shared between frames.</text>
+            </svg>
+            <figcaption>Two adjacent frames may use different compression graphs. A reader does not need a file-level codec switch or shared decoder history.</figcaption>
+          </figure>
+
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Part of the read</th><th>Local file</th><th>Remote object</th></tr></thead>
+              <tbody>
+                <tr><td>Address</td><td>Filesystem path</td><td>HTTP or provider URI such as <code>s3://</code>, <code>gs://</code>, <code>az://</code>, <code>abfs://</code>, <code>hf://</code>, or <code>source://</code></td></tr>
+                <tr><td>Planning</td><td colspan="2">The same header, selection, frame indexes, offsets, and lengths</td></tr>
+                <tr><td>Transfer</td><td>Positional file read</td><td>HTTP byte-range request, authenticated when required</td></tr>
+                <tr><td>Main wait</td><td>Page cache or storage device</td><td>Network round trip and object service</td></tr>
+                <tr><td>Concurrency</td><td>Independent positions across workers</td><td>Several active transfers and reused connections</td></tr>
+                <tr><td>Completion check</td><td>Requested byte count</td><td>Status, returned range, and byte count</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout">
+            <span>Frame-level selectivity</span>
+            <p>Rumi reads every frame that intersects the selection, then crops unwanted pixels from boundary frames. It does not partially decode an OpenZL frame. Smaller frames improve spatial precision but create more indexes and range work.</p>
+          </div>
+          <p class="bridge">Local and remote reads share one Rumi contract. That is what lets a training pipeline move between a workstation, network storage, and cloud objects without changing how it describes a sample.</p>
+        </section>
+
+        <section class="guide-section" id="assemble">
+          <div class="section-label"><span>08</span><small>Build the tensor</small></div>
+          <h2>Place decoded samples in the requested layout</h2>
+          <p class="section-intro">Decoded frames arrive as storage units. Rumi clips them to the requested window, selects the requested band and time positions, and copies or exposes samples in the output axis order.</p>
+
+          <pre><code>chip = rumi.read(
+    "scene.rumi",
+    header,
+    time=[2],
+    bands=[1, 3],
+    window=(512, 256, 256, 256),
+    framework="numpy",
+)</code></pre>
+
+          <p>Selections are zero-based. A two-item tuple such as <code>bands=(1, 3)</code> means the half-open range from 1 through 2; a list such as <code>bands=[1, 3]</code> names those two positions explicitly.</p>
+
+          <h3>Axis order is an output decision</h3>
+          <p>The file’s <code>frame_unit</code> controls decoded frame layout. The optional <code>pattern</code> argument separately controls the result layout. This lets storage follow compression and access needs while the returned tensor follows a model or framework convention.</p>
+
+          <div class="process-strip" aria-label="Output assembly stages">
+            <div><b>Decode</b><span>Recover complete<br>tile or cell frames</span></div>
+            <div><b>Crop</b><span>Remove pixels outside<br>the requested window</span></div>
+            <div><b>Select</b><span>Keep requested<br>band and time values</span></div>
+            <div><b>Export</b><span>NumPy, PyTorch,<br>JAX, or TensorFlow</span></div>
+          </div>
+
+          <p>Rumi decodes on the CPU. Most results can transfer ownership to tensor frameworks through DLPack. Sub-byte sample formats use byte-padded NumPy storage because each decoded sample occupies one byte even when its logical width is one, two, four, or six bits.</p>
+          <p class="bridge">Storage order and model order do not need to be the same. Rumi makes the conversion part of the read contract.</p>
+        </section>
+
+        <section class="guide-section" id="batch">
+          <div class="section-label"><span>09</span><small>Read a batch</small></div>
+          <h2>Plan many training windows together</h2>
+          <p class="section-intro"><code>read_many</code> accepts one source, header, and window per item, then returns a tensor with a leading <code>n</code> axis. Windows may begin at different positions but must have the same height and width so the batch has one rectangular shape.</p>
+
+          <pre><code>batch = rumi.read_many(
+    paths,
+    headers,
+    windows=[(row, col, 256, 256) for row, col in positions],
+    bands=[1, 2, 3, 7],
+    framework="torch",
+)</code></pre>
+
+          <h3>What Rumi can do with the whole batch</h3>
+          <ol class="body">
+            <li><strong>Validate the common result.</strong> Rumi checks that the sources agree on tile size, band count, sample type, time count, and which axes each frame contains. It also verifies that every requested window has the same height and width.</li>
+            <li><strong>Compile the output once.</strong> From the number of items, selected axes, window size, and output pattern, Rumi knows the complete tensor shape before any frame finishes.</li>
+            <li><strong>Plan each item independently.</strong> Every source keeps its own header and window. Rumi maps each pair to frame indexes and byte ranges without sharing a cursor or spatial position with another item.</li>
+            <li><strong>Expose all ready work.</strong> The process-wide thread pool can overlap range retrieval and decoding across items. A slow range does not force already available frames to wait before being decoded.</li>
+            <li><strong>Place results by item index.</strong> Completion order may differ from submission order, but each decoded sample has a predetermined destination under the leading <code>n</code> axis. The returned batch preserves input order.</li>
+          </ol>
+
+          <h3>Why independent frames make this possible</h3>
+          <p>Every OpenZL frame is self-contained: its compression graph and codec parameters travel inside that frame, and decoding does not depend on a previous frame. Rumi can therefore decode whichever payload arrives next. There is no sequential decoder history forcing frame 119 to wait for frame 118, and no shared file cursor forcing source 1 to wait for source 0.</p>
+          <p>The header provides the other half of the independence. Each item can calculate its offsets from its own dimensions and packed byte counts. Together, a self-contained frame and a stateless range mean that one unit of work can be scheduled, retried, decoded, and placed without changing another item’s interpretation.</p>
+          <p>For a plan that mixes local and remote sources, Rumi submits the complete remote range workload first. Karu’s I/O thread can then make network progress while Rumi workers read and decode local frames. Remote completions are collected in ready waves; while one wave is decoded, Karu continues filling the next. The pipeline overlaps waiting and CPU work without requiring the items themselves to finish in order.</p>
+
+          <div class="choice-grid">
+            <div><b>Batching local files</b><p>Workers issue positional reads against independent offsets. This can overlap decompression with cached or device reads, but excessive concurrency may compete for disk bandwidth.</p></div>
+            <div><b>Batching remote objects</b><p>Several byte-range requests can wait on the network together. This hides round-trip latency and lets Karu reuse connections while available frames continue into decoding.</p></div>
+          </div>
+
+          <h3>What batching does not change</h3>
+          <p><code>read_many</code> does not turn selective reads into full-file reads. The shared <code>bands</code> and <code>time</code> selection still applies to every item, and each item retains its own spatial window. Rumi fetches only the frames that can contribute to those selections under each file’s frame unit.</p>
+          <p>Image dimensions may differ, but the requested windows must fit their respective sources and produce one common spatial size. If one sample needs a different window shape or incompatible band, time, dtype, tile, or frame layout, it belongs in a separate batch.</p>
+
+          <pre><code># Configure before the first parallel read when needed.
+rumi.set_num_threads(8)
+
+batch = rumi.read_many(
+    paths,
+    headers,
+    windows=windows,
+    time=[2],
+    bands=[1, 3],
+    framework="torch",
+)</code></pre>
+
+          <div class="callout">
+            <span>Why batching matters</span>
+            <p>A Python loop presents one sample at a time. A batch exposes the independent ranges for many samples together, giving Rumi enough ready work to overlap local I/O or remote latency with OpenZL decoding while assembling one predictable tensor.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="trust">
+          <div class="section-label"><span>10</span><small>Trust the result</small></div>
+          <h2>Validate structure before expensive work</h2>
+          <p class="section-intro">Selectivity is safe only when indexes, frame layouts, and decoded sizes are believable. Rumi rejects malformed combinations before allocating or decoding beyond configured resource limits.</p>
+
+          <div class="definition-grid">
+            <div><b>Header</b><p>Magic, version, dimensions, sample type, frame unit, packed count width, and exact blob size must agree.</p></div>
+            <div><b>File layout</b><p>One fixed IFD, 13 canonical tags, contiguous frames, and offsets matching the reconstructed prefix sum.</p></div>
+            <div><b>Decoded frame</b><p>The sample count and byte width must produce the exact decoded size implied by the frame layout.</p></div>
+            <div><b>Georeferencing</b><p>A 4 × 4 affine transformation and an EPSG CRS, or the canonical values for an ungeoreferenced raster.</p></div>
+            <div><b>Time</b><p>One final trailer containing ordered instants or non-overlapping intervals encoded as compact residuals.</p></div>
+            <div><b>Resources</b><p>Derived counts and sizes are checked before allocation. A valid file may still exceed one reader’s configured limits.</p></div>
+          </div>
+
+          <h3>Metadata needs the file</h3>
+          <p>The external header is enough to locate and decode frames, but it does not carry the affine transform, CRS, or time coordinates. Use <code>rumi.info(source=...)</code> when the application needs those values or must rebuild the header.</p>
+
+          <pre><code>metadata = rumi.info(source="scene.rumi")
+print(metadata)
+
+# The header alone describes the read index.
+index_only = rumi.info(header=header)</code></pre>
+
+          <div class="callout">
+            <span>Keep the header with the right object</span>
+            <p><code>rumi.read</code> treats the supplied header as authoritative. The application or catalogue is responsible for associating it with the correct file. <code>rumi.info(source=..., header=...)</code> compares the canonical index reconstructed from the source, but this check validates the index rather than proving payload identity.</p>
+          </div>
+
+          <p>Time selection in <code>rumi.read</code> uses zero-based positions. The time trailer explains what those positions mean—instants or intervals—but frame reads do not need to parse it first.</p>
+
+          <div class="technical-note">
+            <span>Current maturity</span>
+            <p>Rumi is experimental and the format and APIs may change before 1.0. The specification remains the normative source for binary layout and validation rules; this manual explains the reading path and the design choices behind it.</p>
+          </div>
+          <p class="bridge">A complete read ends with more than decoded bytes: the selected samples have the expected shape, type, and order, and every decoded frame came from the range calculated for that selection.</p>
+        </section>
+
+        <p class="page-end">Continue with the <a href="examples.html">working examples</a>, open the <a href="index.html#/spec">format specification</a> for normative binary details, or return to the <a href="index.html">Rumi overview</a>.</p>
+      </article>
+    </main>
+  </article>
+
+</body>
+</html>

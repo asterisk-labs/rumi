@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 104 104" role="img" aria-label="rumi">
   <style>
     polygon {
-      stroke: #dfe7ef;
+      stroke: #aeb2b6;
       stroke-opacity: .72;
       stroke-width: 1.35;
       stroke-linejoin: round;
-      fill: #111721;
+      fill: #474a50;
       animation: lit 6s step-end infinite;
     }
     .nw { --on: #7457ff; animation-delay: 0s }
@@ -15,8 +15,8 @@
 
     @keyframes lit {
       0%   { fill: var(--on) }
-      25%  { fill: #111721 }
-      100% { fill: #111721 }
+      25%  { fill: #474a50 }
+      100% { fill: #474a50 }
     }
 
     @media (prefers-reduced-motion: reduce) {

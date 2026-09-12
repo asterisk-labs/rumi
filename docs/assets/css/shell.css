@@ -54,10 +54,14 @@
   min-height: 100vh;
   min-height: 100svh;
   margin-inline: auto;
-  padding: env(safe-area-inset-top) var(--pad-inline) max(16px, env(safe-area-inset-bottom));
+  padding: env(safe-area-inset-top) 0 max(16px, env(safe-area-inset-bottom));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: clamp(18px, 3vh, 32px);
+}
+
+html[data-route="spec"] .page {
+  padding-top: 74px;
 }
 
 .masthead {
@@ -66,12 +70,25 @@
   min-width: 0;
   min-height: 74px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 24px;
   padding: 16px clamp(20px, 4vw, 56px);
   border-bottom: 1px solid var(--edge);
   color: var(--dim);
+}
+
+html[data-route="spec"] .masthead {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 10;
+  width: min(100%, calc(var(--page) + (var(--pad-inline) * 2)));
+  transform: translateX(-50%);
+  border-bottom-color: rgba(37, 35, 31, 0.10);
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .lockup {
@@ -141,9 +158,17 @@
 
 .offsite {
   justify-self: center;
-  display: flex;
+  display: none;
   align-items: center;
   gap: 7px;
+}
+
+html[data-route="home"] .masthead {
+  grid-template-columns: 1fr auto 1fr;
+}
+
+html[data-route="home"] .offsite {
+  display: flex;
 }
 
 .offsite a {
@@ -186,6 +211,7 @@
 
 #view {
   min-width: 0;
+  padding-inline: var(--pad-inline);
   display: grid;
   align-items: center;
   view-transition-name: view;
@@ -193,7 +219,7 @@
 
 .colophon {
   min-width: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -202,47 +228,55 @@
   line-height: 1.2;
 }
 
-.heart {
-  flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
-  background: var(--violet);
-  transform-origin: center;
-  transition: background-color 160ms ease;
-  animation: heartbeat 2.4s ease-in-out infinite;
-  -webkit-mask: url('../svg/heart.svg') center / contain no-repeat;
-  mask: url('../svg/heart.svg') center / contain no-repeat;
+html[data-route="home"] .colophon {
+  display: flex;
 }
 
-@keyframes heartbeat {
-  0%, 55%, 100% { transform: scale(1) }
-  10% { transform: scale(1.22) }
-  20% { transform: scale(1) }
-  30% { transform: scale(1.14) }
-  40% { transform: scale(1) }
+.heart {
+  flex: 0 0 auto;
+  position: relative;
+  top: -2px;
+  color: var(--violet);
+  font-size: 18px;
+  line-height: 1;
+  transform-origin: center;
+  transition: color 160ms ease;
+}
+
+@keyframes copy-heartbeat {
+  0%, 100% { transform: scale(1) }
+  18% { transform: scale(1.35) rotate(-5deg) }
+  36% { transform: scale(0.96) }
+  56% { transform: scale(1.24) rotate(4deg) }
+  76% { transform: scale(1) }
+}
+
+.heart.is-copying {
+  color: #d64034;
+  animation: copy-heartbeat 780ms ease-out;
 }
 
 .colophon:hover .heart {
-  background: #f05b7f;
+  color: #f05b7f;
 }
 
 .by {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   color: var(--dim);
-  transition: color 160ms ease;
+  text-decoration: none;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.by img {
+  width: 109px;
+  height: auto;
 }
 
 .by:hover,
 .by:focus-visible {
   color: var(--ink-soft);
-}
-
-.by img {
-  width: 13px;
-  height: 15px;
-  opacity: 0.74;
+  opacity: 0.76;
 }
 
 @keyframes view-in {
@@ -293,14 +327,22 @@
     gap: 26px;
   }
 
+  html[data-route="spec"] .page {
+    padding-top: 116px;
+  }
+
   .masthead {
     grid-template-columns: 1fr auto;
     row-gap: 8px;
-    padding-inline: 18px;
+    padding: 12px 18px;
   }
 
   .offsite {
     justify-self: end;
+  }
+
+  html[data-route="home"] .masthead {
+    grid-template-columns: 1fr auto;
   }
 
   .nav {
@@ -317,16 +359,8 @@
 }
 
 @media (max-width: 420px) {
-  .page {
+  #view {
     padding-inline: 18px;
-  }
-
-  .lockup .marksvg {
-    width: 34px;
-  }
-
-  .lockup .wm-sm {
-    font-size: 20px;
   }
 
   .nav {

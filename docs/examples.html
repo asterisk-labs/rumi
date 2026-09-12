@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Practical Rumi examples for images, temporal cubes, selective reads, cloud objects, training batches, and tensor frameworks.">
+  <title>Rumi Examples</title>
+  <link rel="icon" href="assets/svg/rumi-mark.svg">
+  <link rel="stylesheet" href="assets/css/guide.css?v=6">
+</head>
+<body class="examples-page">
+  <article class="guide-shell">
+    <header class="guide-header">
+      <a class="guide-lockup" href="index.html" aria-label="Rumi home">
+        <img src="assets/svg/rumi-mark.svg" alt="">
+        <strong>rumi</strong>
+      </a>
+      <nav class="guide-nav-main" aria-label="Documentation links">
+        <a href="how-rumi-reads.html">How Rumi Reads</a>
+        <a href="examples.html" aria-current="page">Examples</a>
+        <a href="index.html#/spec">Spec</a>
+        <a href="index.html#/deck">Deck</a>
+      </nav>
+    </header>
+
+    <main class="manual-layout">
+      <aside class="manual-nav" aria-label="Example index">
+        <p class="here">Examples</p>
+        <p>One model across Python, R, and Julia</p>
+        <ol class="guide-route">
+          <li><a href="#setup"><i>01</i><span><b>Set up</b>Install and import</span></a></li>
+          <li><a href="#image"><i>02</i><span><b>Write an Image</b>Complete round trip</span></a></li>
+          <li><a href="#layouts"><i>03</i><span><b>Choose a layout</b>Tile and cell frames</span></a></li>
+          <li><a href="#cube"><i>04</i><span><b>Write a Cube</b>Time-aware storage</span></a></li>
+          <li><a href="#selection"><i>05</i><span><b>Select samples</b>Time, bands, window</span></a></li>
+          <li><a href="#sources"><i>06</i><span><b>Change the source</b>Source, HF, S3, local</span></a></li>
+          <li><a href="#batch"><i>07</i><span><b>Build a batch</b>Training windows</span></a></li>
+          <li><a href="#frameworks"><i>08</i><span><b>Return a tensor</b>NumPy, Torch, JAX, TF</span></a></li>
+          <li><a href="#metadata"><i>09</i><span><b>Inspect metadata</b>Recover the header</span></a></li>
+        </ol>
+        <div class="nav-note"><b>Two tracks</b>Use 01–04 to create data. Start at 05 when a catalogue already gives you a source and its Rumi header.</div>
+      </aside>
+
+      <article class="journey">
+        <p class="guide-kicker">Working recipes</p>
+        <h1 id="top">Examples</h1>
+        <p class="lede">Complete examples for writing an Image or Cube, reading only a requested region, moving the same read between local and remote storage, and producing batches for machine-learning frameworks.</p>
+        <section class="guide-section first" id="setup">
+          <h2>Install the reader and writer</h2>
+          <p class="section-intro">Rumi is designed to expose the same reader and writer through Python, R, and Julia. Reading uses the Rumi core; writing also uses GeoZL to build and compress each frame.</p>
+          <pre data-language="Shell"><code>python -m pip install "rumi-eo[write]"</code></pre>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code>import geozl
+import numpy as np
+import rumi</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="technical-note">
+            <span>Shape convention</span>
+            <p>An Image is <code>(B, Y, X)</code>. A temporal Cube is <code>(T, B, Y, X)</code>. Selections use zero-based positions, and a window is always <code>(row, column, height, width)</code>.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="image">
+          <div class="section-label"><span>02</span><small>Image</small></div>
+          <h2>Write and read one Image</h2>
+          <p class="section-intro">This complete round trip stores a four-band Image in 256 × 256 spatial cells. Each frame contains all four bands of one cell.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code>image = np.random.default_rng(0).integers(
+    0, 4096,
+    size=(4, 1024, 1024),
+    dtype=np.uint16,
+)
+
+frames = rumi.frames(
+    image,
+    "b (row h) (col w) -> row col (b h w)",
+    tile_size=256,
+)
+
+for frame in frames:
+    graph = geozl.graph(frame.data, "planar>zigzag>zstd")
+    frame.compressed = geozl.compress(frame.data, graph=graph)
+
+image_path, image_header = rumi.write("image.rumi", frames)
+image_again = rumi.read(image_path, image_header)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <p><code>image_path</code> identifies the durable file. <code>image_header</code> is the compact external index to keep with that object in a catalogue or dataset manifest.</p>
+          <div class="callout">
+            <span>Every frame is explicit</span>
+            <p><code>rumi.frames</code> creates decoded frame views. The loop chooses an OpenZL graph and assigns the compressed payload for every frame. <code>rumi.write</code> refuses an incomplete table.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="layouts">
+          <div class="section-label"><span>03</span><small>Layouts</small></div>
+          <h2>Choose what one frame contains</h2>
+          <p class="section-intro">The logical Image is unchanged. Only the right side of the pattern changes how many samples must be fetched and decoded together.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code># One independently addressable frame per band and spatial tile.
+tile_frames = rumi.frames(
+    image,
+    "b (row h) (col w) -> row col b (h w)",
+    tile_size=256,
+)
+
+# One band-planar cell frame at each spatial position.
+planar_cells = rumi.frames(
+    image,
+    "b (row h) (col w) -> row col (b h w)",
+    tile_size=256,
+)
+
+# One pixel-interleaved cell frame at each spatial position.
+chunky_cells = rumi.frames(
+    image,
+    "b (row h) (col w) -> row col (h w b)",
+    tile_size=256,
+)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Frame layout</th><th>Selective-read behavior</th><th>Compression opportunity</th></tr></thead>
+              <tbody>
+                <tr><td><code>h w</code></td><td>Unrequested bands remain untouched</td><td>No correlation across bands inside a frame</td></tr>
+                <tr><td><code>b h w</code></td><td>Selecting one band decodes its complete cell</td><td>Band planes share one OpenZL graph</td></tr>
+                <tr><td><code>h w b</code></td><td>Selecting one band decodes its complete cell</td><td>Interleaved pixels share one OpenZL graph</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="guide-section" id="cube">
+          <div class="section-label"><span>04</span><small>Cube</small></div>
+          <h2>Write a temporal Cube</h2>
+          <p class="section-intro">This Cube has three steps and four bands. Band and time sit outside each frame, so any individual pair can be read without decoding the others.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code>cube = np.random.default_rng(1).integers(
+    0, 4096,
+    size=(3, 4, 1024, 1024),
+    dtype=np.uint16,
+)
+
+cube_frames = rumi.frames(
+    cube,
+    "t b (row h) (col w) -> row col b t (h w)",
+    tile_size=256,
+)
+
+for frame in cube_frames:
+    graph = geozl.graph(frame.data, "planar>zigzag>zstd")
+    frame.compressed = geozl.compress(frame.data, graph=graph)
+
+cube_path, cube_header = rumi.write(
+    "cube.rumi",
+    cube_frames,
+    time=["2026-01-01", "2026-02-01", "2026-03-01"],
+)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="choice-grid">
+            <div><b>Tile-frame Cube</b><p><code>row col b t (h w)</code> or <code>row col t b (h w)</code> keeps both axes independently addressable.</p></div>
+            <div><b>Cell-frame Cube</b><p><code>row col (b t h w)</code> lets one graph model the entire band/time block at a spatial position.</p></div>
+          </div>
+          <p>The time argument accepts dates, datetimes, ISO strings, or one <code>(start, end)</code> interval per step. Its length must equal <code>T</code>.</p>
+        </section>
+
+        <section class="guide-section" id="selection">
+          <div class="section-label"><span>05</span><small>Selection</small></div>
+          <h2>Read positions, ranges, and windows</h2>
+          <p class="section-intro">Lists choose exact positions and may reorder them. Two-item tuples describe half-open ranges. The optional output pattern changes tensor order without changing storage.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code># Exact positions: time 2; bands 3 then 1.
+picked = rumi.read(
+    cube_path,
+    cube_header,
+    time=[2],
+    bands=[3, 1],
+    window=(100, 200, 128, 128),
+)
+
+# Half-open ranges and a model-specific output order.
+reordered = rumi.read(
+    cube_path,
+    cube_header,
+    time=(0, 2),
+    bands=(1, 4),
+    window=(100, 200, 128, 128),
+    pattern="t y x b",
+)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="definition-grid">
+            <div><b><code>time=[2]</code></b><p>Keep exactly one step and preserve its time axis.</p></div>
+            <div><b><code>bands=[3, 1]</code></b><p>Keep two explicit bands in the requested order.</p></div>
+            <div><b><code>window=(100, 200, 128, 128)</code></b><p>Return 128 rows and columns beginning at row 100, column 200.</p></div>
+          </div>
+        </section>
+
+        <section class="guide-section" id="sources">
+          <div class="section-label"><span>06</span><small>Sources</small></div>
+          <h2>Read the same fixture from four sources</h2>
+          <p class="section-intro">This example is ready to run against the public Rumi fixtures. It reads the same bands and window from Source Cooperative, Hugging Face, Source's S3-compatible endpoint, and a downloaded local file, then proves that all four results are identical.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code>from pathlib import Path
+from urllib.request import Request, urlopen
+import os
+
+import numpy as np
+import rumi
+
+PRODUCT = "asterisk-labs/rumi-api-fixtures"
+NAME = "s2-00-tile"
+SOURCE_BASE = f"https://data.source.coop/{PRODUCT}"
+
+def fetch(url):
+    request = Request(url, headers={"User-Agent": "rumi-example"})
+    with urlopen(request) as response:
+        return response.read()
+
+header = fetch(f"{SOURCE_BASE}/headers/{NAME}.header")
+selection = dict(
+    bands=[3, 0],
+    window=(237, 233, 91, 107),
+)
+
+# Source Cooperative also exposes an S3-compatible public endpoint.
+os.environ["AWS_ENDPOINT_URL"] = "https://data.source.coop"
+os.environ["AWS_NO_SIGN_REQUEST"] = "YES"
+os.environ["AWS_VIRTUAL_HOSTING"] = "NO"
+
+sources = {
+    "Source Cooperative": f"source://{PRODUCT}/data/{NAME}.rumi",
+    "Hugging Face": f"hf://datasets/{PRODUCT}@main/data/{NAME}.rumi",
+    "S3": f"s3://asterisk-labs/rumi-api-fixtures/data/{NAME}.rumi",
+}
+chips = {
+    label: np.asarray(rumi.read(uri, header, **selection))
+    for label, uri in sources.items()
+}
+
+# Download once to exercise the identical read from a local path.
+local_dir = Path("rumi-api-fixtures")
+local_dir.mkdir(exist_ok=True)
+local_file = local_dir / f"{NAME}.rumi"
+local_file.write_bytes(fetch(f"{SOURCE_BASE}/data/{NAME}.rumi"))
+chips["Local"] = np.asarray(
+    rumi.read(local_file, header, **selection)
+)
+
+reference = chips["Source Cooperative"]
+assert reference.shape == (2, 91, 107)
+assert all(np.array_equal(reference, chip) for chip in chips.values())
+
+print({label: chip.shape for label, chip in chips.items()})</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Source used above</th><th>Address</th><th>Configuration</th></tr></thead>
+              <tbody>
+                <tr><td>Source Cooperative</td><td><code>source://asterisk-labs/rumi-api-fixtures/…</code></td><td>None for public data</td></tr>
+                <tr><td>Hugging Face</td><td><code>hf://datasets/asterisk-labs/rumi-api-fixtures@main/…</code></td><td>None for this public dataset</td></tr>
+                <tr><td>S3-compatible</td><td><code>s3://asterisk-labs/rumi-api-fixtures/…</code></td><td>Source endpoint + unsigned requests</td></tr>
+                <tr><td>Local</td><td><code>rumi-api-fixtures/s2-00-tile.rumi</code></td><td>Downloaded by the example</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="technical-note">
+            <span>One object, four transports</span>
+            <p>The two mirrors contain byte-identical Rumi objects and headers. The S3 URI addresses the same Source Cooperative object as the <code>source://</code> URI; only the backend configuration changes. Remote reads request ranges, while the local read uses positional file access.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="batch">
+          <div class="section-label"><span>07</span><small>Batch</small></div>
+          <h2>Read one training window per source</h2>
+          <p class="section-intro"><code>read_many</code> plans the items together and returns them under a leading <code>n</code> axis. Positions may differ, but every window must have the same height and width.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code># Continue from the previous example.
+names = ["s2-00-tile", "s2-01-tile", "s2-02-tile"]
+headers = [
+    fetch(f"{SOURCE_BASE}/headers/{name}.header")
+    for name in names
+]
+sources = [
+    f"source://{PRODUCT}/data/{names[0]}.rumi",
+    f"hf://datasets/{PRODUCT}@main/data/{names[1]}.rumi",
+    f"s3://asterisk-labs/rumi-api-fixtures/data/{names[2]}.rumi",
+]
+windows = [
+    (0, 0, 128, 128),
+    (128, 192, 128, 128),
+    (320, 256, 128, 128),
+]
+
+batch = rumi.read_many(
+    sources,
+    headers,
+    windows=windows,
+    bands=[0, 1, 2, 3],
+)
+
+assert batch.shape == (3, 4, 128, 128)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <p>Sources may mix local and remote storage. They must agree on tile size, dtype, band/time counts, and which axes their frames contain. The result preserves input order even when ranges complete in another order.</p>
+          <div class="callout">
+            <span>Why not a Python loop?</span>
+            <p>The batch exposes independent work from every item at once, allowing remote waits, local positional reads, and OpenZL decoding to overlap while Rumi assembles one predictable tensor.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="frameworks">
+          <div class="section-label"><span>08</span><small>Frameworks</small></div>
+          <h2>Return the tensor your pipeline expects</h2>
+          <p class="section-intro">Rumi decodes on the CPU. Select the destination at the read boundary so most results transfer through DLPack without an intermediate NumPy copy.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code>numpy_chip = rumi.read(cube_path, cube_header)
+torch_chip = rumi.read(
+    cube_path, cube_header, framework="torch"
+)
+jax_chip = rumi.read(
+    cube_path, cube_header, framework="jax"
+)
+tf_chip = rumi.read(
+    cube_path, cube_header, framework="tensorflow"
+)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th><code>framework</code></th><th>Returned value</th></tr></thead>
+              <tbody>
+                <tr><td><code>"numpy"</code></td><td>NumPy array; the default</td></tr>
+                <tr><td><code>"torch"</code></td><td>PyTorch tensor</td></tr>
+                <tr><td><code>"jax"</code></td><td>JAX array</td></tr>
+                <tr><td><code>"tensorflow"</code> or <code>"tf"</code></td><td>TensorFlow tensor</td></tr>
+                <tr><td><code>None</code></td><td><code>RumiArray</code> with explicit export methods</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="guide-section" id="metadata">
+          <div class="section-label"><span>09</span><small>Metadata</small></div>
+          <h2>Inspect a file and recover its header</h2>
+          <p class="section-intro">A Rumi file remains self-describing. If the external header is missing, <code>info</code> reconstructs the canonical header and also exposes georeferencing and time metadata stored in the file.</p>
+          <div class="code-group" data-code-group>
+            <div data-language-panel="python">
+              <pre><code>metadata = rumi.info(source="cube.rumi")
+recovered_header = metadata.header
+
+print(metadata.shape)         # (3, 4, 1024, 1024)
+print(metadata.tile)          # (256, 256)
+print(metadata.frame_layout)  # h w for the tile-frame Cube
+print(metadata.time)          # the three recorded dates
+
+# Supplying both validates the index against the source.
+checked = rumi.info(
+    source="cube.rumi",
+    header=recovered_header,
+)</code></pre>
+            </div>
+            <div data-language-panel="r" data-coming-soon>
+              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
+            </div>
+            <div data-language-panel="julia" data-coming-soon>
+              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
+            </div>
+          </div>
+          <div class="choice-grid">
+            <div><b>Header only</b><p><code>rumi.info(header=...)</code> describes the compact read index without opening the source.</p></div>
+            <div><b>Source included</b><p><code>rumi.info(source=...)</code> also returns transform, CRS, time coordinates, and a rebuilt header.</p></div>
+          </div>
+        </section>
+
+        <p class="page-end">Understand the execution path in <a href="how-rumi-reads.html">How Rumi Reads</a>, open the <a href="index.html#/spec">format specification</a>, or return to the <a href="index.html">Rumi overview</a>.</p>
+      </article>
+    </main>
+  </article>
+  <script src="assets/js/examples.js?v=3"></script>
+</body>
+</html>

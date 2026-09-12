@@ -9,6 +9,7 @@
   var cfg = window.DECK || {};
   var slides = [];
   var cur = 0;
+  var rendered = false;
 
   function dataImg(name) {
     return '<img data-src="' + name + '" alt="">';
@@ -36,7 +37,7 @@
     });
   }
 
-  function goTo(i) {
+  function render(i) {
     cur = Math.max(0, Math.min(i, slides.length - 1));
 
     slides.forEach(function (s, idx) {
@@ -47,6 +48,31 @@
     if (btnP) btnP.disabled = cur === 0;
     if (btnN) btnN.disabled = cur === slides.length - 1;
     if (bar) bar.style.width = ((cur + 1) / slides.length * 100) + '%';
+  }
+
+  function goTo(i) {
+    var target = Math.max(0, Math.min(i, slides.length - 1));
+
+    if (!rendered || target === cur || !document.startViewTransition) {
+      render(target);
+      rendered = true;
+      return;
+    }
+
+    document.documentElement.setAttribute(
+      'data-deck-direction',
+      target > cur ? 'next' : 'prev'
+    );
+
+    var transition = document.startViewTransition(function () {
+      render(target);
+    });
+
+    function cleanDirection() {
+      document.documentElement.removeAttribute('data-deck-direction');
+    }
+
+    transition.finished.then(cleanDirection, cleanDirection);
   }
 
   function next() {

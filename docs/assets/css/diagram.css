@@ -35,7 +35,7 @@
 }
 
 .rd-c0 { --tone: var(--mint); }
-.rd-c1 { --tone: #8b6bff; }
+.rd-c1 { --tone: var(--violet); }
 .rd-c2 { --tone: var(--gold); }
 .rd-c3 { --tone: var(--ember); }
 
@@ -54,7 +54,7 @@
 
 .rd-codec {
   fill: var(--tone);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -92,6 +92,24 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   animation: rd-hint 2.6s ease-in-out infinite;
+}
+
+html[data-route="home"] .rd-slab {
+  fill: #ded7cc;
+  stroke: #b5ab9e;
+}
+
+html[data-route="home"] .rd-plane {
+  fill: var(--bg);
+  stroke: #bdb3a6;
+}
+
+html[data-route="home"] .rd-tile {
+  fill-opacity: 0.80;
+}
+
+html[data-route="home"] .rd-tile.is-read {
+  fill-opacity: 0.92;
 }
 
 .is-touched .rd-hint {

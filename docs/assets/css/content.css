@@ -20,6 +20,10 @@
   filter: blur(12px);
 }
 
+html[data-route="home"] .hero::before {
+  background: none;
+}
+
 .hero-copy {
   position: relative;
   z-index: 2;
@@ -80,6 +84,10 @@
   transform: rotate(-0.8deg);
 }
 
+html[data-route="home"] .hero h1 .hero-highlight::before {
+  background: linear-gradient(90deg, rgba(98, 73, 216, 0.88), rgba(126, 101, 220, 0.48));
+}
+
 .hero-summary {
   max-width: 46ch;
   margin-top: 28px;
@@ -109,6 +117,10 @@
   border-radius: 0.14em;
   background: linear-gradient(90deg, rgba(255, 122, 79, 0.72), rgba(255, 122, 79, 0.36));
   transform: rotate(0.6deg);
+}
+
+html[data-route="home"] .hero-summary-highlight::before {
+  background: linear-gradient(90deg, rgba(161, 71, 48, 0.42), rgba(161, 71, 48, 0.16));
 }
 
 .install {
@@ -413,7 +425,7 @@
 .spec-content a {
   color: var(--mint);
   text-decoration: underline;
-  text-decoration-color: rgba(145, 242, 188, 0.35);
+  text-decoration-color: rgba(38, 116, 95, 0.35);
   text-underline-offset: 3px;
 }
 
@@ -432,7 +444,7 @@
   overflow-x: auto;
   padding: 18px;
   border: 1px solid var(--edge);
-  background: rgba(4, 7, 11, 0.72);
+  background: rgba(255, 253, 248, 0.72);
   color: var(--ink-soft);
   font-size: 12px;
   line-height: 1.65;
@@ -480,6 +492,237 @@
   border-top: 1px solid var(--edge);
 }
 
+/* The specification follows the progressive reading rhythm of Karu's guide
+   while retaining Rumi's own palette and generated Markdown content. */
+html[data-route="spec"] .spec-page {
+  padding: 28px 0 44px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+html[data-route="spec"] .spec-layout {
+  grid-template-columns: 190px minmax(0, 760px);
+  justify-content: center;
+  gap: clamp(38px, 5vw, 72px);
+}
+
+html[data-route="spec"] .spec-sidebar {
+  top: 98px;
+  max-height: calc(100svh - 122px);
+  padding: 10px 0 0;
+  border: 0;
+  border-top: 3px solid var(--violet);
+}
+
+html[data-route="spec"] .spec-sidebar > span {
+  margin-bottom: 10px;
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+html[data-route="spec"] .spec-toc {
+  counter-reset: spec-route;
+}
+
+html[data-route="spec"] .spec-toc li {
+  counter-increment: spec-route;
+  border: 0;
+}
+
+html[data-route="spec"] .spec-toc a {
+  padding: 6px 0;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 7px;
+  color: #656565;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+html[data-route="spec"] .spec-toc a::before {
+  content: counter(spec-route, decimal-leading-zero);
+  color: var(--violet);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+html[data-route="spec"] .spec-toc a:hover,
+html[data-route="spec"] .spec-toc a:focus-visible {
+  background: transparent;
+  color: var(--violet);
+}
+
+html[data-route="spec"] .spec-content {
+  max-width: 760px;
+  padding-left: 0;
+  border-left: 0;
+  color: #454545;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  counter-reset: spec-section;
+}
+
+html[data-route="spec"] .spec-content h1,
+html[data-route="spec"] .spec-content h2,
+html[data-route="spec"] .spec-content h3,
+html[data-route="spec"] .spec-content h4,
+html[data-route="spec"] .spec-content h5,
+html[data-route="spec"] .spec-content h6 {
+  scroll-margin-top: 98px;
+}
+
+html[data-route="spec"] .spec-content h1 {
+  margin-bottom: 18px;
+  max-width: 12ch;
+  font-size: clamp(42px, 5vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+html[data-route="spec"] .spec-content h2 {
+  margin-top: clamp(58px, 8vw, 82px);
+  padding-top: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-top: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  counter-increment: spec-section;
+}
+
+html[data-route="spec"] .spec-content h2::before {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--violet);
+  color: #fff;
+  content: counter(spec-section, decimal-leading-zero);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+html[data-route="spec"] .spec-content h3 {
+  margin-top: 28px;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+html[data-route="spec"] .spec-content h4,
+html[data-route="spec"] .spec-content h5,
+html[data-route="spec"] .spec-content h6 {
+  margin-top: 24px;
+  font-size: 15px;
+}
+
+html[data-route="spec"] .spec-content p,
+html[data-route="spec"] .spec-content ul,
+html[data-route="spec"] .spec-content ol,
+html[data-route="spec"] .spec-content pre,
+html[data-route="spec"] .spec-content table,
+html[data-route="spec"] .spec-content blockquote {
+  margin-top: 12px;
+}
+
+html[data-route="spec"] .spec-content p,
+html[data-route="spec"] .spec-content li {
+  line-height: 1.58;
+}
+
+html[data-route="spec"] .spec-content li + li {
+  margin-top: 4px;
+}
+
+html[data-route="spec"] .spec-content :not(pre) > code {
+  padding: 1px 3px;
+  background: #f5f5f6;
+  font-size: 0.92em;
+}
+
+html[data-route="spec"] .spec-content pre {
+  width: max-content;
+  max-width: 100%;
+  padding: 13px;
+  border: 0;
+  border-radius: 7px;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+html[data-route="spec"] .spec-content table {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+html[data-route="spec"] .spec-content tbody tr:nth-child(even) {
+  background: #fafafd;
+}
+
+html[data-route="spec"] .spec-content th,
+html[data-route="spec"] .spec-content td {
+  padding: 7px 8px;
+  border-color: #d7d7dc;
+}
+
+html[data-route="spec"] .spec-content th {
+  background: #f0edf8;
+  color: #33284d;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+html[data-route="spec"] .spec-content img {
+  width: auto;
+  max-width: min(100%, 640px);
+  max-height: 460px;
+  margin: 18px auto 0;
+  padding: 16px;
+  display: block;
+  border: 0;
+  border-radius: 11px;
+  background: #f7f6f8;
+}
+
+.deck-page {
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.deck-frame {
+  width: min(100%, 1180px, calc((100svh - 130px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  margin-inline: auto;
+  overflow: hidden;
+  border: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.deck-frame iframe {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -501,6 +744,16 @@
 }
 
 @media (max-width: 860px) {
+  html[data-route="spec"] .spec-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  html[data-route="spec"] .spec-sidebar {
+    position: static;
+    max-height: none;
+  }
+
   #view {
     align-items: start;
   }

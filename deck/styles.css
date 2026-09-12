@@ -5,15 +5,15 @@
 }
 
 :root {
-  --gold: #F8CE00;
-  --green: #A2FFA2;
-  --purple: #4E04EB;
-  --dark: #1A1A1A;
-  --ink: #262626;
-  --white: #FFFFFF;
-  --paper: #F7F8FB;
-  --muted: #6B7280;
-  --line: #E5E7EB;
+  --gold: #815D00;
+  --green: #26745F;
+  --purple: #6249D8;
+  --dark: #25231F;
+  --ink: #25231F;
+  --white: #F8F9F9;
+  --paper: #EEF0F1;
+  --muted: #625C53;
+  --line: #D5CFC4;
 
   --slide-w: 960;
   --slide-h: 540;
@@ -28,8 +28,18 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #111;
+  background: var(--dark);
   font-family: var(--font);
+}
+
+html.is-embedded {
+  --white: #FFFFFF;
+  --paper: #FFFFFF;
+}
+
+html.is-embedded,
+html.is-embedded body {
+  background: #FFFFFF;
 }
 
 body {
@@ -61,6 +71,53 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+@keyframes deck-next-out {
+  to { opacity: 0; transform: translateX(-3%) scale(0.985); }
+}
+
+@keyframes deck-next-in {
+  from { opacity: 0; transform: translateX(3%) scale(0.985); }
+}
+
+@keyframes deck-prev-out {
+  to { opacity: 0; transform: translateX(3%) scale(0.985); }
+}
+
+@keyframes deck-prev-in {
+  from { opacity: 0; transform: translateX(-3%) scale(0.985); }
+}
+
+@supports (view-transition-name: none) {
+  .slide {
+    transition: none;
+  }
+
+  .slide.active {
+    view-transition-name: deck-slide;
+  }
+
+  ::view-transition-group(deck-slide) {
+    animation-duration: 420ms;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  html[data-deck-direction="next"]::view-transition-old(deck-slide) {
+    animation: deck-next-out 190ms ease-in forwards;
+  }
+
+  html[data-deck-direction="next"]::view-transition-new(deck-slide) {
+    animation: deck-next-in 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms backwards;
+  }
+
+  html[data-deck-direction="prev"]::view-transition-old(deck-slide) {
+    animation: deck-prev-out 190ms ease-in forwards;
+  }
+
+  html[data-deck-direction="prev"]::view-transition-new(deck-slide) {
+    animation: deck-prev-in 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms backwards;
+  }
 }
 
 .slide.active {
@@ -254,7 +311,7 @@ a {
   justify-content: center;
   padding: 18px;
   border-radius: 20px;
-  background: #fff;
+  background: var(--white);
   border: 1px solid rgba(26, 26, 26, 0.08);
   box-shadow: var(--shadow-soft);
 }
@@ -290,7 +347,7 @@ a {
   align-items: center;
   text-align: center;
   padding: 0;
-  background: #FFFFFF;
+  background: var(--white);
 }
 
 .cover-project::before {

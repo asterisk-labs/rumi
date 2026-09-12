@@ -166,7 +166,11 @@ def assert_current_figures() -> None:
 def assert_local_assets(output: Path) -> None:
     required = (
         output / "index.html",
+        output / "how-rumi-reads.html",
+        output / "examples.html",
         output / "assets" / "css" / "content.css",
+        output / "assets" / "css" / "guide.css",
+        output / "assets" / "js" / "examples.js",
         output / "assets" / "js" / "router.js",
         output / "deck" / "index.html",
         output / "deck" / "app.js",
@@ -208,18 +212,22 @@ def assert_local_links(output: Path) -> None:
             if parsed.scheme or parsed.netloc or reference.startswith(("mailto:", "data:")):
                 continue
 
-            spa_error = assert_spa_reference(page, parser, reference)
+            path = page if not parsed.path else (page.parent / unquote(parsed.path)).resolve()
+            if path.is_dir():
+                path /= "index.html"
+
+            # A static guide may link to a route owned by another HTML page.
+            # Validate the fragment against the destination's templates.
+            spa_parser = documents.get(path.resolve(), parser)
+            spa_error = assert_spa_reference(page, spa_parser, reference)
             if spa_error is not None:
                 if spa_error:
                     errors.append(spa_error)
                 continue
 
-            path = page if not parsed.path else (page.parent / unquote(parsed.path)).resolve()
             if not path.is_relative_to(root):
                 errors.append(f"{page.relative_to(root)} escapes the docs site: {reference}")
                 continue
-            if path.is_dir():
-                path /= "index.html"
             if not path.is_file():
                 errors.append(f"{page.relative_to(root)} has missing target: {reference}")
                 continue

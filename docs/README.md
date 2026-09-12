@@ -11,11 +11,14 @@ python -m http.server 8000
 
 ```
 index.html            shell and one <template> per route
+how-rumi-reads.html   progressive manual from selection to decoded tensor
+examples.html         working examples for writing, reading, and batching
 assets/css/
   tokens.css          design tokens
   base.css            reset and global defaults
   shell.css           page frame, header, navigation, footer, transitions
   content.css         home page, file diagram, specification
+  guide.css           standalone How Rumi Reads manual
 assets/js/
   backdrop.js         the animated tile grid
   router.js           hash router over the templates
@@ -23,10 +26,9 @@ assets/js/
 assets/svg/           project marks and icons, one file each
 ```
 
-The `spec` template contains marked regions that the docs builder replaces with
-HTML generated from the repository's `SPEC.md`. The source file keeps a short
-fallback so the route still makes sense when `docs/index.html` is opened
-directly.
+The `spec` template contains marked regions generated from the repository's
+`SPEC.md`. The generated copy is kept in the source page too, so the complete
+route works when `docs/index.html` is opened directly.
 
 The deploy build mounts the root `deck/` and `img/` directories below the docs
 website. The presentation and generated specification therefore use the same

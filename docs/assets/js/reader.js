@@ -148,7 +148,7 @@
         class: 'rd-codec', x: 322, y: baseline
       })));
       sizeLabels.push(layer.appendChild(node('text', {
-        class: 'rd-frame-size', x: 446, y: baseline, 'text-anchor': 'end'
+        class: 'rd-frame-size', x: 454, y: baseline, 'text-anchor': 'end'
       })));
 
       svg.appendChild(layer);

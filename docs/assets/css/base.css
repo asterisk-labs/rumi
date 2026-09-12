@@ -17,9 +17,7 @@ body {
   min-height: 100vh;
   min-height: 100svh;
   overflow-x: clip;
-  background:
-    radial-gradient(circle at 50% -20%, rgba(116, 87, 255, 0.09), transparent 34rem),
-    var(--bg);
+  background: var(--bg);
   color: var(--ink);
   font: 400 16px/1.55 var(--sans);
   -webkit-font-smoothing: antialiased;
