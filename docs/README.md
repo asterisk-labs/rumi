@@ -11,7 +11,7 @@ python -m http.server 8000
 
 ```
 index.html            shell and one <template> per route
-how-rumi-reads.html   progressive manual from selection to decoded tensor
+how-rumi-reads.html   source-code tour from Python call to decoded tensor
 examples.html         working examples for writing, reading, and batching
 assets/css/
   tokens.css          design tokens
