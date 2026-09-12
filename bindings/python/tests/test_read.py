@@ -1,10 +1,12 @@
 """Read paths for local files, memory buffers, and windows."""
 
 import inspect
+import threading
 
 import numpy as np
 import pytest
 import rumi
+import rumi._read as read_module
 from rumi._ffi import _Spec, ffi, lib
 
 geozl = pytest.importorskip("geozl")
@@ -53,6 +55,44 @@ def image(tmp_path_factory):
 def test_path_round_trip(image):
     path, header, data = image
     assert np.array_equal(rumi.read(path, header), data)
+
+
+def test_dlpack_capsule_failure_restores_versioned_owner(image, monkeypatch):
+    path, header, data = image
+    result = rumi.read(path, header, framework=None)
+
+    def fail_capsule(*_args):
+        raise MemoryError("capsule failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(read_module, "_PyCapsule_New", fail_capsule)
+        with pytest.raises(MemoryError, match="capsule failed"):
+            result.__dlpack__(max_version=(1, 0))
+    assert result._tensor is not None
+    assert np.array_equal(np.from_dlpack(result), data)
+
+
+def test_dlpack_export_is_exactly_once_across_threads(image):
+    path, header, _data = image
+    result = rumi.read(path, header, framework=None)
+    barrier = threading.Barrier(2)
+    outcomes = []
+
+    def export():
+        barrier.wait()
+        try:
+            outcomes.append(result.__dlpack__())
+        except RuntimeError as error:
+            outcomes.append(error)
+
+    threads = [threading.Thread(target=export) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sum(isinstance(value, RuntimeError) for value in outcomes) == 1
+    assert sum(not isinstance(value, RuntimeError) for value in outcomes) == 1
 
 
 def test_fused_planar_pfor_frame_round_trips(tmp_path):

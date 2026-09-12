@@ -1,6 +1,7 @@
 import ctypes
 import operator
 import os
+import threading
 from collections.abc import Sequence
 
 import numpy as np
@@ -63,6 +64,7 @@ class RumiArray:
         self._shape = shape
         self._dtype_code = dtype_code
         self._array = array
+        self._export_lock = threading.Lock()
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -73,30 +75,41 @@ class RumiArray:
 
     def __dlpack__(self, *, stream=None, max_version=None,
                    dl_device=None, copy=None):
-        if self._array is not None:
-            raise BufferError(
-                "padded sub-byte dtypes cannot be exported through DLPack; "
-                "use numpy()")
-        if self._tensor is None:
-            raise RuntimeError("this RumiArray was already exported")
-        if dl_device is not None and tuple(dl_device) != (1, 0):
-            raise BufferError(f"rumi decodes on the CPU, not device {dl_device}")
-
-        # Consumers that omit max_version receive a legacy DLPack capsule.
-        tensor, name = self._tensor, _VERSIONED_NAME
-        if max_version is None or tuple(max_version)[:1] < (1,):
-            if is_subbyte(self._dtype_code):
+        with self._export_lock:
+            if self._array is not None:
                 raise BufferError(
-                    "this padded sub-byte dtype needs a DLPack 1.0 consumer")
-            tensor = lib.rumi_dlpack_legacy(tensor)
-            name = _LEGACY_NAME
-            if tensor == ffi.NULL:
-                raise MemoryError("could not wrap the tensor for DLPack 0.x")
+                    "padded sub-byte dtypes cannot be exported through DLPack; "
+                    "use numpy()")
+            if self._tensor is None:
+                raise RuntimeError("this RumiArray was already exported")
+            if dl_device is not None and tuple(dl_device) != (1, 0):
+                raise BufferError(
+                    f"rumi decodes on the CPU, not device {dl_device}")
 
-        addr = int(ffi.cast("uintptr_t", tensor))
-        capsule = _PyCapsule_New(ctypes.c_void_p(addr), name, _c_destructor)
-        self._tensor = None
-        return capsule
+            owner = self._tensor
+            tensor, name = owner, _VERSIONED_NAME
+            legacy = max_version is None or tuple(max_version)[:1] < (1,)
+            if legacy:
+                if is_subbyte(self._dtype_code):
+                    raise BufferError(
+                        "this padded sub-byte dtype needs a DLPack 1.0 consumer")
+                tensor = lib.rumi_dlpack_legacy(owner)
+                name = _LEGACY_NAME
+                if tensor == ffi.NULL:
+                    raise MemoryError("could not wrap the tensor for DLPack 0.x")
+
+            addr = int(ffi.cast("uintptr_t", tensor))
+            self._tensor = None
+            try:
+                return _PyCapsule_New(
+                    ctypes.c_void_p(addr), name, _c_destructor)
+            except MemoryError:
+                if legacy:
+                    # The wrapper owns the original versioned tensor.
+                    lib.rumi_dlpack_legacy_free(tensor)
+                else:
+                    self._tensor = owner
+                raise
 
     def numpy(self):
         """Return a NumPy array, transferring DLPack-backed storage if present."""
