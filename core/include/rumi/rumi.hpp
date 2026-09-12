@@ -39,6 +39,16 @@ inline constexpr std::uint32_t FILE_MAGIC   = 0x494D5552;
 inline constexpr std::uint16_t FILE_VERSION = 1;
 inline constexpr std::uint64_t IFD_OFFSET   = 16;
 inline constexpr std::size_t   MAX_PARSED_INDEX_BYTES = 64u << 20;
+inline constexpr std::size_t   MAX_TIME_COORD_BYTES   = 64u << 20;
+
+[[nodiscard]] constexpr bool
+expanded_index_fits(std::uint64_t frames, std::uint8_t count_bits) noexcept
+{
+    constexpr std::uint64_t bytes_per_index = sizeof(std::uint32_t)
+                                                   + sizeof(std::uint64_t);
+    return count_bits == 0
+        || frames <= MAX_PARSED_INDEX_BYTES / bytes_per_index;
+}
 
 // Maximum OpenZL frame format version accepted by the linked decoder.
 [[nodiscard]] int openzl_format_version() noexcept;

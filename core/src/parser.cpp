@@ -1,5 +1,6 @@
 #include "rumi/rumi.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <bit>
 #include <cstring>
@@ -203,9 +204,14 @@ parse_blob(std::span<const std::byte> blob)
     h.frame_count = static_cast<std::uint32_t>(frame_count_u64);
 
     // Check each factor so an overflowing frame size cannot bypass the limit.
-    std::uint64_t frame_bytes_u64 = static_cast<std::uint64_t>(bh.tile_width);
+    // Edge tiles are clipped, never padded. A nominal tile may be larger than
+    // the whole raster, so bound the decoded frame by the real dimensions.
+    std::uint64_t frame_bytes_u64 = std::min(
+        static_cast<std::uint64_t>(bh.tile_width),
+        static_cast<std::uint64_t>(bh.image_width));
     const std::uint64_t factors[] = {
-        static_cast<std::uint64_t>(bh.tile_length),
+        std::min(static_cast<std::uint64_t>(bh.tile_length),
+                 static_cast<std::uint64_t>(bh.image_length)),
         static_cast<std::uint64_t>(h.bytes_per_sample),
         unit_holds(bh.frame_unit, AXIS_BAND, spp, tc)
             ? static_cast<std::uint64_t>(spp) : 1u,
@@ -240,10 +246,9 @@ parse_blob(std::span<const std::byte> blob)
 
     // Variable counts require one count and one offset per frame. Constant
     // counts remain implicit and do not allocate either vector.
-    constexpr std::uint64_t bytes_per_index = sizeof(std::uint32_t)
-                                              + sizeof(std::uint64_t);
-    const bool index_too_large = std::uint64_t(h.frame_count)
-                               > MAX_PARSED_INDEX_BYTES / bytes_per_index;
+    // Whether materializing counts and offsets would exceed the budget.
+    // Constant counts can stay implicit even beyond this boundary.
+    const bool index_too_large = !expanded_index_fits(h.frame_count, 1);
     if (index_too_large) {
         if (bh.count_bits != 0) {
             return std::unexpected(ParseError::index_too_large);

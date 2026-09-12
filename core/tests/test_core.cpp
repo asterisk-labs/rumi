@@ -291,6 +291,15 @@ void test_parse_blob()
         EQ(subbyte->max_frame_size, std::size_t(25));
     }
 
+    CASE("a nominal tile larger than the raster uses its clipped size")
+    const std::uint64_t prior_limit = rumi::max_frame_bytes();
+    rumi::set_max_frame_bytes(64 * 64 * 2);
+    auto clipped = rumi::parse_blob(make_blob(
+        64, 64, 16384, 3, std::vector<std::uint32_t>(3, 5)));
+    rumi::set_max_frame_bytes(prior_limit);
+    OK(clipped.has_value());
+    if (clipped) EQ(clipped->max_frame_size, std::size_t(64 * 64 * 2));
+
     CASE("a malformed blob is refused")
     auto bad_magic = make_blob(32, 32, 16, 1, {1, 2, 3, 4});
     std::uint32_t wrong = 0xDEADBEEF;
@@ -368,6 +377,14 @@ void test_parse_blob()
     auto rejected = rumi::parse_blob(bounded);
     OK(!rejected.has_value());
     if (!rejected) OK(rejected.error() == rumi::ParseError::index_too_large);
+
+    CASE("the writer and parser share the variable-index boundary")
+    constexpr std::uint64_t largest = rumi::MAX_PARSED_INDEX_BYTES
+                                    / (sizeof(std::uint32_t)
+                                       + sizeof(std::uint64_t));
+    OK(rumi::expanded_index_fits(largest, 1));
+    OK(!rumi::expanded_index_fits(largest + 1, 1));
+    OK(rumi::expanded_index_fits(largest + 1, 0));
 }
 
 // Independent frame-count unpacker used to verify the parser.
@@ -1291,6 +1308,22 @@ void test_time_trailer()
         auto wrong_magic = *good;
         wrong_magic[0] = std::byte{0};
         OK(!rumi::decode_time(wrong_magic, 60));
+    }
+
+    CASE("a tiny arithmetic trailer cannot expand past the time-axis budget")
+    rumi::TimeTrailer huge{};
+    huge.magic      = rumi::TIME_MAGIC;
+    huge.version    = rumi::TIME_VERSION;
+    huge.time_type  = rumi::TIME_INSTANT;
+    huge.time_scale = 1;
+    std::vector<std::byte> tiny_time(rumi::TRAILER_SIZE);
+    std::memcpy(tiny_time.data(), &huge, sizeof huge);
+    const auto too_many = static_cast<std::uint32_t>(
+        rumi::MAX_TIME_COORD_BYTES / sizeof(std::int64_t) + 1);
+    auto bounded = rumi::decode_time(tiny_time, too_many);
+    OK(!bounded.has_value());
+    if (!bounded) {
+        OK(bounded.error().find("time coordinates") != std::string::npos);
     }
 }
 

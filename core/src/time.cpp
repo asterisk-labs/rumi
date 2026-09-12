@@ -244,14 +244,15 @@ decode_time(std::span<const std::byte> bytes, std::uint32_t time_count)
                    "epoch, step, bits and scale are 0, 0, 0 and 1");
     }
 
-    // With time_bits == 0, file size does not bound coordinate count. Apply the
-    // reader's resource limit before allocating the decoded axis.
-    if (count > max_frame_bytes() / sizeof(std::int64_t)) {
+    // With time_bits == 0, file size does not bound coordinate count. Time
+    // metadata has its own fixed budget; the per-frame decode limit is not an
+    // appropriate bound for an axis reconstructed from a tiny trailer.
+    if (count > MAX_TIME_COORD_BYTES / sizeof(std::int64_t)) {
         return errf("%llu time coordinates need %llu bytes, past the %llu this "
                     "reader will allocate",
                     static_cast<unsigned long long>(count),
                     static_cast<unsigned long long>(count * sizeof(std::int64_t)),
-                    static_cast<unsigned long long>(max_frame_bytes()));
+                    static_cast<unsigned long long>(MAX_TIME_COORD_BYTES));
     }
 
     TimeAxis axis;

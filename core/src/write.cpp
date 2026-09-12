@@ -283,6 +283,13 @@ try {
     for (std::size_t i = 0; i < n; ++i)
         counts[i] = static_cast<std::uint32_t>(sizes[i]);
 
+    const CountPacking cp = plan_counts(counts);
+    if (!expanded_index_fits(g->frames, cp.bits)) {
+        return err("%llu variable-size frames need an expanded index larger "
+                   "than this reader accepts",
+                   static_cast<unsigned long long>(g->frames));
+    }
+
     auto l = plan(d, *g, counts);
     if (!l) return std::unexpected(l.error());
 
@@ -376,7 +383,6 @@ try {
                    static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }
 
-    const CountPacking cp = plan_counts(counts);
     bh.count_min  = cp.min;
     bh.count_bits = cp.bits;
 

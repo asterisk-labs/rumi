@@ -291,6 +291,21 @@ def test_edge_tiles(tmp_path):
     assert h.frame_layout == "h w"
 
 
+def test_nominal_tile_larger_than_image_round_trips(tmp_path):
+    geozl = pytest.importorskip("geozl")
+    data = np.arange(3 * 64 * 64, dtype=np.uint16).reshape(3, 64, 64)
+    table = rumi.frames(data, CELL, tile_size=16384)
+    for frame in table:
+        graph = geozl.graph(frame.data, "planar>zigzag>zstd")
+        frame.compressed = geozl.compress(frame.data, graph=graph)
+
+    path, header = rumi.write(tmp_path / "clipped.rumi", table)
+
+    assert np.array_equal(rumi.read(path, header), data)
+    assert rumi.info(source=path).header == header
+    assert rumi.info(header=header).tile == (16384, 16384)
+
+
 def test_a_unit_must_fit_the_raster(tmp_path):
     """A singleton band axis is omitted from the recorded frame unit."""
     tf = make_frame(shape=(1, 40, 40), tile_size=16, pattern=CELL)
