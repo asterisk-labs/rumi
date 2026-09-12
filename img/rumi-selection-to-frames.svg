@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="260" viewBox="0 0 820 260" role="img" aria-labelledby="title desc">
+  <title id="title">A raster selection becomes frame ranges</title>
+  <desc id="desc">A selected window intersects one cell in a four by four tile grid. The spatial index and selected band and time values determine two frame indexes, which map to two byte ranges.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 10 5 0 10Z"/></marker>
+  </defs>
+  <style>
+    svg{background:#fff}text{font-family:Arial,Helvetica,sans-serif;fill:#171717}.label{font-size:10px;font-weight:700;letter-spacing:.1em}.main{font-size:13px;font-weight:700}.sub{font-size:10px;fill:#656565}.grid rect{fill:#fff;stroke:#aaa}.grid .selected{fill:#e8e8e8;stroke:#171717;stroke-width:2}.grid text{font-size:9px;text-anchor:middle}.box{fill:#fff;stroke:#aaa}.strong{stroke:#171717;stroke-width:1.5}.edge{fill:none;stroke:#777;stroke-width:1.2;marker-end:url(#arrow)}
+  </style>
+  <text class="label" x="20" y="22">SPATIAL SELECTION</text>
+  <g class="grid" transform="translate(20 42)">
+    <rect x="0" y="0" width="42" height="42"/><rect x="42" y="0" width="42" height="42"/><rect x="84" y="0" width="42" height="42"/><rect x="126" y="0" width="42" height="42"/>
+    <rect x="0" y="42" width="42" height="42"/><rect x="42" y="42" width="42" height="42"/><rect x="84" y="42" width="42" height="42"/><rect x="126" y="42" width="42" height="42"/>
+    <rect x="0" y="84" width="42" height="42"/><rect class="selected" x="42" y="84" width="42" height="42"/><rect x="84" y="84" width="42" height="42"/><rect x="126" y="84" width="42" height="42"/>
+    <rect x="0" y="126" width="42" height="42"/><rect x="42" y="126" width="42" height="42"/><rect x="84" y="126" width="42" height="42"/><rect x="126" y="126" width="42" height="42"/>
+    <text x="21" y="25">0</text><text x="63" y="25">1</text><text x="105" y="25">2</text><text x="147" y="25">3</text>
+    <text x="21" y="67">4</text><text x="63" y="67">5</text><text x="105" y="67">6</text><text x="147" y="67">7</text>
+    <text x="21" y="109">8</text><text x="63" y="109">9</text><text x="105" y="109">10</text><text x="147" y="109">11</text>
+    <text x="21" y="151">12</text><text x="63" y="151">13</text><text x="105" y="151">14</text><text x="147" y="151">15</text>
+  </g>
+  <text class="sub" x="104" y="229" text-anchor="middle">row 2 · column 1</text>
+  <path class="edge" d="M200 126H254"/>
+  <rect class="box strong" x="254" y="87" width="156" height="78" rx="4"/>
+  <text class="main" x="332" y="116" text-anchor="middle">spatial index 9</text>
+  <text class="sub" x="332" y="138" text-anchor="middle">2 × 4 + 1</text>
+  <path class="edge" d="M410 126H464"/>
+  <rect class="box" x="464" y="56" width="170" height="58" rx="4"/>
+  <text class="main" x="549" y="80" text-anchor="middle">frame 113</text>
+  <text class="sub" x="549" y="99" text-anchor="middle">band 1 · time 2</text>
+  <rect class="box" x="464" y="139" width="170" height="58" rx="4"/>
+  <text class="main" x="549" y="163" text-anchor="middle">frame 119</text>
+  <text class="sub" x="549" y="182" text-anchor="middle">band 3 · time 2</text>
+  <path class="edge" d="M634 85H680V112H704"/>
+  <path class="edge" d="M634 168H680V142H704"/>
+  <rect class="box strong" x="704" y="99" width="96" height="58" rx="4"/>
+  <text class="main" x="752" y="123" text-anchor="middle">2 ranges</text>
+  <text class="sub" x="752" y="142" text-anchor="middle">offset · length</text>
+</svg>

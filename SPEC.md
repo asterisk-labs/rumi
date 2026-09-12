@@ -58,6 +58,42 @@ compressed frame; after decoding, each multi-byte sample component is
 little-endian. An API may convert decoded samples to the host's native byte
 order.
 
+## Selective read model
+
+This section is informative. A selective read combines band and time positions,
+a spatial window, the external header that belongs to the file, and access to
+the `.rumi` file.
+
+1. The window identifies the tile rows and columns it intersects.
+2. `frame_unit` determines which band and time positions are part of each frame
+   index and which are decoded inside a frame.
+3. The header's packed byte counts reconstruct the offset and length of every
+   required frame.
+4. Each selected range is decoded as an independent OpenZL frame and its
+   requested samples are placed in the output array.
+
+For example, consider a Cube with shape `(T=3, B=4, Y=1024, X=1024)`, nominal
+tiles of `256 × 256`, and `frame_unit = 0`. Its spatial grid is `4 × 4`, so
+`g = 16` and `N = g * B * T = 192`.
+
+A request for time position `t = 2`, bands `b = 1` and `b = 3`, and the window
+`y = [512, 768)`, `x = [256, 512)` covers the tile at `row = 2`, `col = 1`.
+
+```text
+spatial = row * tiles_across + col
+        = 2 * 4 + 1
+        = 9
+
+index(b=1, t=2) = (9 * 4 + 1) * 3 + 2 = 113
+index(b=3, t=2) = (9 * 4 + 3) * 3 + 2 = 119
+```
+
+![A spatial, band, and time selection becomes two frame ranges](img/rumi-selection-to-frames.svg)
+
+The reader reconstructs the offsets of frames `113` and `119` as defined in
+[Offset reconstruction](#offset-reconstruction), fetches those two ranges, and
+leaves the other `190` frames untouched.
+
 ## Data model
 
 rumi uses the following data model.
@@ -829,6 +865,8 @@ reconstructs the offsets in frame-index order.
 offset[0]     = base_frame_offset
 offset[idx+1] = offset[idx] + frame_byte_counts[idx]
 ```
+
+![Frame offsets are prefix sums over the frame byte counts](img/rumi-offset-reconstruction.svg)
 
 Every reconstructed offset MUST fit in `uint64`.
 

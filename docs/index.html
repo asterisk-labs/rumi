@@ -101,7 +101,7 @@
       <aside class="spec-sidebar" aria-label="Specification contents">
         <span>Contents</span>
         <!-- RUMI_SPEC_TOC_START -->
-<ul class="spec-toc">
+        <ul class="spec-toc">
 <li class="toc-level-2"><a href="#/spec/scope">Scope</a></li>
 <li class="toc-level-2"><a href="#/spec/selective-read-model">Selective read model</a></li>
 <li class="toc-level-2"><a href="#/spec/data-model">Data model</a></li>
@@ -131,24 +131,13 @@
 </ul>
 <p>rumi is a GeoTIFF-inspired raster format for compressed raster tensors with up
 to four dimensions. It stores either an Image <code>(B, Y, X)</code> or a temporal Cube
-<code>(T, B, Y, X)</code> on a regular tile grid.</p>
-<p>Writing an array produces two associated artifacts:</p>
-<ul>
-<li>the <code>.rumi</code> file, which contains the complete, self-describing raster; and</li>
-<li>an external header blob, which contains the compact index needed to locate
-compressed frames without first parsing the file.</li>
-</ul>
-<p>The file contains everything needed to rebuild the external header. An
-application may keep the header beside the file, store it in a catalogue, or
-reconstruct it before a first read. Keeping it in a catalogue lets repeated
-reads begin with the requested data ranges instead of an indexing request.</p>
+<code>(T, B, Y, X)</code> in one tiled file.</p>
 <p>The format has the following properties:</p>
 <ul>
-<li><strong>Selective, stateless reads.</strong> The external header maps a spatial, band, and
-time selection to the compressed frames that contain it. A reader need not
-retain state between requests.</li>
+<li><strong>Stateless reads.</strong> The external binary header locates every compressed frame
+without parsing the <code>.rumi</code> file or retaining state between requests.</li>
 <li><strong>OpenZL compression.</strong> Stores each frame as an independent, self-contained
-OpenZL frame that embeds its compression graph and codec parameters.</li>
+OpenZL frame.</li>
 <li><strong>Predictable layout.</strong> Files with the same band and frame counts begin their
 frame data at the same byte.</li>
 <li><strong>Time coordinates.</strong> Stores instants or intervals in a compact trailer when
@@ -160,6 +149,7 @@ and contiguous frame data.</li>
 ungeoreferenced rasters.</li>
 </ul>
 <p>The filename extension for the format is <code>.rumi</code>.</p>
+<p><img src="img/rumi-layout.svg" alt="A raster array is encoded as a rumi file and a rumi header blob" /></p>
 <p>The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as described
 in RFC 2119 when, and only when, they appear in capitals.</p>
 <h2 id="scope">Scope</h2>
@@ -184,64 +174,37 @@ compressed frame; after decoding, each multi-byte sample component is
 little-endian. An API may convert decoded samples to the host's native byte
 order.</p>
 <h2 id="selective-read-model">Selective read model</h2>
-<p>This section is informative. It connects the structures defined by the format
-to the operation applications perform most often: reading a spatial window and
-only the band or time positions they need.</p>
-<p>A selective read combines three inputs: a selection, the external header that
-belongs to the file, and access to the <code>.rumi</code> file itself.</p>
+<p>This section is informative. A selective read combines band and time positions,
+a spatial window, the external header that belongs to the file, and access to
+the <code>.rumi</code> file.</p>
 <ol>
-<li><strong>Select.</strong> The application identifies band and time positions and a spatial
-window. The window intersects one or more positions on the file's tile grid.</li>
-<li><strong>Plan.</strong> The reader uses the dimensions and <a href="#/spec/frame_unit"><code>frame_unit</code></a> from
-the header to turn those positions into frame indexes. It reconstructs each
-frame offset from the packed byte counts as defined in
-<a href="#/spec/offset-reconstruction">Offset reconstruction</a>.</li>
-<li><strong>Fetch.</strong> The reader obtains the exact byte range of every selected frame
-from a local file or remote object. A transport may combine nearby ranges,
-but that does not change the frames or samples the application requested.</li>
-<li><strong>Decode.</strong> Each range is an independent OpenZL frame. The reader decodes it,
-takes the requested samples, and places them in the application array.</li>
+<li>The window identifies the tile rows and columns it intersects.</li>
+<li><code>frame_unit</code> determines which band and time positions are part of each frame
+index and which are decoded inside a frame.</li>
+<li>The header's packed byte counts reconstruct the offset and length of every
+required frame.</li>
+<li>Each selected range is decoded as an independent OpenZL frame and its
+requested samples are placed in the output array.</li>
 </ol>
-<h3 id="what-the-external-header-does">What the external header does</h3>
-<p>The external header is a read index, not a complete metadata record. Its fixed
-fields describe the array dimensions, tile dimensions, sample encoding, and
-frame layout. Its packed region records the compressed size of every frame.
-Together these values are sufficient to determine which frames intersect a
-selection and where their bytes begin.</p>
-<p><a href="#/spec/georeferencing">Georeferencing</a> and <a href="#/spec/time-coordinates">Time coordinates</a>
-remain in the <code>.rumi</code> file. The file also repeats every value required to
-rebuild and validate the <a href="#/spec/header-blob">Header blob</a>. This separation keeps the
-read index small while preserving a self-describing file.</p>
-<h3 id="worked-selective-read">Worked selective read</h3>
-<p>This example is informative. Consider a Cube with shape
-<code>(T=3, B=4, Y=1024, X=1024)</code>, nominal tiles of <code>256 × 256</code>, and
-<code>frame_unit = 0</code>. Its spatial grid is <code>4 × 4</code>, so <code>g = 16</code> and
-<code>N = g * B * T = 192</code>.</p>
-<p>An application requests time position <code>t = 2</code>, bands <code>b = 1</code> and <code>b = 3</code>, and
-the spatial window <code>y = [512, 768)</code>, <code>x = [256, 512)</code>. The window covers one
-tile at <code>row = 2</code>, <code>col = 1</code>, whose spatial index is:</p>
+<p>For example, consider a Cube with shape <code>(T=3, B=4, Y=1024, X=1024)</code>, nominal
+tiles of <code>256 × 256</code>, and <code>frame_unit = 0</code>. Its spatial grid is <code>4 × 4</code>, so
+<code>g = 16</code> and <code>N = g * B * T = 192</code>.</p>
+<p>A request for time position <code>t = 2</code>, bands <code>b = 1</code> and <code>b = 3</code>, and the window
+<code>y = [512, 768)</code>, <code>x = [256, 512)</code> covers the tile at <code>row = 2</code>, <code>col = 1</code>.</p>
 <pre><code class="language-text">spatial = row * tiles_across + col
         = 2 * 4 + 1
         = 9
-</code></pre>
-<p>For <code>frame_unit = 0</code>, the two requested frame indexes are:</p>
-<pre><code class="language-text">index(b=1, t=2) = (9 * 4 + 1) * 3 + 2 = 113
+
+index(b=1, t=2) = (9 * 4 + 1) * 3 + 2 = 113
 index(b=3, t=2) = (9 * 4 + 3) * 3 + 2 = 119
 </code></pre>
-<p>From <code>B = 4</code> and <code>N = 192</code>, the reader also derives
-<code>base_frame_offset = 2756</code> as defined in
-<a href="#/spec/deriving-base_frame_offset">Deriving base_frame_offset</a>.</p>
-<p>After unpacking <code>frame_byte_counts</code>, the reader reconstructs <code>offset[113]</code> and
-<code>offset[119]</code> with the prefix sum in
-<a href="#/spec/offset-reconstruction">Offset reconstruction</a>. It fetches exactly these
-half-open byte ranges:</p>
-<pre><code class="language-text">[offset[113], offset[113] + frame_byte_counts[113])
-[offset[119], offset[119] + frame_byte_counts[119])
-</code></pre>
-<p>The reader passes each range to OpenZL and places the two decoded tiles in the
-requested output array. The other <code>190</code> frames are not needed for this read.</p>
+<p><img src="img/rumi-selection-to-frames.svg" alt="A spatial, band, and time selection becomes two frame ranges" /></p>
+<p>The reader reconstructs the offsets of frames <code>113</code> and <code>119</code> as defined in
+<a href="#/spec/offset-reconstruction">Offset reconstruction</a>, fetches those two ranges, and
+leaves the other <code>190</code> frames untouched.</p>
 <h2 id="data-model">Data model</h2>
 <p>rumi uses the following data model.</p>
+<p><img src="img/rumi-data-model.svg" alt="Deep Learning Raster Data Model" /></p>
 <table>
 <thead>
 <tr>
@@ -301,6 +264,7 @@ IFD or external header. Its decoded shape and sample order are specified by
 <li>one tile for one <code>(b, t)</code> pair at one tile location; or</li>
 <li>one cell at one tile location.</li>
 </ul>
+<p><img src="img/rumi-model-to-frame.svg" alt="Tiles and cells are data model units; a frame is their compressed storage unit" /></p>
 <h3 id="frame_unit">frame_unit</h3>
 <p><code>frame_unit</code> selects one of the decoded layouts below. <code>b</code>, <code>t</code>, <code>h</code>, and <code>w</code>
 mean band, time, height, and width. The rightmost axis changes fastest.</p>
@@ -371,8 +335,10 @@ mean band, time, height, and width. The rightmost axis changes fastest.</p>
 tile location: <code>b</code> then <code>t</code> for <code>0</code>, <code>t</code> then <code>b</code> for <code>9</code>. That order is
 observable only when both <code>B</code> and <code>T</code> exceed <code>1</code>, which is why <code>9</code> is valid
 nowhere else.</p>
-<p>The two frame types use the band and time axes differently. For a tile, <code>b</code> and
-<code>t</code> select the frame. For a cell, they are part of the decoded frame.</p>
+<p>The diagram shows how the two frame types use the band and time axes. For a
+tile, <code>b</code> and <code>t</code> select the frame. For a cell, they are part of the decoded
+frame.</p>
+<p><img src="img/rumi-frame-unit.svg" alt="frame_unit keeps band and time outside a tile frame or places them around h w for cell storage" /></p>
 <p>Within a decoded frame, <code>h w</code> MUST stay together and in that order.</p>
 <p>The registry is complete and append-only; existing values MUST NOT be
 reassigned. A reader MUST reject any <code>frame_unit</code> value or <code>(B, T)</code> combination
@@ -388,12 +354,6 @@ interleaved within each pixel. When both axes precede <code>h w</code>, the axis
 <code>h w</code> varies between adjacent planes.</p>
 <p>The best unit depends on the expected reads and the data. Compression SHOULD be
 measured when more than one unit fits the access pattern.</p>
-<p>For example, inference that selects a few bands or time steps benefits from a
-tile frame (<code>0</code> or <code>9</code>), because unrequested axes remain in separate frames. A
-training pipeline that always consumes every band and time step at a tile
-location may prefer a cell frame (<code>1</code> through <code>8</code>), because OpenZL can model
-correlation across those axes. These are access-pattern guidelines, not a
-substitute for measuring compression and decode cost on representative data.</p>
 <h3 id="frame-index">Frame index</h3>
 <p><code>row</code> and <code>col</code> select a tile location in the spatial grid. Tile locations are
 traversed in row-major order.</p>
@@ -1130,11 +1090,6 @@ residual. <code>residual(0)</code> is always zero.</p>
 the decoded coordinates reproduce the recorded <code>time_epoch</code>, <code>time_step</code>, and
 minimum <code>time_bits</code>. Every decoded coordinate MUST fit in <code>int64</code> and satisfy
 the ordering required by <code>time_type</code>.</p>
-<p>For example, coordinates <code>[100, 110, 121]</code> use <code>time_epoch = 100</code> and
-<code>time_step = 11</code>. Their predicted values are <code>[100, 111, 122]</code>, so their
-residuals are <code>[0, -1, -1]</code>. Zigzag encoding produces <code>[0, 1, 1]</code>, which needs
-<code>time_bits = 1</code>. Packed least-significant bit first, these three values occupy
-one byte with value <code>0x06</code>.</p>
 <h4 id="packing">Packing</h4>
 <p>The <code>C</code> packed values are stored as defined in
 <a href="#/spec/bit-packed-arrays">Bit-packed arrays</a>, at <code>time_bits</code> bits each.</p>
@@ -1403,6 +1358,7 @@ reconstructs the offsets in frame-index order.</p>
 <pre><code class="language-text">offset[0]     = base_frame_offset
 offset[idx+1] = offset[idx] + frame_byte_counts[idx]
 </code></pre>
+<p><img src="img/rumi-offset-reconstruction.svg" alt="Frame offsets are prefix sums over the frame byte counts" /></p>
 <p>Every reconstructed offset MUST fit in <code>uint64</code>.</p>
 <p>A reader passes <code>frame_byte_counts[idx]</code> bytes at <code>offset[idx]</code> to the OpenZL
 decoder.</p>
@@ -1416,10 +1372,6 @@ not require parsing the trailer.</p>
           + k * count_min
           + sum(residual[0:k])
 </code></pre>
-<p>For example, byte counts <code>[100, 103, 101, 100]</code> produce <code>count_min = 100</code>,
-residuals <code>[0, 3, 1, 0]</code>, and <code>count_bits = 2</code>. If
-<code>base_frame_offset = 500</code>, the reconstructed frame offsets are
-<code>[500, 600, 703, 804]</code>, and the time trailer begins at byte <code>904</code>.</p>
 <h2 id="resource-limits">Resource limits</h2>
 <p>A reader MUST check derived sizes before allocating memory or decoding a frame.
 An operation that exceeds the reader's resource limits MUST fail before the
