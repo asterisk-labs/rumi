@@ -4,6 +4,14 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.21.3] - 2026-09-13
+
+### Changed
+
+- Updated to [Karu 0.2.2], inheriting safer cross-origin redirect handling for
+  custom HTTP headers and a corrected lifetime for concurrent credential
+  refresh results.
+
 ## [0.21.2] - 2026-09-12
 
 ### Added
@@ -339,7 +347,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.21.2...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.21.3...HEAD
+[0.21.3]: https://github.com/asterisk-labs/rumi/compare/v0.21.2...v0.21.3
 [0.21.2]: https://github.com/asterisk-labs/rumi/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/asterisk-labs/rumi/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/asterisk-labs/rumi/compare/v0.20.1...v0.21.0
@@ -353,3 +362,4 @@ Notable user-visible changes are recorded here.
 [0.14.0]: https://github.com/asterisk-labs/rumi/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/asterisk-labs/rumi/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/asterisk-labs/rumi/releases/tag/v0.12.0
+[Karu 0.2.2]: https://github.com/asterisk-labs/karu/releases/tag/v0.2.2
