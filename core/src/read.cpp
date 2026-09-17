@@ -258,10 +258,14 @@ namespace {
 
 FrameSpec make_frame_spec(const Header& h) noexcept
 {
+    // OpenZL numeric elements stop at 8 bytes, below a complex128 sample.
+    const bool is_complex = h.sample_format == 5 || h.sample_format == 6;
     return FrameSpec{
         h.tile_width,
         h.tile_length,
         static_cast<std::uint8_t>(h.bytes_per_sample),
+        static_cast<std::uint8_t>(is_complex ? h.bytes_per_sample / 2
+                                             : h.bytes_per_sample),
         h.bits_per_sample,
         h.max_frame_size,
     };

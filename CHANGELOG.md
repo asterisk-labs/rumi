@@ -8,6 +8,9 @@ Notable user-visible changes are recorded here.
 
 - NumPy reads of `float8_e4m3fn`, `float8_e5m2`, `float8_e8m0` and `bfloat16`
   data return `ml_dtypes` arrays instead of raising `SystemError`.
+- `complex128` files are readable. OpenZL numeric streams hold at most 8-byte
+  elements, so a complex frame may now decode as a stream of its components;
+  compress `frame.data.view(np.float64)`.
 
 ## [0.21.3] - 2026-09-13
 

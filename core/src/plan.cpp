@@ -190,14 +190,24 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         return RUMI_ERR_DECODE;
     }
     if (info.type != ZL_Type_numeric ||
-        info.fixedWidth != spec.bytes_per_sample ||
+        (info.fixedWidth != spec.bytes_per_sample &&
+         info.fixedWidth != spec.component_bytes) ||
         info.decompressedByteSize != t.frame_bytes) {
+        char widths[32];
+        if (spec.component_bytes != spec.bytes_per_sample) {
+            std::snprintf(widths, sizeof widths, "%u or %u",
+                          static_cast<unsigned>(spec.bytes_per_sample),
+                          static_cast<unsigned>(spec.component_bytes));
+        } else {
+            std::snprintf(widths, sizeof widths, "%u",
+                          static_cast<unsigned>(spec.bytes_per_sample));
+        }
         say(msg, "rumi: unexpected frame output (type %u, width %u, size %llu; "
-            "expected numeric width %u, size %llu)%s",
+            "expected numeric width %s, size %llu)%s",
             static_cast<unsigned>(info.type),
             static_cast<unsigned>(info.fixedWidth),
             static_cast<unsigned long long>(info.decompressedByteSize),
-            static_cast<unsigned>(spec.bytes_per_sample),
+            widths,
             static_cast<unsigned long long>(t.frame_bytes), item);
         return RUMI_ERR_DECODE;
     }

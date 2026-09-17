@@ -92,13 +92,15 @@ products differ more, so profile.
 
 The reader decodes each frame with OpenZL plus every GeoZL codec (GeoZL is linked into
 `librumi`), then requires one numeric output stream whose element width is the file's
-bytes per sample (1 for sub-byte types) and whose byte size matches the frame's decoded
-samples (`plan.cpp`). Sub-byte frames must also leave the unused high bits zero.
+bytes per sample (1 for sub-byte types, or one component for complex types) and whose
+byte size matches the frame's decoded samples (`plan.cpp`). Sub-byte frames must also
+leave the unused high bits zero.
 
 | Payload | Result at read time |
 | --- | --- |
 | `geozl.compress(frame.data, ...)` | reads |
 | same bytes through another dtype of equal width (`frame.data.view(np.int16)`) | reads |
+| complex samples as components (`frame.data.view(np.float64)` for `complex128`) | reads; Rumi 0.21.3 refuses them |
 | plain OpenZL frame (`openzl.ext`, standard codecs only) | reads |
 | lossy GeoZL frame | reads, within its bound |
 | arbitrary bytes | `OSError: rumi: OpenZL decode failed: Code: Unknown header ...` |

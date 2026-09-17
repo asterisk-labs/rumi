@@ -52,6 +52,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: frame data needs 544743 bytes, source has 490914` | header of another file, or a truncated file | pair the right header; check the download |
 | `OSError: rumi: OpenZL decode failed: Code: Source size too small` or `Unknown header` | header of another file, or corrupt payload bytes | `rumi.info(source=..., header=...)` to check the pair |
 | `OSError: rumi: unexpected frame output (type 4, width 1, size 16384; expected numeric width 2, size 16384)` | payload compressed from other bytes than `frame.data` | recompress `frame.data` (`writing.md` section 5) |
+| `OSError: rumi: unexpected frame output (type 4, width 8, size 16384; expected numeric width 16, size 16384)` | a `complex128` file read by Rumi 0.21.3 | upgrade Rumi; later readers accept components |
 | `NotImplementedError: rumi: file uses an unknown OpenZL custom codec (CTid N)` | a frame graph with a codec Rumi does not link | recompress with standard OpenZL or GeoZL codecs |
 | `NotImplementedError: rumi: file uses a geozl codec this build lacks, update geozl (CTid N)` | frame written by a newer GeoZL | upgrade Rumi |
 | `ValueError: bands: index 4 out of [0, 4)` / `ValueError: time: index 3 out of [0, 3)` | position outside the axis | zero-based positions |
@@ -110,8 +111,9 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 - Any framework that rejects a Rumi DLPack capsule, for an unsupported type or device,
   surfaces the same `SystemError` instead of its own message, because the ctypes capsule
   destructor clears the pending exception.
-- `complex128` passes `rumi.frames`, but no OpenZL payload decodes to the 16-byte
-  numeric stream the reader requires (`dtypes.md` section 4).
+- `complex128` files write but never read: the reader requires 16-byte numeric
+  elements, which OpenZL cannot produce. Fixed after 0.21.3, where frames may decode as
+  `float64` components (`dtypes.md` section 4).
 - `bool` and sub-byte results cannot use `framework="torch"` (`BufferError`).
 
 ## 3. Library loading and editable installs

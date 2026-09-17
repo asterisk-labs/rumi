@@ -156,6 +156,14 @@ identity.
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md)
 
+## AI agent skill
+
+Install the [Rumi skill](https://github.com/asterisk-labs/rumi/blob/main/.claude/skills/rumi/SKILL.md) so coding agents know its frame layouts, selection rules and file format.
+
+```bash
+npx skills add asterisk-labs/rumi
+```
+
 ## License
 
 GPL-3.0
@@ -168,11 +176,3 @@ GPL-3.0
     <img src="https://raw.githubusercontent.com/asterisk-labs/cozip/refs/heads/main/images/asterisk_logo.svg" alt="Asterisk Labs" width="320"/>
   </a>
 </div>
-
-## AI agent skill
-
-Install the [Rumi skill](https://github.com/asterisk-labs/rumi/blob/main/.claude/skills/rumi/SKILL.md) so coding agents know its frame layouts, selection rules and file format.
-
-```bash
-npx skills add asterisk-labs/rumi
-```

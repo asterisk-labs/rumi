@@ -562,6 +562,8 @@ struct FrameSpec {
     std::uint16_t tile_width;
     std::uint16_t tile_length;
     std::uint8_t  bytes_per_sample;
+    // Complex samples may also decode as a stream of their two components.
+    std::uint8_t  component_bytes;
     // Logical sample width; unused high bits of padded samples must be zero.
     std::uint8_t  bits_per_sample;
     // Maximum decoded frame size used to allocate worker scratch buffers.

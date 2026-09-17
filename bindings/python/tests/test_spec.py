@@ -978,6 +978,47 @@ def test_a_decoded_sub_byte_frame_proves_its_padding(tmp_path):
                 rumi.read(path, header)
 
 
+@pytest.mark.parametrize("dtype, component", [(np.complex128, np.float64),
+                                              (np.complex64, np.float32)])
+@pytest.mark.parametrize("pattern", ["b (row h) (col w) -> row col b (h w)",
+                                     "b (row h) (col w) -> row col (b h w)"])
+def test_a_complex_frame_may_decode_as_its_components(tmp_path, dtype, component,
+                                                      pattern):
+    """OpenZL numeric elements stop at 8 bytes, below a complex128 sample."""
+    geozl = pytest.importorskip("geozl")
+    rng = np.random.default_rng(8)
+    data = (rng.normal(size=(2, 40, 50))
+            + 1j * rng.normal(size=(2, 40, 50))).astype(dtype)
+    tf = rumi.frames(data, pattern, 16)
+    for t in tf:
+        parts = t.data.view(component)
+        t.compressed = geozl.compress(parts, graph=geozl.graph(parts, "planar>zigzag>zstd"))
+    path, header = rumi.write(tmp_path / "complex.rumi", tf)
+
+    assert np.array_equal(rumi.read(path, header), data)
+    assert np.array_equal(rumi.read(path, header, bands=[1], window=(5, 7, 30, 30)),
+                          data[[1], 5:35, 7:37])
+    batch = rumi.read_many([path, path], [header, header],
+                           windows=[(0, 0, 16, 16), (20, 30, 16, 16)])
+    assert np.array_equal(batch[1], data[:, 20:36, 30:46])
+
+
+@pytest.mark.parametrize("dtype, view, widths", [(np.complex128, np.float32, "16 or 8"),
+                                                 (np.complex128, np.uint8, "16 or 8"),
+                                                 (np.uint16, np.uint8, "2")])
+def test_a_frame_of_another_width_is_refused(tmp_path, dtype, view, widths):
+    """Only the sample width, or a complex component width, decodes."""
+    geozl = pytest.importorskip("geozl")
+    data = np.arange(2 * 16 * 16).astype(dtype).reshape(2, 16, 16)
+    tf = rumi.frames(data, "b (row h) (col w) -> row col (b h w)", 16)
+    for t in tf:
+        raw = t.data.view(view)
+        t.compressed = geozl.compress(raw, graph=geozl.graph(raw, "id>zstd"))
+    path, header = rumi.write(tmp_path / "wide.rumi", tf)
+    with pytest.raises(OSError, match=f"expected numeric width {widths}, size"):
+        rumi.read(path, header)
+
+
 def test_an_undefined_crs_carries_the_matrix_the_spec_fixes(tmp_path):
     """Undefined CRS requires the fixed transformation matrix."""
     tiles = [b"\x01\x02\x03\x04"]

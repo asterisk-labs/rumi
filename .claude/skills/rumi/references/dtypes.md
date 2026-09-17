@@ -36,7 +36,7 @@ NumPy scalar type in the Python column.
 | 13 | `cint32` | 5, 64 | none | no | C only | no |
 | 14 | `cfloat16` | 6, 32 | none | yes | C only | no |
 | 15 | `cfloat32` | 6, 64 | `numpy.complex64` | yes | yes | `torch.complex64` |
-| 16 | `cfloat64` | 6, 128 | `numpy.complex128` | yes | see section 4 | see section 4 |
+| 16 | `cfloat64` | 6, 128 | `numpy.complex128` | yes | yes, as components (0.21.3 fails) | `torch.complex128` |
 | 17 | `float8_e4m3fn` | 100, 8 | `ml_dtypes.float8_e4m3fn` | yes | yes, viewed (0.21.3 fails) | `torch.float8_e4m3fn` |
 | 18 | `float8_e5m2` | 101, 8 | `ml_dtypes.float8_e5m2` | yes | yes, viewed (0.21.3 fails) | yes |
 | 19 | `bfloat16` | 102, 16 | `ml_dtypes.bfloat16` | yes | yes, viewed (0.21.3 fails) | `torch.bfloat16` |
@@ -53,8 +53,9 @@ NumPy scalar type in the Python column.
 - One file has one type for every band and step. Mixed types need separate files.
 - Any other NumPy dtype raises `TypeError: dtype ... is not supported by rumi` in
   `rumi.frames`.
-- GeoZL compresses every Python-writable type here except `complex128`; ML and sub-byte
-  types are 1 or 2-byte elements to it. Lossy `error=` works only for the eleven integer
+- GeoZL compresses every Python-writable type here; `complex128` goes through its
+  `float64` components (section 4), and ML and sub-byte types are 1 or 2-byte elements
+  to it. Lossy `error=` works only for the eleven integer
   and IEEE float types.
 - Decoded samples are little-endian in the file and native in results. `rumi.frames`
   accepts a big-endian array, but GeoZL refuses it (`dtype >u2 is not native byte order`);
@@ -94,13 +95,21 @@ NumPy scalar type in the Python column.
 ## 4. Complex types
 
 - A complex sample is two components, real then imaginary; `bits_per_sample` is their sum.
-- `complex64` (`cfloat32`) round-trips through GeoZL, NumPy and PyTorch.
-- `complex128` (`cfloat64`) is accepted by `rumi.frames`, but no payload can satisfy the
-  reader: it expects a numeric stream of 16-byte elements, and OpenZL numeric streams
-  stop at 8 bytes (`Numeric input takes 8-, 16-, 32-, or 64-bit data`). A serial payload
-  fails with `unexpected frame output (type 1, width 1, ...; expected numeric width 16,
-  ...)`. Treat `complex128` as unusable in 0.21.3; store real and imaginary parts as a
-  `float64` band pair.
+- A complex frame may decode as whole samples or as a stream of components twice as
+  long. OpenZL numeric elements stop at 8 bytes (`Numeric input takes 8-, 16-, 32-, or
+  64-bit data`), so `complex128` (`cfloat64`) frames must use components:
+
+```python
+parts = frame.data.view(np.float64)      # complex64: frame.data, or view(np.float32)
+frame.compressed = geozl.compress(parts, graph=geozl.graph(parts, "planar>zigzag>zstd"))
+```
+
+- The view doubles the last axis, so GeoZL's row predictors alternate real and imaginary
+  values; profile against `id>transpose>zstd`.
+- Any other element width fails with `unexpected frame output (...; expected numeric
+  width 16 or 8, ...)`.
+- Rumi 0.21.3 accepted only whole samples, so its `complex128` files write but never
+  read. On that release store real and imaginary parts as a `float64` band pair.
 - `cint16`, `cint32` and `cfloat16` have no NumPy scalar, so Python cannot write or read
   them; `cint16` and `cint32` also have no DLPack form (`RUMI_ERR_UNSUPPORTED` from
   `rumi_read_dlpack`).
