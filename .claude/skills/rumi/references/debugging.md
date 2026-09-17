@@ -105,8 +105,11 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 
 - NumPy reads of `float8_e4m3fn`, `float8_e5m2`, `float8_e8m0` and `bfloat16` files
   raise `SystemError: <built-in function from_dlpack> returned NULL without setting an
-  exception` because `RumiArray.numpy()` goes through `np.from_dlpack`. Use
-  `framework="torch"`.
+  exception`: NumPy rejects the DLPack type and the capsule destructor hides its error.
+  Fixed after 0.21.3; on 0.21.3 use `framework="torch"`.
+- Any framework that rejects a Rumi DLPack capsule, for an unsupported type or device,
+  surfaces the same `SystemError` instead of its own message, because the ctypes capsule
+  destructor clears the pending exception.
 - `complex128` passes `rumi.frames`, but no OpenZL payload decodes to the 16-byte
   numeric stream the reader requires (`dtypes.md` section 4).
 - `bool` and sub-byte results cannot use `framework="torch"` (`BufferError`).

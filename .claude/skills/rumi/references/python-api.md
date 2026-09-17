@@ -190,6 +190,9 @@ Returned by `read` and `read_many` with `framework=None`.
   RumiArray was already exported`.
 - Sub-byte and `bool` results are backed by NumPy instead: `numpy()` returns the same
   array every time, and DLPack export raises `BufferError` (`dtypes.md`).
+- `numpy()` views the bytes of `float8_*` and `bfloat16` results as `ml_dtypes` arrays,
+  because NumPy cannot import them through DLPack; this also counts as the one export.
+  Rumi 0.21.3 raised `SystemError` here.
 - TensorFlow receives a DLPack 0.x capsule.
 
 ## 8. Threads

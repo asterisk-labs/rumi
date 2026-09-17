@@ -98,9 +98,9 @@ band or time selection. Measure compression when more than one layout fits the r
 - **Threads** are process-wide: `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS` before
   the first parallel read; later changes warn and are ignored. A forked worker starts at 1
   unless its environment sets `RUMI_NUM_THREADS`.
-- **Framework exports.** A `RumiArray` exports once. Sub-byte and `bool` data read only as
-  NumPy, and in 0.21.3 a NumPy read of `float8_*` or `bfloat16` data raises `SystemError`;
-  use `framework="torch"` for those.
+- **Framework exports.** A `RumiArray` exports once, and sub-byte and `bool` data read only
+  as NumPy. Rumi 0.21.3 raises `SystemError` on NumPy reads of `float8_*` and `bfloat16`
+  data (fixed after 0.21.3); use `framework="torch"` there.
 - **`transform` uses rasterio `Affine` order** `(x_res, row_rot, x_origin, col_rot, y_res,
   y_origin)`, not a GDAL geotransform, and needs an EPSG `crs`. `time` takes one entry per
   step, in whole UTC seconds.

@@ -114,6 +114,12 @@ def is_subbyte(rumi_dtype: int) -> bool:
     return info is not None and 0 < info.bits < 8
 
 
+def is_ml_float(rumi_dtype: int) -> bool:
+    """Byte-wide ML floats, which NumPy cannot import through DLPack."""
+    info = _DTYPES.get(rumi_dtype)
+    return info is not None and info.ml_name is not None and info.bits >= 8
+
+
 def check_samples(arr, rumi_dtype: int) -> None:
     """Validate decoded samples using the core's dtype rules."""
     view = arr.reshape(-1).view("uint8")

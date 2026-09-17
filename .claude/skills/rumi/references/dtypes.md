@@ -3,7 +3,8 @@
 Sources: `core/include/rumi/rumi_dtypes.def` (the registry shared by C and Python),
 `bindings/python/rumi/_dtype.py`, `bindings/python/rumi/_read.py`, the frame check in
 `core/src/plan.cpp`, and Sample encodings in `SPEC.md`. Every row was written and read
-back with rumi 0.21.3, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed.
+back with rumi 0.21.3, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed; notes mark
+what changed after 0.21.3.
 
 ## Contents
 
@@ -36,15 +37,15 @@ NumPy scalar type in the Python column.
 | 14 | `cfloat16` | 6, 32 | none | yes | C only | no |
 | 15 | `cfloat32` | 6, 64 | `numpy.complex64` | yes | yes | `torch.complex64` |
 | 16 | `cfloat64` | 6, 128 | `numpy.complex128` | yes | see section 4 | see section 4 |
-| 17 | `float8_e4m3fn` | 100, 8 | `ml_dtypes.float8_e4m3fn` | yes | fails in 0.21.3 | `torch.float8_e4m3fn` |
-| 18 | `float8_e5m2` | 101, 8 | `ml_dtypes.float8_e5m2` | yes | fails in 0.21.3 | yes |
-| 19 | `bfloat16` | 102, 16 | `ml_dtypes.bfloat16` | yes | fails in 0.21.3 | `torch.bfloat16` |
+| 17 | `float8_e4m3fn` | 100, 8 | `ml_dtypes.float8_e4m3fn` | yes | yes, viewed (0.21.3 fails) | `torch.float8_e4m3fn` |
+| 18 | `float8_e5m2` | 101, 8 | `ml_dtypes.float8_e5m2` | yes | yes, viewed (0.21.3 fails) | yes |
+| 19 | `bfloat16` | 102, 16 | `ml_dtypes.bfloat16` | yes | yes, viewed (0.21.3 fails) | `torch.bfloat16` |
 | 20 | `uint4` | 1, 4 | `ml_dtypes.uint4` | no | yes | no |
 | 21 | `int4` | 2, 4 | `ml_dtypes.int4` | no | yes | no |
 | 22 | `uint2` | 1, 2 | `ml_dtypes.uint2` | no | yes | no |
 | 23 | `int2` | 2, 2 | `ml_dtypes.int2` | no | yes | no |
 | 24 | `binary` | 1, 1 | `numpy.bool_` | no | yes | no |
-| 25 | `float8_e8m0` | 103, 8 | `ml_dtypes.float8_e8m0fnu` | yes | fails in 0.21.3 | yes |
+| 25 | `float8_e8m0` | 103, 8 | `ml_dtypes.float8_e8m0fnu` | yes | yes, viewed (0.21.3 fails) | yes |
 | 26 | `float6_e2m3` | 104, 6 | `ml_dtypes.float6_e2m3fn` | no | yes | no |
 | 27 | `float6_e3m2` | 105, 6 | `ml_dtypes.float6_e3m2fn` | no | yes | no |
 | 28 | `float4_e2m1` | 106, 4 | `ml_dtypes.float4_e2m1fn` | no | yes | no |
@@ -82,10 +83,13 @@ NumPy scalar type in the Python column.
   `float6_*` and `float4_e2m1` follow OCP Microscaling 1.0; `bfloat16` has one sign, eight
   exponent and seven fraction bits.
 - Write them from `ml_dtypes` arrays; `rumi.frames` and GeoZL treat them as bytes.
-- In 0.21.3 a NumPy read of the 8 and 16-bit ML floats (`float8_e4m3fn`, `float8_e5m2`,
-  `float8_e8m0`, `bfloat16`) fails inside `np.from_dlpack` with
-  `SystemError: <built-in function from_dlpack> returned NULL without setting an
-  exception`. `framework="torch"` returns the matching PyTorch dtype.
+- NumPy has no DLPack import for the 8 and 16-bit ML floats (`float8_e4m3fn`,
+  `float8_e5m2`, `float8_e8m0`, `bfloat16`), so a NumPy read views the decoded bytes as
+  the `ml_dtypes` type, without a copy. `framework="torch"` returns the matching PyTorch
+  dtype.
+- Rumi 0.21.3 passed them to `np.from_dlpack` and raised `SystemError: <built-in
+  function from_dlpack> returned NULL without setting an exception`; on that release read
+  them with `framework="torch"`.
 
 ## 4. Complex types
 
@@ -107,5 +111,5 @@ NumPy scalar type in the Python column.
 | --- | --- |
 | PyTorch tensor of a DLPack type | `framework="torch"` (no copy) |
 | PyTorch tensor of `bool` or a sub-byte type | read NumPy, then `torch.from_numpy` or a cast |
-| NumPy array of `float8_*` or `bfloat16` in 0.21.3 | `framework="torch"`, then convert in PyTorch |
+| NumPy array of `float8_*` or `bfloat16` on Rumi 0.21.3 | `framework="torch"`, then convert in PyTorch |
 | Training-ready unsigned data | read, then cast (`.to(torch.int32)`, `.float()`); PyTorch's unsigned 16 to 64-bit tensors support few operations |

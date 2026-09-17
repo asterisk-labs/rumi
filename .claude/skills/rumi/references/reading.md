@@ -198,9 +198,9 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 - Sub-byte and `bool` results are NumPy-backed and refuse DLPack (`BufferError: padded
   sub-byte dtypes cannot be exported through DLPack; use numpy()`), so
   `framework="torch"` fails for them. Read NumPy and convert.
-- In 0.21.3 with NumPy 2.4, NumPy reads of `float8_e4m3fn`, `float8_e5m2`,
-  `float8_e8m0fnu` and `bfloat16` data raise `SystemError: <built-in function
-  from_dlpack> returned NULL without setting an exception`. `framework="torch"` works.
+- NumPy cannot import `float8_e4m3fn`, `float8_e5m2`, `float8_e8m0fnu` or `bfloat16`
+  through DLPack, so NumPy reads view the decoded bytes as `ml_dtypes` arrays. Rumi
+  0.21.3 raises `SystemError` there instead; on that release use `framework="torch"`.
 - PyTorch's unsigned 16, 32 and 64-bit tensors support few operations; cast before
   training.
 - An unknown name raises `ValueError: unknown framework 'cupy'`; a missing package raises

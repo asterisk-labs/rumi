@@ -1,4 +1,5 @@
 import ctypes
+import math
 import operator
 import os
 import threading
@@ -6,7 +7,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ._dtype import is_subbyte, numpy_dtype
+from ._dtype import is_ml_float, is_subbyte, numpy_dtype
 from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _Source, _Spec, ffi, lib
 
@@ -50,13 +51,25 @@ def _capsule_destructor(capsule):
 _c_destructor = _Destructor(_capsule_destructor)
 
 
+class _Storage:
+    """A decoded tensor owned by the NumPy arrays that view its bytes."""
+
+    def __init__(self, tensor, nbytes):
+        self._tensor = ffi.gc(tensor, lib.rumi_dlpack_free)
+        data = tensor.dl_tensor
+        address = int(ffi.cast("uintptr_t", data.data)) + data.byte_offset
+        self.__array_interface__ = {"version": 3, "shape": (nbytes,),
+                                    "typestr": "|u1", "data": (address, False)}
+
+
 class RumiArray:
     """Decoded samples with helpers for NumPy and tensor frameworks.
 
     Most results are exported without a copy through DLPack. Padded sub-byte
     dtypes use a NumPy array because DLPack consumers cannot import them. A
     DLPack-backed instance can be converted once; conversion transfers its
-    storage to the receiving framework.
+    storage to the receiving framework. NumPy views the bytes of ML floats,
+    which it cannot import through DLPack.
     """
 
     def __init__(self, tensor, shape, dtype_code, array=None):
@@ -115,7 +128,19 @@ class RumiArray:
         """Return a NumPy array, transferring DLPack-backed storage if present."""
         if self._array is not None:
             return self._array
-        return np.from_dlpack(self)
+        if not is_ml_float(self._dtype_code):
+            return np.from_dlpack(self)
+
+        # Resolve the ml_dtypes scalar before taking the tensor, so a missing
+        # package leaves it exportable to other frameworks.
+        scalar = numpy_dtype(self._dtype_code)
+        nbytes = math.prod(self._shape) * np.dtype(scalar).itemsize
+        with self._export_lock:
+            if self._tensor is None:
+                raise RuntimeError("this RumiArray was already exported")
+            tensor, self._tensor = self._tensor, None
+        storage = np.asarray(_Storage(tensor, nbytes))
+        return storage.view(scalar).reshape(self._shape)
 
     def torch(self):
         """Transfer the decoded samples to a PyTorch tensor."""

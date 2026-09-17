@@ -1,11 +1,13 @@
 """Read paths for local files, memory buffers, and windows."""
 
+import gc
 import inspect
 import threading
 
 import numpy as np
 import pytest
 import rumi
+import rumi._dtype as dtype_module
 import rumi._read as read_module
 from rumi._ffi import _Spec, ffi, lib
 
@@ -93,6 +95,71 @@ def test_dlpack_export_is_exactly_once_across_threads(image):
 
     assert sum(isinstance(value, RuntimeError) for value in outcomes) == 1
     assert sum(not isinstance(value, RuntimeError) for value in outcomes) == 1
+
+
+@pytest.fixture(scope="module",
+                params=["float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu", "bfloat16"])
+def ml_float(request, tmp_path_factory):
+    """A scene of an ML float that NumPy cannot import through DLPack."""
+    ml_dtypes = pytest.importorskip("ml_dtypes")
+    scalar = getattr(ml_dtypes, request.param)
+    rng = np.random.default_rng(7)
+    raw = rng.integers(0, 256, 3 * 40 * 50 * np.dtype(scalar).itemsize, np.uint8)
+    data = raw.view(scalar).reshape(3, 40, 50)
+    tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 16)
+    for t in tf:
+        t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, "id>zstd"))
+    path = tmp_path_factory.mktemp("ml") / f"{request.param}.rumi"
+    path, header = rumi.write(path, tf)
+    return str(path), header, data
+
+
+def same_samples(got, want):
+    """Compare bytes, since NaN encodings never compare equal."""
+    return (got.dtype == want.dtype and got.shape == want.shape
+            and np.array_equal(np.ascontiguousarray(got).view(np.uint8),
+                               np.ascontiguousarray(want).view(np.uint8)))
+
+
+def test_an_ml_float_reads_as_numpy(ml_float):
+    path, header, data = ml_float
+    assert same_samples(rumi.read(path, header), data)
+    assert same_samples(rumi.read(path, header, bands=[2, 0], window=(5, 10, 30, 30)),
+                        data[[2, 0], 5:35, 10:40])
+    batch = rumi.read_many([path, path], [header, header],
+                           windows=[(0, 0, 16, 16), (20, 30, 16, 16)])
+    assert same_samples(batch[1], data[:, 20:36, 30:46])
+
+
+def test_an_ml_float_array_owns_its_samples(ml_float):
+    path, header, data = ml_float
+    result = rumi.read(path, header, framework=None)
+    array = result.numpy()
+    with pytest.raises(RuntimeError, match="already exported"):
+        result.numpy()
+    del result
+    gc.collect()
+    assert same_samples(array, data)
+
+
+def test_an_ml_float_without_ml_dtypes_stays_exportable(ml_float, monkeypatch):
+    path, header, _data = ml_float
+    result = rumi.read(path, header, framework=None)
+    info = dtype_module._DTYPES[result._dtype_code]
+    monkeypatch.setitem(dtype_module._DTYPES, result._dtype_code,
+                        dtype_module._DType(info.name, info.bits, None, info.ml_name))
+    with pytest.raises(NotImplementedError, match="needs ml_dtypes"):
+        result.numpy()
+    assert result._tensor is not None
+
+
+def test_an_ml_float_still_reaches_torch(ml_float):
+    torch = pytest.importorskip("torch")
+    path, header, data = ml_float
+    tensor = rumi.read(path, header, framework="torch")
+    assert tensor.dtype == getattr(torch, data.dtype.name)
+    assert np.array_equal(tensor.view(torch.uint8).numpy(),
+                          np.ascontiguousarray(data).view(np.uint8))
 
 
 def test_fused_planar_pfor_frame_round_trips(tmp_path):
