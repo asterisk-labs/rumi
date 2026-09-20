@@ -608,6 +608,9 @@ struct Plan {
     // Backing storage for FrameTask plane offsets.
     std::vector<std::int64_t> src_offset;
     std::vector<std::int64_t> dst_offset;
+    // Consecutive tasks that write into the same band of output rows. Workers
+    // claim this many at once so two of them do not fault one page together.
+    std::size_t               claim_stride{1};
 };
 
 // Bind task pointers after the offset vectors stop growing.
@@ -624,7 +627,8 @@ public:
     [[nodiscard]] bool run(const Plan& plan) const;
     [[nodiscard]] bool run(std::span<const FrameTask> tasks,
                            const FrameSpec& spec,
-                           TransportSession* transport) const;
+                           TransportSession* transport,
+                           std::size_t claim_stride = 1) const;
 
     // Status of the most recent run. RUMI_OK when run() returned true.
     [[nodiscard]] rumi_status status() const noexcept;

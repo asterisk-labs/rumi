@@ -349,6 +349,16 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
     reserve_append(plan.src_offset, offset_count);
     reserve_append(plan.dst_offset, offset_count);
 
+    // The tile loops below run x within y, so one row of tiles contributes this
+    // many consecutive tasks. Items are appended whole, so the widest row wins.
+    const std::size_t frames_per_tile =
+        static_cast<std::size_t>(walks_t ? nt : 1)
+        * static_cast<std::size_t>(walks_b ? nb : 1);
+    plan.claim_stride = std::max(
+        plan.claim_stride,
+        checked_size_product(static_cast<std::size_t>(x_tiles),
+                             frames_per_tile));
+
     // Frame index to selected band/time pairs, rebuilt for each grid position.
     std::vector<std::uint64_t> frames;
     std::vector<std::vector<std::pair<int, int>>> members;
@@ -506,7 +516,8 @@ std::expected<void, std::string>
 decode_tasks(Executor& executor, const Plan& plan,
              std::span<const FrameTask> tasks)
 {
-    if (executor.run(tasks, plan.spec, plan.transport)) return {};
+    if (executor.run(tasks, plan.spec, plan.transport, plan.claim_stride))
+        return {};
     g_read_status = executor.status();
     return err(executor.error().empty() ? std::string("read failed")
                                         : executor.error());

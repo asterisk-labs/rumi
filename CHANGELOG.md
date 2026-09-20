@@ -16,6 +16,15 @@ Notable user-visible changes are recorded here.
 - Decode no longer verifies OpenZL checksums by default. Type and byte-count
   checks remain enabled. Set `RUMI_VERIFY=1` to restore the previous behavior.
 
+### Fixed
+
+- Multi-tile reads scale with the thread count again. Workers claimed one frame
+  at a time, so every worker wrote into the same rows of a freshly allocated
+  result and their first touches of those pages serialized in the kernel; a
+  whole-image read was slower with ten threads than with one. A worker now
+  claims a whole row of frames. Single-tile reads, including training windows,
+  are unaffected.
+
 ## [0.22.0] - 2026-09-19
 
 ### Changed

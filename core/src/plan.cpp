@@ -320,7 +320,8 @@ bool Executor::run(const Plan& plan) const
 
 bool Executor::run(std::span<const FrameTask> tasks,
                    const FrameSpec& spec,
-                   TransportSession* transport) const
+                   TransportSession* transport,
+                   std::size_t claim_stride) const
 {
     status_ = RUMI_OK;
     error_.clear();
@@ -345,19 +346,30 @@ bool Executor::run(std::span<const FrameTask> tasks,
 
     if (pool_ != nullptr && tasks.size() > 1) {
         // Submit one draining job per worker. The atomic task index balances
-        // uneven frame sizes without queuing one function per frame.
+        // uneven frame sizes without queuing one function per frame. Tasks
+        // arrive in output row order, so a worker claims a whole row of frames
+        // at once: handing out single tasks puts every worker on the same
+        // output page, and their first touches of it then serialize in the
+        // kernel for longer than the decode they were meant to overlap.
+        const std::size_t stride = claim_stride > 0 ? claim_stride : 1;
         std::atomic<std::size_t> next{0};
         const auto drain = [&] {
             for (;;) {
                 if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
-                const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                const std::size_t i =
+                    next.fetch_add(stride, std::memory_order_relaxed);
                 if (i >= tasks.size()) return;
-                run_one(tasks[i]);
+                const std::size_t end = std::min(i + stride, tasks.size());
+                for (std::size_t k = i; k < end; ++k) {
+                    if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
+                    run_one(tasks[k]);
+                }
             }
         };
 
         ThreadPool::Batch batch(*pool_);
-        const std::size_t workers = std::min(pool_->size(), tasks.size());
+        const std::size_t claims = (tasks.size() + stride - 1) / stride;
+        const std::size_t workers = std::min(pool_->size(), claims);
         for (std::size_t i = 0; i < workers; ++i) {
             batch.submit(drain);
         }
