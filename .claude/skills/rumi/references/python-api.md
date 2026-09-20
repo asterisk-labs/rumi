@@ -1,8 +1,8 @@
 # Python API
 
 Everything here is `rumi` 0.22.0 as implemented in `bindings/python/rumi/`
-(`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_ffi.py`). The
-examples and messages were captured from a 0.22.0 build.
+(`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_checksums.py`,
+and `_ffi.py`). The examples and messages were captured from a 0.22.0 build.
 
 ## Contents
 
@@ -14,7 +14,8 @@ examples and messages were captured from a 0.22.0 build.
 6. `info` and `Metadata`
 7. `RumiArray`
 8. Threads
-9. Exceptions
+9. Checksums
+10. Exceptions
 
 ## 1. Install and runtime
 
@@ -31,7 +32,8 @@ pip install "rumi-eo[ml]"      # adds ml_dtypes for float8, int4 and other ML ty
   then `ctypes.util.find_library("rumi")`. Import fails when the library's C API version
   is not 1.
 - Public names: `frames`, `FrameTable`, `Frame`, `write`, `read`, `read_many`,
-  `RumiArray`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`, `__version__`.
+  `RumiArray`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`,
+  `set_checksum_verification`, `get_checksum_verification`, `__version__`.
   Everything under `rumi._*` is private.
 
 ## 2. `frames`, `FrameTable` and `Frame`
@@ -212,7 +214,23 @@ rumi.get_num_threads()
 - A forked child starts from its own environment (1 unless `RUMI_NUM_THREADS` is set) and
   may set its own count.
 
-## 9. Exceptions
+## 9. Checksums
+
+```python
+rumi.set_checksum_verification(True)       # returns the setting in effect
+rumi.get_checksum_verification()
+```
+
+- Decode skips OpenZL checksums by default. Decoded type and byte count are still
+  checked.
+- The default is `False`, or `True` when `RUMI_VERIFY` is `1`, `true`, `on` or `yes`;
+  any other value leaves it off.
+- The first decoded frame pins the setting. A later `set_checksum_verification` with
+  another value returns the pinned one and warns `RuntimeWarning: rumi's checksum
+  verification is pinned at False; the request for True was ignored.`
+- A forked child inherits the setting, pinned state included.
+
+## 10. Exceptions
 
 C status codes map to Python exceptions in `_ffi.py`; the message is the core's error
 text.

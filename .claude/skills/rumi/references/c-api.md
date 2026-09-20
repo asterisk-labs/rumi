@@ -16,6 +16,7 @@ reference caller. Both examples compile with `-std=c11 -Wall -Wextra` and ran ag
 6. Functions by task
 7. Writing from C
 8. Threads
+9. Checksums
 
 ## 1. Stability
 
@@ -191,7 +192,7 @@ first frame at byte 500
 | Task | Functions |
 | --- | --- |
 | Versions | `rumi_api_version`, `rumi_version_string`, `rumi_openzl_format_version` |
-| Limits and threads | `rumi_set_max_frame_bytes`, `rumi_get_max_frame_bytes` (0 restores 1 GiB), `rumi_set_num_threads`, `rumi_get_num_threads` |
+| Limits, threads and checksums | `rumi_set_max_frame_bytes`, `rumi_get_max_frame_bytes` (0 restores 1 GiB), `rumi_set_num_threads`, `rumi_get_num_threads`, `rumi_set_checksum_verification`, `rumi_get_checksum_verification` |
 | Sample types | `rumi_dtype` (`RUMI_DT_*`), `rumi_dtype_table`, `rumi_check_samples` |
 | Frame patterns | `rumi_compile_frame_pattern`, `rumi_frame_unit`, `rumi_unit_name`, `rumi_unit_from_name`, `rumi_unit_index_axes`, `rumi_unit_indexes_bands`, `rumi_axis_name`, `rumi_frame_count`, `rumi_frame_locate` |
 | Output layouts | `rumi_default_pattern`, `rumi_compile_layout` (shape, and strides indexed by `RUMI_OUT_N` to `RUMI_OUT_X`) |
@@ -228,3 +229,12 @@ read.
 - The process-wide pool is sized by `rumi_set_num_threads` or `RUMI_NUM_THREADS` before
   the first parallel read; the first parallel read fixes it. A forked child starts with
   its own setting.
+
+## 9. Checksums
+
+- Decode skips OpenZL checksums by default. Decoded type and byte count are still
+  checked.
+- `rumi_set_checksum_verification(1)` or `RUMI_VERIFY=1` enables checksums for the
+  process. The environment variable also accepts `true`, `on`, and `yes`.
+- Set it before the first read. The first decoded frame pins the value. Later calls
+  return the pinned value, and a forked child inherits it.

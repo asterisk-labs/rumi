@@ -98,6 +98,9 @@ band or time selection. Measure compression when more than one layout fits the r
 - **Threads** are process-wide: `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS` before
   the first parallel read; later changes warn and are ignored. A forked worker starts at 1
   unless its environment sets `RUMI_NUM_THREADS`.
+- **Checksums are off**: decoded type and byte count are still checked.
+  `rumi.set_checksum_verification(True)` or `RUMI_VERIFY=1` enables OpenZL checksums.
+  Set it before the first read; later changes warn and are ignored.
 - **Framework exports.** A `RumiArray` exports once, and sub-byte and `bool` data read only
   as NumPy. NumPy reads of `float8_*` and `bfloat16` data return `ml_dtypes` arrays; Rumi
   0.21.3 raised `SystemError` there and needed `framework="torch"`.
