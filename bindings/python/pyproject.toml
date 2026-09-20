@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 [project]
 name            = "rumi-eo"
 dynamic         = ["version"]
-description     = "A GeoTIFF-inspired raster format for AI training data."
+description     = "Raster storage for training and inference."
 readme          = "README.md"
 license         = { text = "GPL-3.0-only" }
 requires-python = ">=3.11"

@@ -11,10 +11,10 @@
 
 <p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
-Rumi is an experimental raster format for machine-learning datasets. It stores
-images as `(B, Y, X)` and time series as `(T, B, Y, X)`. Each frame can use a
-different OpenZL compression graph, letting one file adapt compression to its
-bands, times, or regions.
+Rumi is a raster format for AI4EO. One file holds a single image `(B, Y, X)` or
+temporal cube `(T, B, Y, X)`, split into frames that compress independently. A small
+external header locates every frame, so a read decodes only the frames its window,
+bands and time steps touch.
 
 > [!WARNING]
 > Rumi is not stable yet. The format and APIs may change before 1.0. It currently
