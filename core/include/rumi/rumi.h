@@ -100,14 +100,14 @@ RUMI_API int rumi_get_checksum_verification(void);
 // Generated from rumi_dtypes.def. RUMI_DT_UNKNOWN = 0 has no row.
 typedef enum {
     RUMI_DT_UNKNOWN = 0,
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, scalar) \
     RUMI_DT_##sym = code,
 #include "rumi_dtypes.def"
 #undef RUMI_DTYPE
 } rumi_dtype;
 
-// ABI-stable view of one dtype-registry entry. dl_code is RUMI_DL_NONE when no
-// DLPack representation exists.
+// ABI-stable view of one dtype-registry entry. dl_code is RUMI_DL_NONE when
+// there is no DLPack form, and scalar is NULL when no host scalar names it.
 typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
@@ -115,6 +115,7 @@ typedef struct {
     uint8_t     dl_code;
     uint8_t     dl_bits;
     const char* name;
+    const char* scalar;
 } rumi_dtype_info;
 
 // Return the number of rows in the process-lifetime dtype table. If out is not

@@ -6,43 +6,6 @@ import numpy as np
 
 from ._ffi import _check, ffi, lib
 
-# DLPack type codes from dlpack.h.
-_DL_INT, _DL_UINT, _DL_FLOAT, _DL_BFLOAT, _DL_COMPLEX = 0, 1, 2, 4, 5
-_DL_F8_E4M3FN, _DL_F8_E5M2, _DL_F8_E8M0 = 10, 12, 14
-_DL_F6_E2M3, _DL_F6_E3M2, _DL_F4_E2M1 = 15, 16, 17
-
-_NUMPY_SCALARS: dict[tuple[int, int], type] = {
-    # NumPy stores bools as one byte, matching rumi's padded binary samples.
-    (_DL_UINT, 1): np.bool_,
-    (_DL_UINT, 8): np.uint8,
-    (_DL_INT, 8): np.int8,
-    (_DL_UINT, 16): np.uint16,
-    (_DL_INT, 16): np.int16,
-    (_DL_UINT, 32): np.uint32,
-    (_DL_INT, 32): np.int32,
-    (_DL_UINT, 64): np.uint64,
-    (_DL_INT, 64): np.int64,
-    (_DL_FLOAT, 16): np.float16,
-    (_DL_FLOAT, 32): np.float32,
-    (_DL_FLOAT, 64): np.float64,
-    (_DL_COMPLEX, 64): np.complex64,
-    (_DL_COMPLEX, 128): np.complex128,
-}
-
-_ML_SCALARS: dict[tuple[int, int], str] = {
-    (_DL_F8_E4M3FN, 8): "float8_e4m3fn",
-    (_DL_F8_E5M2, 8): "float8_e5m2",
-    (_DL_BFLOAT, 16): "bfloat16",
-    (_DL_F8_E8M0, 8): "float8_e8m0fnu",
-    (_DL_UINT, 4): "uint4",
-    (_DL_INT, 4): "int4",
-    (_DL_UINT, 2): "uint2",
-    (_DL_INT, 2): "int2",
-    (_DL_F6_E2M3, 6): "float6_e2m3fn",
-    (_DL_F6_E3M2, 6): "float6_e3m2fn",
-    (_DL_F4_E2M1, 4): "float4_e2m1fn",
-}
-
 _ml_dtypes: ModuleType | None
 try:
     _ml_dtypes = importlib.import_module("ml_dtypes")
@@ -65,10 +28,12 @@ def _load_registry() -> dict[int, _DType]:
 
     for i in range(count):
         row = out[0][i]
-        key = int(row.dl_code), int(row.dl_bits)
-        ml_name = _ML_SCALARS.get(key)
-        scalar = _NUMPY_SCALARS.get(key)
-        if scalar is None and ml_name is not None and _ml_dtypes is not None:
+        # The registry names one scalar; NumPy owns it, or ml_dtypes does.
+        named = (ffi.string(row.scalar).decode("ascii")
+                 if row.scalar != ffi.NULL else None)
+        scalar = getattr(np, named, None) if named is not None else None
+        ml_name = named if named is not None and scalar is None else None
+        if ml_name is not None and _ml_dtypes is not None:
             scalar = getattr(_ml_dtypes, ml_name, None)
 
         registry[int(row.code)] = _DType(

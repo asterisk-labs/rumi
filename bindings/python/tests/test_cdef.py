@@ -105,7 +105,7 @@ typedef enum {
 } rumi_status;
 typedef struct {
     uint8_t code; uint8_t sample_format; uint8_t bits; uint8_t dl_code;
-    uint8_t dl_bits; const char* name;
+    uint8_t dl_bits; const char* name; const char* scalar;
 } rumi_dtype_info;
 typedef struct {
     uint32_t image_width; uint32_t image_length; uint32_t time_count;

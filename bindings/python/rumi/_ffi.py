@@ -29,6 +29,7 @@ typedef struct {
     uint8_t     dl_code;
     uint8_t     dl_bits;
     const char* name;
+    const char* scalar;
 } rumi_dtype_info;
 
 typedef struct {

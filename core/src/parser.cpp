@@ -96,9 +96,9 @@ void pack_counts(std::span<const std::uint32_t> counts,
 
 // Expanded once from the dtype registry.
 static const rumi_dtype_info k_dtype_table[] = {
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits) \
+#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, scalar) \
     { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
-      static_cast<std::uint8_t>(dlbits), name },
+      static_cast<std::uint8_t>(dlbits), name, scalar },
 #include "rumi/rumi_dtypes.def"
 #undef RUMI_DTYPE
 };

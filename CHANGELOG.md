@@ -6,6 +6,9 @@ Notable user-visible changes are recorded here.
 
 ### Changed
 
+- `rumi_dtype_info` carries a `scalar` field naming the NumPy or ml_dtypes
+  scalar for a dtype, NULL when neither has one. The Python bindings read it
+  from the registry instead of keeping their own mapping.
 - Updated GeoZL to 0.18.0. MED recipes now write GeoZL's fused `med_zigzag`
   codec, so frames using a MED predictor need a reader built with GeoZL 0.18.
   Frames written by earlier releases stay readable.
