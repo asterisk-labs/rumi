@@ -1,8 +1,8 @@
 # Python API
 
-Everything here is `rumi` 0.22.0 as implemented in `bindings/python/rumi/`
+Everything here is `rumi` 0.23.0 as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_checksums.py`,
-and `_ffi.py`). The examples and messages were captured from a 0.22.0 build.
+and `_ffi.py`). The examples and messages were captured from a 0.23.0 build.
 
 ## Contents
 

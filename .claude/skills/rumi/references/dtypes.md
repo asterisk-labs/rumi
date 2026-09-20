@@ -3,7 +3,7 @@
 Sources: `core/include/rumi/rumi_dtypes.def` (the registry shared by C and Python),
 `bindings/python/rumi/_dtype.py`, `bindings/python/rumi/_read.py`, the frame check in
 `core/src/plan.cpp`, and Sample encodings in `SPEC.md`. Every row was written and read
-back with rumi 0.22.0, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed; notes mark
+back with rumi 0.23.0, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed; notes mark
 what changed after 0.21.3.
 
 ## Contents

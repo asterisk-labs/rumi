@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-20
+
 ### Added
 
 - `rumi.set_checksum_verification` and `rumi.get_checksum_verification`
@@ -380,7 +382,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/asterisk-labs/rumi/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/asterisk-labs/rumi/compare/v0.21.3...v0.22.0
 [0.21.3]: https://github.com/asterisk-labs/rumi/compare/v0.21.2...v0.21.3
 [0.21.2]: https://github.com/asterisk-labs/rumi/compare/v0.21.1...v0.21.2

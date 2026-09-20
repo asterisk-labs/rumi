@@ -3,7 +3,7 @@
 Sources: `core/src/pattern.cpp` (both grammars), `UNIT_REGISTRY` and `effective_unit` in
 `core/include/rumi/rumi.hpp`, `default_pattern` in `core/src/capi.cpp`, the `frame_unit`
 and Frame index sections of `SPEC.md`. Shapes and messages below were captured from
-0.22.0.
+0.23.0.
 
 ## Contents
 
