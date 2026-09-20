@@ -1,8 +1,8 @@
 # Python API
 
-Everything here is `rumi` 0.21.3 as implemented in `bindings/python/rumi/`
+Everything here is `rumi` 0.22.0 as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_ffi.py`). The
-examples and messages were captured from a 0.21.3 build.
+examples and messages were captured from a 0.22.0 build.
 
 ## Contents
 
@@ -20,7 +20,7 @@ examples and messages were captured from a 0.21.3 build.
 
 ```bash
 pip install rumi-eo            # reader
-pip install "rumi-eo[write]"   # adds geozl>=0.16.0,<0.17 for compressing frames
+pip install "rumi-eo[write]"   # adds geozl>=0.17.0,<0.18 for compressing frames
 pip install "rumi-eo[ml]"      # adds ml_dtypes for float8, int4 and other ML types
 ```
 

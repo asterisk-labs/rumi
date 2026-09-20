@@ -168,7 +168,7 @@ jobs:
           source /tmp/rumi-wheel-test/bin/activate
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install -q pytest "geozl>=0.16.0,<0.17"
+          python -m pip install -q pytest "geozl>=0.17.0,<0.18"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -257,7 +257,7 @@ jobs:
           source /tmp/rumi-wheel-test/bin/activate
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install -q pytest "geozl>=0.16.0,<0.17"
+          python -m pip install -q pytest "geozl>=0.17.0,<0.18"
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

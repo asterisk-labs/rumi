@@ -29,26 +29,23 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.21.3 | Where it is pinned |
+| Component | Rumi 0.22.0 | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.16.0 | `extern/geozl` submodule; `geozl>=0.16.0,<0.17` in the `write` and `test` extras |
+| GeoZL | 0.17.0 | `extern/geozl` submodule; `geozl>=0.17.0,<0.18` in the `write` and `test` extras |
 | OpenZL | 0.2.0 | through GeoZL's submodule |
 | Karu | 0.2.2 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |
 
 - `tools/check_release.py` fails when the extras do not read `geozl>=X.Y.Z,<X.(Y+1)` for
   the submodule's `VERSION`, or when `NOTICE` names another Karu version.
-- `COMPATIBILITY.md` still names 0.19.x as the release that adopted GeoZL 0.16.x; later
-  releases keep the same GeoZL line.
-- Frames: Rumi links GeoZL 0.16, which decodes frames written by GeoZL 0.14 and later.
-  GeoZL 0.16 planar recipes emit fused codecs that GeoZL 0.15 cannot decode, so Rumi
-  releases before 0.19.0 cannot read them.
+- Frames: GeoZL 0.17 reads frames from GeoZL 0.14 onward. Sentinel frames written by
+  0.17 require a 0.17 reader. Fused planar frames require Rumi 0.19.0 or later.
 
 ## 3. Deploying readers and writers
 
 - Upgrade every reader before any writer. A frame from a GeoZL newer than the reader's
   fails with `NotImplementedError: rumi: file uses a geozl codec this build lacks, update
-  geozl (CTid N)`.
+  geozl (CTid N)`. GeoZL 0.16 reports sentinel frames from 0.17 as corrupt.
 - Record `rumi.__version__` and `geozl.__version__` with the dataset.
 - Do not use file or frame hashes as content identity across GeoZL versions: encoders
   may produce different bytes for the same samples. Compare decoded data.

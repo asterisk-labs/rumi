@@ -4,6 +4,13 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-09-19
+
+### Changed
+
+- Updated GeoZL to 0.17.0. Files written with a NoData sentinel now require a
+  reader built with GeoZL 0.17. Older files remain readable.
+
 ### Fixed
 
 - NumPy reads of `float8_e4m3fn`, `float8_e5m2`, `float8_e8m0` and `bfloat16`
@@ -355,7 +362,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.21.3...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/asterisk-labs/rumi/compare/v0.21.3...v0.22.0
 [0.21.3]: https://github.com/asterisk-labs/rumi/compare/v0.21.2...v0.21.3
 [0.21.2]: https://github.com/asterisk-labs/rumi/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/asterisk-labs/rumi/compare/v0.21.0...v0.21.1

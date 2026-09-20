@@ -4,7 +4,7 @@ The public header is `core/include/rumi/rumi.h`; it includes `rumi_dtypes.def` a
 `dlpack/dlpack.h`. Other sources: `core/src/capi.cpp`, `core/tests/test_c_header.c`,
 `core/CMakeLists.txt`, and `bindings/python/rumi/_ffi.py`, whose hand-written cdef is the
 reference caller. Both examples compile with `-std=c11 -Wall -Wextra` and ran against a
-0.21.3 build.
+0.22.0 build.
 
 ## Contents
 

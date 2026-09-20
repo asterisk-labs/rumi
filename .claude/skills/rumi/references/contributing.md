@@ -63,7 +63,7 @@ on Ubuntu).
 
 ```bash
 git submodule update --init --recursive      # or: make submodules
-python -m pip install cmake ninja numpy cffi pytest ruff mypy ml_dtypes "geozl>=0.16.0,<0.17"
+python -m pip install cmake ninja numpy cffi pytest ruff mypy ml_dtypes "geozl>=0.17.0,<0.18"
 make python      # configure, build librumi, stage it, pip install -e, verify the install
 make test        # make python, then pytest bindings/python
 make lint        # ruff and mypy with bindings/python/pyproject.toml

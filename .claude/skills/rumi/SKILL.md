@@ -18,7 +18,7 @@ so each frame may use its own compression graph. A small external header locates
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 
-This skill describes **rumi 0.21.3** (GeoZL 0.16.x, OpenZL 0.2.0, Karu 0.2.2). Check
+This skill describes **rumi 0.22.0** (GeoZL 0.17.x, OpenZL 0.2.0, Karu 0.2.2). Check
 `rumi.__version__`. If it differs, trust the installed source, `SPEC.md` and
 `CHANGELOG.md` over this file.
 
@@ -99,8 +99,8 @@ band or time selection. Measure compression when more than one layout fits the r
   the first parallel read; later changes warn and are ignored. A forked worker starts at 1
   unless its environment sets `RUMI_NUM_THREADS`.
 - **Framework exports.** A `RumiArray` exports once, and sub-byte and `bool` data read only
-  as NumPy. Rumi 0.21.3 raises `SystemError` on NumPy reads of `float8_*` and `bfloat16`
-  data (fixed after 0.21.3); use `framework="torch"` there.
+  as NumPy. NumPy reads of `float8_*` and `bfloat16` data return `ml_dtypes` arrays; Rumi
+  0.21.3 raised `SystemError` there and needed `framework="torch"`.
 - **`transform` uses rasterio `Affine` order** `(x_res, row_rot, x_origin, col_rot, y_res,
   y_origin)`, not a GDAL geotransform, and needs an EPSG `crs`. `time` takes one entry per
   step, in whole UTC seconds.
@@ -110,7 +110,7 @@ band or time selection. Measure compression when more than one layout fits the r
 ## Reference map
 
 Read only the reference relevant to the current task. Each one names its sources in the
-repository, and its examples were run against rumi 0.21.3.
+repository, and its examples were run against rumi 0.22.0.
 
 | Task | Read |
 | --- | --- |
