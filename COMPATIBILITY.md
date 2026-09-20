@@ -31,5 +31,5 @@ contain a breaking change; it will be called out in the changelog.
 
 ## GeoZL and OpenZL
 
-Rumi uses GeoZL 0.17.x as its frame compatibility baseline and includes
-OpenZL 0.2.0. The Python `write` extra requires GeoZL 0.17.x.
+Rumi uses GeoZL 0.18.x as its frame compatibility baseline and includes
+OpenZL 0.2.0. The Python `write` extra requires GeoZL 0.18.x.

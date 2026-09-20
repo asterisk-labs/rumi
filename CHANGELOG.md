@@ -4,6 +4,12 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated GeoZL to 0.18.0. MED recipes now write GeoZL's fused `med_zigzag`
+  codec, so frames using a MED predictor need a reader built with GeoZL 0.18.
+  Frames written by earlier releases stay readable.
+
 ## [0.23.0] - 2026-09-20
 
 ### Added
