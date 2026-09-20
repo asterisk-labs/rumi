@@ -3,7 +3,7 @@
 Sources: `bindings/python/rumi/_write.py` and `_time.py`, `core/src/write.cpp`,
 `core/src/time.cpp`, `core/src/geokeys.cpp`, the Georeferencing, Time coordinates and
 Header blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against rumi
-0.23.0 with geozl 0.17.0.
+0.24.0 with geozl 0.18.0.
 
 ## Contents
 
@@ -111,7 +111,7 @@ leave the unused high bits zero.
 | a GeoZL codec newer than the linked GeoZL | `NotImplementedError: rumi: file uses a geozl codec this build lacks, update geozl (CTid N)` |
 
 Each payload must be non-empty and below 4 GiB (its size is a `uint32`). The linked
-OpenZL accepts frame format versions up to 24 in 0.23.0
+OpenZL accepts frame format versions up to 24 in 0.24.0
 (`rumi._ffi.lib.rumi_openzl_format_version()`).
 
 ## 6. Time coordinates

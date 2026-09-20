@@ -29,17 +29,18 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.23.0 | Where it is pinned |
+| Component | Rumi 0.24.0 | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.17.0 | `extern/geozl` submodule; `geozl>=0.17.0,<0.18` in the `write` and `test` extras |
+| GeoZL | 0.18.0 | `extern/geozl` submodule; `geozl>=0.18.0,<0.19` in the `write` and `test` extras |
 | OpenZL | 0.2.0 | through GeoZL's submodule |
 | Karu | 0.2.2 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |
 
 - `tools/check_release.py` fails when the extras do not read `geozl>=X.Y.Z,<X.(Y+1)` for
   the submodule's `VERSION`, or when `NOTICE` names another Karu version.
-- Frames: GeoZL 0.17 reads frames from GeoZL 0.14 onward. Sentinel frames written by
-  0.17 require a 0.17 reader. Fused planar frames require Rumi 0.19.0 or later.
+- Frames: GeoZL 0.18 reads frames from GeoZL 0.14 onward. Sentinel frames written by
+  0.17 require a 0.17 reader, and MED frames written by 0.18 require a 0.18 reader.
+  Fused planar frames require Rumi 0.19.0 or later.
 
 ## 3. Deploying readers and writers
 

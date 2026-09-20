@@ -3,7 +3,7 @@
 Sources: `core/include/rumi/rumi_dtypes.def` (the registry shared by C and Python),
 `bindings/python/rumi/_dtype.py`, `bindings/python/rumi/_read.py`, the frame check in
 `core/src/plan.cpp`, and Sample encodings in `SPEC.md`. Every row was written and read
-back with rumi 0.23.0, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed; notes mark
+back with rumi 0.24.0, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed; notes mark
 what changed after 0.21.3.
 
 ## Contents
@@ -73,8 +73,9 @@ NumPy scalar type in the Python column.
   occupies`).
 - `bool` arrays are the `binary` type (1 bit, padded to 0 or 1).
 - Reads return NumPy arrays and never use DLPack: `framework="torch"` raises
-  `BufferError: padded sub-byte dtypes cannot be exported through DLPack; use numpy()`.
-  Convert afterwards; `torch.from_numpy(result)` works for `bool`.
+  `ValueError: uint2 reads only as numpy; torch, jax and tensorflow need a DLPack
+  form` before any frame is decoded. Convert afterwards; `torch.from_numpy(result)`
+  works for `bool`.
 - Reading ML sub-byte types needs `ml_dtypes` (`pip install "rumi-eo[ml]"`); without it
   the read raises `NotImplementedError: int4 needs ml_dtypes, pip install ml_dtypes`.
 

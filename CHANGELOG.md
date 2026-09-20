@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-20
+
 ### Fixed
 
 - Reading a sub-byte dtype into PyTorch, JAX or TensorFlow now fails in `read`
@@ -397,7 +399,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/asterisk-labs/rumi/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/asterisk-labs/rumi/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/asterisk-labs/rumi/compare/v0.21.3...v0.22.0
 [0.21.3]: https://github.com/asterisk-labs/rumi/compare/v0.21.2...v0.21.3

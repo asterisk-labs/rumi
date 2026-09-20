@@ -1,8 +1,8 @@
 # Python API
 
-Everything here is `rumi` 0.23.0 as implemented in `bindings/python/rumi/`
+Everything here is `rumi` 0.24.0 as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_checksums.py`,
-and `_ffi.py`). The examples and messages were captured from a 0.23.0 build.
+and `_ffi.py`). The examples and messages were captured from a 0.24.0 build.
 
 ## Contents
 
@@ -21,7 +21,7 @@ and `_ffi.py`). The examples and messages were captured from a 0.23.0 build.
 
 ```bash
 pip install rumi-eo            # reader
-pip install "rumi-eo[write]"   # adds geozl>=0.17.0,<0.18 for compressing frames
+pip install "rumi-eo[write]"   # adds geozl>=0.18.0,<0.19 for compressing frames
 pip install "rumi-eo[ml]"      # adds ml_dtypes for float8, int4 and other ML types
 ```
 
@@ -191,7 +191,8 @@ Returned by `read` and `read_many` with `framework=None`.
   storage moves to the first consumer; a second export raises `RuntimeError: this
   RumiArray was already exported`.
 - Sub-byte and `bool` results are backed by NumPy instead: `numpy()` returns the same
-  array every time, and DLPack export raises `BufferError` (`dtypes.md`).
+  array every time, a tensor `framework=` is refused by `read` itself, and DLPack
+  export raises `BufferError` (`dtypes.md`).
 - `numpy()` views the bytes of `float8_*` and `bfloat16` results as `ml_dtypes` arrays,
   because NumPy cannot import them through DLPack; this also counts as the one export.
   Rumi 0.21.3 raised `SystemError` here.

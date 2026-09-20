@@ -1,6 +1,6 @@
 # Debugging
 
-Messages below were captured from rumi 0.23.0 (GeoZL 0.17.0, NumPy 2.4, PyTorch 2.11).
+Messages below were captured from rumi 0.24.0 (GeoZL 0.18.0, NumPy 2.4, PyTorch 2.11).
 Numeric values inside them vary; match on the text. Pattern messages are in
 `patterns.md` section 7 and `time=` messages in `writing.md` section 6.
 
@@ -64,7 +64,8 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: b > 1 needs b in the pattern` | output pattern drops an axis longer than one | select one position or keep the axis |
 | `ValueError: unknown framework 'cupy'` | unsupported framework | `numpy`, `torch`, `jax`, `tensorflow`, `tf` or `None` |
 | `RuntimeError: this RumiArray was already exported` | second export of one result | keep the first array or tensor |
-| `BufferError: padded sub-byte dtypes cannot be exported through DLPack; use numpy()` | `framework="torch"` on sub-byte or `bool` data | read NumPy, then convert |
+| `ValueError: uint2 reads only as numpy; torch, jax and tensorflow need a DLPack form` | `framework="torch"` on sub-byte or `bool` data | read NumPy, then convert |
+| `BufferError: padded sub-byte dtypes cannot be exported through DLPack; use numpy()` | `__dlpack__()` on a sub-byte `framework=None` result | use `numpy()` |
 
 ### Batches
 
@@ -114,7 +115,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 - `complex128` files write but never read: the reader requires 16-byte numeric
   elements, which OpenZL cannot produce. Fixed after 0.21.3, where frames may decode as
   `float64` components (`dtypes.md` section 4).
-- `bool` and sub-byte results cannot use `framework="torch"` (`BufferError`).
+- `bool` and sub-byte results cannot use `framework="torch"` (`ValueError`).
 
 ## 3. Library loading and editable installs
 

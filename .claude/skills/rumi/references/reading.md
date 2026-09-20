@@ -195,9 +195,10 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 - Results decode on the CPU and move to the framework through DLPack without a copy.
   A `RumiArray` exports once; a second export raises `RuntimeError: this RumiArray was
   already exported`.
-- Sub-byte and `bool` results are NumPy-backed and refuse DLPack (`BufferError: padded
-  sub-byte dtypes cannot be exported through DLPack; use numpy()`), so
-  `framework="torch"` fails for them. Read NumPy and convert.
+- Sub-byte and `bool` results are NumPy-backed and refuse DLPack. `framework="torch"`
+  fails in the read itself (`ValueError: uint2 reads only as numpy; torch, jax and
+  tensorflow need a DLPack form`); calling `__dlpack__()` on a `framework=None` result
+  raises `BufferError`. Read NumPy and convert.
 - NumPy cannot import `float8_e4m3fn`, `float8_e5m2`, `float8_e8m0fnu` or `bfloat16`
   through DLPack, so NumPy reads view the decoded bytes as `ml_dtypes` arrays. Rumi
   0.21.3 raises `SystemError` there instead; on that release use `framework="torch"`.
