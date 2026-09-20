@@ -85,5 +85,5 @@ signatures recorded in `test_cdef.py` ("update this list only for an intentional
 change"); keep `test_c_header.c` compiling.
 
 A Python API change: `README.md` (its Python blocks run in `test_readme.py`),
-`docs/examples.html`, `docs/how-rumi-reads.html`, `examples/rumi-demo.ipynb` and
-`references/python-api.md` in this skill.
+`docs/examples.html`, `docs/how-rumi-reads.html`, `examples/rumi-vs-geotiff.ipynb`
+and `references/python-api.md` in this skill.

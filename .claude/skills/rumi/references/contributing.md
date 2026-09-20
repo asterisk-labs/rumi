@@ -45,7 +45,7 @@ bindings/python/
 fuzz/                            libFuzzer harnesses: header, index, pattern, read; replay/ seeds in git
 docs/                            hand-written static site; SPEC.md is rendered in by make docs
 deck/ img/                       slide deck and SVG figures, mounted under the site
-examples/rumi-demo.ipynb         walkthrough notebook
+examples/rumi-vs-geotiff.ipynb   GeoTIFF decompress comparison notebook
 tools/                           build_docs.py check_release.py check_editable.py make_fuzz_seeds.py
                                  gen_epsg_kinds.py benchmark_dataloader.py build_static_curl.sh
 extern/geozl extern/karu         submodules; GeoZL brings OpenZL
