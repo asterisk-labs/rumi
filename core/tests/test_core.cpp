@@ -813,6 +813,17 @@ void test_dlpack_wrappers()
     legacy->deleter(legacy);
 }
 
+// Pinning is tested in isolated Python processes.
+void test_checksum_verification()
+{
+    CASE("checksum verification is off by default and stays settable")
+    OK(!rumi::checksum_verification());
+    OK(rumi::set_checksum_verification(true));
+    OK(rumi::checksum_verification());
+    OK(!rumi::set_checksum_verification(false));
+    OK(!rumi::checksum_verification());
+}
+
 // These checks run before pool creation. Pinned behavior is tested in isolated
 // Python processes.
 void test_thread_count()
@@ -1499,6 +1510,7 @@ void test_read_many_c_api()
 
 int main()
 {
+    test_checksum_verification();
     test_frame_pattern();
     test_frame_unit_registry();
     test_time_trailer();

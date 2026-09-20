@@ -155,6 +155,18 @@ extern "C" int rumi_get_num_threads(void)
     return rumi::num_threads();
 }
 
+// Checksums.
+
+extern "C" int rumi_set_checksum_verification(int on)
+{
+    return rumi::set_checksum_verification(on != 0) ? 1 : 0;
+}
+
+extern "C" int rumi_get_checksum_verification(void)
+{
+    return rumi::checksum_verification() ? 1 : 0;
+}
+
 // Layout.
 
 namespace {

@@ -4,6 +4,18 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `rumi.set_checksum_verification` and `rumi.get_checksum_verification`
+  (`rumi_set_checksum_verification`, `rumi_get_checksum_verification` in C)
+  control OpenZL checksum verification. `RUMI_VERIFY` is the environment
+  equivalent. The first decoded frame pins the process-wide setting.
+
+### Changed
+
+- Decode no longer verifies OpenZL checksums by default. Type and byte-count
+  checks remain enabled. Set `RUMI_VERIFY=1` to restore the previous behavior.
+
 ## [0.22.0] - 2026-09-19
 
 ### Changed

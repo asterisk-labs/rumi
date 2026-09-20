@@ -38,6 +38,8 @@ void rumi_clear_error(void);
 void rumi_free(void* ptr);
 int rumi_set_num_threads(int n);
 int rumi_get_num_threads(void);
+int rumi_set_checksum_verification(int on);
+int rumi_get_checksum_verification(void);
 size_t rumi_dtype_table(const rumi_dtype_info** out);
 rumi_status rumi_compile_layout(const char* pattern, int64_t n, int64_t t,
                                 int64_t b, int64_t y, int64_t x,
@@ -255,7 +257,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 31
+    assert len(baseline) == 33
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

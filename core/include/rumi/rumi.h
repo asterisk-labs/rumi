@@ -82,6 +82,15 @@ RUMI_API int rumi_set_num_threads(int n);
 RUMI_API int rumi_get_num_threads(void);
 
 
+// Checksums.
+
+// Process-wide OpenZL checksum verification. RUMI_VERIFY accepts 1, true, on,
+// or yes. The first decoded frame pins the setting. Both functions return the
+// effective value.
+RUMI_API int rumi_set_checksum_verification(int on);
+RUMI_API int rumi_get_checksum_verification(void);
+
+
 // Dtypes and external-header fields.
 
 // Sentinel in the DLCODE column of rumi_dtypes.def for a type with no DLPack

@@ -68,6 +68,9 @@ uint64_t rumi_get_max_frame_bytes(void);
 int rumi_set_num_threads(int n);
 int rumi_get_num_threads(void);
 
+int rumi_set_checksum_verification(int on);
+int rumi_get_checksum_verification(void);
+
 size_t rumi_dtype_table(const rumi_dtype_info** out);
 
 typedef struct {

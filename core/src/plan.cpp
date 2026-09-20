@@ -20,6 +20,48 @@
 namespace rumi {
 namespace {
 
+// Fixed when the first decoder context is created.
+constexpr std::uint32_t CHECKSUM_ON     = 1u;
+constexpr std::uint32_t CHECKSUM_PINNED = 2u;
+constexpr std::uint32_t CHECKSUM_READY  = 4u;
+
+std::atomic<std::uint32_t> g_checksum_state{0};
+
+bool env_checksum_verification() noexcept
+{
+    const char* s = std::getenv("RUMI_VERIFY");
+    if (!s || !*s) return false;
+    return std::strcmp(s, "1") == 0 || std::strcmp(s, "true") == 0
+        || std::strcmp(s, "on") == 0 || std::strcmp(s, "yes") == 0;
+}
+
+std::uint32_t checksum_state() noexcept
+{
+    std::uint32_t state = g_checksum_state.load(std::memory_order_acquire);
+    if (state & CHECKSUM_READY) return state;
+    const std::uint32_t seed = CHECKSUM_READY
+        | (env_checksum_verification() ? CHECKSUM_ON : 0u);
+    if (g_checksum_state.compare_exchange_strong(state, seed,
+                                                 std::memory_order_acq_rel,
+                                                 std::memory_order_acquire)) {
+        return seed;
+    }
+    return state;
+}
+
+bool pin_checksum_verification() noexcept
+{
+    std::uint32_t state = checksum_state();
+    while (!(state & CHECKSUM_PINNED)) {
+        if (g_checksum_state.compare_exchange_weak(
+                state, state | CHECKSUM_PINNED, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            break;
+        }
+    }
+    return (state & CHECKSUM_ON) != 0;
+}
+
 // Decoder context and reusable buffers for one worker.
 struct WorkerState {
     ZL_DCtx*               dctx = ZL_DCtx_create();
@@ -31,6 +73,15 @@ struct WorkerState {
         if (dctx && ZL_isError(geozl_register_decoders(dctx))) {
             ZL_DCtx_free(dctx);
             dctx = nullptr;
+        }
+        if (dctx) {
+            const ZL_TernaryParam check = pin_checksum_verification()
+                ? ZL_TernaryParam_enable : ZL_TernaryParam_disable;
+            (void) ZL_DCtx_setParameter(dctx, ZL_DParam_stickyParameters, 1);
+            (void) ZL_DCtx_setParameter(dctx, ZL_DParam_checkCompressedChecksum,
+                                        check);
+            (void) ZL_DCtx_setParameter(dctx, ZL_DParam_checkContentChecksum,
+                                        check);
         }
     }
     ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }
@@ -236,6 +287,27 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
 int openzl_format_version() noexcept
 {
     return ZL_MAX_FORMAT_VERSION;
+}
+
+
+bool set_checksum_verification(bool on) noexcept
+{
+    std::uint32_t state = checksum_state();
+    for (;;) {
+        if (state & CHECKSUM_PINNED) return (state & CHECKSUM_ON) != 0;
+        const std::uint32_t desired = CHECKSUM_READY
+            | (on ? CHECKSUM_ON : 0u);
+        if (g_checksum_state.compare_exchange_weak(
+                state, desired, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            return on;
+        }
+    }
+}
+
+bool checksum_verification() noexcept
+{
+    return (checksum_state() & CHECKSUM_ON) != 0;
 }
 
 

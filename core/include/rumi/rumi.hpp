@@ -717,6 +717,13 @@ int set_num_threads(int n) noexcept;
 [[nodiscard]] int num_threads() noexcept;
 
 
+// Checksums.
+
+// Process-wide OpenZL checksum verification. The first decoded frame pins it.
+bool set_checksum_verification(bool on) noexcept;
+[[nodiscard]] bool checksum_verification() noexcept;
+
+
 // Reading.
 
 // Return and reset the detailed status of the latest read on this thread.
