@@ -173,6 +173,18 @@ class RumiArray:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
 
 
+_DLPACK_FRAMEWORKS = ("torch", "jax", "tensorflow", "tf")
+
+
+# Refuse a framework the dtype cannot reach, before decoding rather than on
+# the way out.
+def _check_framework(dtype_code: int, framework: str | None) -> None:
+    if framework in _DLPACK_FRAMEWORKS and is_subbyte(dtype_code):
+        raise ValueError(
+            f"{dtype_name(dtype_code)} reads only as numpy; "
+            "torch, jax and tensorflow need a DLPack form")
+
+
 def _to_framework(arr: RumiArray, framework: str | None):
     if framework is None:
         return arr
@@ -418,8 +430,9 @@ def read(source: _ReadSource, header: Header, *,
         raise TypeError("read takes one source; use read_many for multiple sources")
     if not isinstance(header, (bytes, bytearray, memoryview)):
         raise TypeError("read needs one bytes-like header")
-    arr = _read_one(_Source(source), _Spec(header), pattern,
-                    time, bands, window)
+    spec = _Spec(header)
+    _check_framework(spec.fields.dtype, framework)
+    arr = _read_one(_Source(source), spec, pattern, time, bands, window)
     return _to_framework(arr, framework)
 
 
@@ -458,6 +471,8 @@ def read_many(sources: Sequence[_ReadSource],
     raw_headers = list(headers)
 
     specs = [_Spec(raw) for raw in raw_headers]
+    if specs:
+        _check_framework(specs[0].fields.dtype, framework)
     arr = _read_many([_Source(s) for s in sources], specs, windows, pattern,
                      time, bands)
     return _to_framework(arr, framework)

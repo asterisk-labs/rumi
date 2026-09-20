@@ -464,3 +464,25 @@ def test_a_cell_batch_round_trips(tmp_path):
         paths, headers, windows=[(0, 0, 64, 64)] * len(paths),
         bands=[3, 0]))
     assert np.array_equal(got, np.stack([c[[3, 0]] for c in cubes]))
+
+
+def test_a_sub_byte_read_names_its_only_framework(tmp_path):
+    """Sub-byte dtypes have no DLPack form, so read refuses before decoding."""
+    ml_dtypes = pytest.importorskip("ml_dtypes")
+    data = (np.arange(3 * 32 * 32).reshape(3, 32, 32) % 4).astype(ml_dtypes.uint2)
+    tf = rumi.frames(data, "b (row h) (col w) -> row col (b h w)", 16)
+    for t in tf:
+        t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
+    path, header = rumi.write(tmp_path / "u2.rumi", tf)
+
+    for framework in ("torch", "jax", "tensorflow", "tf"):
+        with pytest.raises(ValueError, match="uint2 reads only as numpy"):
+            rumi.read(path, header, framework=framework)
+        with pytest.raises(ValueError, match="uint2 reads only as numpy"):
+            rumi.read_many([path], [header], windows=[(0, 0, 32, 32)],
+                           framework=framework)
+
+    got = rumi.read(path, header)
+    assert got.dtype == ml_dtypes.uint2
+    assert np.array_equal(np.asarray(got).astype(np.uint8),
+                          np.asarray(data).astype(np.uint8))

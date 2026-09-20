@@ -4,6 +4,12 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reading a sub-byte dtype into PyTorch, JAX or TensorFlow now fails in `read`
+  and `read_many`, naming the dtype and the framework that works, instead of
+  raising `BufferError` about padded storage after the frames were decoded.
+
 ### Changed
 
 - `rumi_dtype_info` carries a `scalar` field naming the NumPy or ml_dtypes
