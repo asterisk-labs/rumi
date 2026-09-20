@@ -427,7 +427,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
           <div class="callout">
             <span>Concurrency does not change the answer</span>
-            <p><code>append_read_plan()</code> fixes every destination before execution, and each frame decodes independently. Workers claim tasks through an atomic index; remote completions may arrive in any order, but they write to disjoint planned locations. Scheduling changes when bytes arrive, not where samples land.</p>
+            <p><code>append_read_plan()</code> fixes every destination before execution. Workers take one output-plane tile row at a time, keeping frames that touch the same pages together. Remote completions may arrive in any order; their write-group IDs restore the grouping before decode.</p>
           </div>
         </section>
 

@@ -598,6 +598,8 @@ struct FrameTask {
     std::size_t         offset_at;
     std::size_t         plane_count;
     std::size_t         item;  // 1-based label in a multi-item read, else 0
+    // Tasks in the same nonzero write group run on one worker.
+    std::size_t         write_group;
 };
 
 struct Plan {
@@ -608,9 +610,8 @@ struct Plan {
     // Backing storage for FrameTask plane offsets.
     std::vector<std::int64_t> src_offset;
     std::vector<std::int64_t> dst_offset;
-    // Consecutive tasks that write into the same band of output rows. Workers
-    // claim this many at once so two of them do not fault one page together.
-    std::size_t               claim_stride{1};
+    // Zero leaves a task ungrouped.
+    std::size_t               next_write_group{1};
 };
 
 // Bind task pointers after the offset vectors stop growing.
@@ -627,8 +628,7 @@ public:
     [[nodiscard]] bool run(const Plan& plan) const;
     [[nodiscard]] bool run(std::span<const FrameTask> tasks,
                            const FrameSpec& spec,
-                           TransportSession* transport,
-                           std::size_t claim_stride = 1) const;
+                           TransportSession* transport) const;
 
     // Status of the most recent run. RUMI_OK when run() returned true.
     [[nodiscard]] rumi_status status() const noexcept;

@@ -349,21 +349,20 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
     reserve_append(plan.src_offset, offset_count);
     reserve_append(plan.dst_offset, offset_count);
 
-    // The tile loops below run x within y, so one row of tiles contributes this
-    // many consecutive tasks. Items are appended whole, so the widest row wins.
     const std::size_t frames_per_tile =
-        static_cast<std::size_t>(walks_t ? nt : 1)
-        * static_cast<std::size_t>(walks_b ? nb : 1);
-    plan.claim_stride = std::max(
-        plan.claim_stride,
-        checked_size_product(static_cast<std::size_t>(x_tiles),
-                             frames_per_tile));
+        checked_size_product(static_cast<std::size_t>(walks_t ? nt : 1),
+                             static_cast<std::size_t>(walks_b ? nb : 1));
 
     // Frame index to selected band/time pairs, rebuilt for each grid position.
     std::vector<std::uint64_t> frames;
     std::vector<std::vector<std::pair<int, int>>> members;
 
     for (std::int64_t ty = ty_min; ty < ty_max; ++ty) {
+        if (frames_per_tile > std::numeric_limits<std::size_t>::max()
+                            - plan.next_write_group) {
+            throw std::length_error("read plan exceeds addressable memory");
+        }
+        const std::size_t group_base = plan.next_write_group;
         for (std::int64_t tx = tx_min; tx < tx_max; ++tx) {
             const std::int64_t tile_px = tx * tw;
             const std::int64_t tile_py = ty * tl;
@@ -442,6 +441,7 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                 task.offset_at       = at;
                 task.plane_count     = members[g].size();
                 task.item            = item;
+                task.write_group     = group_base + g;
                 // Decode straight into the result whenever the entire frame
                 // maps byte-for-byte onto one contiguous output region. This
                 // includes a one-chip b-h-w training sample.
@@ -476,6 +476,7 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                 plan.tasks.push_back(task);
             }
         }
+        plan.next_write_group += frames_per_tile;
     }
 
 }
@@ -516,8 +517,7 @@ std::expected<void, std::string>
 decode_tasks(Executor& executor, const Plan& plan,
              std::span<const FrameTask> tasks)
 {
-    if (executor.run(tasks, plan.spec, plan.transport, plan.claim_stride))
-        return {};
+    if (executor.run(tasks, plan.spec, plan.transport)) return {};
     g_read_status = executor.status();
     return err(executor.error().empty() ? std::string("read failed")
                                         : executor.error());

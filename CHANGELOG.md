@@ -18,12 +18,9 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
-- Multi-tile reads scale with the thread count again. Workers claimed one frame
-  at a time, so every worker wrote into the same rows of a freshly allocated
-  result and their first touches of those pages serialized in the kernel; a
-  whole-image read was slower with ten threads than with one. A worker now
-  claims a whole row of frames. Single-tile reads, including training windows,
-  are unaffected.
+- Workers no longer split one output-plane tile row. This avoids repeated page
+  faults on whole-image reads while keeping separate bands, batch items, and
+  remote completions available to other workers.
 
 ## [0.22.0] - 2026-09-19
 

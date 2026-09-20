@@ -124,6 +124,27 @@ def test_reads_agree_whatever_the_thread_count(image):
     """) == "True"
 
 
+def test_one_tile_with_separate_band_frames_agrees(image):
+    assert run(image, """
+        import numpy as np
+        one = rumi.read(PATH, HDR, window=(0, 0, 32, 32))
+        rumi.set_num_threads(4)
+        many = rumi.read(PATH, HDR, window=(0, 0, 32, 32))
+        print(np.array_equal(one, many))
+    """) == "True"
+
+
+def test_misaligned_batch_rows_agree(image):
+    assert run(image, """
+        import numpy as np
+        windows = [(0, 0, 32, 32), (0, 1, 32, 32)]
+        one = rumi.read_many([PATH, PATH], [HDR, HDR], windows=windows)
+        rumi.set_num_threads(4)
+        many = rumi.read_many([PATH, PATH], [HDR, HDR], windows=windows)
+        print(np.array_equal(one, many))
+    """) == "True"
+
+
 def test_concurrent_reads_share_the_pool_safely(image):
     assert run(image, """
         import concurrent.futures

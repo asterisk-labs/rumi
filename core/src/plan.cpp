@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <numeric>
 #include <vector>
 
 namespace rumi {
@@ -320,8 +321,7 @@ bool Executor::run(const Plan& plan) const
 
 bool Executor::run(std::span<const FrameTask> tasks,
                    const FrameSpec& spec,
-                   TransportSession* transport,
-                   std::size_t claim_stride) const
+                   TransportSession* transport) const
 {
     status_ = RUMI_OK;
     error_.clear();
@@ -345,31 +345,40 @@ bool Executor::run(std::span<const FrameTask> tasks,
     };
 
     if (pool_ != nullptr && tasks.size() > 1) {
-        // Submit one draining job per worker. The atomic task index balances
-        // uneven frame sizes without queuing one function per frame. Tasks
-        // arrive in output row order, so a worker claims a whole row of frames
-        // at once: handing out single tasks puts every worker on the same
-        // output page, and their first touches of it then serialize in the
-        // kernel for longer than the decode they were meant to overlap.
-        const std::size_t stride = claim_stride > 0 ? claim_stride : 1;
+        std::vector<std::size_t> order(tasks.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            if (tasks[a].write_group != tasks[b].write_group)
+                return tasks[a].write_group < tasks[b].write_group;
+            return a < b;
+        });
+
+        std::vector<std::size_t> groups;
+        groups.reserve(tasks.size() + 1);
+        groups.push_back(0);
+        for (std::size_t i = 1; i < order.size(); ++i) {
+            const std::size_t previous = tasks[order[i - 1]].write_group;
+            if (previous == 0 || tasks[order[i]].write_group != previous) {
+                groups.push_back(i);
+            }
+        }
+        groups.push_back(order.size());
+
         std::atomic<std::size_t> next{0};
         const auto drain = [&] {
             for (;;) {
                 if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
-                const std::size_t i =
-                    next.fetch_add(stride, std::memory_order_relaxed);
-                if (i >= tasks.size()) return;
-                const std::size_t end = std::min(i + stride, tasks.size());
-                for (std::size_t k = i; k < end; ++k) {
+                const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                if (i + 1 >= groups.size()) return;
+                for (std::size_t k = groups[i]; k < groups[i + 1]; ++k) {
                     if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
-                    run_one(tasks[k]);
+                    run_one(tasks[order[k]]);
                 }
             }
         };
 
         ThreadPool::Batch batch(*pool_);
-        const std::size_t claims = (tasks.size() + stride - 1) / stride;
-        const std::size_t workers = std::min(pool_->size(), claims);
+        const std::size_t workers = std::min(pool_->size(), groups.size() - 1);
         for (std::size_t i = 0; i < workers; ++i) {
             batch.submit(drain);
         }
