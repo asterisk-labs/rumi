@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-09-24
+
 ### Changed
 
 - `geozl` and `ml_dtypes` are plain dependencies of `rumi-eo`, so
@@ -407,7 +409,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.24.1...HEAD
+[0.24.1]: https://github.com/asterisk-labs/rumi/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/asterisk-labs/rumi/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/asterisk-labs/rumi/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/asterisk-labs/rumi/compare/v0.21.3...v0.22.0

@@ -18,8 +18,8 @@ the Karu transport from the submodules in `extern/`.
 - Keep `rumi.h` valid C11, and keep the cdef in `bindings/python/rumi/_ffi.py` and the
   signatures recorded in `test_cdef.py` in step with it.
 - Treat `extern/geozl` and `extern/karu` as upstream submodules. Move their pinned
-  revisions only when the task requires an upgrade, together with the Python extras,
-  `NOTICE` and the changelog; `tools/check_release.py` checks them.
+  revisions only when the task requires an upgrade, together with the Python
+  dependencies, `NOTICE` and the changelog; `tools/check_release.py` checks them.
 - Treat `build*/`, `core/build*`, `_site/`, `dist/`, `fuzz/out/`, `fuzz/corpus/` and the
   staged library under `bindings/python/rumi/_lib/` as build output. `docs/`, `deck/` and
   `img/` are hand-maintained sources.
