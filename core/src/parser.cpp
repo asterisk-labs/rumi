@@ -52,14 +52,16 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
+// Derive placement from the same inline threshold the writer uses. This keeps
+// parser and writer offsets identical when band or frame counts cross it.
 std::uint64_t derived_base_offset(std::uint32_t bands,
                                   std::uint64_t frames) noexcept
 {
-    std::uint64_t external = 128 + 32;                     // 34264 and 34735
-    if (bands >= 5) external += 4 * std::uint64_t(bands);  // 258 and 339
-    if (frames >= 2) external += 8 * frames;               // 324
-    if (frames >= 3) external += 4 * frames;               // 325
-    return 16 + (8 + 20 * IFD_TAGS + 8) + external;
+    std::uint64_t external = 16 * 8 + 16 * 2;               // 34264, 34735
+    if (bands >= 5) external += 2 * 2 * std::uint64_t(bands);  // 258, 339
+    if (frames >= 2) external += 8 * frames;                 // 324
+    if (frames >= 3) external += 4 * frames;                 // 325
+    return IFD_OFFSET + IFD_SIZE + external;
 }
 
 CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept
@@ -244,10 +246,9 @@ parse_blob(std::span<const std::byte> blob)
 
     h.base_frame_offset = derived_base_offset(bh.samples_per_pixel, h.frame_count);
 
-    // Variable counts require one count and one offset per frame. Constant
-    // counts remain implicit and do not allocate either vector.
-    // Whether materializing counts and offsets would exceed the budget.
-    // Constant counts can stay implicit even beyond this boundary.
+    // Variable counts need materialized counts and offsets, so enforce the
+    // budget before allocating. Constant counts remain implicit and cost no
+    // memory per frame.
     const bool index_too_large = !expanded_index_fits(h.frame_count, 1);
     if (index_too_large) {
         if (bh.count_bits != 0) {

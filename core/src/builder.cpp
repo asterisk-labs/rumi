@@ -1,8 +1,10 @@
 #include "rumi/rumi.hpp"
 
+#include <cstdarg>
 #include <cstdint>
 #include <cstring>
 #include <expected>
+#include <iterator>
 #include <limits>
 #include <new>
 #include <string>
@@ -11,6 +13,17 @@
 namespace rumi {
 
 namespace {
+
+// Keep malformed data distinct from transport failures at the C boundary.
+RUMI_PRINTF_LIKE(1, 2)
+std::unexpected<Error> bad(const char* fmt, ...)
+{
+    std::va_list ap;
+    va_start(ap, fmt);
+    std::string message = vformat_message(fmt, ap);
+    va_end(ap);
+    return std::unexpected(Error{RUMI_ERR_FORMAT, std::move(message)});
+}
 
 // A range past the advertised end proves the file is malformed. A short read
 // inside that boundary belongs to the transport instead.
@@ -74,24 +87,24 @@ try {
     std::uint32_t magic = 0;
     std::memcpy(&magic, hdr, 4);
     if (magic != FILE_MAGIC) {
-        return failf(RUMI_ERR_FORMAT, "not a rumi file: it starts with 0x%02X 0x%02X 0x%02X 0x%02X, "
+        return bad("not a rumi file: it starts with 0x%02X 0x%02X 0x%02X 0x%02X, "
                    "where rumi writes 'RUMI'", hdr[0], hdr[1], hdr[2], hdr[3]);
     }
     std::uint16_t version = 0;
     std::memcpy(&version, hdr + 4, 2);
     if (version != FILE_VERSION) {
-        return failf(RUMI_ERR_FORMAT, "rumi file version %u, this reader implements %u",
+        return bad("rumi file version %u, this reader implements %u",
                    version, FILE_VERSION);
     }
     std::uint16_t reserved = 0;
     std::memcpy(&reserved, hdr + 6, 2);
     if (reserved != 0) {
-        return failf(RUMI_ERR_FORMAT, "the reserved field of the file header is %u, not 0", reserved);
+        return bad("the reserved field of the file header is %u, not 0", reserved);
     }
     std::uint64_t ifd_offset;
     std::memcpy(&ifd_offset, hdr + 8, 8);
     if (ifd_offset != IFD_OFFSET) {
-        return failf(RUMI_ERR_FORMAT, "rumi requires the IFD at byte %llu; file puts it at %llu",
+        return bad("rumi requires the IFD at byte %llu; file puts it at %llu",
                    static_cast<unsigned long long>(IFD_OFFSET),
                    static_cast<unsigned long long>(ifd_offset));
     }
@@ -101,18 +114,13 @@ try {
     if (auto r = read(ifd_offset, &n_entries, 8, "the IFD entry count"); !r) {
         return std::unexpected(r.error());
     }
-    if (n_entries != 13) {
-        return failf(RUMI_ERR_FORMAT, "rumi requires exactly 13 IFD tags; file has %llu",
+    if (n_entries != IFD_TAGS) {
+        return bad("rumi requires exactly %llu IFD tags; file has %llu",
+                   static_cast<unsigned long long>(IFD_TAGS),
                    static_cast<unsigned long long>(n_entries));
     }
 
-    std::vector<std::byte> raw_entries;
-    try {
-        raw_entries.resize(static_cast<std::size_t>(n_entries) * 20);
-    } catch (const std::bad_alloc&) {
-        return failf(RUMI_ERR_OOM, "allocation failed for %llu IFD entries",
-                   static_cast<unsigned long long>(n_entries));
-    }
+    std::vector<std::byte> raw_entries(IFD_TAGS * IFD_ENTRY_SIZE);
     if (auto r = read(ifd_offset + 8, raw_entries.data(), raw_entries.size(),
                       "the IFD entries");
         !r) {
@@ -125,12 +133,12 @@ try {
         return std::unexpected(r.error());
     }
     if (next_ifd != 0) {
-        return failf(RUMI_ERR_FORMAT, "rumi requires a single IFD; the file chains another one");
+        return bad("rumi requires a single IFD; the file chains another one");
     }
 
     std::vector<Entry> entries(static_cast<std::size_t>(n_entries));
     for (std::uint64_t i = 0; i < n_entries; ++i) {
-        const std::byte* p = raw_entries.data() + i * 20;
+        const std::byte* p = raw_entries.data() + i * IFD_ENTRY_SIZE;
         Entry e;
         std::memcpy(&e.tag,   p,      2);
         std::memcpy(&e.type,  p + 2,  2);
@@ -144,19 +152,32 @@ try {
         return nullptr;
     };
 
-    struct Required { std::uint16_t tag, type; };
+    // Keep every rule in one table so adding a tag cannot update order without
+    // also stating its type and whether it is scalar.
+    struct Required { std::uint16_t tag, type; bool single; };
     static constexpr Required REQUIRED[] = {
-        {256, 4}, {257, 4}, {258, 3}, {277, 3}, {322, 3}, {323, 3},
-        {324, 16}, {325, 4}, {339, 3}, {34264, 12}, {34735, 3},
-        {TAG_FRAME_UNIT, 3}, {TAG_TIME_COUNT, 4},
+        {TAG_IMAGE_WIDTH,          TIFF_LONG,   true},
+        {TAG_IMAGE_LENGTH,         TIFF_LONG,   true},
+        {TAG_BITS_PER_SAMPLE,      TIFF_SHORT,  false},
+        {TAG_SAMPLES_PER_PIXEL,    TIFF_SHORT,  true},
+        {TAG_TILE_WIDTH,           TIFF_SHORT,  true},
+        {TAG_TILE_LENGTH,          TIFF_SHORT,  true},
+        {TAG_TILE_OFFSETS,         TIFF_LONG8,  false},
+        {TAG_TILE_BYTE_COUNTS,     TIFF_LONG,   false},
+        {TAG_SAMPLE_FORMAT,        TIFF_SHORT,  false},
+        {TAG_MODEL_TRANSFORMATION, TIFF_DOUBLE, false},
+        {TAG_GEO_KEY_DIRECTORY,    TIFF_SHORT,  false},
+        {TAG_FRAME_UNIT,           TIFF_SHORT,  true},
+        {TAG_TIME_COUNT,           TIFF_LONG,   true},
     };
+    static_assert(std::size(REQUIRED) == IFD_TAGS);
     for (std::size_t i = 0; i < entries.size(); ++i) {
         if (entries[i].tag != REQUIRED[i].tag) {
-            return failf(RUMI_ERR_FORMAT, "IFD entry %zu is tag %u, expected tag %u in rising order",
+            return bad("IFD entry %zu is tag %u, expected tag %u in rising order",
                        i, entries[i].tag, REQUIRED[i].tag);
         }
         if (entries[i].type != REQUIRED[i].type) {
-            return failf(RUMI_ERR_FORMAT, "tag %u has TIFF type %u, expected %u",
+            return bad("tag %u has TIFF type %u, expected %u",
                        entries[i].tag, entries[i].type, REQUIRED[i].type);
         }
     }
@@ -168,47 +189,46 @@ try {
         const std::size_t used = ts * static_cast<std::size_t>(e.count);
         for (std::size_t k = used; k < 8; ++k) {
             if (e.value[k] != std::byte{0}) {
-                return failf(RUMI_ERR_FORMAT, "tag %u fills %zu of its 8 inline bytes and byte %zu "
+                return bad("tag %u fills %zu of its 8 inline bytes and byte %zu "
                            "of the rest is not zero", e.tag, used, k);
             }
         }
     }
 
-    for (std::size_t i : {std::size_t(0), std::size_t(1), std::size_t(3),
-                          std::size_t(4), std::size_t(5), std::size_t(11),
-                          std::size_t(12)}) {
-        if (entries[i].count != 1) {
-            return failf(RUMI_ERR_FORMAT, "tag %u has %llu values, expected 1", entries[i].tag,
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (REQUIRED[i].single && entries[i].count != 1) {
+            return bad("tag %u has %llu values, expected 1", entries[i].tag,
                        static_cast<unsigned long long>(entries[i].count));
         }
     }
 
     // External values are contiguous and follow tag order. Validate placement
     // before interpreting any external value.
-    std::uint64_t cursor = 16 + 8 + 20 * IFD_TAGS + 8;
+    std::uint64_t cursor = IFD_OFFSET + IFD_SIZE;
     for (const Entry& e : entries) {
         const std::uint64_t ts = type_size(e.type);
         if (e.count > std::numeric_limits<std::uint64_t>::max() / ts) {
-            return failf(RUMI_ERR_FORMAT, "tag %u byte size overflows uint64", e.tag);
+            return bad("tag %u byte size overflows uint64", e.tag);
         }
         const std::uint64_t total = e.count * ts;
         if (total <= 8) continue;
         std::uint64_t at;
         std::memcpy(&at, e.value, 8);
         if (at != cursor) {
-            return failf(RUMI_ERR_FORMAT, "tag %u external value starts at %llu, expected %llu",
+            return bad("tag %u external value starts at %llu, expected %llu",
                        e.tag, static_cast<unsigned long long>(at),
                        static_cast<unsigned long long>(cursor));
         }
         const std::uint64_t padded = total + (total & 1);
         if (cursor > std::numeric_limits<std::uint64_t>::max() - padded) {
-            return failf(RUMI_ERR_FORMAT, "external value offsets overflow uint64");
+            return bad("external value offsets overflow uint64");
         }
         cursor += padded;
     }
 
-    if (entries[9].count != 16 || entries[10].count != 16) {
-        return failf(RUMI_ERR_FORMAT, "the transformation and GeoKey directory must each have "
+    if (find(TAG_MODEL_TRANSFORMATION)->count != 16
+        || find(TAG_GEO_KEY_DIRECTORY)->count != 16) {
+        return bad("the transformation and GeoKey directory must each have "
                    "16 values");
     }
 
@@ -219,7 +239,7 @@ try {
         if (!e) return deflt;
         const std::size_t ts = type_size(e->type);
         if (ts == 0 || ts > 8 || e->count < 1) {
-            return failf(RUMI_ERR_FORMAT, "tag %u has an unreadable type or count", tag);
+            return bad("tag %u has an unreadable type or count", tag);
         }
         std::byte buf[8];
         if (e->count <= 8 / ts) {
@@ -240,24 +260,25 @@ try {
     auto array = [&](std::uint16_t tag, std::uint64_t expected)
         -> std::expected<std::vector<std::uint64_t>, Error> {
         const Entry* e = find(tag);
-        if (!e) return failf(RUMI_ERR_FORMAT, "required tag %u is missing", tag);
+        if (!e) return bad("required tag %u is missing", tag);
         // Validate the file-provided count before allocating the result.
         if (e->count != expected) {
-            return failf(RUMI_ERR_FORMAT, "tag %u has %llu entries, expected %llu", tag,
+            return bad("tag %u has %llu entries, expected %llu", tag,
                        static_cast<unsigned long long>(e->count),
                        static_cast<unsigned long long>(expected));
         }
         const std::size_t ts = type_size(e->type);
-        if (ts == 0 || ts > 8) return failf(RUMI_ERR_FORMAT, "tag %u has an unreadable type", tag);
+        if (ts == 0 || ts > 8) return bad("tag %u has an unreadable type", tag);
         if (e->count > std::numeric_limits<std::uint64_t>::max() / ts) {
-            return failf(RUMI_ERR_FORMAT, "tag %u size overflows", tag);
+            return bad("tag %u size overflows", tag);
         }
         const std::uint64_t total = e->count * ts;
         std::vector<std::byte> rawv;
         try {
             rawv.resize(static_cast<std::size_t>(total));
         } catch (const std::bad_alloc&) {
-            return failf(RUMI_ERR_OOM, "allocation failed reading tag %u", tag);
+            return failf(RUMI_ERR_OOM, "allocation failed reading tag %u",
+                         tag);
         }
         if (total <= 8) {
             std::memcpy(rawv.data(), e->value, static_cast<std::size_t>(total));
@@ -278,11 +299,16 @@ try {
     };
 
     // Raster dimensions and band count.
-    auto iw_e  = scalar(256, 0); if (!iw_e)  return std::unexpected(iw_e.error());
-    auto ih_e  = scalar(257, 0); if (!ih_e)  return std::unexpected(ih_e.error());
-    auto tw_e  = scalar(322, 0); if (!tw_e)  return std::unexpected(tw_e.error());
-    auto tl_e  = scalar(323, 0); if (!tl_e)  return std::unexpected(tl_e.error());
-    auto spp_e = scalar(277, 1); if (!spp_e) return std::unexpected(spp_e.error());
+    auto iw_e  = scalar(TAG_IMAGE_WIDTH, 0);
+    if (!iw_e)  return std::unexpected(iw_e.error());
+    auto ih_e  = scalar(TAG_IMAGE_LENGTH, 0);
+    if (!ih_e)  return std::unexpected(ih_e.error());
+    auto tw_e  = scalar(TAG_TILE_WIDTH, 0);
+    if (!tw_e)  return std::unexpected(tw_e.error());
+    auto tl_e  = scalar(TAG_TILE_LENGTH, 0);
+    if (!tl_e)  return std::unexpected(tl_e.error());
+    auto spp_e = scalar(TAG_SAMPLES_PER_PIXEL, 1);
+    if (!spp_e) return std::unexpected(spp_e.error());
 
     const std::uint64_t iw  = *iw_e;
     const std::uint64_t ih  = *ih_e;
@@ -290,25 +316,27 @@ try {
     const std::uint64_t tl  = *tl_e;
     const std::uint64_t spp = *spp_e;
 
-    if (iw == 0 || ih == 0) return failf(RUMI_ERR_FORMAT, "missing or zero image dimensions");
-    if (tw == 0 || tl == 0) return failf(RUMI_ERR_FORMAT, "file is not tiled (no TileWidth/TileLength)");
+    if (iw == 0 || ih == 0) return bad("missing or zero image dimensions");
+    if (tw == 0 || tl == 0) return bad("file is not tiled (no TileWidth/TileLength)");
     if (spp == 0 || spp > 65535) {
-        return failf(RUMI_ERR_FORMAT, "invalid samples per pixel %llu",
+        return bad("invalid samples per pixel %llu",
                    static_cast<unsigned long long>(spp));
     }
-    if (tw > 65535 || tl > 65535) return failf(RUMI_ERR_FORMAT, "tile dimension exceeds uint16");
-    if (iw > 0xFFFFFFFFu || ih > 0xFFFFFFFFu) return failf(RUMI_ERR_FORMAT, "image dimension exceeds uint32");
+    if (tw > 65535 || tl > 65535) return bad("tile dimension exceeds uint16");
+    if (iw > 0xFFFFFFFFu || ih > 0xFFFFFFFFu) return bad("image dimension exceeds uint32");
 
     // Every band must repeat the same sample width and format.
-    auto bits_e = array(258, spp); if (!bits_e) return std::unexpected(bits_e.error());
+    auto bits_e = array(TAG_BITS_PER_SAMPLE, spp);
+    if (!bits_e) return std::unexpected(bits_e.error());
     const auto& bits = *bits_e;
-    for (std::uint64_t v : bits) if (v != bits[0]) return failf(RUMI_ERR_FORMAT, "mixed BitsPerSample is not supported");
+    for (std::uint64_t v : bits) if (v != bits[0]) return bad("mixed BitsPerSample is not supported");
 
     std::uint64_t sf = 1;
-    if (find(339) != nullptr) {
-        auto sf_e = array(339, spp); if (!sf_e) return std::unexpected(sf_e.error());
+    if (find(TAG_SAMPLE_FORMAT) != nullptr) {
+        auto sf_e = array(TAG_SAMPLE_FORMAT, spp);
+        if (!sf_e) return std::unexpected(sf_e.error());
         const auto& sfa = *sf_e;
-        for (std::uint64_t v : sfa) if (v != sfa[0]) return failf(RUMI_ERR_FORMAT, "mixed SampleFormat is not supported");
+        for (std::uint64_t v : sfa) if (v != sfa[0]) return bad("mixed SampleFormat is not supported");
         sf = sfa[0];
     }
 
@@ -316,7 +344,7 @@ try {
     const std::uint8_t sff = static_cast<std::uint8_t>(sf);
     if (bits[0] > 128 || sf > 255
         || sample_to_dtype(sff, bps) == RUMI_DT_UNKNOWN) {
-        return failf(RUMI_ERR_FORMAT, "unsupported (sample_format=%llu, bits_per_sample=%llu) pair",
+        return bad("unsupported (sample_format=%llu, bits_per_sample=%llu) pair",
                    static_cast<unsigned long long>(sf),
                    static_cast<unsigned long long>(bits[0]));
     }
@@ -325,8 +353,10 @@ try {
     const std::uint32_t tiles_across = static_cast<std::uint32_t>((iw + tw - 1) / tw);
     const std::uint32_t tiles_down   = static_cast<std::uint32_t>((ih + tl - 1) / tl);
     // Georeferencing uses a fixed matrix and a three-key directory.
-    auto mt_e = array(34264, 16); if (!mt_e) return std::unexpected(mt_e.error());
-    auto gk_e = array(34735, 16); if (!gk_e) return std::unexpected(gk_e.error());
+    auto mt_e = array(TAG_MODEL_TRANSFORMATION, 16);
+    if (!mt_e) return std::unexpected(mt_e.error());
+    auto gk_e = array(TAG_GEO_KEY_DIRECTORY, 16);
+    if (!gk_e) return std::unexpected(gk_e.error());
     const auto& gk = *gk_e;
 
     // Only six matrix entries are variable; all remaining entries are fixed.
@@ -337,19 +367,19 @@ try {
         static constexpr std::size_t ZERO[] = {2, 6, 8, 9, 10, 11, 12, 13, 14};
         for (const std::size_t i : ZERO) {
             if (m[i] != 0.0) {
-                return failf(RUMI_ERR_FORMAT, "ModelTransformationTag element %zu is %g; only the "
+                return bad("ModelTransformationTag element %zu is %g; only the "
                            "six affine coefficients are free", i, m[i]);
             }
         }
         if (m[15] != 1.0) {
-            return failf(RUMI_ERR_FORMAT, "ModelTransformationTag element 15 is %g, not 1", m[15]);
+            return bad("ModelTransformationTag element 15 is %g, not 1", m[15]);
         }
     }
 
     // Each key stores its value inline as (key_id, 0, 1, value).
     for (std::size_t k = 0; k < 3; ++k) {
         if (gk[4 + k * 4 + 1] != 0 || gk[4 + k * 4 + 2] != 1) {
-            return failf(RUMI_ERR_FORMAT, "GeoKey %llu is stored as (%llu, %llu, %llu, %llu); rumi "
+            return bad("GeoKey %llu is stored as (%llu, %llu, %llu, %llu); rumi "
                        "writes every key as (key_id, 0, 1, value)",
                        (unsigned long long)gk[4 + k * 4],
                        (unsigned long long)gk[4 + k * 4],
@@ -360,12 +390,12 @@ try {
     }
 
     if (gk[0] != 1 || gk[1] != 1 || gk[2] != 0 || gk[3] != 3) {
-        return failf(RUMI_ERR_FORMAT, "GeoKeyDirectory header is %llu %llu %llu %llu, rumi writes 1 1 0 3",
+        return bad("GeoKeyDirectory header is %llu %llu %llu %llu, rumi writes 1 1 0 3",
                    (unsigned long long)gk[0], (unsigned long long)gk[1],
                    (unsigned long long)gk[2], (unsigned long long)gk[3]);
     }
-    if (gk[4] != 1024 || gk[8] != 1025) {
-        return failf(RUMI_ERR_FORMAT, "GeoKeyDirectory must hold GTModelType then GTRasterType, "
+    if (gk[4] != GT_MODEL_TYPE || gk[8] != GT_RASTER_TYPE) {
+        return bad("GeoKeyDirectory must hold GTModelType then GTRasterType, "
                    "found keys %llu and %llu",
                    (unsigned long long)gk[4], (unsigned long long)gk[8]);
     }
@@ -374,7 +404,7 @@ try {
     const std::uint64_t crs_key = gk[12];
     const std::uint64_t epsg    = gk[15];
     if (raster != 1 && raster != 2) {
-        return failf(RUMI_ERR_FORMAT, "GTRasterType is %llu, rumi allows 1 or 2",
+        return bad("GTRasterType is %llu, rumi allows 1 or 2",
                    (unsigned long long)raster);
     }
     if (model == 0) {
@@ -383,42 +413,43 @@ try {
                                             0, 0, 0, 0, 0, 0, 0, 1};
         for (std::size_t i = 0; i < 16; ++i) {
             if (m[i] != NONE[i]) {
-                return failf(RUMI_ERR_FORMAT, "an undefined CRS carries the identity-like matrix "
+                return bad("an undefined CRS carries the identity-like matrix "
                            "the specification fixes; element %zu is %g, not %g",
                            i, m[i], NONE[i]);
             }
         }
-        if (crs_key != 2048 || epsg != 0) {
-            return failf(RUMI_ERR_FORMAT, "an undefined CRS needs key 2048 set to 0, "
+        if (crs_key != GEOGRAPHIC_TYPE || epsg != 0) {
+            return bad("an undefined CRS needs key 2048 set to 0, "
                        "found key %llu set to %llu",
                        (unsigned long long)crs_key, (unsigned long long)epsg);
         }
     } else if (model == 1 || model == 2) {
-        const std::uint64_t want_key = model == 2 ? 2048 : 3072;
+        const std::uint64_t want_key = model == MODEL_GEOGRAPHIC
+            ? GEOGRAPHIC_TYPE : PROJECTED_TYPE;
         if (crs_key != want_key) {
-            return failf(RUMI_ERR_FORMAT, "GTModelType %llu needs key %llu, found %llu",
+            return bad("GTModelType %llu needs key %llu, found %llu",
                        (unsigned long long)model,
                        (unsigned long long)want_key,
                        (unsigned long long)crs_key);
         }
         if (epsg < 1024 || epsg > 32766) {
-            return failf(RUMI_ERR_FORMAT, "EPSG code %llu is outside the 1024 to 32766 rumi accepts",
+            return bad("EPSG code %llu is outside the 1024 to 32766 rumi accepts",
                        (unsigned long long)epsg);
         }
         const std::uint16_t kind =
             epsg_model_type(static_cast<std::uint32_t>(epsg));
         if (kind == 0) {
-            return failf(RUMI_ERR_FORMAT, "EPSG code %llu is not in the registry",
+            return bad("EPSG code %llu is not in the registry",
                        (unsigned long long)epsg);
         }
         if (kind != model) {
-            return failf(RUMI_ERR_FORMAT, "EPSG %llu is %s but GTModelType says %s",
+            return bad("EPSG %llu is %s but GTModelType says %s",
                        (unsigned long long)epsg,
                        kind == 2 ? "geographic" : "projected",
                        model == 2 ? "geographic" : "projected");
         }
     } else {
-        return failf(RUMI_ERR_FORMAT, "GTModelType is %llu, rumi allows 0, 1 or 2",
+        return bad("GTModelType is %llu, rumi allows 0, 1 or 2",
                    (unsigned long long)model);
     }
 
@@ -429,7 +460,7 @@ try {
     auto time_e = scalar(TAG_TIME_COUNT, 1);
     if (!time_e) return std::unexpected(time_e.error());
     if (*time_e == 0 || *time_e > 0xFFFFFFFFull) {
-        return failf(RUMI_ERR_FORMAT, "time_count is %llu, which is not a usable count",
+        return bad("time_count is %llu, which is not a usable count",
                    static_cast<unsigned long long>(*time_e));
     }
     const auto time_count = static_cast<std::uint32_t>(*time_e);
@@ -437,25 +468,25 @@ try {
     auto unit_e = scalar(TAG_FRAME_UNIT, FRAME_TILE);
     if (!unit_e) return std::unexpected(unit_e.error());
     if (*unit_e > 0xFF || !unit_is_defined(static_cast<std::uint8_t>(*unit_e))) {
-        return failf(RUMI_ERR_FORMAT, "frame_unit is %llu, which names no frame layout",
+        return bad("frame_unit is %llu, which names no frame layout",
                    static_cast<unsigned long long>(*unit_e));
     }
     const auto frame_unit = static_cast<std::uint8_t>(*unit_e);
     if (!unit_valid_for(frame_unit, static_cast<std::uint16_t>(spp), time_count)) {
-        return failf(RUMI_ERR_FORMAT, "frame_unit %u does not fit %llu bands and %u time steps",
+        return bad("frame_unit %u does not fit %llu bands and %u time steps",
                    unsigned(frame_unit), static_cast<unsigned long long>(spp),
                    time_count);
     }
 
-    const Entry* offs_entry = find(324);
+    const Entry* offs_entry = find(TAG_TILE_OFFSETS);
     std::uint64_t want_frames = 0;
     if (!frame_count_of(frame_unit, grid_positions, 1,
                         static_cast<std::uint16_t>(spp),
                         static_cast<std::uint32_t>(time_count), &want_frames)) {
-        return failf(RUMI_ERR_FORMAT, "the frame count for this grid overflows uint64");
+        return bad("the frame count for this grid overflows uint64");
     }
     if (offs_entry->count != want_frames) {
-        return failf(RUMI_ERR_FORMAT, "TileOffsets has %llu entries, but frame_unit %u wants %llu",
+        return bad("TileOffsets has %llu entries, but frame_unit %u wants %llu",
                    static_cast<unsigned long long>(offs_entry->count),
                    unsigned(frame_unit),
                    static_cast<unsigned long long>(want_frames));
@@ -463,32 +494,35 @@ try {
 
     const std::uint64_t n_frames = offs_entry->count;
     if (n_frames > 0xFFFFFFFFu) {
-        return failf(RUMI_ERR_FORMAT, "frame count overflows uint32: %llu",
+        return bad("frame count overflows uint32: %llu",
                    static_cast<unsigned long long>(n_frames));
     }
     // Every frame occupies at least one byte, so frame count cannot exceed
     // file size.
     if (n_frames > on_disk) {
-        return failf(RUMI_ERR_FORMAT, "%llu frames need at least that many bytes, the file has %llu",
+        return bad("%llu frames need at least that many bytes, the file has %llu",
                    static_cast<unsigned long long>(n_frames),
                    static_cast<unsigned long long>(on_disk));
     }
-    if (n_frames > max_frame_bytes() / 12) {
-        return failf(RUMI_ERR_FORMAT, "indexing %llu frames needs %llu bytes, past the %llu this "
+    if (n_frames > max_frame_bytes() / INDEX_BYTES_PER_FRAME) {
+        return bad("indexing %llu frames needs %llu bytes, past the %llu this "
                    "reader will allocate",
                    static_cast<unsigned long long>(n_frames),
-                   static_cast<unsigned long long>(n_frames * 12),
+                   static_cast<unsigned long long>(n_frames * INDEX_BYTES_PER_FRAME),
                    static_cast<unsigned long long>(max_frame_bytes()));
     }
 
-    if (find(325)->count != n_frames) {
-        return failf(RUMI_ERR_FORMAT, "TileByteCounts has %llu entries, expected %llu",
-                   static_cast<unsigned long long>(find(325)->count),
+    const Entry* counts_entry = find(TAG_TILE_BYTE_COUNTS);
+    if (counts_entry->count != n_frames) {
+        return bad("TileByteCounts has %llu entries, expected %llu",
+                   static_cast<unsigned long long>(counts_entry->count),
                    static_cast<unsigned long long>(n_frames));
     }
 
-    auto offs_e = array(324, n_frames); if (!offs_e) return std::unexpected(offs_e.error());
-    auto cnts_e = array(325, n_frames); if (!cnts_e) return std::unexpected(cnts_e.error());
+    auto offs_e = array(TAG_TILE_OFFSETS, n_frames);
+    if (!offs_e) return std::unexpected(offs_e.error());
+    auto cnts_e = array(TAG_TILE_BYTE_COUNTS, n_frames);
+    if (!cnts_e) return std::unexpected(cnts_e.error());
     const auto& offs = *offs_e;
     const auto& cnts = *cnts_e;
 
@@ -501,16 +535,16 @@ try {
         const std::uint64_t off = offs[static_cast<std::size_t>(i)];
         const std::uint64_t cnt = cnts[static_cast<std::size_t>(i)];
         if (cnt == 0) {
-            return failf(RUMI_ERR_FORMAT, "frame %llu has a zero byte count",
+            return bad("frame %llu has a zero byte count",
                        static_cast<unsigned long long>(i));
         }
         if (cnt > 0xFFFFFFFFu) {
-            return failf(RUMI_ERR_FORMAT, "frame %llu byte count %llu exceeds uint32",
+            return bad("frame %llu byte count %llu exceeds uint32",
                        static_cast<unsigned long long>(i),
                        static_cast<unsigned long long>(cnt));
         }
         if (off != running) {
-            return failf(RUMI_ERR_FORMAT, "frame %llu is not contiguous (expected %llu, got %llu); "
+            return bad("frame %llu is not contiguous (expected %llu, got %llu); "
                        "the file is band-interleaved or has framing between frames",
                        static_cast<unsigned long long>(i),
                        static_cast<unsigned long long>(running),
@@ -518,13 +552,13 @@ try {
         }
         counts[static_cast<std::size_t>(i)] = static_cast<std::uint32_t>(cnt);
         if (running > std::numeric_limits<std::uint64_t>::max() - cnt) {
-            return failf(RUMI_ERR_FORMAT, "frame offsets overflow uint64");
+            return bad("frame offsets overflow uint64");
         }
         running += cnt;
     }
 
     if (base != derived_base_offset(static_cast<std::uint32_t>(spp), n_frames)) {
-        return failf(RUMI_ERR_FORMAT, "frame data starts at %llu, the profile puts it at %llu; "
+        return bad("frame data starts at %llu, the profile puts it at %llu; "
                    "the file has padding or a value out of place",
                    static_cast<unsigned long long>(base),
                    static_cast<unsigned long long>(
@@ -534,7 +568,7 @@ try {
 
     // The time trailer starts immediately after the final frame.
     if (on_disk < running + TRAILER_SIZE) {
-        return failf(RUMI_ERR_FORMAT, "frames end at %llu, leaving no room for the %zu-byte time "
+        return bad("frames end at %llu, leaving no room for the %zu-byte time "
                    "trailer in a file of %llu bytes",
                    static_cast<unsigned long long>(running), TRAILER_SIZE,
                    static_cast<unsigned long long>(on_disk));
@@ -545,11 +579,11 @@ try {
         return std::unexpected(r.error());
     }
     if (tt.magic != TIME_MAGIC) {
-        return failf(RUMI_ERR_FORMAT, "no time trailer where the frames end, at %llu",
+        return bad("no time trailer where the frames end, at %llu",
                    static_cast<unsigned long long>(running));
     }
     if (tt.time_bits > 64) {
-        return failf(RUMI_ERR_FORMAT, "time_bits is %u, past the 64 a residual can need",
+        return bad("time_bits is %u, past the 64 a residual can need",
                    tt.time_bits);
     }
 
@@ -557,7 +591,7 @@ try {
     const std::uint64_t coords = time_coord_count(tt.time_type, time_count);
     const std::uint64_t packed = (coords * tt.time_bits + 7) / 8;
     if (on_disk != running + TRAILER_SIZE + packed) {
-        return failf(RUMI_ERR_FORMAT, "the trailer says %llu bytes of coordinates, so the file "
+        return bad("the trailer says %llu bytes of coordinates, so the file "
                    "should be %llu bytes; it is %llu",
                    static_cast<unsigned long long>(packed),
                    static_cast<unsigned long long>(running + TRAILER_SIZE + packed),
@@ -594,7 +628,7 @@ try {
     try {
         blob.resize(HEADER_SIZE + cp.bytes);
     } catch (const std::bad_alloc&) {
-        return failf(RUMI_ERR_OOM, "allocation failed for the output blob");
+        return fail(RUMI_ERR_OOM, "allocation failed for the output blob");
     }
     std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
     pack_counts(counts, cp, blob.data() + HEADER_SIZE);

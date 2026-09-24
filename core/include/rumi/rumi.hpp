@@ -30,12 +30,12 @@ namespace rumi {
 
 class ThreadPool;
 
-// printf-style messages, never truncated.
+// Measure formatted messages so paths and decoder details are never cut short.
 [[nodiscard]] std::string vformat_message(const char* fmt, std::va_list ap);
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::string format_message(const char* fmt, ...);
 
-// Error messages for std::expected results.
+// Use a plain message when invalid input is the only possible failure.
 [[nodiscard]] inline std::unexpected<std::string> err(std::string message)
 {
     return std::unexpected(std::move(message));
@@ -43,8 +43,8 @@ RUMI_PRINTF_LIKE(1, 2)
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::unexpected<std::string> errf(const char* fmt, ...);
 
-// A failure and the status the C API reports for it, for operations that can
-// fail in more than one way. A plain message leaves the status to the caller.
+// Carry the C status beside failures that may come from I/O, data or memory.
+// This keeps callers from guessing the status from the message text.
 struct Error {
     rumi_status status{RUMI_ERR_INVALID};
     std::string message;
@@ -59,26 +59,57 @@ RUMI_PRINTF_LIKE(2, 3)
 [[nodiscard]] std::unexpected<Error>
 failf(rumi_status status, const char* fmt, ...);
 
+// Keep the blob constants together so parser and writer cannot drift apart.
+// MAGIC is ASCII "LOVE" on the wire.
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 32;
-// Number of entries in the fixed IFD.
-inline constexpr std::uint64_t IFD_TAGS    = 13;
 
 // File header constants. FILE_MAGIC is ASCII "RUMI" on the wire.
 inline constexpr std::uint32_t FILE_MAGIC   = 0x494D5552;
 inline constexpr std::uint16_t FILE_VERSION = 1;
 inline constexpr std::uint64_t IFD_OFFSET   = 16;
+
+// The fixed IFD includes its count and a zero next-IFD offset.
+inline constexpr std::uint64_t IFD_TAGS       = 13;
+inline constexpr std::uint64_t IFD_ENTRY_SIZE = 20;
+inline constexpr std::uint64_t IFD_SIZE       = 8 + IFD_TAGS * IFD_ENTRY_SIZE + 8;
+
+// Name only the TIFF field types accepted by the fixed profile.
+inline constexpr std::uint16_t TIFF_ASCII  = 2;
+inline constexpr std::uint16_t TIFF_SHORT  = 3;
+inline constexpr std::uint16_t TIFF_LONG   = 4;
+inline constexpr std::uint16_t TIFF_DOUBLE = 12;
+inline constexpr std::uint16_t TIFF_LONG8  = 16;
+
+// Keep tags in file order because the parser requires canonical placement.
+// The last two belong to Rumi rather than TIFF.
+inline constexpr std::uint16_t TAG_IMAGE_WIDTH          = 256;
+inline constexpr std::uint16_t TAG_IMAGE_LENGTH         = 257;
+inline constexpr std::uint16_t TAG_BITS_PER_SAMPLE      = 258;
+inline constexpr std::uint16_t TAG_SAMPLES_PER_PIXEL    = 277;
+inline constexpr std::uint16_t TAG_TILE_WIDTH           = 322;
+inline constexpr std::uint16_t TAG_TILE_LENGTH          = 323;
+inline constexpr std::uint16_t TAG_TILE_OFFSETS         = 324;
+inline constexpr std::uint16_t TAG_TILE_BYTE_COUNTS     = 325;
+inline constexpr std::uint16_t TAG_SAMPLE_FORMAT        = 339;
+inline constexpr std::uint16_t TAG_MODEL_TRANSFORMATION = 34264;
+inline constexpr std::uint16_t TAG_GEO_KEY_DIRECTORY    = 34735;
+inline constexpr std::uint16_t TAG_FRAME_UNIT           = 65000;
+inline constexpr std::uint16_t TAG_TIME_COUNT           = 65001;
+
+// Bound data expanded from untrusted headers before allocation. Each expanded
+// frame needs one uint32 count and one uint64 offset.
 inline constexpr std::size_t   MAX_PARSED_INDEX_BYTES = 64u << 20;
 inline constexpr std::size_t   MAX_TIME_COORD_BYTES   = 64u << 20;
+inline constexpr std::uint64_t INDEX_BYTES_PER_FRAME =
+    sizeof(std::uint32_t) + sizeof(std::uint64_t);
 
 [[nodiscard]] constexpr bool
 expanded_index_fits(std::uint64_t frames, std::uint8_t count_bits) noexcept
 {
-    constexpr std::uint64_t bytes_per_index = sizeof(std::uint32_t)
-                                                   + sizeof(std::uint64_t);
     return count_bits == 0
-        || frames <= MAX_PARSED_INDEX_BYTES / bytes_per_index;
+        || frames <= MAX_PARSED_INDEX_BYTES / INDEX_BYTES_PER_FRAME;
 }
 
 // Maximum OpenZL frame format version accepted by the linked decoder.
@@ -288,12 +319,6 @@ unit_index_axes(std::uint8_t unit, std::uint16_t bands, std::uint32_t times,
 // Resolve an axis order to a frame unit.
 [[nodiscard]] std::expected<std::uint8_t, std::string>
 unit_from_name(std::string_view name, std::uint16_t bands, std::uint32_t times);
-
-// Private IFD tag containing frame_unit.
-inline constexpr std::uint16_t TAG_FRAME_UNIT = 65000;
-
-// Private IFD tag containing time_count.
-inline constexpr std::uint16_t TAG_TIME_COUNT = 65001;
 
 
 // Every file ends with a time trailer; undefined time uses TIME_UNDEFINED.
@@ -820,6 +845,19 @@ build_blob_from_file(const char* path, FileGeo* geo = nullptr,
 [[nodiscard]] DLManagedTensorVersioned*
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;
+
+// Share GeoKey constants so validation and writing use the same fixed profile.
+// See https://docs.ogc.org/is/19-008r4/19-008r4.html
+inline constexpr std::uint16_t GT_MODEL_TYPE   = 1024;
+inline constexpr std::uint16_t GT_RASTER_TYPE  = 1025;
+inline constexpr std::uint16_t GEOGRAPHIC_TYPE = 2048;
+inline constexpr std::uint16_t PROJECTED_TYPE  = 3072;
+
+inline constexpr std::uint16_t MODEL_UNDEFINED  = 0;
+inline constexpr std::uint16_t MODEL_PROJECTED  = 1;
+inline constexpr std::uint16_t MODEL_GEOGRAPHIC = 2;
+inline constexpr std::uint16_t RASTER_AREA      = 1;
+inline constexpr std::uint16_t RASTER_POINT     = 2;
 
 // GeoKey payloads. rumi's fixed EPSG profile uses only directory.
 struct GeoKeys {

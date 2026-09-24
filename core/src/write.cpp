@@ -12,24 +12,15 @@
 namespace rumi {
 namespace {
 
-constexpr std::uint16_t T_ASCII  = 2;
-constexpr std::uint16_t T_SHORT  = 3;
-constexpr std::uint16_t T_LONG   = 4;
-constexpr std::uint16_t T_DOUBLE = 12;
-constexpr std::uint16_t T_LONG8  = 16;
-
-
-constexpr std::uint16_t TAG_TILE_OFFSETS = 324;
-
 std::size_t type_size(std::uint16_t type) noexcept
 {
     switch (type) {
-        case T_ASCII:  return 1;
-        case T_SHORT:  return 2;
-        case T_LONG:   return 4;
-        case T_DOUBLE:
-        case T_LONG8:  return 8;
-        default:       return 0;
+        case TIFF_ASCII:  return 1;
+        case TIFF_SHORT:  return 2;
+        case TIFF_LONG:   return 4;
+        case TIFF_DOUBLE:
+        case TIFF_LONG8:  return 8;
+        default:          return 0;
     }
 }
 
@@ -98,14 +89,15 @@ geo_entries(const WriteDesc& d)
     const double* t = d.transform ? d.transform : IDENTITY;
 
     std::vector<Entry> out;
-    out.push_back(pack(34264, T_DOUBLE, {t[0], t[1], 0.0, t[2],
-                                         t[3], t[4], 0.0, t[5],
-                                         0.0,  0.0,  0.0, 0.0,
-                                         0.0,  0.0,  0.0, 1.0}));
+    out.push_back(pack(TAG_MODEL_TRANSFORMATION, TIFF_DOUBLE,
+                       {t[0], t[1], 0.0, t[2],
+                        t[3], t[4], 0.0, t[5],
+                        0.0,  0.0,  0.0, 0.0,
+                        0.0,  0.0,  0.0, 1.0}));
 
     auto keys = build_geokeys(d.transform ? d.epsg : 0, d.pixel_is_point);
     if (!keys) return std::unexpected(keys.error());
-    out.push_back(adopt(34735, T_SHORT, keys->directory));
+    out.push_back(adopt(TAG_GEO_KEY_DIRECTORY, TIFF_SHORT, keys->directory));
     return out;
 }
 
@@ -117,15 +109,17 @@ base_entries(const WriteDesc& d, std::uint64_t frame_count,
 {
     const std::uint16_t spp = d.samples_per_pixel;
     std::vector<Entry> e;
-    e.push_back(pack(256, T_LONG,  {d.image_width}));
-    e.push_back(pack(257, T_LONG,  {d.image_length}));
-    e.push_back(pack(258, T_SHORT, std::vector<std::uint16_t>(spp, bits)));
-    e.push_back(pack(277, T_SHORT, {spp}));
-    e.push_back(pack(322, T_SHORT, {d.tile_size}));
-    e.push_back(pack(323, T_SHORT, {d.tile_size}));
-    e.push_back(Entry{TAG_TILE_OFFSETS, T_LONG8, frame_count, {}});
-    e.push_back(pack(325, T_LONG, counts_pm));
-    e.push_back(pack(339, T_SHORT, std::vector<std::uint16_t>(spp, sf)));
+    e.push_back(pack(TAG_IMAGE_WIDTH,       TIFF_LONG,  {d.image_width}));
+    e.push_back(pack(TAG_IMAGE_LENGTH,      TIFF_LONG,  {d.image_length}));
+    e.push_back(pack(TAG_BITS_PER_SAMPLE,   TIFF_SHORT,
+                     std::vector<std::uint16_t>(spp, bits)));
+    e.push_back(pack(TAG_SAMPLES_PER_PIXEL, TIFF_SHORT, {spp}));
+    e.push_back(pack(TAG_TILE_WIDTH,        TIFF_SHORT, {d.tile_size}));
+    e.push_back(pack(TAG_TILE_LENGTH,       TIFF_SHORT, {d.tile_size}));
+    e.push_back(Entry{TAG_TILE_OFFSETS,     TIFF_LONG8, frame_count, {}});
+    e.push_back(pack(TAG_TILE_BYTE_COUNTS,  TIFF_LONG,  counts_pm));
+    e.push_back(pack(TAG_SAMPLE_FORMAT,     TIFF_SHORT,
+                     std::vector<std::uint16_t>(spp, sf)));
     return e;
 }
 
@@ -207,14 +201,13 @@ plan(const WriteDesc& d, const Grid& g,
                      std::make_move_iterator(geo->begin()),
                      std::make_move_iterator(geo->end()));
 
-    // FrameUnit is the final tag in the fixed tag order.
-    l.entries.push_back(pack(TAG_FRAME_UNIT, T_SHORT,
+    // Append these together because the fixed profile requires them last.
+    l.entries.push_back(pack(TAG_FRAME_UNIT, TIFF_SHORT,
         {static_cast<std::uint16_t>(
             effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count))}));
-    l.entries.push_back(pack(TAG_TIME_COUNT, T_LONG, {d.time_count}));
+    l.entries.push_back(pack(TAG_TIME_COUNT, TIFF_LONG, {d.time_count}));
 
-    const std::uint64_t ifd_size = 8 + 20 * l.entries.size() + 8;
-    l.base = place_external(l.entries, IFD_OFFSET + ifd_size, l.external);
+    l.base = place_external(l.entries, IFD_OFFSET + IFD_SIZE, l.external);
 
     // The writer builds the complete pre-frame region in memory.
     if (l.base > 0xFFFFFFFFu)

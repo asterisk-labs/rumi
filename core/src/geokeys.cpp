@@ -7,18 +7,6 @@
 namespace rumi {
 namespace {
 
-// GeoKey IDs reused by rumi. https://docs.ogc.org/is/19-008r4/19-008r4.html
-constexpr std::uint16_t GT_MODEL_TYPE   = 1024;
-constexpr std::uint16_t GT_RASTER_TYPE  = 1025;
-constexpr std::uint16_t GEOGRAPHIC_TYPE = 2048;
-constexpr std::uint16_t PROJECTED_TYPE  = 3072;
-
-constexpr std::uint16_t MODEL_UNDEFINED  = 0;
-constexpr std::uint16_t MODEL_PROJECTED  = 1;
-constexpr std::uint16_t MODEL_GEOGRAPHIC = 2;
-constexpr std::uint16_t RASTER_AREA      = 1;
-constexpr std::uint16_t RASTER_POINT     = 2;
-
 // EPSG code ranges do not reliably identify geographic versus projected CRSs.
 // tools/gen_epsg_kinds.py generates the classification table from the registry.
 struct CodeRange {
