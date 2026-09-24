@@ -110,8 +110,9 @@ Numeric values inside them vary; match on the text. Pattern messages are in
   exception`: NumPy rejects the DLPack type and the capsule destructor hides its error.
   Fixed after 0.21.3; on 0.21.3 use `framework="torch"`.
 - Any framework that rejects a Rumi DLPack capsule, for an unsupported type or device,
-  surfaces the same `SystemError` instead of its own message, because the ctypes capsule
-  destructor clears the pending exception.
+  surfaces `SystemError` instead of its own message and leaks the decoded samples. The
+  ctypes destructor cannot run while the consumer has an error pending. Releases after
+  0.24.1 use a C destructor and preserve the original error.
 - `complex128` files write but never read: the reader requires 16-byte numeric
   elements, which OpenZL cannot produce. Fixed after 0.21.3, where frames may decode as
   `float64` components (`dtypes.md` section 4).
