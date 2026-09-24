@@ -7,8 +7,7 @@ namespace rumi {
 
 std::string vformat_message(const char* fmt, std::va_list ap)
 {
-    // Avoid a heap allocation for ordinary messages. When the stack buffer is
-    // too small, measure once and keep the full path or decoder detail.
+    // Most errors fit here. Longer ones get an exactly sized allocation below.
     std::va_list again;
     va_copy(again, ap);
     char small[256];

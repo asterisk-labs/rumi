@@ -30,12 +30,10 @@ namespace rumi {
 
 class ThreadPool;
 
-// Measure formatted messages so paths and decoder details are never cut short.
 [[nodiscard]] std::string vformat_message(const char* fmt, std::va_list ap);
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::string format_message(const char* fmt, ...);
 
-// Use a plain message when invalid input is the only possible failure.
 [[nodiscard]] inline std::unexpected<std::string> err(std::string message)
 {
     return std::unexpected(std::move(message));
@@ -43,8 +41,7 @@ RUMI_PRINTF_LIKE(1, 2)
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::unexpected<std::string> errf(const char* fmt, ...);
 
-// Carry the C status beside failures that may come from I/O, data or memory.
-// This keeps callers from guessing the status from the message text.
+// Some failures need more than a message at the C boundary.
 struct Error {
     rumi_status status{RUMI_ERR_INVALID};
     std::string message;
@@ -59,8 +56,6 @@ RUMI_PRINTF_LIKE(2, 3)
 [[nodiscard]] std::unexpected<Error>
 failf(rumi_status status, const char* fmt, ...);
 
-// Keep the blob constants together so parser and writer cannot drift apart.
-// MAGIC is ASCII "LOVE" on the wire.
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 32;
@@ -70,20 +65,17 @@ inline constexpr std::uint32_t FILE_MAGIC   = 0x494D5552;
 inline constexpr std::uint16_t FILE_VERSION = 1;
 inline constexpr std::uint64_t IFD_OFFSET   = 16;
 
-// The fixed IFD includes its count and a zero next-IFD offset.
 inline constexpr std::uint64_t IFD_TAGS       = 13;
 inline constexpr std::uint64_t IFD_ENTRY_SIZE = 20;
 inline constexpr std::uint64_t IFD_SIZE       = 8 + IFD_TAGS * IFD_ENTRY_SIZE + 8;
 
-// Name only the TIFF field types accepted by the fixed profile.
 inline constexpr std::uint16_t TIFF_ASCII  = 2;
 inline constexpr std::uint16_t TIFF_SHORT  = 3;
 inline constexpr std::uint16_t TIFF_LONG   = 4;
 inline constexpr std::uint16_t TIFF_DOUBLE = 12;
 inline constexpr std::uint16_t TIFF_LONG8  = 16;
 
-// Keep tags in file order because the parser requires canonical placement.
-// The last two belong to Rumi rather than TIFF.
+// Canonical IFD order. The final two tags are Rumi extensions.
 inline constexpr std::uint16_t TAG_IMAGE_WIDTH          = 256;
 inline constexpr std::uint16_t TAG_IMAGE_LENGTH         = 257;
 inline constexpr std::uint16_t TAG_BITS_PER_SAMPLE      = 258;
@@ -786,7 +778,6 @@ bool set_checksum_verification(bool on) noexcept;
 
 // Reading.
 
-// Share request checks so planning and decoding reject the same inputs.
 [[nodiscard]] std::expected<void, std::string>
 validate_request(const Header& h, std::span<const int> times,
                  std::span<const int> bands,
@@ -798,14 +789,12 @@ plan_ranges(const Header& h, std::span<const int> times,
             std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size);
 
-// Validate and bound the plan before allocating its range array.
 [[nodiscard]] std::expected<std::vector<Range>, std::string>
 plan_ranges_checked(const Header& h, std::span<const int> times,
                     std::span<const int> bands,
                     int y_off, int y_size, int x_off, int x_size);
 
-// Read a window into dst and use the process-wide pool. Band and time indices
-// are 1-based because this is called from the C boundary.
+// Band and time indices come from the 1-based C API.
 [[nodiscard]] std::expected<void, Error>
 read_window(Source& src, const Header& h,
             std::span<const int> times, std::span<const int> bands,
@@ -852,7 +841,6 @@ build_blob_from_file(const char* path, FileGeo* geo = nullptr,
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;
 
-// Share GeoKey constants so validation and writing use the same fixed profile.
 // See https://docs.ogc.org/is/19-008r4/19-008r4.html
 inline constexpr std::uint16_t GT_MODEL_TYPE   = 1024;
 inline constexpr std::uint16_t GT_RASTER_TYPE  = 1025;

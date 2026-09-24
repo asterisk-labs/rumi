@@ -201,7 +201,7 @@ plan(const WriteDesc& d, const Grid& g,
                      std::make_move_iterator(geo->begin()),
                      std::make_move_iterator(geo->end()));
 
-    // Append these together because the fixed profile requires them last.
+    // Rumi's two private tags are last in the fixed profile.
     l.entries.push_back(pack(TAG_FRAME_UNIT, TIFF_SHORT,
         {static_cast<std::uint16_t>(
             effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count))}));
@@ -345,7 +345,6 @@ try {
                      std::strerror(why));
     }
 
-    // A caller must never receive a file that failed its own index check.
     struct Unless {
         const char* path;
         bool        keep{false};
@@ -385,8 +384,7 @@ try {
     // the writer's result. Indexing reads metadata only, not frame payloads.
     auto indexed = build_blob_from_file(path);
     if (!indexed) {
-        // A format failure here means the writer contradicted itself. Only a
-        // later I/O failure can leave otherwise valid output unreadable.
+        // A format error here is the writer's fault, not the caller's file.
         const rumi_status status = indexed.error().status == RUMI_ERR_IO
                                  ? RUMI_ERR_IO : RUMI_ERR_INTERNAL;
         return failf(status, "wrote %s but could not index it back: %s", path,

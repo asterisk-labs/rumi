@@ -154,8 +154,7 @@ def test_an_ml_float_without_ml_dtypes_stays_exportable(ml_float, monkeypatch):
 
 
 def test_a_rejected_capsule_keeps_the_consumer_error(ml_float):
-    # NumPy destroys the rejected capsule before clearing its own error. This
-    # used to call back into Python and replace that error with SystemError.
+    # Re-entering Python here used to replace NumPy's error with SystemError.
     path, header, _data = ml_float
     result = rumi.read(path, header, framework=None)
     try:

@@ -30,9 +30,8 @@ def _address(function) -> int:
     return ctypes.cast(function, ctypes.c_void_p).value or 0
 
 
-# Keep cleanup in C because a rejecting consumer destroys the capsule while
-# its exception is pending. Calling Python there replaces the useful error and
-# leaves the decoded buffer allocated.
+# Capsule destruction must not re-enter Python while a consumer's exception is
+# still pending.
 lib.rumi_dlpack_capsule_api(
     ffi.cast("rumi_capsule_is_valid_fn", _address(_pyapi.PyCapsule_IsValid)),
     ffi.cast("rumi_capsule_pointer_fn", _address(_pyapi.PyCapsule_GetPointer)))
@@ -155,7 +154,7 @@ class RumiArray:
         try:
             lib.rumi_dlpack_free(tensor)
         except Exception:
-            pass  # interpreter shutdown may unload lib before this object
+            pass
 
     def __repr__(self) -> str:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"

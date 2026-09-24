@@ -282,7 +282,7 @@ def test_write_blob_round_trip(tmp_path):
 
 
 def test_an_unwritable_path_is_an_os_error_that_names_it(tmp_path):
-    # Cross the old fixed buffer boundary so the full path must survive.
+    # Make the path longer than the old fixed error buffer.
     missing = tmp_path / "missing" / ("d" * 200) / "a.rumi"
     with pytest.raises(OSError, match="for writing") as raised:
         rumi.write(missing, make_frame())

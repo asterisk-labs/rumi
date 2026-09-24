@@ -140,7 +140,8 @@ void copy_rect(const FrameTask& t, const FrameSpec& spec,
     }
 }
 
-// Extract a missing custom codec ID from an OpenZL error message.
+// OpenZL reports a missing custom decoder as an invalid graph. Pull out the
+// CTid so the error can name the missing codec.
 bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
 {
     if (!ctx) return false;

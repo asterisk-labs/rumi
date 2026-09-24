@@ -14,7 +14,6 @@ namespace rumi {
 
 namespace {
 
-// Keep malformed data distinct from transport failures at the C boundary.
 RUMI_PRINTF_LIKE(1, 2)
 std::unexpected<Error> bad(const char* fmt, ...)
 {
@@ -25,8 +24,7 @@ std::unexpected<Error> bad(const char* fmt, ...)
     return std::unexpected(Error{RUMI_ERR_FORMAT, std::move(message)});
 }
 
-// A range past the advertised end proves the file is malformed. A short read
-// inside that boundary belongs to the transport instead.
+// Crossing the advertised end is malformed data, not a short transport read.
 std::expected<void, Error>
 read_at(Source& source, TransportSession& transport, std::uint64_t size,
         std::uint64_t off, void* dst, std::size_t n, const char* what)
@@ -152,8 +150,7 @@ try {
         return nullptr;
     };
 
-    // Keep every rule in one table so adding a tag cannot update order without
-    // also stating its type and whether it is scalar.
+    // Order, type and cardinality are one rule in the fixed profile.
     struct Required { std::uint16_t tag, type; bool single; };
     static constexpr Required REQUIRED[] = {
         {TAG_IMAGE_WIDTH,          TIFF_LONG,   true},

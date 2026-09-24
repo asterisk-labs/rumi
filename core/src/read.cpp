@@ -54,8 +54,7 @@ int env_threads() noexcept
     return n > MAX_THREADS ? MAX_THREADS : static_cast<int>(n);
 }
 
-// Keep PID, count and pinned state in one lock-free value. A child can then
-// discard the parent's state after fork without touching an inherited mutex.
+// A child must discard inherited state without touching the parent's mutex.
 constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
 constexpr std::uint32_t PINNED       = 0x80000000u;
 
@@ -239,7 +238,6 @@ std::size_t checked_size_product(std::size_t a, std::size_t b)
     return a * b;
 }
 
-// Name window fields to keep x and y ordering visible at planner call sites.
 struct Window {
     std::int64_t x_off;
     std::int64_t y_off;
@@ -247,7 +245,6 @@ struct Window {
     std::int64_t y_size;
 };
 
-// Store byte strides once so sample widths are not applied in several loops.
 struct OutStrides {
     std::int64_t pixel;
     std::int64_t line;
@@ -255,14 +252,12 @@ struct OutStrides {
     std::int64_t time;
 };
 
-// Group selected planes by frame so each compressed payload is decoded once.
 struct CellFrames {
     std::vector<std::uint64_t>                    index;
     std::vector<std::vector<std::pair<int, int>>> planes;
 };
 
-// Indexed axes produce one frame per selected position. Held axes keep their
-// selected planes together so one task can share the decoded payload.
+// Held axes share one decoded payload. Indexed axes use separate frames.
 void group_planes(const Header& h, std::uint32_t row, std::uint32_t col,
                   std::span<const int> times, std::span<const int> bands,
                   bool walks_t, bool walks_b, CellFrames& out)
@@ -286,8 +281,7 @@ void group_planes(const Header& h, std::uint32_t row, std::uint32_t col,
     }
 }
 
-// Find one output origin only when every selected plane keeps its decoded
-// offset. That proof lets the decoder bypass scratch storage safely.
+// A common origin means the decoder can write directly to the output.
 std::optional<std::int64_t>
 direct_origin(std::span<const std::int64_t> src,
               std::span<const std::int64_t> dst) noexcept
@@ -358,8 +352,7 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                             - plan.next_write_group) {
             throw std::length_error("read plan exceeds addressable memory");
         }
-        // Give one worker each output-plane tile row so two workers never
-        // fault and write the same pages at once.
+        // Workers get separate output-plane tile rows to avoid shared pages.
         const std::size_t group_base = plan.next_write_group;
         for (std::int64_t tx = tx_min; tx < tx_max; ++tx) {
             const std::int64_t tile_px = tx * tw;
@@ -387,8 +380,7 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
             if (unit_holds(unit, AXIS_TIME, B, T)) {
                 frame_bytes = checked_size_product(frame_bytes, T);
             }
-            // Direct decode is safe only when frame rows stay adjacent in the
-            // destination.
+            // Direct decode also requires adjacent destination rows.
             const bool packed_rows = full_tile && one_sample_stride
                 && out.line == ex_w * static_cast<std::int64_t>(bps);
 
@@ -491,7 +483,7 @@ decode_tasks(Executor& executor, const Plan& plan,
     if (!executor.error().empty()) {
         return fail(executor.status(), executor.error());
     }
-    // Keep a useful fallback when the failing worker could not allocate text.
+    // The worker may have failed before it could allocate an error message.
     return fail(executor.status(), executor.status() == RUMI_ERR_UNSUPPORTED
         ? "file uses a custom OpenZL codec this reader has not registered"
         : "read failed");
@@ -661,8 +653,7 @@ read_items(std::span<const ReadItem> items,
         }
     }
 
-    // Add the item label here so every validation and transport error gets the
-    // same batch context.
+    // Attach batch context at the common exit point.
     const auto item_error = [item_name](const ReadItem& item, rumi_status status,
                                         std::string message) {
         if (item_name) {

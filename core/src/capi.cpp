@@ -16,10 +16,9 @@
 
 // Error state.
 
-// Keep errors thread-local so concurrent C callers do not overwrite each other.
-
 namespace {
 
+// The public C API promises per-thread error text.
 thread_local std::string g_last_error;
 
 struct FreeDeleter {
@@ -43,8 +42,7 @@ rumi_status capi_call(F&& body) noexcept
         set_error("allocation failed");
         return RUMI_ERR_OOM;
     } catch (const std::length_error& e) {
-        // Containers use length_error before allocation when a requested plan
-        // cannot fit their address space. Report it as memory exhaustion.
+        // Containers may reject an impossible plan before they allocate it.
         set_error(e.what());
         return RUMI_ERR_OOM;
     } catch (const std::exception& e) {
@@ -1047,7 +1045,6 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
 
 namespace {
 
-// Convert once so write and base-offset queries validate time identically.
 std::expected<rumi::WriteDesc, std::string>
 to_write_desc(const rumi_write_desc& desc)
 {

@@ -821,8 +821,7 @@ void test_dlpack_wrappers()
     legacy->deleter(legacy);
 }
 
-// Model only the ownership fields used by the destructor. A real consumer
-// renames the capsule when it takes the pointer.
+// Only the name and pointer matter to the destructor.
 struct FakeCapsule {
     const char* name;
     void*       pointer;
@@ -880,7 +879,7 @@ void test_dlpack_capsule_destructor()
         return;
     }
     FakeCapsule old{"dltensor", legacy};
-    rumi_dlpack_capsule_destructor(&old);   // ASan proves both owners are freed
+    rumi_dlpack_capsule_destructor(&old);
     rumi_dlpack_capsule_api(nullptr, nullptr);
 }
 

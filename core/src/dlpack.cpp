@@ -36,8 +36,8 @@ extern "C" void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
     g_capsule_pointer.store(pointer, std::memory_order_release);
 }
 
-// PyCapsule_IsValid does not touch a pending exception. GetPointer is safe
-// after that check, so cleanup preserves the consumer's original error.
+// IsValid leaves the consumer's pending exception alone. GetPointer is safe
+// after a successful check.
 extern "C" void rumi_dlpack_capsule_destructor(void* capsule)
 {
     const auto is_valid = g_capsule_is_valid.load(std::memory_order_acquire);

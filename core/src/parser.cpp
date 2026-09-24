@@ -52,8 +52,7 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
-// Derive placement from the same inline threshold the writer uses. This keeps
-// parser and writer offsets identical when band or frame counts cross it.
+// These are the writer's inline thresholds. Offset reconstruction must match.
 std::uint64_t derived_base_offset(std::uint32_t bands,
                                   std::uint64_t frames) noexcept
 {
@@ -246,9 +245,7 @@ parse_blob(std::span<const std::byte> blob)
 
     h.base_frame_offset = derived_base_offset(bh.samples_per_pixel, h.frame_count);
 
-    // Variable counts need materialized counts and offsets, so enforce the
-    // budget before allocating. Constant counts remain implicit and cost no
-    // memory per frame.
+    // Constant counts stay implicit. Variable counts need both arrays.
     const bool index_too_large = !expanded_index_fits(h.frame_count, 1);
     if (index_too_large) {
         if (bh.count_bits != 0) {
