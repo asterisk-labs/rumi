@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- `geozl` is a plain dependency of `rumi-eo`, so `pip install rumi-eo` installs
+  everything writing needs. The `write` extra is gone.
+
 ## [0.24.0] - 2026-09-20
 
 ### Fixed

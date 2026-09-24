@@ -27,12 +27,6 @@ bands and time steps touch.
 pip install rumi-eo
 ```
 
-Writing also needs GeoZL:
-
-```bash
-pip install "rumi-eo[write]"
-```
-
 Python 3.11 or newer is required.
 
 ## Quick start
