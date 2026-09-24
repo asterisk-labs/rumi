@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="820" height="210" viewBox="0 0 820 210" role="img" aria-labelledby="title desc">
   <title id="title">Frame offsets reconstructed from a base offset and byte counts</title>
-  <desc id="desc">The metadata region ends at base offset 500. Four contiguous frame counts of 100, 103, 101, and 100 bytes produce offsets 500, 600, 703, and 804. The time trailer starts at 904.</desc>
+  <desc id="desc">The metadata region ends at base offset 500. Four contiguous frame counts of 100, 103, 101, and 100 bytes produce offsets 500, 600, 703, and 804. The trailer starts at 904.</desc>
   <style>
     svg{background:#fff}text{font-family:Arial,Helvetica,sans-serif;fill:#171717}.label{font-size:10px;font-weight:700;letter-spacing:.1em}.main{font-size:11px;font-weight:700;text-anchor:middle}.sub{font-size:9px;fill:#656565;text-anchor:middle}.meta,.time{fill:#f2f2f2;stroke:#999}.frame{fill:#fff;stroke:#777}.tick{stroke:#171717;stroke-width:1}
   </style>
@@ -16,7 +16,7 @@
   <text class="main" x="340" y="88">frame 1</text><text class="sub" x="340" y="106">103 bytes</text>
   <text class="main" x="468.5" y="88">frame 2</text><text class="sub" x="468.5" y="106">101 bytes</text>
   <text class="main" x="594.5" y="88">frame 3</text><text class="sub" x="594.5" y="106">100 bytes</text>
-  <text class="main" x="728.5" y="88">time trailer</text><text class="sub" x="728.5" y="106">starts after last frame</text>
+  <text class="main" x="728.5" y="88">trailer</text><text class="sub" x="728.5" y="106">starts after last frame</text>
   <path class="tick" d="M150 55V130M275 55V130M405 55V130M532 55V130M657 55V130"/>
   <text class="sub" x="150" y="149">base = 500</text>
   <text class="sub" x="275" y="149">600</text>

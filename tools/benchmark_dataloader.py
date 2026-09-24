@@ -129,7 +129,12 @@ def prepare_data(args: argparse.Namespace) -> Path:
                 )
             frame.compressed = geozl.compress(frame.data, graph=graph)
         name = f"scene-{index:03d}.rumi"
-        path, header = rumi.write(directory / name, frames)
+        path, header = rumi.write(
+            directory / name,
+            frames,
+            bands=[f"Synthetic band {b + 1}" for b in range(args.bands)],
+            time=["2024-01-01"],
+        )
         files.append({
             "path": Path(path).name,
             "header": base64.b64encode(header).decode("ascii"),

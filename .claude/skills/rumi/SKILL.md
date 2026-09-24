@@ -30,6 +30,10 @@ This skill describes **rumi 0.24.1** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.2.2). C
 - Rumi never compresses. Assign `frame.compressed` for every frame, usually
   `geozl.compress(frame.data, ...)`; `rumi.write` stores the payloads and returns
   `(path, header)`.
+- Every file names its bands and dates its steps. `rumi.write` requires `bands=`, one
+  text per band, and `time=`, one date, datetime or `(start, end)` pair per step. Both
+  go in a trailer after the frames, so they never move a frame and a read never touches
+  them.
 - The header is a small `bytes` index. `read` and `read_many` need it, so keep it beside
   the file in a catalog or manifest; `rumi.info(source=path).header` rebuilds it.
 - Reads take zero-based `time`, `bands` and `window=(row, column, height, width)` plus an
@@ -52,13 +56,15 @@ for frame in frames:                        # edge frames may be smaller than th
 
 path, header = rumi.write(
     "scene.rumi", frames,
+    bands=["B2, Blue, 492nm", "B3, Green, 560nm", "B4, Red, 665nm", "B8, NIR, 833nm"],
+    time=["2024-08-25"],
     transform=(10.0, 0.0, 500000.0, 0.0, -10.0, 8000000.0), crs="EPSG:32718",
 )
 
 chip = rumi.read(path, header, bands=[3, 0], window=(0, 0, 256, 256))     # (2, 256, 256)
 batch = rumi.read_many([path, path], [header, header],
                        windows=[(0, 0, 256, 256), (512, 768, 256, 256)])  # (2, 4, 256, 256)
-meta = rumi.info(source=path)     # shape, dtype, tile, frame_layout, time, transform, crs
+meta = rumi.info(source=path)     # shape, dtype, bands, time, transform, crs
 ```
 
 ## Choosing a layout
@@ -106,14 +112,18 @@ band or time selection. Measure compression when more than one layout fits the r
   0.21.3 raised `SystemError` there and needed `framework="torch"`.
 - **`transform` uses rasterio `Affine` order** `(x_res, row_rot, x_origin, col_rot, y_res,
   y_origin)`, not a GDAL geotransform, and needs an EPSG `crs`. `time` takes one entry per
-  step, in whole UTC seconds.
+  step, in whole UTC seconds; a step without a single instant, such as a DEM or an annual
+  composite, takes a `(start, end)` interval.
+- **Band texts** are non-empty, unique and free of NUL. The recommended text gives the
+  band name, a short description and the wavelength, as in
+  `"B4, Red, 664.5nm (S2A) / 665nm (S2B)"`.
 - **Writing is local.** `rumi.write` truncates its target and removes it when the write
   fails after opening; write a new local file, then move or upload it.
 
 ## Reference map
 
 Read only the reference relevant to the current task. Each one names its sources in the
-repository, and its examples were run against rumi 0.24.0.
+repository, and its examples were run against the version it names.
 
 | Task | Read |
 | --- | --- |
@@ -122,7 +132,7 @@ repository, and its examples were run against rumi 0.24.0.
 | Writing: GeoZL graphs per layout, lossy frames, time, georeferencing, headers | [references/writing.md](references/writing.md) |
 | Reading: selections, batches, DataLoader, threads, DLPack, cloud sources | [references/reading.md](references/reading.md) |
 | Sample types: sub-byte, `bool`, complex, ML floats, framework support | [references/dtypes.md](references/dtypes.md) |
-| File layout, header blob, offsets, time trailer, an independent reader | [references/format.md](references/format.md) |
+| File layout, header blob, offsets, trailer, an independent reader | [references/format.md](references/format.md) |
 | C API (`rumi.h`): ownership, threading, linking, compiled examples | [references/c-api.md](references/c-api.md) |
 | Compatibility policy, dependency pins, version history, format changes | [references/compatibility.md](references/compatibility.md) |
 | Repository layout, build, tests, fuzzing, docs site, CI, release | [references/contributing.md](references/contributing.md) |

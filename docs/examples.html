@@ -90,7 +90,17 @@ for frame in frames:
     graph = geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = geozl.compress(frame.data, graph=graph)
 
-image_path, image_header = rumi.write("image.rumi", frames)
+image_path, image_header = rumi.write(
+    "image.rumi",
+    frames,
+    bands=[
+        "B2, Blue, 496.6nm (S2A) / 492.1nm (S2B)",
+        "B3, Green, 560nm (S2A) / 559nm (S2B)",
+        "B4, Red, 664.5nm (S2A) / 665nm (S2B)",
+        "B8, NIR, 835.1nm (S2A) / 833nm (S2B)",
+    ],
+    time=["2026-01-01"],
+)
 image_again = rumi.read(image_path, image_header)</code></pre>
             </div>
             <div data-language-panel="r" data-coming-soon>
@@ -101,6 +111,7 @@ image_again = rumi.read(image_path, image_header)</code></pre>
             </div>
           </div>
           <p><code>image_path</code> identifies the durable file. <code>image_header</code> is the compact external index to keep with that object in a catalogue or dataset manifest.</p>
+          <p>Every file names each band and dates each time step. <code>bands</code> takes one text per band, in band order; the recommended text gives the band name, a short description and the wavelength.</p>
           <div class="callout">
             <span>Every frame is explicit</span>
             <p><code>rumi.frames</code> creates decoded frame views. The loop chooses an OpenZL graph and assigns the compressed payload for every frame. <code>rumi.write</code> refuses an incomplete table.</p>
@@ -178,6 +189,12 @@ for frame in cube_frames:
 cube_path, cube_header = rumi.write(
     "cube.rumi",
     cube_frames,
+    bands=[
+        "B2, Blue, 496.6nm (S2A) / 492.1nm (S2B)",
+        "B3, Green, 560nm (S2A) / 559nm (S2B)",
+        "B4, Red, 664.5nm (S2A) / 665nm (S2B)",
+        "B8, NIR, 835.1nm (S2A) / 833nm (S2B)",
+    ],
     time=["2026-01-01", "2026-02-01", "2026-03-01"],
 )</code></pre>
             </div>
@@ -403,7 +420,7 @@ tf_chip = rumi.read(
         <section class="guide-section" id="metadata">
           <div class="section-label"><span>09</span><small>Metadata</small></div>
           <h2>Inspect a file and recover its header</h2>
-          <p class="section-intro">A Rumi file remains self-describing. If the external header is missing, <code>info</code> reconstructs the canonical header and also exposes georeferencing and time metadata stored in the file.</p>
+          <p class="section-intro">A Rumi file remains self-describing. If the external header is missing, <code>info</code> reconstructs the canonical header and also exposes the band texts, time and georeferencing stored in the file.</p>
           <div class="code-group" data-code-group>
             <div data-language-panel="python">
               <pre><code>metadata = rumi.info(source="cube.rumi")
@@ -412,6 +429,7 @@ recovered_header = metadata.header
 print(metadata.shape)         # (3, 4, 1024, 1024)
 print(metadata.tile)          # (256, 256)
 print(metadata.frame_layout)  # h w for the tile-frame Cube
+print(metadata.bands)         # the four band texts
 print(metadata.time)          # the three recorded dates
 
 # Supplying both validates the index against the source.
@@ -429,7 +447,7 @@ checked = rumi.info(
           </div>
           <div class="choice-grid">
             <div><b>Header only</b><p><code>rumi.info(header=...)</code> describes the compact read index without opening the source.</p></div>
-            <div><b>Source included</b><p><code>rumi.info(source=...)</code> also returns transform, CRS, time coordinates, and a rebuilt header.</p></div>
+            <div><b>Source included</b><p><code>rumi.info(source=...)</code> also returns band texts, time coordinates, transform, CRS, and a rebuilt header.</p></div>
           </div>
         </section>
 

@@ -8,12 +8,12 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 1. The policy
 2. Pinned dependencies
 3. Deploying readers and writers
-4. Breaking changes since the file baseline
+4. Breaking changes
 5. Changing the format or an API
 
 ## 1. The policy
 
-- **Files.** Current readers open canonical files written by Rumi 0.18.0 and later.
+- **Files.** Current readers open canonical files written by Rumi 0.25.0 and later.
   Earlier files are unsupported. The format may still change before 1.0, and any break is
   recorded in `CHANGELOG.md`.
 - **Writers.** The guarantee covers files written by `rumi.write` and `rumi_write`. The
@@ -29,15 +29,16 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.24.0 | Where it is pinned |
+| Component | Rumi 0.25.0 | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.18.0 | `extern/geozl` submodule; `geozl>=0.18.0,<0.19` in the `write` and `test` extras |
+| GeoZL | 0.18.0 | `extern/geozl` submodule; `geozl>=0.18.0,<0.19` in the package dependencies |
 | OpenZL | 0.2.0 | through GeoZL's submodule |
 | Karu | 0.2.2 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |
 
-- `tools/check_release.py` fails when the extras do not read `geozl>=X.Y.Z,<X.(Y+1)` for
-  the submodule's `VERSION`, or when `NOTICE` names another Karu version.
+- `tools/check_release.py` fails when the dependencies do not read
+  `geozl>=X.Y.Z,<X.(Y+1)` for the submodule's `VERSION`, or when `NOTICE` names another
+  Karu version.
 - Frames: GeoZL 0.18 reads frames from GeoZL 0.14 onward. Sentinel frames written by
   0.17 require a 0.17 reader, and MED frames written by 0.18 require a 0.18 reader.
   Fused planar frames require Rumi 0.19.0 or later.
@@ -53,24 +54,26 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 - Headers can always be rebuilt from their files with `rumi.info(source=...)`. Files
   written before a format break are not readable afterwards and must be rewritten.
 
-## 4. Breaking changes since the file baseline
+## 4. Breaking changes
 
 | Version | Change |
 | --- | --- |
+| 0.25.0 | Every file names each band and labels each time step: `rumi.write` requires `bands=` and `time=`, and the trailer (`TAIL`) stores the band texts before the time axis. Undefined time is gone. `info(source=...)` refuses files written by 0.24 and earlier, so their headers cannot be rebuilt (the current file baseline). C adds `band_texts` to `rumi_write_desc` and `rumi_metadata`. |
 | 0.20.0 | `read` and `read_many` require a header for every source. Removed `rumi.chunks`, `RumiHeader`, `Geo`, `Time`, `read_geo` and `read_time` (use `info` and `Metadata`); the `n`, `t`, `b`, `y`, `x` read keywords (use `time`, `bands`, `window`, and source order); multi-source `read` (use `read_many`). C removed `rumi_read_stack`, `rumi_read_stack_dlpack`, `rumi_index_file`, `rumi_read_geo`, `rumi_read_time`. |
-| 0.18.0 | Files start with the 16-byte `RUMI` header instead of a BigTIFF header (the current file baseline). Reads lost `num_threads`; the process-wide pool replaced it. C layout and read APIs gained time axes. |
+| 0.18.0 | Files start with the 16-byte `RUMI` header instead of a BigTIFF header. Reads lost `num_threads`; the process-wide pool replaced it. C layout and read APIs gained time axes. |
 | 0.17.0 | 13-tag, 276-byte IFD and 32-byte header. `rumi.frames` takes an axis pattern instead of `unit`. |
 
-Additions since the baseline, for orientation: Cubes and `time=` (0.18.0), GeoZL 0.16
-(0.19.0), `info` and `read_many` (0.20.0), `Metadata` displays (0.21.0), the Karu 0.2
-transport line (0.21.0 onward).
+Additions, for orientation: Cubes and `time=` (0.18.0), GeoZL 0.16 (0.19.0), `info` and
+`read_many` (0.20.0), `Metadata` displays (0.21.0), the Karu 0.2 transport line (0.21.0
+onward), band texts and `Metadata.bands` (0.25.0).
 
 ## 5. Changing the format or an API
 
 A format change (file header, IFD, header blob, trailer, a registry):
 
 - `SPEC.md` and its figures in `img/`; the specification is normative.
-- `core/src/parser.cpp`, `builder.cpp`, `write.cpp`, `time.cpp`, `geokeys.cpp` as needed.
+- `core/src/parser.cpp`, `builder.cpp`, `write.cpp`, `trailer.cpp`, `geokeys.cpp` as
+  needed.
 - The independent parsers and golden digests: `bindings/python/tests/test_spec.py`,
   `test_writer.py` (`GOLDEN`, "update only for an intentional format change"),
   `test_independent_reader.py`, and `core/tests/test_core.cpp`.

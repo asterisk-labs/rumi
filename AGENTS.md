@@ -6,7 +6,7 @@ transport from the submodules in `extern/`.
 
 ## Working agreements
 
-- `SPEC.md` is normative. A change to the file layout, header blob, time trailer or a
+- `SPEC.md` is normative. A change to the file layout, header blob, trailer or a
   registry updates the specification, the independent parsers and golden digests in the
   Python tests, and the fuzz seeds together, and is recorded in `CHANGELOG.md`.
 - Keep format decisions and validation in `core/`. Bindings only convert language

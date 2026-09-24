@@ -138,7 +138,8 @@ print(lib.rumi_openzl_format_version(), lib.rumi_get_max_frame_bytes())   # 24 1
 ## 4. Inspecting files, headers and plans
 
 - `rumi.info(source=path)` prints shape, dtype, tile, layout, index order, frame count,
-  time, transform and CRS; `rumi.info(header=h)` does the same from the header alone.
+  band texts, time, transform and CRS; `rumi.info(header=h)` does the same from the
+  header alone.
 - `print(frames)` shows each frame's shape and payload size before writing;
   `frames.to_pandas()` gives the same as a DataFrame.
 - To see which byte ranges a read would fetch, call `rumi_plan_ranges` from C

@@ -4,7 +4,7 @@ The public header is `core/include/rumi/rumi.h`; it includes `rumi_dtypes.def` a
 `dlpack/dlpack.h`. Other sources: `core/src/capi.cpp`, `core/tests/test_c_header.c`,
 `core/CMakeLists.txt`, and `bindings/python/rumi/_ffi.py`, whose hand-written cdef is the
 reference caller. Both examples compile with `-std=c11 -Wall -Wextra` and ran against a
-0.24.0 build.
+0.25.0 build.
 
 ## Contents
 
@@ -71,7 +71,7 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 
 Band index 2 of `a.rumi` (a `(4, 300, 300)` uint16 Image stored as `b h w`), rows 10 to
 73 and columns 20 to 83. It printed the same sum as the equivalent `rumi.read` and one
-range, `560 +89015`: a single-band read of a cell layout still fetches the whole cell.
+range, `560 +116791`: a single-band read of a cell layout still fetches the whole cell.
 
 ```c
 #include <stdio.h>
@@ -206,8 +206,10 @@ first frame at byte 500
 `rumi_read_many` takes an array of `rumi_read_item { source, spec, y_off, x_off }` plus
 one shared `y_size` and `x_size`. Its default pattern keeps `n`, and a custom pattern
 must include `n` for more than one item. `rumi_info(source, header, header_size, &out)`
-accepts either input or both; `has_source` says whether time and georeferencing were
-read.
+accepts either input or both; `has_source` says whether band texts, time and
+georeferencing were read. With a source, `band_texts` holds `band_text_count`
+NUL-terminated UTF-8 strings in band order, released with the rest of the metadata by
+`rumi_metadata_free`.
 
 Bindings that create `PyCapsule` objects without including `Python.h` may register
 `PyCapsule_IsValid` and `PyCapsule_GetPointer` with `rumi_dlpack_capsule_api`. They can
@@ -221,8 +223,10 @@ destructor leaves accepted tensors alone.
 
 - Fill `rumi_write_desc`: image and tile sizes, `samples_per_pixel`, `dtype`,
   `frame_unit` from `rumi_frame_unit`, `transform` (six doubles in `Affine` order) with
-  `epsg`, or `NULL` and 0, `pixel_is_point`, and time as `time_type` (0 undefined,
-  1 interval, 2 instant) with `time_count` or `2 * time_count` POSIX seconds.
+  `epsg`, or `NULL` and 0, `pixel_is_point`, `band_texts` with `band_text_count` (one
+  NUL-terminated UTF-8 text per band, non-empty and unique), and time as `time_type`
+  (1 interval, 2 instant) with `time_count` or `2 * time_count` POSIX seconds.
+  `rumi_write` requires both; `rumi_write_base_offset` does not need them.
 - Pass `frame_count` payload pointers and sizes in frame-index order. `rumi_frame_locate`
   gives each frame's position and decoded `dims`; `perm` maps a cut ordered as
   (held band, held time, h, w) to those dims.

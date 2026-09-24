@@ -2,10 +2,10 @@
 
 `SPEC.md` is normative and self-contained; read it before changing the parser, builder
 or writer. This file condenses it. Other sources: `core/src/parser.cpp`,
-`core/src/builder.cpp`, `core/src/write.cpp`, `core/src/time.cpp`, and the independent
-parsers in `bindings/python/tests/test_writer.py`, `test_spec.py` and
+`core/src/builder.cpp`, `core/src/write.cpp`, `core/src/trailer.cpp`, and the
+independent parsers in `bindings/python/tests/test_writer.py`, `test_spec.py` and
 `test_independent_reader.py`. The reader in section 8 ran against files written by
-0.21.3.
+0.25.0.
 
 ## Contents
 
@@ -14,7 +14,7 @@ parsers in `bindings/python/tests/test_writer.py`, `test_spec.py` and
 3. The fixed IFD
 4. The header blob
 5. Frame offsets
-6. The time trailer
+6. The trailer
 7. What readers must reject
 8. An independent reader in Python
 9. Versions
@@ -23,7 +23,7 @@ parsers in `bindings/python/tests/test_writer.py`, `test_spec.py` and
 
 - **The `.rumi` file** holds the frames plus everything needed to rebuild the header:
   a 16-byte file header, one fixed IFD, the IFD's external values, contiguous frames and
-  a time trailer. All numbers are little-endian.
+  a trailer with the band texts and time. All numbers are little-endian.
 - **The header blob** is 32 bytes plus packed frame sizes. A writer or indexer builds it
   from the finished file after checking every duplicated value, so a reader may trust it
   and skip the IFD, the trailer and the file size.
@@ -37,7 +37,7 @@ parsers in `bindings/python/tests/test_writer.py`, `test_spec.py` and
 16                   IFD           u64 count 13, 13 x 20-byte entries, u64 next IFD 0 (276 bytes)
 292                  external      values larger than 8 bytes, rising tag order, no padding
 base_frame_offset    frames        frame-index order, contiguous, every size > 0
-end of last frame    time trailer  28 bytes + packed residuals; the file ends here
+end of last frame    trailer       "TAIL", u16 version 1, band texts, time fields, residuals; the file ends here
 ```
 
 ## 3. The fixed IFD
@@ -121,24 +121,33 @@ A frame's decoded size is `h * w` samples for tile frames and `B * T * h * w` fo
 frames, times the bytes per sample (1 below 8 bits). The frame index formulas are in
 `patterns.md` section 4.
 
-## 6. The time trailer
+## 6. The trailer
+
+The trailer runs from the end of the last frame to the end of the file. It sits after the
+frames so its size never moves one, and nothing in it locates, decodes or converts a
+frame; a read that only needs samples never opens it.
 
 | Offset | Size | Type | Field |
 | ---: | ---: | --- | --- |
-| 0 | 4 | u32 | magic `0x454D4954` (`TIME`) |
+| 0 | 4 | u32 | magic `0x4C494154` (`TAIL`) |
 | 4 | 2 | u16 | version, 1 |
-| 6 | 1 | u8 | time_type: 0 undefined, 1 interval, 2 instant |
-| 7 | 1 | u8 | time_bits, 0 to 64 |
-| 8 | 8 | i64 | time_epoch |
-| 16 | 8 | i64 | time_step |
-| 24 | 4 | u32 | time_scale: 86400 when every coordinate is a whole day, else 1 |
+| 6 | S | | `B` band texts in band order, each a u16 byte length then UTF-8 bytes |
+| 6 + S | 1 | u8 | time_type: 1 interval, 2 instant |
+| 7 + S | 1 | u8 | time_bits, 0 to 64 |
+| 8 + S | 8 | i64 | time_epoch |
+| 16 + S | 8 | i64 | time_step |
+| 24 + S | 4 | u32 | time_scale: 86400 when every coordinate is a whole day, else 1 |
 
-- `C` coordinates follow: 0 undefined, `T` instants, `2T` interval ends.
+- A band text is non-empty UTF-8 without the byte `0x00`, and no two texts in a file are
+  equal. The recommended text gives the band name, a short description and the
+  wavelength, such as `B4, Red, 664.5nm (S2A) / 665nm (S2B)`.
+- `C` coordinates follow the time fields: `T` instants or `2T` interval ends. Every step
+  has a coordinate; a DEM or an annual composite takes an interval.
 - `time_epoch = time(0)`; `time_step = round((time(C-1) - time(0)) / (C-1))` with halves
   toward positive infinity, or 0 when `C < 2`.
 - `residual(i) = time(i) - (time_epoch + i * time_step)`, zigzag mapped
   (`2x` or `-2x - 1`) and packed like frame sizes at the minimum `time_bits`.
-- Undefined time is exactly 28 bytes: type 0, bits 0, epoch 0, step 0, scale 1.
+- The trailer is exactly `28 + S + ceil(C * time_bits / 8)` bytes.
 
 ## 7. What readers must reject
 
@@ -151,6 +160,8 @@ frames, times the bytes per sample (1 below 8 bits). The frame index formulas ar
   the frames, `TileOffsets` that differ from the prefix sums, and zero frame sizes.
 - A blob whose size, `count_min` or `count_bits` is not canonical; a trailer whose scale,
   epoch, step, bits, padding or coordinate order is not canonical.
+- Band texts that are empty, not UTF-8, contain `0x00` or repeat; a `time_type` other
+  than 1 or 2; bytes after the residuals.
 - Anything whose derived size or offset overflows, or exceeds the reader's resource
   limits (checked before allocating).
 
@@ -205,6 +216,26 @@ def read_tile(data, h, band, time, row, col):
     rows = min(tile_l, h["length"] - row * tile_l)
     cols = min(tile_w, h["width"] - col * tile_w)
     return samples.view(h["dtype"]).reshape(rows, cols)
+
+
+def read_trailer(data, h):
+    """Band texts, the time kind and every coordinate in POSIX seconds."""
+    at = h["offsets"][-1] + h["counts"][-1]
+    if data[at:at + 4] != b"TAIL" or struct.unpack_from("<H", data, at + 4) != (1,):
+        raise ValueError("no trailer where the frames end")
+    pos, texts = at + 6, []
+    for _ in range(h["bands"]):
+        (n,) = struct.unpack_from("<H", data, pos)
+        texts.append(data[pos + 2:pos + 2 + n].decode("utf-8"))
+        pos += 2 + n
+    kind, bits, epoch, step, scale = struct.unpack_from("<BBqqI", data, pos)
+    packed = int.from_bytes(data[pos + 22:], "little")
+    seconds = []
+    for i in range(h["times"] * (2 if kind == 1 else 1)):
+        z = (packed >> (i * bits)) & ((1 << bits) - 1)
+        residual = z >> 1 if z % 2 == 0 else -((z >> 1) + 1)
+        seconds.append((epoch + i * step + residual) * scale)
+    return texts, kind, seconds
 ```
 
 - For cell frames use `k = row * across + col` and reshape to the unit's axes, such as
@@ -212,11 +243,12 @@ def read_tile(data, h, band, time, row, col):
 - `geozl.coeffs(frame_bytes(data, h, k))` returns integer coefficients a writer stored
   in that frame.
 - Remote files need only ranged reads of `frame_bytes`; the header supplies every range.
+  `read_trailer` needs one more, from the end of the last frame to the end of the file.
 
 ## 9. Versions
 
 - `SPEC.md` declares specification 0.1.0, status Draft. The file header, header blob and
   trailer are each version 1.
-- Readers open files written by Rumi 0.18.0 and later (`compatibility.md`).
+- Readers open files written by Rumi 0.25.0 and later (`compatibility.md`).
 - The `frame_unit` and sample type registries are append-only: values are never
   reassigned.

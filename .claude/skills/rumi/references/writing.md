@@ -1,9 +1,9 @@
 # Writing
 
 Sources: `bindings/python/rumi/_write.py` and `_time.py`, `core/src/write.cpp`,
-`core/src/time.cpp`, `core/src/geokeys.cpp`, the Georeferencing, Time coordinates and
-Header blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against rumi
-0.24.0 with geozl 0.18.0.
+`core/src/trailer.cpp`, `core/src/geokeys.cpp`, the Georeferencing, Trailer and Header
+blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against rumi 0.25.0
+with geozl 0.18.0.
 
 ## Contents
 
@@ -12,7 +12,7 @@ Header blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against 
 3. GeoZL geometry per layout
 4. Lossy and NoData frames
 5. What a payload must decode to
-6. Time coordinates
+6. Band texts and time
 7. Georeferencing
 8. Headers and catalogs
 9. Memory, parallel compression and failures
@@ -23,9 +23,9 @@ Header blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against 
 array --rumi.frames--> FrameTable --you compress--> payloads --rumi.write--> (path, header)
 ```
 
-Rumi checks structure (frame count, shapes, dtype, sub-byte padding, time and CRS
-rules) and never decodes a payload. Compression, recipe choice and lossy bounds belong to
-the caller, usually through GeoZL.
+Rumi checks structure (frame count, shapes, dtype, sub-byte padding, band text, time and
+CRS rules) and never decodes a payload. Compression, recipe choice and lossy bounds
+belong to the caller, usually through GeoZL.
 
 ## 2. Compressing frames with GeoZL
 
@@ -41,7 +41,7 @@ for frame in frames:
         graph = graphs[frame.shape] = geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = geozl.compress(frame.data, graph=graph)
 
-path, header = rumi.write("scene.rumi", frames)
+path, header = rumi.write("scene.rumi", frames, bands=bands, time=["2026-01-01"])
 ```
 
 - A graph built per frame (as in `SKILL.md`) and a graph cached per `frame.shape` write
@@ -85,8 +85,8 @@ products differ more, so profile.
 - NaN handling is decided when the graph is built. A per-frame graph with `nodata=None`
   turns on NaN mode for frames that contain NaN; a shared graph needs
   `nodata=float("nan")`.
-- Rumi stores no NoData value, scale, offset or band names. Keep them in the catalog, or
-  as integer GeoZL coefficients inside each frame
+- Rumi stores no NoData value, scale or offset. Keep them in the catalog, or as integer
+  GeoZL coefficients inside each frame
   (`geozl.compress(..., coeffs=[[10000, 0]])`); Rumi carries them without reading them.
 
 ## 5. What a payload must decode to
@@ -114,34 +114,54 @@ Each payload must be non-empty and below 4 GiB (its size is a `uint32`). The lin
 OpenZL accepts frame format versions up to 24 in 0.24.0
 (`rumi._ffi.lib.rumi_openzl_format_version()`).
 
-## 6. Time coordinates
+## 6. Band texts and time
 
-`time=` labels the steps of a Cube, or the single step of an Image. Omit it and the file
-records undefined time (`Metadata.time == []`).
+Every file names each band and labels each time step. Both are required, and both go in
+the trailer after the frames, so they never move a frame and a read never opens them.
 
 ```python
-rumi.write("cube.rumi", frames, time=["2026-01-01", "2026-02-01", "2026-03-01"])
-rumi.write("cube.rumi", frames, time=[("2026-01-01", "2026-01-16"),
-                                      ("2026-02-01", "2026-02-15"),
-                                      ("2026-03-01", "2026-03-10")])
+bands = ["B4, Red, 664.5nm (S2A) / 665nm (S2B)", "B8, NIR, 835.1nm (S2A) / 833nm (S2B)"]
+rumi.write("scene.rumi", frames, bands=bands, time=["2026-01-01"])
+rumi.write("cube.rumi", cube_frames, bands=bands,
+           time=["2026-01-01", "2026-02-01", "2026-03-01"])
+rumi.write("cube.rumi", cube_frames, bands=bands,
+           time=[("2026-01-01", "2026-01-16"), ("2026-02-01", "2026-02-15"),
+                 ("2026-03-01", "2026-03-10")])
 ```
 
-- Entries: `datetime.date`, `datetime.datetime`, ISO date or datetime strings, or
+- `bands` is a list of `str`, one per band in band order. Each text is non-empty, free of
+  NUL, at most 65535 bytes of UTF-8, and different from the others. The recommended text
+  gives the band name, a short description and the wavelength, as in Earth Engine's band
+  tables. Rumi stores the text and never interprets it.
+- Time entries: `datetime.date`, `datetime.datetime`, ISO date or datetime strings, or
   `numpy.datetime64`. The outer value is a list (or other iterable) with one entry per
-  step; a `(start, end)` tuple is one interval.
+  step; a `(start, end)` tuple is one interval. A step without a single instant, such as
+  a DEM or an annual composite, takes an interval.
 - UTC, whole seconds. Naive datetimes are UTC; aware datetimes and ISO offsets are
   converted (`"2026-01-03T10:30:00+02:00"` is stored as 08:30 UTC). A fraction of a second
   is refused.
 - Instants never decrease. Intervals have `start < end` and may meet or leave gaps, but
   never overlap.
 - Storage is days when every coordinate is a whole UTC day, else seconds, as residuals
-  from a straight line. A regular series costs nothing beyond the 28-byte trailer.
-- `rumi.info(source=...)` returns each whole-day coordinate as `datetime.date` and others
-  as UTC `datetime`; intervals come back as tuples and `time_kind` says which. The header
-  carries no time.
+  from a straight line. A regular series costs nothing beyond the fixed 28 bytes and the
+  band texts.
+- `rumi.info(source=...)` returns `bands` and `time`: each whole-day coordinate as
+  `datetime.date` and others as UTC `datetime`; intervals come back as tuples and
+  `time_kind` says which. The header carries neither.
+
+| `bands=` | Error |
+| --- | --- |
+| missing | `TypeError: write() missing 1 required keyword-only argument: 'bands'` |
+| two texts for three bands | `ValueError: a file with 3 bands needs one text per band; got 2` |
+| `"B4, Red"` | `TypeError: bands is a list with one text per band; wrap a single text as bands=['B4, Red']` |
+| a repeated text | `ValueError: bands 0 and 2 have the same text` |
+| `""` | `ValueError: band 1 has an empty text` |
+| a text with `"\x00"` | `ValueError: band 1 text contains a NUL character, which a C string cannot carry` |
+| a text over 65535 bytes | `ValueError: band 0 text is 65536 bytes, past the 65535 a trailer stores` |
 
 | `time=` | Error |
 | --- | --- |
+| `None` | `TypeError: every file labels its time steps; pass one date per step, or a (start, end) pair for a step without a single instant` |
 | one entry for three steps | `ValueError: a instant axis needs one entry per time step, so 3 of them; got 1` |
 | `"2026-01-01"` | `TypeError: time is a list with one entry per time step; wrap a single coordinate as time=['2026-01-01']` |
 | `("2026-01-01", "2026-01-02")` | `TypeError: a tuple is one step's start and end, so it cannot be the list of steps; wrap it as time=[(start, end)]` |
@@ -156,8 +176,10 @@ rumi.write("cube.rumi", frames, time=[("2026-01-01", "2026-01-16"),
 ```python
 from affine import Affine
 
-rumi.write("scene.rumi", frames, transform=src.transform, crs=src.crs)   # rasterio dataset
-rumi.write("scene.rumi", frames, transform=Affine.from_gdal(*geotransform), crs=32718)
+rumi.write("scene.rumi", frames, bands=bands, time=time,
+           transform=src.transform, crs=src.crs)            # a rasterio dataset
+rumi.write("scene.rumi", frames, bands=bands, time=time,
+           transform=Affine.from_gdal(*geotransform), crs=32718)
 ```
 
 - `transform` is `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`, the order of
@@ -179,7 +201,7 @@ rumi.write("scene.rumi", frames, transform=Affine.from_gdal(*geotransform), crs=
 - `header` is `32 + ceil(N * count_bits / 8)` bytes. Files with equal structure and equal
   frame sizes have equal headers.
 - It holds image and tile sizes, band and time counts, sample type, frame unit and frame
-  sizes. It holds no time, transform, CRS, NoData or band names.
+  sizes. It holds no band texts, time, transform, CRS or NoData.
 - Store it next to the path: a binary column in Parquet or Arrow, a database blob, or a
   sidecar file. The public fixtures use `headers/<name>.header` beside
   `data/<name>.rumi`.
@@ -219,6 +241,7 @@ with ThreadPoolExecutor(8) as pool:
   truncation. A failure after that removes the file, including a file that existed
   before, so write under a new name and rename.
 - Writer-side refusals: `expected N frames for this grid, got M`, `frame N has an empty
-  payload`, `frame N is X bytes, over the uint32 the header holds`, and `N variable-size
+  payload`, `frame N is X bytes, over the uint32 the header holds`, `N variable-size
   frames need an expanded index larger than this reader accepts` (above 5,592,405 frames
-  of varying size).
+  of varying size), and `the trailer would be N bytes, past the 67108864 a reader
+  accepts`.

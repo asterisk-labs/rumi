@@ -1,8 +1,8 @@
 # Python API
 
-Everything here is `rumi` 0.24.0 as implemented in `bindings/python/rumi/`
+Everything here is `rumi` 0.25.0 as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_checksums.py`,
-and `_ffi.py`). The examples and messages were captured from a 0.24.0 build.
+and `_ffi.py`). The examples and messages were captured from a 0.25.0 build.
 
 ## Contents
 
@@ -90,7 +90,7 @@ empty payload `ValueError: frame 0 is empty`. `attach` refuses reserved names
 ## 3. `write`
 
 ```text
-rumi.write(path, tf, *, transform=None, crs=None, pixel_is_point=False, time=None)
+rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=False)
     -> (path, header)
 ```
 
@@ -98,17 +98,18 @@ rumi.write(path, tf, *, transform=None, crs=None, pixel_is_point=False, time=Non
 | --- | --- |
 | `path` | local filesystem path; returned unchanged. Remote URIs fail with `could not open s3://... for writing` |
 | `tf` | a `FrameTable` with every payload assigned |
+| `bands` | required; one `str` per band, in band order, non-empty, unique and free of NUL (`writing.md`) |
+| `time` | required; one entry per time step: date, datetime, ISO string or `numpy.datetime64` for instants, `(start, end)` pairs for intervals (`writing.md`) |
 | `transform` | six affine coefficients `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`; a rasterio `Affine` works (extra values are ignored) |
 | `crs` | EPSG code as `int`, `"EPSG:32718"`, `"32718"`, or any object with `to_epsg()` (rasterio and pyproj CRS) |
 | `pixel_is_point` | `True` anchors pixels at their centre; recorded even without a CRS |
-| `time` | one entry per time step: date, datetime, ISO string or `numpy.datetime64` for instants, `(start, end)` pairs for intervals (`writing.md`) |
 
 - `transform` and `crs` go together, or `ValueError: transform and crs must be given
   together`.
 - A missing payload raises `ValueError: 1 of 16 frames have no payload, first is 0;
   compress every frame before writing` before anything is opened.
-- `header` is `bytes`: 32 bytes plus the packed frame sizes (62 bytes for a 16-frame
-  Image in the canonical example). It carries no time or georeferencing.
+- `header` is `bytes`: 32 bytes plus the packed frame sizes (37 bytes for the 4-frame
+  Image in the canonical example). It carries no band texts, time or georeferencing.
 - The writer opens `path` with truncation. A failure after that removes the file, and
   the returned header is rebuilt from the file just written.
 
@@ -158,10 +159,11 @@ compatibility rules and a DataLoader recipe.
 rumi.info(*, source=None, header=None) -> rumi.Metadata
 ```
 
-With `source` it reads the file's index, trailer and georeferencing and rebuilds the
-header. With `header` alone it opens nothing. With both it also checks that the header
-equals the one rebuilt from the source (`ValueError: external header does not match
-source`); the check covers structure and frame sizes, not payload bytes.
+With `source` it reads the file's index, georeferencing and trailer (band texts and
+time) and rebuilds the header. With `header` alone it opens nothing. With both it also
+checks that the header equals the one rebuilt from the source (`ValueError: external
+header does not match source`); the check covers structure and frame sizes, not payload
+bytes.
 
 | Field | From a source | From a header alone |
 | --- | --- | --- |
@@ -173,8 +175,9 @@ source`); the check covers structure and frame sizes, not payload bytes.
 | `frame_layout` | decoded frame axes, such as `"b h w"` | same |
 | `index_order` | band and time axes the index walks, outermost first, such as `("b", "t")`; `()` for cell frames | same |
 | `frames` | frame count | same |
-| `time` | `[]` for undefined time; a list of `date` (whole days) or UTC `datetime`; `(start, end)` tuples for intervals | `None` |
-| `time_kind` | `"instant"`, `"interval"` or `None` | `None` |
+| `bands` | one text per band, in band order | `None` |
+| `time` | a list of `date` (whole days) or UTC `datetime`; `(start, end)` tuples for intervals | `None` |
+| `time_kind` | `"instant"` or `"interval"` | `None` |
 | `transform` | six floats, or `None` without a CRS | `None` |
 | `crs` | EPSG code or `None` | `None` |
 | `pixel_is_point` | `bool` | `None` |

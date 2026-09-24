@@ -23,7 +23,7 @@ core/
   include/rumi/rumi.h            public C API, kept valid C11
   include/rumi/rumi_dtypes.def   sample type registry (X-macro), append-only
   include/rumi/epsg_kinds.def    projected and geographic EPSG ranges, generated
-  include/rumi/rumi.hpp          internal C++ interface: UNIT_REGISTRY, Header, TimeAxis
+  include/rumi/rumi.hpp          internal C++ interface: UNIT_REGISTRY, Header, Trailer
   include/rumi/thread_pool.hpp   the process-wide read pool
   include/dlpack/dlpack.h        vendored DLPack
   src/pattern.cpp                frame and output pattern compilers, frame geometry
@@ -31,7 +31,8 @@ core/
   src/error.cpp                  error messages of any length
   src/builder.cpp                file indexing: IFD, trailer, header rebuild
   src/write.cpp                  the writer
-  src/geokeys.cpp src/time.cpp   georeferencing and the time trailer
+  src/geokeys.cpp                georeferencing
+  src/trailer.cpp                band texts and time, after the frames
   src/read.cpp src/plan.cpp      selections, planning, decode tasks and frame checks
   src/source.cpp                 Karu transport and memory sources
   src/dlpack.cpp src/capi.cpp    DLPack tensors and the C ABI
