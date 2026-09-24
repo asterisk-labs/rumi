@@ -18,6 +18,13 @@ Notable user-visible changes are recorded here.
   pending, so the consumer raised `SystemError` and the samples leaked.
 - Error messages are no longer cut at 192 to 512 bytes, so a long path, remote
   URI or wrapped decoder message appears whole.
+- `rumi.write` and `rumi.info(source=...)` raise `OSError` (`RUMI_ERR_IO` in C)
+  with the system's reason when a file cannot be opened, read or written,
+  instead of `ValueError`. A source that ends early is still a `ValueError`.
+- A frame that needs a GeoZL codec this build lacks reports
+  `update geozl (CTid N)` instead of a generic custom-codec message.
+- A read plan too large to allocate raises `MemoryError` (`RUMI_ERR_OOM`)
+  instead of `RuntimeError`.
 
 ## [0.24.1] - 2026-09-24
 

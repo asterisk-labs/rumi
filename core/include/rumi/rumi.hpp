@@ -43,6 +43,22 @@ RUMI_PRINTF_LIKE(1, 2)
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::unexpected<std::string> errf(const char* fmt, ...);
 
+// A failure and the status the C API reports for it, for operations that can
+// fail in more than one way. A plain message leaves the status to the caller.
+struct Error {
+    rumi_status status{RUMI_ERR_INVALID};
+    std::string message;
+};
+
+[[nodiscard]] inline std::unexpected<Error>
+fail(rumi_status status, std::string message)
+{
+    return std::unexpected(Error{status, std::move(message)});
+}
+RUMI_PRINTF_LIKE(2, 3)
+[[nodiscard]] std::unexpected<Error>
+failf(rumi_status status, const char* fmt, ...);
+
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 32;
@@ -745,9 +761,6 @@ bool set_checksum_verification(bool on) noexcept;
 
 // Reading.
 
-// Return and reset the detailed status of the latest read on this thread.
-[[nodiscard]] rumi_status take_read_status() noexcept;
-
 // Compute required ranges from the external header without I/O.
 [[nodiscard]] std::vector<Range>
 plan_ranges(const Header& h, std::span<const int> times,
@@ -760,9 +773,9 @@ plan_ranges_checked(const Header& h, std::span<const int> times,
                     std::span<const int> bands,
                     int y_off, int y_size, int x_off, int x_size);
 
-// Read a validated window into dst. Band and time indices are 1-based. Work is
-// scheduled on the process-wide pool.
-[[nodiscard]] std::expected<void, std::string>
+// Read a window into dst. Band and time indices are 1-based. Work is scheduled
+// on the process-wide pool.
+[[nodiscard]] std::expected<void, Error>
 read_window(Source& src, const Header& h,
             std::span<const int> times, std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
@@ -773,7 +786,7 @@ read_window(Source& src, const Header& h,
 //
 // Headers must agree on tile size, band count, dtype, time step count, and
 // which of band and time a frame holds. Image dimensions may differ.
-[[nodiscard]] std::expected<void, std::string>
+[[nodiscard]] std::expected<void, Error>
 read_many(std::span<Source* const> sources,
           std::span<const Header* const> headers,
           std::span<const int> y_offs, std::span<const int> x_offs,
@@ -793,12 +806,12 @@ struct FileGeo {
 
 // Validate a source and build its external header. Optionally return metadata
 // stored outside that header.
-[[nodiscard]] std::expected<std::vector<std::byte>, std::string>
+[[nodiscard]] std::expected<std::vector<std::byte>, Error>
 build_blob_from_source(Source& source, FileGeo* geo = nullptr,
                        TimeAxis* time = nullptr) noexcept;
 
 // Convenience wrapper used after writing a local file.
-[[nodiscard]] std::expected<std::vector<std::byte>, std::string>
+[[nodiscard]] std::expected<std::vector<std::byte>, Error>
 build_blob_from_file(const char* path, FileGeo* geo = nullptr,
                      TimeAxis* time = nullptr) noexcept;
 
@@ -847,7 +860,7 @@ struct WriteDesc {
 // compressed payloads in frame-index order: the grid row by row, and then
 // whichever of bands and time steps the frame does not hold, in the order the
 // unit fixes. A frame holding both is one per grid position.
-[[nodiscard]] std::expected<std::vector<std::byte>, std::string>
+[[nodiscard]] std::expected<std::vector<std::byte>, Error>
 write_file(const char* path, const WriteDesc& desc,
            const unsigned char* const* frames, const std::size_t* sizes,
            std::size_t frame_count) noexcept;

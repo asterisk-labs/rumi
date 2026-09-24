@@ -18,17 +18,14 @@
 namespace rumi {
 namespace {
 
-std::unexpected<std::string>
+std::unexpected<Error>
 transport_error(std::string message, karu_status status)
 {
     const char* detail = karu_last_error();
     message += ": ";
     message += detail && *detail ? detail : karu_status_string(status);
-    return err(std::move(message));
+    return fail(RUMI_ERR_IO, std::move(message));
 }
-
-// Detailed status for the most recent read on the calling thread.
-thread_local rumi_status g_read_status = RUMI_ERR_IO;
 
 std::expected<void, std::string>
 validate_request(const Header& h, std::span<const int> times,
@@ -223,14 +220,6 @@ int set_num_threads(int n) noexcept
 int num_threads() noexcept
 {
     return state_threads(process_thread_state());
-}
-
-
-rumi_status take_read_status() noexcept
-{
-    const rumi_status s = g_read_status;
-    g_read_status = RUMI_ERR_IO;
-    return s;
 }
 
 
@@ -493,17 +482,21 @@ readable_size(Source& source, TransportSession& transport)
     return source.size(transport);
 }
 
-std::expected<void, std::string>
+std::expected<void, Error>
 decode_tasks(Executor& executor, const Plan& plan,
              std::span<const FrameTask> tasks)
 {
     if (executor.run(tasks, plan.spec, plan.transport)) return {};
-    g_read_status = executor.status();
-    return err(executor.error().empty() ? std::string("read failed")
-                                        : executor.error());
+    if (!executor.error().empty()) {
+        return fail(executor.status(), executor.error());
+    }
+    // A worker that could not allocate its message still reports the status.
+    return fail(executor.status(), executor.status() == RUMI_ERR_UNSUPPORTED
+        ? "file uses a custom OpenZL codec this reader has not registered"
+        : "read failed");
 }
 
-std::expected<void, std::string>
+std::expected<void, Error>
 execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
 {
     std::vector<karu_req> requests;
@@ -531,7 +524,6 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
 
     karu_client* client = transport.client();
     if (!client) {
-        g_read_status = RUMI_ERR_IO;
         return transport_error("transport initialization failed",
                                transport.status());
     }
@@ -540,7 +532,6 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
     const karu_status submitted =
         karu_client_submit(client, requests.data(), requests.size(), &raw_batch);
     if (submitted != KARU_OK) {
-        g_read_status = RUMI_ERR_IO;
         return transport_error("transport submit failed", submitted);
     }
     std::unique_ptr<karu_batch, KaruBatchFree> batch(raw_batch);
@@ -566,7 +557,6 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
         const karu_status step = karu_batch_next(batch.get(), &done, -1);
         if (step == KARU_END) break;
         if (step != KARU_OK) {
-            g_read_status = RUMI_ERR_IO;
             return transport_error("transport failed", step);
         }
 
@@ -574,21 +564,20 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
             KaruBuffer buffer(done.buffer);
             auto* task = static_cast<FrameTask*>(done.tag);
             if (!task) {
-                g_read_status = RUMI_ERR_IO;
-                return err("transport returned a completion without a task");
+                return fail(RUMI_ERR_IO,
+                            "transport returned a completion without a task");
             }
             if (done.status != KARU_OK) {
-                g_read_status = RUMI_ERR_IO;
                 std::string message = "transport read failed at ";
                 message += std::to_string(task->offset);
                 return transport_error(std::move(message), done.status);
             }
             if (done.got != task->compressed_size || !done.buffer) {
-                g_read_status = RUMI_ERR_IO;
-                return errf("transport short read at %llu: %llu of %u",
-                            static_cast<unsigned long long>(task->offset),
-                            static_cast<unsigned long long>(done.got),
-                            task->compressed_size);
+                return failf(RUMI_ERR_IO,
+                             "transport short read at %llu: %llu of %u",
+                             static_cast<unsigned long long>(task->offset),
+                             static_cast<unsigned long long>(done.got),
+                             task->compressed_size);
             }
             task->compressed = static_cast<const std::byte*>(done.buffer);
             buffers.push_back(std::move(buffer));
@@ -601,7 +590,6 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
             if (available == KARU_END) {
                 ended = true;
             } else if (available != KARU_TIMEOUT) {
-                g_read_status = RUMI_ERR_IO;
                 return transport_error("transport failed", available);
             }
             break;
@@ -614,9 +602,8 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
             return decoded;
     }
     if (completed != requests.size()) {
-        g_read_status = RUMI_ERR_IO;
-        return errf("transport completed %zu of %zu frame reads",
-                    completed, requests.size());
+        return failf(RUMI_ERR_IO, "transport completed %zu of %zu frame reads",
+                     completed, requests.size());
     }
     return {};
 }
@@ -659,18 +646,29 @@ compatible_headers(std::span<const Header* const> headers)
     return {};
 }
 
-std::expected<void, std::string>
+std::expected<void, Error>
 read_items(std::span<const ReadItem> items,
            std::span<const int> times, std::span<const int> bands,
            int y_size, int x_size,
            const LayoutPlan& layout, std::byte* dst,
            const char* item_name)
 {
-    g_read_status = RUMI_ERR_INVALID;
-    if (items.empty()) return err("a read needs at least one item");
-    if (!items[0].source || !items[0].header) {
-        return err("null source or header");
+    if (items.empty()) return fail(RUMI_ERR_INVALID, "a read needs at least one item");
+    for (const ReadItem& item : items) {
+        if (!item.source || !item.header) {
+            return fail(RUMI_ERR_INVALID, "null source or header");
+        }
     }
+
+    // A batch names the item that failed.
+    const auto item_error = [item_name](const ReadItem& item, rumi_status status,
+                                        std::string message) {
+        if (item_name) {
+            message = format_message("%s %zu: %s", item_name, item.label,
+                                     message.c_str());
+        }
+        return fail(status, std::move(message));
+    };
 
     const Header& ref = *items[0].header;
     const std::size_t bps = ref.bytes_per_sample;
@@ -682,7 +680,6 @@ read_items(std::span<const ReadItem> items,
     plan.spec = make_frame_spec(ref);
     plan.transport = &transport;
     for (const ReadItem& item : items) {
-        if (!item.source || !item.header) return err("null source or header");
         plan.spec.frame_bytes =
             std::max(plan.spec.frame_bytes, item.header->max_frame_size);
     }
@@ -694,33 +691,18 @@ read_items(std::span<const ReadItem> items,
                                        item.y_off, y_size,
                                        item.x_off, x_size);
             !ok) {
-            if (item_name) {
-                return errf("%s %zu: %s", item_name, item.label,
-                            ok.error().c_str());
-            }
-            return ok;
+            return item_error(item, RUMI_ERR_INVALID, std::move(ok.error()));
         }
         auto available = readable_size(*item.source, transport);
         if (!available) {
-            g_read_status = RUMI_ERR_IO;
-            if (item_name) {
-                return errf("%s %zu: %s", item_name, item.label,
-                            available.error().c_str());
-            }
-            return std::unexpected(available.error());
+            return item_error(item, RUMI_ERR_IO, std::move(available.error()));
         }
         const std::uint64_t need = h.data_end();
         if (need > *available) {
-            g_read_status = RUMI_ERR_FORMAT;
-            if (item_name) {
-                return errf("%s %zu: frame data needs %llu bytes, source has %llu",
-                            item_name, item.label,
-                            static_cast<unsigned long long>(need),
-                            static_cast<unsigned long long>(*available));
-            }
-            return errf("frame data needs %llu bytes, source has %llu",
-                        static_cast<unsigned long long>(need),
-                        static_cast<unsigned long long>(*available));
+            return item_error(item, RUMI_ERR_FORMAT, format_message(
+                "frame data needs %llu bytes, source has %llu",
+                static_cast<unsigned long long>(need),
+                static_cast<unsigned long long>(*available)));
         }
 
         append_read_plan(
@@ -734,10 +716,7 @@ read_items(std::span<const ReadItem> items,
     bind_offsets(plan);
 
     ThreadPool* pool = pool_for(plan.tasks.size());
-    if (auto executed = execute_plan(plan, transport, pool); !executed)
-        return executed;
-    g_read_status = RUMI_OK;
-    return {};
+    return execute_plan(plan, transport, pool);
 }
 
 }  // namespace
@@ -827,7 +806,7 @@ plan_ranges(const Header& h, std::span<const int> times,
 }
 
 
-std::expected<void, std::string>
+std::expected<void, Error>
 read_window(Source& src, const Header& h,
             std::span<const int> times, std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size,
@@ -839,7 +818,7 @@ read_window(Source& src, const Header& h,
 }
 
 
-std::expected<void, std::string>
+std::expected<void, Error>
 read_many(std::span<Source* const> sources,
           std::span<const Header* const> headers,
           std::span<const int> y_offs, std::span<const int> x_offs,
@@ -847,18 +826,20 @@ read_many(std::span<Source* const> sources,
           int y_size, int x_size,
           const LayoutPlan& layout, std::byte* dst)
 {
-    g_read_status = RUMI_ERR_INVALID;
     const std::size_t n = sources.size();
-    if (n == 0) return err("read_many needs at least one item");
+    if (n == 0) return fail(RUMI_ERR_INVALID, "read_many needs at least one item");
     if (headers.size() != n || y_offs.size() != n || x_offs.size() != n) {
-        return err("sources, headers and offsets must all be the same length");
+        return fail(RUMI_ERR_INVALID,
+                    "sources, headers and offsets must all be the same length");
     }
     for (std::size_t i = 0; i < n; ++i) {
-        if (!sources[i]) return errf("null source at item %zu", i + 1);
-        if (!headers[i]) return errf("null header at item %zu", i + 1);
+        if (!sources[i]) return failf(RUMI_ERR_INVALID, "null source at item %zu", i + 1);
+        if (!headers[i]) return failf(RUMI_ERR_INVALID, "null header at item %zu", i + 1);
     }
 
-    if (auto ok = compatible_headers(headers); !ok) return ok;
+    if (auto ok = compatible_headers(headers); !ok) {
+        return fail(RUMI_ERR_INVALID, std::move(ok.error()));
+    }
 
     std::vector<ReadItem> items;
     items.reserve(n);

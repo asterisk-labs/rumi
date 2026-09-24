@@ -565,10 +565,10 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     std::snprintf(path, sizeof path, "/tmp/e2e_%llu.rumi", (unsigned long long)seed);
 
     auto written = rumi::write_file(path, d, ptrs.data(), sizes.data(), n);
-    if (!written) { fail(__LINE__, "write: " + written.error()); return; }
+    if (!written) { fail(__LINE__, "write: " + written.error().message); return; }
 
     auto rebuilt = rumi::build_blob_from_file(path);
-    if (!rebuilt) { fail(__LINE__, "reread: " + rebuilt.error()); return; }
+    if (!rebuilt) { fail(__LINE__, "reread: " + rebuilt.error().message); return; }
 
     OK(*written == *rebuilt);                       // same canonical header
     // count_bits is the final byte of the fixed header.
@@ -712,7 +712,7 @@ void test_read_c_api_rejects_invalid_requests()
     auto blob = rumi::write_file(path.c_str(), desc, ptrs.data(), sizes.data(), n);
     if (!blob) {
         std::remove(path.c_str());
-        fail(__LINE__, "write: " + blob.error());
+        fail(__LINE__, "write: " + blob.error().message);
         return;
     }
 

@@ -7,6 +7,7 @@
 #include <initializer_list>
 #include <limits>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,7 +16,7 @@
 
 // Error state.
 
-// Thread-local last error, set by every entry point that fails.
+// Keep errors thread-local so concurrent C callers do not overwrite each other.
 
 namespace {
 
@@ -40,6 +41,11 @@ rumi_status capi_call(F&& body) noexcept
         return body();
     } catch (const std::bad_alloc&) {
         set_error("allocation failed");
+        return RUMI_ERR_OOM;
+    } catch (const std::length_error& e) {
+        // Containers use length_error before allocation when a requested plan
+        // cannot fit their address space. Report it as memory exhaustion.
+        set_error(e.what());
         return RUMI_ERR_OOM;
     } catch (const std::exception& e) {
         set_error(e.what());
@@ -455,10 +461,6 @@ std::vector<int> resolve_bands(const int* bands, size_t n_bands, uint16_t spp)
     return all;
 }
 
-// Fallback when a worker cannot propagate the decoder's detailed message.
-const char* k_unsupported_msg =
-    "file uses a custom OpenZL codec this reader has not registered";
-
 void fill_header(const rumi::Header& h, rumi_header* out);
 
 }  // namespace
@@ -535,8 +537,8 @@ rumi_info(rumi_source* source,
             auto indexed = rumi::build_blob_from_source(
                 *source->impl, &geo, &axis);
             if (!indexed) {
-                set_error(indexed.error());
-                return RUMI_ERR_FORMAT;
+                set_error(indexed.error().message);
+                return indexed.error().status;
             }
             canonical = std::move(*indexed);
             if (header && (header_size != canonical.size()
@@ -819,15 +821,11 @@ rumi_status prepare_selection(const rumi::Header& h, size_t n_items,
     return RUMI_OK;
 }
 
-rumi_status finish_read(const std::expected<void, std::string>& result)
+rumi_status finish_read(const std::expected<void, rumi::Error>& result)
 {
     if (result) return RUMI_OK;
-    const rumi_status status = rumi::take_read_status();
-    if (g_last_error.empty()) {
-        set_error(status == RUMI_ERR_UNSUPPORTED ? k_unsupported_msg
-                                                 : result.error().c_str());
-    }
-    return status;
+    set_error(result.error().message);
+    return result.error().status;
 }
 
 }  // namespace
@@ -869,18 +867,13 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
 
 static rumi_status
 finish_dlpack(std::byte* buffer,
-              const std::expected<void, std::string>& r,
+              const std::expected<void, rumi::Error>& r,
               const rumi::Header& h, const rumi::LayoutPlan& plan,
               DLManagedTensorVersioned** out)
 {
     if (!r) {
         std::free(buffer);
-        const rumi_status st = rumi::take_read_status();
-        if (g_last_error.empty()) {
-            set_error(st == RUMI_ERR_UNSUPPORTED ? k_unsupported_msg
-                                                 : r.error().c_str());
-        }
-        return st;
+        return finish_read(r);
     }
     DLManagedTensorVersioned* t = rumi::build_dlpack(
         buffer, h.dtype, plan.shape.data(),
@@ -1110,8 +1103,8 @@ rumi_write(const char*                 path,
         }
         auto result = rumi::write_file(path, d, frames, sizes, frame_count);
         if (!result) {
-            set_error(result.error());
-            return RUMI_ERR_INVALID;
+            set_error(result.error().message);
+            return result.error().status;
         }
 
         auto& blob = *result;

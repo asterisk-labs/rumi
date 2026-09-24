@@ -42,4 +42,13 @@ std::unexpected<std::string> errf(const char* fmt, ...)
     return std::unexpected(std::move(out));
 }
 
+std::unexpected<Error> failf(rumi_status status, const char* fmt, ...)
+{
+    std::va_list ap;
+    va_start(ap, fmt);
+    std::string out = vformat_message(fmt, ap);
+    va_end(ap);
+    return std::unexpected(Error{status, std::move(out)});
+}
+
 }  // namespace rumi

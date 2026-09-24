@@ -40,7 +40,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: a transform is six coefficients (x_res, row_rot, x_origin, col_rot, y_res, y_origin), got 5` | short transform | pass six values in `Affine` order |
 | `ValueError: crs must be an EPSG code, got 'WGS84'` | WKT, PROJ or a name | an EPSG code or an object with `to_epsg()` |
 | `ValueError: EPSG:99999 is not a projected or geographic CRS` | unknown or unsupported code | a projected or geographic EPSG code |
-| `ValueError: could not open s3://bucket/x.rumi for writing` | remote write target | write locally, then upload |
+| `OSError: could not open s3://bucket/x.rumi for writing: No such file or directory` (`ValueError` through 0.24.1) | remote write target | write locally, then upload |
 
 ### Reading
 
@@ -87,7 +87,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `OSError: could not open missing.rumi: missing.rumi: No such file or directory` | local path | check the working directory |
 | `OSError: could not resolve /vsizip/x.zip/a.rumi: unsupported virtual filesystem '/vsizip/'; ...` | unsupported VSI handler | extract, or use `/vsisubfile/` for stored members |
 | `OSError: transport read failed at 560: https://...: HTTP 404: ... NoSuchKey ...` | missing remote object | check the URI |
-| `ValueError: could not open https://...: HTTP 404: ...` | `rumi.info(source=...)` on a missing object | check the URI |
+| `OSError: could not open https://...: HTTP 404: ...` (`ValueError` through 0.24.1) | `rumi.info(source=...)` on a missing object | check the URI |
 | `OSError: transport read failed at 560: /vsis3/...: no AWS credentials; set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, install a custom provider, or set AWS_NO_SIGN_REQUEST=YES for a public object` | no credentials | configure credentials (`reading.md` section 2) |
 | `HTTP Error 403: Forbidden` from `urllib` on `data.source.coop` | no `User-Agent` on your own download | send a `User-Agent` header |
 

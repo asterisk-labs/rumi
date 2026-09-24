@@ -281,6 +281,14 @@ def test_write_blob_round_trip(tmp_path):
     assert rumi.info(source=path).header == blob
 
 
+def test_an_unwritable_path_is_an_os_error_that_names_it(tmp_path):
+    # Cross the old fixed buffer boundary so the full path must survive.
+    missing = tmp_path / "missing" / ("d" * 200) / "a.rumi"
+    with pytest.raises(OSError, match="for writing") as raised:
+        rumi.write(missing, make_frame())
+    assert str(missing) in str(raised.value)
+
+
 def test_edge_tiles(tmp_path):
     tf = make_frame(shape=(3, 257, 256), tile_size=128)
     assert {t.data.shape for t in tf} == {(128, 128), (1, 128)}

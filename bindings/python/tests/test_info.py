@@ -67,6 +67,17 @@ def test_memory_uses_the_same_native_indexer(tmp_path):
     assert rumi.info(source=path.read_bytes()).header == header
 
 
+def test_a_missing_source_is_an_os_error(tmp_path):
+    with pytest.raises(OSError, match="could not open"):
+        rumi.info(source=tmp_path / "gone.rumi")
+
+
+def test_a_source_that_ends_early_is_a_format_error(tmp_path):
+    path, _header = stored(tmp_path)
+    with pytest.raises(ValueError, match="16-byte rumi file header"):
+        rumi.info(source=path.read_bytes()[:10])
+
+
 def test_info_requires_an_input():
     with pytest.raises(ValueError, match="needs source, header, or both"):
         rumi.info()

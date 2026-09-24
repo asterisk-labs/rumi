@@ -1,5 +1,6 @@
 #include "rumi/rumi.hpp"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -242,26 +243,27 @@ catch (const std::exception& e) {
 }
 
 
-std::expected<std::vector<std::byte>, std::string>
+std::expected<std::vector<std::byte>, Error>
 write_file(const char* path, const WriteDesc& d,
            const unsigned char* const* frames, const std::size_t* sizes,
            std::size_t frame_count) noexcept
 try {
     auto g = grid_of(d);
-    if (!g) return std::unexpected(g.error());
+    if (!g) return fail(RUMI_ERR_INVALID, std::move(g.error()));
 
     if (frame_count != g->frames)
-        return errf("expected %llu frames for this grid, got %zu",
-                   static_cast<unsigned long long>(g->frames), frame_count);
+        return failf(RUMI_ERR_INVALID, "expected %llu frames for this grid, got %zu",
+                     static_cast<unsigned long long>(g->frames), frame_count);
 
     for (std::size_t i = 0; i < frame_count; ++i) {
         if (!frames[i])
-            return errf("frame %zu is null", i);
+            return failf(RUMI_ERR_INVALID, "frame %zu is null", i);
         if (sizes[i] == 0)
-            return errf("frame %zu has an empty payload", i);
+            return failf(RUMI_ERR_INVALID, "frame %zu has an empty payload", i);
         if (sizes[i] > 0xFFFFFFFFu)
-            return errf("frame %zu is %zu bytes, over the uint32 the header holds",
-                       i, sizes[i]);
+            return failf(RUMI_ERR_INVALID,
+                         "frame %zu is %zu bytes, over the uint32 the header holds",
+                         i, sizes[i]);
     }
 
     const std::uint16_t spp = d.samples_per_pixel;
@@ -273,13 +275,14 @@ try {
 
     const CountPacking cp = plan_counts(counts);
     if (!expanded_index_fits(g->frames, cp.bits)) {
-        return errf("%llu variable-size frames need an expanded index larger "
-                   "than this reader accepts",
-                   static_cast<unsigned long long>(g->frames));
+        return failf(RUMI_ERR_INVALID,
+                     "%llu variable-size frames need an expanded index larger "
+                     "than this reader accepts",
+                     static_cast<unsigned long long>(g->frames));
     }
 
     auto l = plan(d, *g, counts);
-    if (!l) return std::unexpected(l.error());
+    if (!l) return fail(RUMI_ERR_INVALID, std::move(l.error()));
 
     // Derive TileOffsets by prefix sum in frame-index order.
     std::vector<std::uint64_t> offsets(n);
@@ -324,11 +327,14 @@ try {
 
     // Validate and encode the time axis before creating the output file.
     auto encoded = encode_time(d.time, d.time_count);
-    if (!encoded) return std::unexpected(encoded.error());
+    if (!encoded) return fail(RUMI_ERR_INVALID, std::move(encoded.error()));
     const std::vector<std::byte>& trailer = *encoded;
 
     std::FILE* fp = std::fopen(path, "wb");
-    if (!fp) return errf("could not open %s for writing", path);
+    if (!fp) {
+        return failf(RUMI_ERR_IO, "could not open %s for writing: %s", path,
+                     std::strerror(errno));
+    }
 
     bool ok = std::fwrite(head.data(), 1, head.size(), fp) == head.size();
     for (std::size_t i = 0; ok && i < frame_count; ++i)
@@ -337,13 +343,16 @@ try {
     // The trailer immediately follows the final frame.
     if (ok) ok = std::fwrite(trailer.data(), 1, trailer.size(), fp)
                  == trailer.size();
+    const int write_errno = errno;
     const bool closed = std::fclose(fp) == 0;
     if (!ok || !closed) {
+        const int why = ok ? errno : write_errno;
         std::remove(path);
-        return errf("write to %s failed", path);
+        return failf(RUMI_ERR_IO, "write to %s failed: %s", path,
+                     std::strerror(why));
     }
 
-    // Remove a partially written file unless the operation reaches commit().
+    // A caller must never receive a file that failed its own index check.
     struct Unless {
         const char* path;
         bool        keep{false};
@@ -366,9 +375,10 @@ try {
 
     // Verify the planned base offset against the format formula.
     if (l->base != derived_base_offset(spp, n)) {
-        return errf("laid the frames at %llu, the profile puts them at %llu",
-                   static_cast<unsigned long long>(l->base),
-                   static_cast<unsigned long long>(derived_base_offset(spp, n)));
+        return failf(RUMI_ERR_INTERNAL,
+                     "laid the frames at %llu, the profile puts them at %llu",
+                     static_cast<unsigned long long>(l->base),
+                     static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }
 
     bh.count_min  = cp.min;
@@ -382,21 +392,26 @@ try {
     // the writer's result. Indexing reads metadata only, not frame payloads.
     auto indexed = build_blob_from_file(path);
     if (!indexed) {
-        return errf("wrote %s but could not index it back: %s", path,
-                   indexed.error().c_str());
+        // A format failure here means the writer contradicted itself. Only a
+        // later I/O failure can leave otherwise valid output unreadable.
+        const rumi_status status = indexed.error().status == RUMI_ERR_IO
+                                 ? RUMI_ERR_IO : RUMI_ERR_INTERNAL;
+        return failf(status, "wrote %s but could not index it back: %s", path,
+                     indexed.error().message.c_str());
     }
     if (*indexed != blob) {
-        return errf("the header describes something other than the file just "
-                   "written to %s", path);
+        return failf(RUMI_ERR_INTERNAL,
+                     "the header describes something other than the file just "
+                     "written to %s", path);
     }
     leave_nothing.keep = true;
     return blob;
 }
 catch (const std::bad_alloc&) {
-    return errf("allocation failed while writing %s", path);
+    return failf(RUMI_ERR_OOM, "allocation failed while writing %s", path);
 }
 catch (const std::exception& e) {
-    return errf("write_file: %s", e.what());
+    return failf(RUMI_ERR_INTERNAL, "write_file: %s", e.what());
 }
 
 }  // namespace rumi
