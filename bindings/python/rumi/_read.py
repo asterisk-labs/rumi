@@ -154,7 +154,7 @@ class RumiArray:
         try:
             lib.rumi_dlpack_free(tensor)
         except Exception:
-            pass
+            pass  # librumi may already be unloaded during interpreter shutdown
 
     def __repr__(self) -> str:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"

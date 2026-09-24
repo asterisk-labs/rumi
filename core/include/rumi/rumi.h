@@ -430,7 +430,9 @@ RUMI_API DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 // Release a legacy wrapper and its versioned tensor. Safe to call with NULL.
 RUMI_API void rumi_dlpack_legacy_free(DLManagedTensor* t);
 
-// Register the CPython capsule calls without requiring Python.h.
+// Bindings that do not include Python.h register these functions once, then
+// pass rumi_dlpack_capsule_destructor to PyCapsule_New. Registration is
+// required for the destructor to release a capsule rejected by a consumer.
 typedef int   (*rumi_capsule_is_valid_fn)(void* capsule, const char* name);
 typedef void* (*rumi_capsule_pointer_fn)(void* capsule, const char* name);
 RUMI_API void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,

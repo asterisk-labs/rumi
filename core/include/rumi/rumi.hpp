@@ -41,7 +41,8 @@ RUMI_PRINTF_LIKE(1, 2)
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::unexpected<std::string> errf(const char* fmt, ...);
 
-// Some failures need more than a message at the C boundary.
+// Keep the status beside the message so the C boundary never infers it from
+// message text.
 struct Error {
     rumi_status status{RUMI_ERR_INVALID};
     std::string message;
@@ -56,6 +57,8 @@ RUMI_PRINTF_LIKE(2, 3)
 [[nodiscard]] std::unexpected<Error>
 failf(rumi_status status, const char* fmt, ...);
 
+// Shared wire constants keep the parser and writer on the same layout.
+// MAGIC is ASCII "LOVE" in the external header.
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;
 inline constexpr std::size_t   HEADER_SIZE = 32;
