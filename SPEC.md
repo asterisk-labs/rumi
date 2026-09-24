@@ -2,7 +2,7 @@
 
 - Specification 0.1.0
 - Status Draft
-- Date 2026-08-25
+- Date 2026-09-24
 - License GPLv3
 
 rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
@@ -17,8 +17,8 @@ The format has the following properties:
   OpenZL frame.
 - **Predictable layout.** Files with the same band and frame counts begin their
   frame data at the same byte.
-- **Time coordinates.** Stores instants or intervals in a compact trailer when
-  the time axis is labelled.
+- **Described bands and time.** Names every band and labels every time step in
+  a trailer after the frame data.
 - **Canonical structure.** Restricts the file to one fixed IFD, one frame order,
   and contiguous frame data.
 - **Fixed-size georeferencing.** Stores an EPSG CRS and affine transform in a
@@ -38,7 +38,7 @@ This document defines:
 
 - the rumi data model and frame layouts;
 - the GeoTIFF-inspired rumi file profile;
-- the time coordinates a Cube carries; and
+- the band descriptions and time coordinates every file carries; and
 - the binary layout of the external rumi header blob.
 
 It does not define the OpenZL frame format or a catalogue format.
@@ -53,7 +53,7 @@ required result cannot be represented by its implementation.
 
 All multi-byte numeric values defined by rumi are little-endian. This includes
 the file header, directory entries and values, decoded sample components, the
-time trailer, and the external header blob. OpenZL defines the bytes inside a
+trailer, and the external header blob. OpenZL defines the bytes inside a
 compressed frame; after decoding, each multi-byte sample component is
 little-endian. An API may convert decoded samples to the host's native byte
 order.
@@ -113,8 +113,8 @@ rumi uses the following data model.
 width. `h` and `w` denote the actual dimensions of a tile; they may be smaller
 than the nominal tile dimensions at the image boundary.
 
-The coordinates of a Cube's time steps are defined in
-[Time coordinates](#time-coordinates).
+The bands and time steps of an Image or Cube are described in the
+[Trailer](#trailer).
 
 Collections are represented outside the file, for example by a catalogue of
 rumi files. Their representation is out of scope.
@@ -353,7 +353,7 @@ A file is rumi compliant when all of the following hold.
   [Validating frame_unit](#validating-frame_unit).
 - Every frame is present, every byte count is greater than zero, and the frames
   form one contiguous run in frame-index order.
-- It ends with the trailer defined in [Time coordinates](#time-coordinates).
+- It ends with the trailer defined in [Trailer](#trailer).
 
 ## File header
 
@@ -531,16 +531,75 @@ No other CRS representation is permitted. This excludes WKT, PROJ strings,
 ESRI codes, user-defined CRS values, engineering, compound and vertical CRSs,
 and coordinate epochs.
 
-## Time coordinates
+## Trailer
 
-Every rumi file ends with one time trailer. It begins immediately after the last
-frame, and the file ends immediately after it. The external header does not
-contain time coordinates.
+Every rumi file ends with one trailer. It begins immediately after the last
+frame, and the file ends immediately after it. The trailer describes every band
+and labels every time step.
+
+The trailer follows the frame data so that its size never moves a frame. A
+reader MUST NOT use it to locate, decode, or convert frames. The external header
+contains no band descriptions or time coordinates.
+
+```text
++----------------+---------------+-------------+-------------------------------+
+| magic, version | band_texts[B] | time fields | time_residuals[C]             |
++----------------+---------------+-------------+-------------------------------+
+  6 bytes          S bytes         22 bytes      ceil(C * time_bits / 8) bytes
+```
+
+`S` is the size of the band texts, defined in
+[Band descriptions](#band-descriptions). The trailer size MUST be exactly
+`28 + S + ceil(C * time_bits / 8)` bytes and MUST contain no padding. All
+multi-byte fields are little-endian.
+
+### Magic and version
+
+| offset | size | type   | name    |
+| ------ | ---- | ------ | ------- |
+| 0      | 4    | uint32 | magic   |
+| 4      | 2    | uint16 | version |
+
+The four magic bytes spell ASCII `TAIL`: `54 41 49 4C`. Read as a little-endian
+`uint32`, they equal `0x4C494154`. A reader MUST reject any other value.
+
+The current trailer version is `1`. A reader that implements version `1` MUST
+reject any other value.
+
+### Band descriptions
+
+The version is followed by one text for each of the `B` bands, in band order.
+Each text is stored as its length in bytes followed by the bytes themselves.
+
+| size   | type   | name   |
+| ------ | ------ | ------ |
+| 2      | uint16 | n[b]   |
+| n[b]   | bytes  | text   |
+
+```text
+S = sum(2 + n[b])   for 0 <= b < B
+```
+
+Each text MUST be valid UTF-8, at least one byte long, and free of the byte
+`0x00`. Two texts in one file MUST NOT be equal as byte sequences. A reader MUST
+reject a trailer whose texts break these rules.
+
+This paragraph is informative. The recommended text gives the band name, a short
+description, and the wavelength, as in this text for the Sentinel-2 red band:
+
+```text
+B4, Red, 664.5nm (S2A) / 665nm (S2B)
+```
+
+### Time coordinates
+
+The time fields follow the last band text. Every time step has a coordinate. An
+Image without a single acquisition instant, such as a DEM or an annual
+composite, uses an interval.
 
 Let `C` be the number of coordinates stored in the trailer:
 
 ```text
-C = 0       when time_type is 0 (undefined)
 C = T       when time_type is 2 (instant)
 C = 2 * T   when time_type is 1 (interval)
 ```
@@ -550,45 +609,20 @@ For instants, `time(i)` is the coordinate of time step `i`.
 For intervals, time step `i` covers `[time(2i), time(2i + 1))`. Each step stores
 its own start and end, so intervals may leave gaps.
 
-### Trailer fields
-
-The fixed part is 28 bytes. All multi-byte fields are little-endian.
-
-```text
-+---------------+----------------------------------+
-| Trailer       | time_residuals[C]                |
-+---------------+----------------------------------+
-  28 bytes        ceil(C * time_bits / 8) bytes
-```
+Offsets are relative to the first byte after the last band text.
 
 | offset | size | type   | name       |
 | ------ | ---- | ------ | ---------- |
-| 0      | 4    | uint32 | magic      |
-| 4      | 2    | uint16 | version    |
-| 6      | 1    | uint8  | time_type  |
-| 7      | 1    | uint8  | time_bits  |
-| 8      | 8    | int64  | time_epoch |
-| 16     | 8    | int64  | time_step  |
-| 24     | 4    | uint32 | time_scale |
-
-The trailer size MUST be exactly `28 + ceil(C * time_bits / 8)` bytes and MUST
-contain no padding.
-
-#### magic
-
-The four bytes spell ASCII `TIME`: `54 49 4D 45`. Read as a little-endian
-`uint32`, they equal `0x454D4954`. A reader MUST reject any other value.
-
-#### version
-
-The current trailer version is `1`. A reader that implements version `1` MUST
-reject any other value.
+| 0      | 1    | uint8  | time_type  |
+| 1      | 1    | uint8  | time_bits  |
+| 2      | 8    | int64  | time_epoch |
+| 10     | 8    | int64  | time_step  |
+| 18     | 4    | uint32 | time_scale |
 
 #### time_type
 
 | value | meaning                                            |
 | ----- | -------------------------------------------------- |
-| `0`   | undefined; the file carries no time coordinates    |
 | `1`   | interval; each step is bounded by two coordinates  |
 | `2`   | instant; the step is a point in time               |
 
@@ -607,17 +641,17 @@ Intervals may meet or leave gaps, but MUST NOT overlap.
 
 #### time_epoch, time_step and time_scale
 
-`time_scale` is the number of seconds represented by one coordinate unit. For
-defined time, it MUST be `86400` when every instant or interval endpoint is an
-exact whole-day offset from `1970-01-01T00:00:00Z`; otherwise it MUST be `1`. A
-reader MUST reject any other value.
+`time_scale` is the number of seconds represented by one coordinate unit. It
+MUST be `86400` when every instant or interval endpoint is an exact whole-day
+offset from `1970-01-01T00:00:00Z`; otherwise it MUST be `1`. A reader MUST
+reject any other value.
 
 Coordinate `time(i)` is a signed offset of `time(i) * time_scale` seconds from
 `1970-01-01T00:00:00Z`; negative values represent times before that epoch. rumi
 follows POSIX time and does not represent leap seconds.
 
-For defined time, `time_epoch` MUST equal `time(0)`. `time_step` is the slope of
-the prediction line used to encode the remaining coordinates:
+`time_epoch` MUST equal `time(0)`. `time_step` is the slope of the prediction
+line used to encode the remaining coordinates:
 
 ```text
 time_step = 0                                      if C < 2
@@ -634,7 +668,7 @@ The number of bits used to encode each residual, as defined in
 
 ### Time residuals
 
-After the 28-byte fixed part, the trailer stores the `C` coordinates as residuals
+After the time fields, the trailer stores the `C` coordinates as residuals
 against a straight line through `time_epoch` and `time_step`.
 
 An axis whose coordinates lie on this line requires no packed region. Otherwise,
@@ -642,7 +676,7 @@ the trailer stores their deviations from the line.
 
 #### Encoding
 
-For defined time, let `time(i)` be coordinate `i` in `time_scale` units.
+Let `time(i)` be coordinate `i` in `time_scale` units.
 
 ```text
 predicted(i) = time_epoch + i * time_step
@@ -682,24 +716,6 @@ residual(i) = packed(i) >> 1              if packed(i) is even
               -((packed(i) >> 1) + 1)     otherwise
 time(i)     = time_epoch + i * time_step + residual(i)
 ```
-
-### Undefined time
-
-When time is undefined, `C` is zero and the fields MUST have these values:
-
-| field      | value |
-| ---------- | ----- |
-| time_type  | `0`   |
-| time_bits  | `0`   |
-| time_epoch | `0`   |
-| time_step  | `0`   |
-| time_scale | `1`   |
-
-The trailer is exactly 28 bytes. A reader MUST NOT interpret `time_epoch` as a
-coordinate.
-
-An Image or Cube MAY use `time_type = 0`. Cube steps are then ordered but
-unlabelled.
 
 ## Header blob
 
@@ -852,7 +868,7 @@ writer or header builder MUST NOT produce the blob if any comparison fails.
 
 This check happens when the blob is created. A stateless reader can then treat
 the blob as authoritative and does not need to read or compare the IFD,
-`TileOffsets`, `TileByteCounts`, the time trailer, or the total file size before
+`TileOffsets`, `TileByteCounts`, the trailer, or the total file size before
 reading a frame. How an application keeps a blob associated with its file is
 outside the scope of this specification.
 
@@ -873,14 +889,14 @@ Every reconstructed offset MUST fit in `uint64`.
 A reader passes `frame_byte_counts[idx]` bytes at `offset[idx]` to the OpenZL
 decoder.
 
-The byte just past the last frame is where the time trailer begins.
+The byte just past the last frame is where the trailer begins.
 
 ```text
 trailer_offset = offset[N-1] + frame_byte_counts[N-1]
 ```
 
-`trailer_offset` can be used to read the time coordinates. Reading a frame does
-not require parsing the trailer.
+`trailer_offset` locates the band descriptions and time coordinates. Reading a
+frame does not require parsing the trailer.
 
 The offset of frame `k` can also be expressed as
 
@@ -893,6 +909,7 @@ offset[k] = base_frame_offset
 ## Resource limits
 
 A reader MUST check derived sizes before allocating memory or decoding a frame.
+This includes the band text lengths and the coordinate count `C` in the trailer.
 An operation that exceeds the reader's resource limits MUST fail before the
 allocation or decode. This does not make the rumi file invalid.
 

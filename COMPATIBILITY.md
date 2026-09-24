@@ -1,7 +1,7 @@
 # Compatibility
 
-Rumi 0.18 is the current compatibility baseline. Current readers open
-canonical files written by 0.18.0 and later. Earlier versions are not
+Rumi 0.25 is the current compatibility baseline. Current readers open
+canonical files written by 0.25.0 and later. Earlier versions are not
 supported. The format may still change before 1.0; any compatibility break
 will be recorded in the changelog.
 
