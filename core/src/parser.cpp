@@ -52,15 +52,29 @@ std::string_view describe(ParseError e) noexcept
     return "unknown parse error";
 }
 
-// These are the writer's inline thresholds. Offset reconstruction must match.
+constexpr std::uint64_t
+external_value_bytes(std::uint64_t count, std::uint16_t type) noexcept
+{
+    const std::uint64_t bytes = count * tiff_field_bytes(type);
+    return bytes > IFD_INLINE_BYTES ? bytes + (bytes & 1) : 0;
+}
+
+inline constexpr std::uint64_t TRANSFORM_VALUE_COUNT = 16;
+inline constexpr std::uint64_t GEOKEY_VALUE_COUNT    = 16;
+
 std::uint64_t derived_base_offset(std::uint32_t bands,
                                   std::uint64_t frames) noexcept
 {
-    std::uint64_t external = 16 * 8 + 16 * 2;               // 34264, 34735
-    if (bands >= 5) external += 2 * 2 * std::uint64_t(bands);  // 258, 339
-    if (frames >= 2) external += 8 * frames;                 // 324
-    if (frames >= 3) external += 4 * frames;                 // 325
-    return IFD_OFFSET + IFD_SIZE + external;
+    const auto transform =
+        external_value_bytes(TRANSFORM_VALUE_COUNT, TIFF_DOUBLE);
+    const auto geokeys =
+        external_value_bytes(GEOKEY_VALUE_COUNT, TIFF_SHORT);
+    const auto bits_per_sample = external_value_bytes(bands, TIFF_SHORT);
+    const auto sample_format = external_value_bytes(bands, TIFF_SHORT);
+    const auto tile_offsets = external_value_bytes(frames, TIFF_LONG8);
+    const auto tile_byte_counts = external_value_bytes(frames, TIFF_LONG);
+    return IFD_OFFSET + IFD_SIZE + transform + geokeys + bits_per_sample
+         + sample_format + tile_offsets + tile_byte_counts;
 }
 
 CountPacking plan_counts(std::span<const std::uint32_t> counts) noexcept

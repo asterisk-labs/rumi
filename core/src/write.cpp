@@ -12,18 +12,6 @@
 namespace rumi {
 namespace {
 
-std::size_t type_size(std::uint16_t type) noexcept
-{
-    switch (type) {
-        case TIFF_ASCII:  return 1;
-        case TIFF_SHORT:  return 2;
-        case TIFF_LONG:   return 4;
-        case TIFF_DOUBLE:
-        case TIFF_LONG8:  return 8;
-        default:          return 0;
-    }
-}
-
 // The build requires a little-endian host, so values can be copied directly.
 template <typename T>
 void put(std::vector<std::byte>& out, T value)
@@ -63,7 +51,7 @@ Entry pack(std::uint16_t tag, std::uint16_t type, const std::vector<T>& values)
 Entry adopt(std::uint16_t tag, std::uint16_t type,
             const std::vector<std::byte>& raw)
 {
-    const std::uint64_t count = raw.size() / type_size(type);
+    const std::uint64_t count = raw.size() / tiff_field_bytes(type);
     return Entry{tag, type, count, raw};
 }
 
@@ -130,8 +118,9 @@ std::uint64_t place_external(const std::vector<Entry>& entries,
 {
     at.assign(entries.size(), 0);
     for (std::size_t i = 0; i < entries.size(); ++i) {
-        const std::uint64_t size = type_size(entries[i].type) * entries[i].count;
-        if (size <= 8) continue;
+        const std::uint64_t size =
+            tiff_field_bytes(entries[i].type) * entries[i].count;
+        if (size <= IFD_INLINE_BYTES) continue;
         at[i] = cursor;
         cursor += size + (size & 1);
     }
@@ -304,9 +293,9 @@ try {
         put(head, e.tag);
         put(head, e.type);
         put(head, e.count);
-        if (e.payload.size() <= 8) {
+        if (e.payload.size() <= IFD_INLINE_BYTES) {
             const std::size_t at = head.size();
-            head.resize(at + 8, std::byte{0});
+            head.resize(at + IFD_INLINE_BYTES, std::byte{0});
             std::memcpy(head.data() + at, e.payload.data(), e.payload.size());
         } else {
             put(head, l->external[i]);

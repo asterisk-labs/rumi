@@ -71,12 +71,26 @@ inline constexpr std::uint64_t IFD_OFFSET   = 16;
 inline constexpr std::uint64_t IFD_TAGS       = 13;
 inline constexpr std::uint64_t IFD_ENTRY_SIZE = 20;
 inline constexpr std::uint64_t IFD_SIZE       = 8 + IFD_TAGS * IFD_ENTRY_SIZE + 8;
+inline constexpr std::uint64_t IFD_INLINE_BYTES = 8;
 
 inline constexpr std::uint16_t TIFF_ASCII  = 2;
 inline constexpr std::uint16_t TIFF_SHORT  = 3;
 inline constexpr std::uint16_t TIFF_LONG   = 4;
 inline constexpr std::uint16_t TIFF_DOUBLE = 12;
 inline constexpr std::uint16_t TIFF_LONG8  = 16;
+
+[[nodiscard]] constexpr std::uint64_t
+tiff_field_bytes(std::uint16_t type) noexcept
+{
+    switch (type) {
+        case TIFF_ASCII:  return 1;
+        case TIFF_SHORT:  return 2;
+        case TIFF_LONG:   return 4;
+        case TIFF_DOUBLE:
+        case TIFF_LONG8:  return 8;
+        default:          return 0;
+    }
+}
 
 // Canonical IFD order. The final two tags are Rumi extensions.
 inline constexpr std::uint16_t TAG_IMAGE_WIDTH          = 256;
