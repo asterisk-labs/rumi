@@ -200,6 +200,7 @@ first frame at byte 500
 | Sources | `rumi_source_file`, `rumi_source_memory`, `rumi_source_free` |
 | Planning without I/O | `rumi_plan_ranges` (unique ranges in frame-index order) |
 | Reading | `rumi_read`, `rumi_read_dlpack`, `rumi_read_many`, `rumi_read_many_dlpack`, `rumi_dlpack_free`, `rumi_dlpack_legacy`, `rumi_dlpack_legacy_free` |
+| Python capsule support | `rumi_dlpack_capsule_api`, `rumi_dlpack_capsule_destructor` |
 | Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_geokeys` |
 
 `rumi_read_many` takes an array of `rumi_read_item { source, spec, y_off, x_off }` plus
@@ -207,6 +208,14 @@ one shared `y_size` and `x_size`. Its default pattern keeps `n`, and a custom pa
 must include `n` for more than one item. `rumi_info(source, header, header_size, &out)`
 accepts either input or both; `has_source` says whether time and georeferencing were
 read.
+
+Bindings that create `PyCapsule` objects without including `Python.h` may register
+`PyCapsule_IsValid` and `PyCapsule_GetPointer` with `rumi_dlpack_capsule_api`. They can
+then give `rumi_dlpack_capsule_destructor` to `PyCapsule_New`. The destructor stays in C
+because CPython may destroy a rejected capsule while the consumer has an exception
+pending. Calling back into Python at that point can replace the useful exception and
+leave the tensor allocated. A consumer that accepts the capsule renames it, so the
+destructor leaves accepted tensors alone.
 
 ## 7. Writing from C
 

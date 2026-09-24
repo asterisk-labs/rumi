@@ -2,6 +2,7 @@
 
 #include "dlpack/dlpack.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -21,6 +22,35 @@ extern "C" void rumi_dlpack_legacy_free(DLManagedTensor* self)
     auto* inner = static_cast<DLManagedTensorVersioned*>(self->manager_ctx);
     if (inner && inner->deleter) inner->deleter(inner);
     std::free(self);
+}
+
+namespace {
+std::atomic<rumi_capsule_is_valid_fn> g_capsule_is_valid{nullptr};
+std::atomic<rumi_capsule_pointer_fn>  g_capsule_pointer{nullptr};
+}  // namespace
+
+extern "C" void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
+                                        rumi_capsule_pointer_fn  pointer)
+{
+    g_capsule_is_valid.store(is_valid, std::memory_order_release);
+    g_capsule_pointer.store(pointer, std::memory_order_release);
+}
+
+// PyCapsule_IsValid does not touch a pending exception. GetPointer is safe
+// after that check, so cleanup preserves the consumer's original error.
+extern "C" void rumi_dlpack_capsule_destructor(void* capsule)
+{
+    const auto is_valid = g_capsule_is_valid.load(std::memory_order_acquire);
+    const auto pointer  = g_capsule_pointer.load(std::memory_order_acquire);
+    if (!capsule || !is_valid || !pointer) return;
+    if (is_valid(capsule, "dltensor_versioned")) {
+        auto* t = static_cast<DLManagedTensorVersioned*>(
+            pointer(capsule, "dltensor_versioned"));
+        if (t && t->deleter) t->deleter(t);
+    } else if (is_valid(capsule, "dltensor")) {
+        auto* t = static_cast<DLManagedTensor*>(pointer(capsule, "dltensor"));
+        if (t && t->deleter) t->deleter(t);
+    }
 }
 
 extern "C" DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t)

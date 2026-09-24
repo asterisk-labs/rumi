@@ -233,6 +233,14 @@ DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 
 void rumi_dlpack_legacy_free(DLManagedTensor* t);
 
+typedef int   (*rumi_capsule_is_valid_fn)(void* capsule, const char* name);
+typedef void* (*rumi_capsule_pointer_fn)(void* capsule, const char* name);
+
+void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
+                             rumi_capsule_pointer_fn pointer);
+
+void rumi_dlpack_capsule_destructor(void* capsule);
+
 typedef struct {
     uint32_t      image_width;
     uint32_t      image_length;

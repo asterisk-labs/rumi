@@ -153,6 +153,17 @@ def test_an_ml_float_without_ml_dtypes_stays_exportable(ml_float, monkeypatch):
     assert result._tensor is not None
 
 
+def test_a_rejected_capsule_keeps_the_consumer_error(ml_float):
+    # NumPy destroys the rejected capsule before clearing its own error. This
+    # used to call back into Python and replace that error with SystemError.
+    path, header, _data = ml_float
+    result = rumi.read(path, header, framework=None)
+    try:
+        np.from_dlpack(result)
+    except (BufferError, RuntimeError):
+        pass
+
+
 def test_an_ml_float_still_reaches_torch(ml_float):
     torch = pytest.importorskip("torch")
     path, header, data = ml_float

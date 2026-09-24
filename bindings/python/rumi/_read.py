@@ -21,34 +21,22 @@ _pyapi = ctypes.pythonapi
 _PyCapsule_New = _pyapi.PyCapsule_New
 _PyCapsule_New.restype = ctypes.py_object
 _PyCapsule_New.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
-_PyCapsule_IsValid = _pyapi.PyCapsule_IsValid
-_PyCapsule_IsValid.restype = ctypes.c_int
-_PyCapsule_IsValid.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-_PyCapsule_GetPointer = _pyapi.PyCapsule_GetPointer
-_PyCapsule_GetPointer.restype = ctypes.c_void_p
-_PyCapsule_GetPointer.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 
 _VERSIONED_NAME = b"dltensor_versioned"
 _LEGACY_NAME = b"dltensor"
 
-_Destructor = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+
+def _address(function) -> int:
+    return ctypes.cast(function, ctypes.c_void_p).value or 0
 
 
-def _capsule_destructor(capsule):
-    # A valid capsule name means ownership was never transferred to a consumer.
-    try:
-        cap = ctypes.c_void_p(capsule)
-        if _PyCapsule_IsValid(cap, _VERSIONED_NAME):
-            ptr = _PyCapsule_GetPointer(cap, _VERSIONED_NAME)
-            lib.rumi_dlpack_free(ffi.cast("DLManagedTensorVersioned*", ptr))
-        elif _PyCapsule_IsValid(cap, _LEGACY_NAME):
-            ptr = _PyCapsule_GetPointer(cap, _LEGACY_NAME)
-            lib.rumi_dlpack_legacy_free(ffi.cast("DLManagedTensor*", ptr))
-    except Exception:
-        pass
-
-
-_c_destructor = _Destructor(_capsule_destructor)
+# Keep cleanup in C because a rejecting consumer destroys the capsule while
+# its exception is pending. Calling Python there replaces the useful error and
+# leaves the decoded buffer allocated.
+lib.rumi_dlpack_capsule_api(
+    ffi.cast("rumi_capsule_is_valid_fn", _address(_pyapi.PyCapsule_IsValid)),
+    ffi.cast("rumi_capsule_pointer_fn", _address(_pyapi.PyCapsule_GetPointer)))
+_c_destructor = int(ffi.cast("uintptr_t", lib.rumi_dlpack_capsule_destructor))
 
 
 class _Storage:
@@ -167,7 +155,7 @@ class RumiArray:
         try:
             lib.rumi_dlpack_free(tensor)
         except Exception:
-            pass
+            pass  # interpreter shutdown may unload lib before this object
 
     def __repr__(self) -> str:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"

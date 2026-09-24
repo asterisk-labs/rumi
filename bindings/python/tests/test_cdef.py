@@ -83,6 +83,9 @@ rumi_status rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
 DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 void rumi_dlpack_legacy_free(DLManagedTensor* t);
+void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
+                             rumi_capsule_pointer_fn pointer);
+void rumi_dlpack_capsule_destructor(void* capsule);
 rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
                        const unsigned char* const* frames,
                        const size_t* sizes, size_t frame_count,
@@ -257,7 +260,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 33
+    assert len(baseline) == 35
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

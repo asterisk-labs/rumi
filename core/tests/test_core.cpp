@@ -813,6 +813,69 @@ void test_dlpack_wrappers()
     legacy->deleter(legacy);
 }
 
+// Model only the ownership fields used by the destructor. A real consumer
+// renames the capsule when it takes the pointer.
+struct FakeCapsule {
+    const char* name;
+    void*       pointer;
+};
+
+int fake_is_valid(void* capsule, const char* name)
+{
+    const auto* c = static_cast<FakeCapsule*>(capsule);
+    return c->pointer && std::strcmp(c->name, name) == 0;
+}
+
+void* fake_pointer(void* capsule, const char*)
+{
+    return static_cast<FakeCapsule*>(capsule)->pointer;
+}
+
+int g_deleted = 0;
+
+void count_delete(DLManagedTensorVersioned*) { ++g_deleted; }
+
+void test_dlpack_capsule_destructor()
+{
+    CASE("the capsule destructor frees only a capsule no consumer took")
+    DLManagedTensorVersioned tensor{};
+    tensor.deleter = count_delete;
+    FakeCapsule capsule{"dltensor_versioned", &tensor};
+
+    g_deleted = 0;
+    rumi_dlpack_capsule_api(nullptr, nullptr);
+    rumi_dlpack_capsule_destructor(&capsule);
+    EQ(g_deleted, 0);
+
+    rumi_dlpack_capsule_api(fake_is_valid, fake_pointer);
+    rumi_dlpack_capsule_destructor(&capsule);
+    EQ(g_deleted, 1);
+
+    capsule.name = "used_dltensor_versioned";
+    rumi_dlpack_capsule_destructor(&capsule);
+    EQ(g_deleted, 1);
+
+    CASE("the capsule destructor frees a legacy wrapper and its tensor")
+    void* data = std::malloc(2 * sizeof(std::uint16_t));
+    const std::int64_t shape[] = {2};
+    DLManagedTensorVersioned* inner =
+        rumi::build_dlpack(data, RUMI_DT_UINT16, shape, 1);
+    OK(inner != nullptr);
+    if (!inner) {
+        std::free(data);
+        return;
+    }
+    DLManagedTensor* legacy = rumi_dlpack_legacy(inner);
+    OK(legacy != nullptr);
+    if (!legacy) {
+        rumi_dlpack_free(inner);
+        return;
+    }
+    FakeCapsule old{"dltensor", legacy};
+    rumi_dlpack_capsule_destructor(&old);   // ASan proves both owners are freed
+    rumi_dlpack_capsule_api(nullptr, nullptr);
+}
+
 // Pinning is tested in isolated Python processes.
 void test_checksum_verification()
 {
@@ -1529,6 +1592,7 @@ int main()
     test_read_many_c_api();
     test_dtype_table();
     test_dlpack_wrappers();
+    test_dlpack_capsule_destructor();
     test_thread_pool_batches();
     test_failed_pool_construction_releases_the_count();
 #if !defined(_WIN32) && !defined(RUMI_TSAN)

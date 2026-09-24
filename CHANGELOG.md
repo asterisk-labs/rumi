@@ -4,6 +4,19 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `rumi_dlpack_capsule_api` and `rumi_dlpack_capsule_destructor` give a binding
+  that loads Rumi without compiling against Python a C destructor for its
+  DLPack capsules.
+
+### Fixed
+
+- A DLPack consumer that refuses a `RumiArray`, such as `np.from_dlpack` on an
+  ML float, now raises its own error and frees the decoded samples. The
+  capsule destructor was Python code, which cannot run while that error is
+  pending, so the consumer raised `SystemError` and the samples leaked.
+
 ## [0.24.1] - 2026-09-24
 
 ### Changed
