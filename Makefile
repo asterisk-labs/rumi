@@ -142,12 +142,17 @@ fuzz-seed:
 	done
 
 # libc++ container annotations produce false positives while loading the corpus.
+# OpenZL reserves the sizes a frame declares, which Rumi cannot bound. Above
+# 1 GiB its malloc returns NULL and the decode fails instead of libFuzzer
+# reporting out of memory; Rumi's own new still reports.
+FUZZ_ASAN := allocator_may_return_null=1:detect_container_overflow=0:max_allocation_size_mb=1024
+
 fuzz: fuzz-build fuzz-seed
 	@mkdir -p $(FUZZ_OUT)
 	@for t in $(FUZZ_TARGETS); do \
 	  corpus=$(abspath $(FUZZ_CORPUS))/$$t; \
 	  echo "$$t fuzzer, $(FUZZ_TIME)s"; \
-	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=allocator_may_return_null=1:detect_container_overflow=0 \
+	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=$(FUZZ_ASAN) \
 	    $(abspath core/build-fuzz)/rumi_$${t}_fuzzer $$corpus \
 	    -max_total_time=$(FUZZ_TIME) -max_len=65536 -jobs=$(FUZZ_JOBS) \
 	    -artifact_prefix=$(abspath $(FUZZ_OUT))/ > $$t.log 2>&1) || true; \
@@ -185,7 +190,7 @@ fuzz-replay: fuzz-build
 	  dirs=$$seeds; \
 	  test -n "$$(ls -A $$corpus 2>/dev/null)" && dirs="$$dirs $$corpus"; \
 	  echo "$$t replay"; \
-	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=allocator_may_return_null=1:detect_container_overflow=0 \
+	  (cd $(FUZZ_OUT) && ASAN_OPTIONS=$(FUZZ_ASAN) \
 	    $(abspath core/build-fuzz)/rumi_$${t}_fuzzer $$dirs \
 	    -runs=0 -max_len=65536 \
 	    -artifact_prefix=$(abspath $(FUZZ_OUT))/ > $$t.log 2>&1) \
