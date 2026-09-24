@@ -23,7 +23,8 @@ the Karu transport from the submodules in `extern/`.
 - Treat `build*/`, `core/build*`, `_site/`, `dist/`, `fuzz/out/`, `fuzz/corpus/` and the
   staged library under `bindings/python/rumi/_lib/` as build output. `docs/`, `deck/` and
   `img/` are hand-maintained sources.
-- Keep comments short, and match the density of the neighbouring code.
+- Keep comments short and use them to explain why the code takes a particular path.
+  Match the density of the neighbouring code.
 
 ## Validation
 

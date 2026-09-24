@@ -6,27 +6,27 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
-- `rumi_dlpack_capsule_api` and `rumi_dlpack_capsule_destructor` give a binding
-  that loads Rumi without compiling against Python a C destructor for its
-  DLPack capsules.
+- Bindings that load Rumi without compiling against Python can now use
+  `rumi_dlpack_capsule_api` and `rumi_dlpack_capsule_destructor` to clean up
+  rejected DLPack capsules.
 
 ### Fixed
 
 - A DLPack consumer that refuses a `RumiArray`, such as `np.from_dlpack` on an
-  ML float, now raises its own error and frees the decoded samples. The
-  capsule destructor was Python code, which cannot run while that error is
-  pending, so the consumer raised `SystemError` and the samples leaked.
-- Error messages are no longer cut at 192 to 512 bytes, so a long path, remote
-  URI or wrapped decoder message appears whole.
-- `rumi.write` and `rumi.info(source=...)` raise `OSError` (`RUMI_ERR_IO` in C)
-  with the system's reason when a file cannot be opened, read or written,
-  instead of `ValueError`. A source that ends early is still a `ValueError`.
-- A frame that needs a GeoZL codec this build lacks reports
-  `update geozl (CTid N)` instead of a generic custom-codec message.
-- A read plan too large to allocate raises `MemoryError` (`RUMI_ERR_OOM`)
-  instead of `RuntimeError`.
-- `rumi_plan_ranges` names the band, time step or window it rejects, with the
-  same messages as a read.
+  ML float, now keeps its own error and frees the decoded samples. The old
+  Python destructor could not run while the consumer had an exception pending.
+  That turned the useful error into `SystemError` and leaked the samples.
+- Long paths, remote URIs and decoder failures now appear in full instead of
+  being cut at a fixed buffer boundary.
+- `rumi.write` and `rumi.info(source=...)` now report file and transport failures
+  as `OSError` with the system reason. In C they return `RUMI_ERR_IO`. A source
+  that ends early remains a format error and therefore raises `ValueError`.
+- Missing GeoZL codecs now name their CTid and suggest updating GeoZL. This makes
+  an old reader easier to distinguish from a file that uses an unknown codec.
+- Read plans that cannot fit in memory now raise `MemoryError` and return
+  `RUMI_ERR_OOM` instead of being reported as internal failures.
+- `rumi_plan_ranges` now uses the same validation messages as a read, including
+  the rejected band, time step or window.
 
 ## [0.24.1] - 2026-09-24
 
@@ -392,7 +392,7 @@ Notable user-visible changes are recorded here.
 ### Added
 
 - Tile and cell layouts, thread controls, stateless byte-range planning,
-  Python 3.11–3.14 support, and sanitizer/fuzz coverage.
+  Python 3.11 through 3.14 support, and sanitizer/fuzz coverage.
 
 ### Changed
 

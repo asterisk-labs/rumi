@@ -186,8 +186,13 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
 
 - Format decisions and validation live in the core. Bindings only convert language
   values, selections and array views.
-- Error messages say what was expected and what arrived, in plain sentences; tests match
-  on their text.
-- Comments are short and explain why, matching the density of neighbouring code.
+- Error messages say what was expected and what arrived in plain sentences. Tests match
+  their text.
+- A core function that only rejects invalid input returns a message with `err` or
+  `errf`. A function that can also fail on I/O, malformed data or allocation returns
+  `rumi::Error` with `fail` or `failf`. Keeping the status beside the message prevents
+  worker and transport failures from being reclassified at the C boundary.
+- Comments are short and explain why the code takes a particular path. They match the
+  density of neighbouring code.
 - `CHANGELOG.md` follows Keep a Changelog, with `Breaking`, `Added`, `Changed`,
   `Performance`, `Removed` and `Fixed` sections as needed.
