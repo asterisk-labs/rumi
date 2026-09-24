@@ -1,6 +1,5 @@
 #include "rumi/rumi.hpp"
 
-#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -11,17 +10,6 @@
 
 namespace rumi {
 namespace {
-
-RUMI_PRINTF_LIKE(1, 2)
-std::unexpected<std::string> err(const char* fmt, ...)
-{
-    char buf[256];
-    std::va_list ap;
-    va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    return std::unexpected(std::string(buf));
-}
 
 constexpr std::uint16_t T_ASCII  = 2;
 constexpr std::uint16_t T_SHORT  = 3;
@@ -166,23 +154,23 @@ struct Grid {
 std::expected<Grid, std::string> grid_of(const WriteDesc& d)
 {
     if (d.image_width == 0 || d.image_length == 0)
-        return err("image is %ux%u, both dimensions must be non-zero",
+        return errf("image is %ux%u, both dimensions must be non-zero",
                    d.image_width, d.image_length);
     if (d.tile_size == 0)
-        return err("tile_size must be at least 1");
+        return errf("tile_size must be at least 1");
     if (d.time_count == 0)
-        return err("time_count must be at least 1");
+        return errf("time_count must be at least 1");
     if (d.samples_per_pixel == 0)
-        return err("samples_per_pixel must be at least 1");
+        return errf("samples_per_pixel must be at least 1");
     if (!unit_is_defined(d.frame_unit))
-        return err("frame_unit is %u; the registry runs 0 to %zu",
+        return errf("frame_unit is %u; the registry runs 0 to %zu",
                    unsigned(d.frame_unit), UNIT_REGISTRY.size() - 1);
     if ((d.transform == nullptr) != (d.epsg == 0))
-        return err("transform and a CRS must be given together");
+        return errf("transform and a CRS must be given together");
 
     Grid g{};
     if (!sample_encoding(d.dtype, &g.sample_format, &g.bits))
-        return err("unknown dtype %d", static_cast<int>(d.dtype));
+        return errf("unknown dtype %d", static_cast<int>(d.dtype));
 
     g.across = 1 + (d.image_width  - 1) / d.tile_size;
     g.down   = 1 + (d.image_length - 1) / d.tile_size;
@@ -191,9 +179,9 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
         effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count);
     if (!frame_count_of(unit, g.across, g.down, d.samples_per_pixel,
                         d.time_count, &g.frames))
-        return err("frame count overflows uint64");
+        return errf("frame count overflows uint64");
     if (g.frames > 0xFFFFFFFFu)
-        return err("frame count overflows uint32: %llu",
+        return errf("frame count overflows uint32: %llu",
                    static_cast<unsigned long long>(g.frames));
     return g;
 }
@@ -229,7 +217,7 @@ plan(const WriteDesc& d, const Grid& g,
 
     // The writer builds the complete pre-frame region in memory.
     if (l.base > 0xFFFFFFFFu)
-        return err("the header would be %llu bytes, past what this writer builds",
+        return errf("the header would be %llu bytes, past what this writer builds",
                    static_cast<unsigned long long>(l.base));
     return l;
 }
@@ -250,7 +238,7 @@ try {
     return l->base;
 }
 catch (const std::exception& e) {
-    return err("base_offset: %s", e.what());
+    return errf("base_offset: %s", e.what());
 }
 
 
@@ -263,16 +251,16 @@ try {
     if (!g) return std::unexpected(g.error());
 
     if (frame_count != g->frames)
-        return err("expected %llu frames for this grid, got %zu",
+        return errf("expected %llu frames for this grid, got %zu",
                    static_cast<unsigned long long>(g->frames), frame_count);
 
     for (std::size_t i = 0; i < frame_count; ++i) {
         if (!frames[i])
-            return err("frame %zu is null", i);
+            return errf("frame %zu is null", i);
         if (sizes[i] == 0)
-            return err("frame %zu has an empty payload", i);
+            return errf("frame %zu has an empty payload", i);
         if (sizes[i] > 0xFFFFFFFFu)
-            return err("frame %zu is %zu bytes, over the uint32 the header holds",
+            return errf("frame %zu is %zu bytes, over the uint32 the header holds",
                        i, sizes[i]);
     }
 
@@ -285,7 +273,7 @@ try {
 
     const CountPacking cp = plan_counts(counts);
     if (!expanded_index_fits(g->frames, cp.bits)) {
-        return err("%llu variable-size frames need an expanded index larger "
+        return errf("%llu variable-size frames need an expanded index larger "
                    "than this reader accepts",
                    static_cast<unsigned long long>(g->frames));
     }
@@ -340,7 +328,7 @@ try {
     const std::vector<std::byte>& trailer = *encoded;
 
     std::FILE* fp = std::fopen(path, "wb");
-    if (!fp) return err("could not open %s for writing", path);
+    if (!fp) return errf("could not open %s for writing", path);
 
     bool ok = std::fwrite(head.data(), 1, head.size(), fp) == head.size();
     for (std::size_t i = 0; ok && i < frame_count; ++i)
@@ -352,7 +340,7 @@ try {
     const bool closed = std::fclose(fp) == 0;
     if (!ok || !closed) {
         std::remove(path);
-        return err("write to %s failed", path);
+        return errf("write to %s failed", path);
     }
 
     // Remove a partially written file unless the operation reaches commit().
@@ -378,7 +366,7 @@ try {
 
     // Verify the planned base offset against the format formula.
     if (l->base != derived_base_offset(spp, n)) {
-        return err("laid the frames at %llu, the profile puts them at %llu",
+        return errf("laid the frames at %llu, the profile puts them at %llu",
                    static_cast<unsigned long long>(l->base),
                    static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }
@@ -394,21 +382,21 @@ try {
     // the writer's result. Indexing reads metadata only, not frame payloads.
     auto indexed = build_blob_from_file(path);
     if (!indexed) {
-        return err("wrote %s but could not index it back: %s", path,
+        return errf("wrote %s but could not index it back: %s", path,
                    indexed.error().c_str());
     }
     if (*indexed != blob) {
-        return err("the header describes something other than the file just "
+        return errf("the header describes something other than the file just "
                    "written to %s", path);
     }
     leave_nothing.keep = true;
     return blob;
 }
 catch (const std::bad_alloc&) {
-    return err("allocation failed while writing %s", path);
+    return errf("allocation failed while writing %s", path);
 }
 catch (const std::exception& e) {
-    return err("write_file: %s", e.what());
+    return errf("write_file: %s", e.what());
 }
 
 }  // namespace rumi

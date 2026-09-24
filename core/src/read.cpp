@@ -4,9 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
-#include <cstdarg>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <expected>
@@ -20,11 +18,6 @@
 namespace rumi {
 namespace {
 
-std::unexpected<std::string> err(std::string msg)
-{
-    return std::unexpected(std::move(msg));
-}
-
 std::unexpected<std::string>
 transport_error(std::string message, karu_status status)
 {
@@ -32,19 +25,6 @@ transport_error(std::string message, karu_status status)
     message += ": ";
     message += detail && *detail ? detail : karu_status_string(status);
     return err(std::move(message));
-}
-
-// printf-format checked error helper. A fixed buffer avoids newer libstdc++
-// symbols that would raise the wheel's platform requirement.
-RUMI_PRINTF_LIKE(1, 2)
-std::unexpected<std::string> errf(const char* fmt, ...)
-{
-    char buf[256];
-    std::va_list ap;
-    va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    return std::unexpected(std::string(buf));
 }
 
 // Detailed status for the most recent read on the calling thread.

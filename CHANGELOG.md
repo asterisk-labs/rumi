@@ -16,6 +16,8 @@ Notable user-visible changes are recorded here.
   ML float, now raises its own error and frees the decoded samples. The
   capsule destructor was Python code, which cannot run while that error is
   pending, so the consumer raised `SystemError` and the samples leaked.
+- Error messages are no longer cut at 192 to 512 bytes, so a long path, remote
+  URI or wrapped decoder message appears whole.
 
 ## [0.24.1] - 2026-09-24
 

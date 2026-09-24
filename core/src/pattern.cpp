@@ -24,11 +24,6 @@ int axis_index(char c) noexcept
     return -1;
 }
 
-std::unexpected<std::string> err(std::string msg)
-{
-    return std::unexpected(std::move(msg));
-}
-
 }  // namespace
 
 std::expected<LayoutPlan, std::string>

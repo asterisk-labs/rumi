@@ -134,6 +134,13 @@ void test_c_api_metadata()
     OK(rumi_last_error() != nullptr && std::strlen(rumi_last_error()) > 0);
     rumi_clear_error();
     OK(rumi_last_error() == nullptr);
+
+    CASE("an error message keeps a path longer than any fixed buffer")
+    const std::string path(1000, 'p');
+    const std::string message =
+        rumi::errf("could not open %s for writing", path.c_str()).error();
+    EQ(message.size(), path.size() + 27);
+    OK(message.find(path) != std::string::npos);
 }
 
 void test_base_offset_matches_the_spec()

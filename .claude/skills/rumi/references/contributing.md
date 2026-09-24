@@ -28,6 +28,7 @@ core/
   include/dlpack/dlpack.h        vendored DLPack
   src/pattern.cpp                frame and output pattern compilers, frame geometry
   src/parser.cpp                 header blob parsing
+  src/error.cpp                  error messages of any length
   src/builder.cpp                file indexing: IFD, trailer, header rebuild
   src/write.cpp                  the writer
   src/geokeys.cpp src/time.cpp   georeferencing and the time trailer

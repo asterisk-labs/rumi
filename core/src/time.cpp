@@ -1,8 +1,6 @@
 #include "rumi/rumi.hpp"
 
 #include <bit>
-#include <cstdarg>
-#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -14,22 +12,6 @@ namespace {
 
 // A prediction can overflow int64 before its residual brings it back in range.
 __extension__ typedef __int128 wide_int;
-
-std::unexpected<std::string> err(std::string msg)
-{
-    return std::unexpected(std::move(msg));
-}
-
-RUMI_PRINTF_LIKE(1, 2)
-std::unexpected<std::string> errf(const char* fmt, ...)
-{
-    char buf[192];
-    std::va_list ap;
-    va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof buf, fmt, ap);
-    va_end(ap);
-    return std::unexpected(std::string(buf));
-}
 
 std::uint64_t zigzag(std::int64_t x) noexcept
 {

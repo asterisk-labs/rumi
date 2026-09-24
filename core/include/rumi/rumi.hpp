@@ -3,6 +3,7 @@
 #include "rumi.h"
 #include "karu/karu.h"
 
+#include <cstdarg>
 #include <cstdio>
 
 #include <array>
@@ -15,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -27,6 +29,19 @@
 namespace rumi {
 
 class ThreadPool;
+
+// printf-style messages, never truncated.
+[[nodiscard]] std::string vformat_message(const char* fmt, std::va_list ap);
+RUMI_PRINTF_LIKE(1, 2)
+[[nodiscard]] std::string format_message(const char* fmt, ...);
+
+// Error messages for std::expected results.
+[[nodiscard]] inline std::unexpected<std::string> err(std::string message)
+{
+    return std::unexpected(std::move(message));
+}
+RUMI_PRINTF_LIKE(1, 2)
+[[nodiscard]] std::unexpected<std::string> errf(const char* fmt, ...);
 
 inline constexpr std::uint32_t MAGIC       = 0x45564F4C;
 inline constexpr std::uint16_t VERSION     = 1;

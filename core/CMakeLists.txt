@@ -72,6 +72,7 @@ add_subdirectory(${RUMI_KARU_DIR} ${CMAKE_CURRENT_BINARY_DIR}/karu EXCLUDE_FROM_
 
 set(RUMI_SOURCES
     src/parser.cpp
+    src/error.cpp
     src/builder.cpp
     src/geokeys.cpp
     src/write.cpp

@@ -1,24 +1,11 @@
 #include "rumi/rumi.hpp"
 
-#include <cstdarg>
-#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
 namespace rumi {
 namespace {
-
-RUMI_PRINTF_LIKE(1, 2)
-std::unexpected<std::string> err(const char* fmt, ...)
-{
-    char buf[256];
-    std::va_list ap;
-    va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    return std::unexpected(std::string(buf));
-}
 
 // GeoKey IDs reused by rumi. https://docs.ogc.org/is/19-008r4/19-008r4.html
 constexpr std::uint16_t GT_MODEL_TYPE   = 1024;
@@ -95,7 +82,7 @@ try {
     const bool undefined  = epsg == 0;
     const bool geographic = !undefined && is_geographic(epsg);
     if (!undefined && !geographic && !is_projected(epsg))
-        return err("EPSG:%u is not a projected or geographic CRS", epsg);
+        return errf("EPSG:%u is not a projected or geographic CRS", epsg);
 
     std::uint16_t model = MODEL_UNDEFINED;
     std::uint16_t crs_key = GEOGRAPHIC_TYPE;
@@ -125,7 +112,7 @@ try {
     return out;
 }
 catch (const std::exception& e) {
-    return err("build_geokeys: %s", e.what());
+    return errf("build_geokeys: %s", e.what());
 }
 
 }  // namespace rumi

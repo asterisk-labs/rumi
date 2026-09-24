@@ -159,12 +159,10 @@ bool missing_custom_codec(const char* ctx, unsigned long* ctid) noexcept
 RUMI_PRINTF_LIKE(2, 3)
 void say(std::string& out, const char* fmt, ...) noexcept
 {
-    char buf[512];
     std::va_list ap;
     va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    try { out = vformat_message(fmt, ap); } catch (...) { out.clear(); }
     va_end(ap);
-    try { out = std::string(buf); } catch (...) { out.clear(); }
 }
 
 rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
