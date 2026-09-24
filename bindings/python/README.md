@@ -1,7 +1,7 @@
 # rumi (python)
 
-Python bindings for Rumi, an experimental raster format for machine-learning
-datasets. Rumi stores images as `(B, Y, X)` and time series as `(T, B, Y, X)`.
+Python bindings for Rumi, stateless raster storage for AI4EO. Rumi stores images as
+`(B, Y, X)` and time series as `(T, B, Y, X)`.
 
 ```bash
 pip install rumi-eo

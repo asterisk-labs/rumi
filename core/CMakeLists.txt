@@ -14,7 +14,7 @@ string(REGEX REPLACE ".*RUMI_API_VERSION ([0-9]+).*" "\\1"
 
 project(rumi
     VERSION     ${RUMI_VERSION_NUMERIC}
-    DESCRIPTION "A GeoTIFF-inspired raster format for AI training data"
+    DESCRIPTION "Stateless raster storage for AI4EO"
     LANGUAGES   CXX C
 )
 

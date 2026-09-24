@@ -1,8 +1,8 @@
 # Rumi repository guidance
 
-Rumi is a raster format for machine-learning datasets: a C++23 core with a C API and
-CFFI Python bindings, defined by `SPEC.md`. It links GeoZL, and through it OpenZL, and
-the Karu transport from the submodules in `extern/`.
+Rumi is stateless raster storage for AI4EO. Its C++23 core, C API and CFFI Python
+bindings are defined by `SPEC.md`. It links GeoZL, and through it OpenZL, and the Karu
+transport from the submodules in `extern/`.
 
 ## Working agreements
 

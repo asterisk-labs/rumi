@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 [project]
 name            = "rumi-eo"
 dynamic         = ["version"]
-description     = "Raster storage for training and inference."
+description     = "Stateless raster storage for AI4EO."
 readme          = "README.md"
 license         = { text = "GPL-3.0-only" }
 requires-python = ">=3.11"

@@ -5,9 +5,9 @@
 - Date 2026-08-25
 - License GPLv3
 
-rumi is a GeoTIFF-inspired raster format for compressed raster tensors with up
-to four dimensions. It stores either an Image `(B, Y, X)` or a temporal Cube
-`(T, B, Y, X)` in one tiled file.
+rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
+compressed raster tensors with up to four dimensions. A file contains either an
+Image `(B, Y, X)` or a temporal Cube `(T, B, Y, X)`.
 
 The format has the following properties:
 

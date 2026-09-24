@@ -2,7 +2,7 @@
 name: rumi
 description: >-
   Use Rumi or work on its codebase: write and read `.rumi` Image and Cube files for
-  machine-learning datasets; choose frame patterns and layouts; compress frames with
+  AI4EO datasets; choose frame patterns and layouts; compress frames with
   GeoZL; select bands, time steps and windows; batch training windows with read_many;
   keep external headers; read from cloud storage; implement a reader from SPEC.md; or
   edit Rumi's C++ core, C API, Python bindings, tests, fuzzers and docs. Do not use for
@@ -11,10 +11,10 @@ description: >-
 
 # Rumi
 
-Rumi is a raster format for machine-learning datasets. A `.rumi` file stores an Image
-`(B, Y, X)` or a temporal Cube `(T, B, Y, X)` as a grid of frames. Every frame is an
-independent OpenZL frame, normally written with [GeoZL](https://github.com/asterisk-labs/geozl),
-so each frame may use its own compression graph. A small external header locates every
+Rumi is stateless raster storage for AI4EO. A `.rumi` file stores an Image `(B, Y, X)`
+or a temporal Cube `(T, B, Y, X)` as a grid of frames. Every frame is an independent
+OpenZL frame, normally written with [GeoZL](https://github.com/asterisk-labs/geozl), so
+each frame may use its own compression graph. A small external header locates every
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 

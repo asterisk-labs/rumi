@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#EEF0F1">
 <title>rumi</title>
-<meta name="description" content="An experimental raster format for machine-learning datasets.">
+<meta name="description" content="Stateless raster storage for AI4EO.">
 
 <link rel="icon" href="assets/svg/rumi-mark.svg">
 <link rel="stylesheet" href="assets/css/tokens.css">
@@ -61,7 +61,7 @@
 <template id="view-home">
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-copy">
-      <p class="eyebrow">Raster storage for AI4EO</p>
+      <p class="eyebrow">Stateless raster storage for AI4EO</p>
 
       <h1 id="hero-title">Stop starving <span class="hero-line">your <span class="hero-highlight">GPU</span>.</span></h1>
 
@@ -129,9 +129,9 @@
 <li>Date 2026-08-25</li>
 <li>License GPLv3</li>
 </ul>
-<p>rumi is a GeoTIFF-inspired raster format for compressed raster tensors with up
-to four dimensions. It stores either an Image <code>(B, Y, X)</code> or a temporal Cube
-<code>(T, B, Y, X)</code> in one tiled file.</p>
+<p>rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
+compressed raster tensors with up to four dimensions. A file contains either an
+Image <code>(B, Y, X)</code> or a temporal Cube <code>(T, B, Y, X)</code>.</p>
 <p>The format has the following properties:</p>
 <ul>
 <li><strong>Stateless reads.</strong> The external binary header locates every compressed frame
