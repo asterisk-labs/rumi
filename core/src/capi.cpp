@@ -511,6 +511,7 @@ extern "C" void rumi_metadata_free(rumi_metadata* metadata)
 {
     if (!metadata) return;
     std::free(metadata->blob);
+    std::free(metadata->band_texts);
     std::free(metadata->time);
     // A cleared value is safe to inspect or release again.
     std::memset(metadata, 0, sizeof(*metadata));
@@ -530,10 +531,10 @@ rumi_info(rumi_source* source,
 
         std::vector<std::byte> canonical;
         rumi::FileGeo geo{};
-        rumi::TimeAxis axis{};
+        rumi::Trailer trailer{};
         if (source) {
             auto indexed = rumi::build_blob_from_source(
-                *source->impl, &geo, &axis);
+                *source->impl, &geo, &trailer);
             if (!indexed) {
                 set_error(indexed.error().message);
                 return indexed.error().status;
@@ -564,8 +565,9 @@ rumi_info(rumi_source* source,
             for (int i = 0; i < 6; ++i) result.transform[i] = geo.transform[i];
             result.epsg = geo.epsg;
             result.pixel_is_point = geo.pixel_is_point ? 1 : 0;
-            result.time_type = axis.type;
+            result.time_type = trailer.time.type;
         }
+        const rumi::TimeAxis& axis = trailer.time;
 
         std::unique_ptr<void, FreeDeleter> blob(
             std::malloc(canonical.empty() ? 1 : canonical.size()));
@@ -575,6 +577,28 @@ rumi_info(rumi_source* source,
         }
         if (!canonical.empty()) {
             std::memcpy(blob.get(), canonical.data(), canonical.size());
+        }
+
+        // One allocation holds the pointers and the texts they point into, so
+        // rumi_metadata_free releases both.
+        std::unique_ptr<void, FreeDeleter> texts;
+        if (source) {
+            std::size_t bytes = trailer.bands.size() * sizeof(char*);
+            for (const std::string& text : trailer.bands) bytes += text.size() + 1;
+            texts.reset(std::malloc(bytes));
+            if (!texts) {
+                set_error("allocation failed");
+                return RUMI_ERR_OOM;
+            }
+            auto** slots = static_cast<char**>(texts.get());
+            char* at = reinterpret_cast<char*>(slots + trailer.bands.size());
+            for (std::size_t b = 0; b < trailer.bands.size(); ++b) {
+                const std::string& text = trailer.bands[b];
+                slots[b] = at;
+                std::memcpy(at, text.data(), text.size());
+                at[text.size()] = '\0';
+                at += text.size() + 1;
+            }
         }
 
         std::unique_ptr<void, FreeDeleter> times;
@@ -601,6 +625,8 @@ rumi_info(rumi_source* source,
 
         result.blob = static_cast<unsigned char*>(blob.release());
         result.blob_size = canonical.size();
+        result.band_texts = static_cast<char**>(texts.release());
+        result.band_text_count = source ? trailer.bands.size() : 0;
         result.time = static_cast<std::int64_t*>(times.release());
         result.time_coords = source ? axis.coords.size() : 0;
         *out = result;
@@ -1059,11 +1085,47 @@ to_write_desc(const rumi_write_desc& desc)
     d.epsg              = desc.epsg;
     d.pixel_is_point    = desc.pixel_is_point != 0;
     d.frame_unit        = desc.frame_unit;
+    // A count that cannot match the file is refused before any text is copied.
+    if (desc.band_text_count
+        && desc.band_text_count != desc.samples_per_pixel) {
+        return rumi::errf("a file with %u band%s needs one text per band; got %llu",
+                          unsigned(desc.samples_per_pixel),
+                          desc.samples_per_pixel == 1 ? "" : "s",
+                          static_cast<unsigned long long>(desc.band_text_count));
+    }
+    if (!desc.band_texts && desc.band_text_count) {
+        return rumi::errf("band_texts is null but band_text_count is %llu",
+                          static_cast<unsigned long long>(desc.band_text_count));
+    }
+    for (std::uint64_t b = 0; b < desc.band_text_count; ++b) {
+        if (!desc.band_texts[b]) {
+            return rumi::errf("band text %llu is null",
+                              static_cast<unsigned long long>(b));
+        }
+        d.trailer.bands.emplace_back(desc.band_texts[b]);
+    }
+    // The same holds for the time coordinates.
+    if (desc.time_coords) {
+        if (desc.time_type != rumi::TIME_INTERVAL
+            && desc.time_type != rumi::TIME_INSTANT) {
+            return rumi::errf("time_type is %u; rumi records intervals (1) or "
+                              "instants (2)", unsigned(desc.time_type));
+        }
+        const std::uint64_t want =
+            rumi::time_coord_count(desc.time_type, desc.time_count);
+        if (desc.time_coords != want) {
+            return rumi::errf(
+                "a %s axis over %u time steps needs %llu coordinates, got %llu",
+                desc.time_type == rumi::TIME_INTERVAL ? "interval" : "instant",
+                desc.time_count, static_cast<unsigned long long>(want),
+                static_cast<unsigned long long>(desc.time_coords));
+        }
+    }
     auto axis = rumi::axis_from_seconds(
         desc.time_type,
         std::span<const std::int64_t>(desc.time, desc.time ? desc.time_coords : 0));
     if (!axis) return std::unexpected(std::move(axis.error()));
-    d.time = std::move(*axis);
+    d.trailer.time = std::move(*axis);
     return d;
 }
 

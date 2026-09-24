@@ -66,7 +66,7 @@ std::uint64_t read_uint(const std::byte* p, std::size_t sz) noexcept
 }  // namespace
 
 std::expected<std::vector<std::byte>, Error>
-build_blob_from_source(Source& source, FileGeo* geo, TimeAxis* time) noexcept
+build_blob_from_source(Source& source, FileGeo* geo, Trailer* trailer) noexcept
 try {
     TransportSession transport;
     auto source_size = source.size(transport);
@@ -563,46 +563,37 @@ try {
                                            n_frames)));
     }
 
-    // The time trailer starts immediately after the final frame.
-    if (on_disk < running + TRAILER_SIZE) {
-        return bad("frames end at %llu, leaving no room for the %zu-byte time "
-                   "trailer in a file of %llu bytes",
-                   static_cast<unsigned long long>(running), TRAILER_SIZE,
+    // The trailer runs from the end of the final frame to the end of the file.
+    constexpr std::size_t fixed = sizeof(TrailerHead) + sizeof(TimeFields);
+    if (running > on_disk || on_disk - running < fixed) {
+        return bad("frames end at %llu, leaving no room for a trailer in a "
+                   "file of %llu bytes",
+                   static_cast<unsigned long long>(running),
                    static_cast<unsigned long long>(on_disk));
     }
+    const std::uint64_t trailer_bytes = on_disk - running;
+    if (trailer_bytes > MAX_TRAILER_BYTES) {
+        return bad("the trailer is %llu bytes, past the %zu this reader will "
+                   "read", static_cast<unsigned long long>(trailer_bytes),
+                   MAX_TRAILER_BYTES);
+    }
 
-    TimeTrailer tt{};
-    if (auto r = read(running, &tt, sizeof tt, "the time trailer"); !r) {
+    std::vector<std::byte> tail(static_cast<std::size_t>(trailer_bytes));
+    if (auto r = read(running, tail.data(), tail.size(), "the trailer"); !r) {
         return std::unexpected(r.error());
     }
-    if (tt.magic != TIME_MAGIC) {
-        return bad("no time trailer where the frames end, at %llu",
+    TrailerHead head{};
+    std::memcpy(&head, tail.data(), sizeof head);
+    if (head.magic != TRAILER_MAGIC) {
+        return bad("no trailer where the frames end, at %llu",
                    static_cast<unsigned long long>(running));
     }
-    if (tt.time_bits > 64) {
-        return bad("time_bits is %u, past the 64 a residual can need",
-                   tt.time_bits);
-    }
 
-    // Validate trailer size against the file before allocating its buffer.
-    const std::uint64_t coords = time_coord_count(tt.time_type, time_count);
-    const std::uint64_t packed = (coords * tt.time_bits + 7) / 8;
-    if (on_disk != running + TRAILER_SIZE + packed) {
-        return bad("the trailer says %llu bytes of coordinates, so the file "
-                   "should be %llu bytes; it is %llu",
-                   static_cast<unsigned long long>(packed),
-                   static_cast<unsigned long long>(running + TRAILER_SIZE + packed),
-                   static_cast<unsigned long long>(on_disk));
-    }
-
-    // Use the normal decoder to validate canonical encoding and coordinate
-    // order while building the external header.
-    std::vector<std::byte> tail(static_cast<std::size_t>(TRAILER_SIZE + packed));
-    if (auto r = read(running, tail.data(), tail.size(), "the time trailer"); !r) {
-        return std::unexpected(r.error());
-    }
-    auto axis = decode_time(tail, time_count);
-    if (!axis) return fail(RUMI_ERR_FORMAT, std::move(axis.error()));
+    // Use the normal decoder to validate band texts, canonical time encoding
+    // and coordinate order while building the external header.
+    auto decoded = decode_trailer(tail, static_cast<std::uint16_t>(spp),
+                                  time_count);
+    if (!decoded) return fail(RUMI_ERR_FORMAT, std::move(decoded.error()));
 
     BlobHeader bh{};
     bh.magic             = MAGIC;
@@ -636,7 +627,7 @@ try {
         geo->epsg = model == 0 ? 0u : static_cast<std::uint32_t>(epsg);
         geo->pixel_is_point = raster == 2;
     }
-    if (time) *time = std::move(*axis);
+    if (trailer) *trailer = std::move(*decoded);
     return blob;
 }
 catch (const std::bad_alloc&) {
@@ -647,12 +638,12 @@ catch (const std::exception& e) {
 }
 
 std::expected<std::vector<std::byte>, Error>
-build_blob_from_file(const char* path, FileGeo* geo, TimeAxis* time) noexcept
+build_blob_from_file(const char* path, FileGeo* geo, Trailer* trailer) noexcept
 {
     if (!path) return fail(RUMI_ERR_INVALID, "path is null");
     auto source = TransportSource::open(path);
     if (!source) return fail(RUMI_ERR_IO, std::move(source.error()));
-    return build_blob_from_source(**source, geo, time);
+    return build_blob_from_source(**source, geo, trailer);
 }
 
 }  // namespace rumi

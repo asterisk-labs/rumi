@@ -1,11 +1,13 @@
 """Cross-check rumi output with a small reader derived from SPEC.md."""
 
+import datetime as dt
 import pathlib
 import struct
 
 import numpy as np
 import pytest
 import rumi
+from _labels import labels
 
 geozl = pytest.importorskip("geozl")
 
@@ -148,6 +150,37 @@ def spec_read(path):
     return out
 
 
+def spec_trailer(path):
+    """Return the band texts, the time kind and every coordinate in seconds."""
+    blob = pathlib.Path(path).read_bytes()
+    ifd = read_ifd(blob)
+    (bands,), (steps,) = field(ifd, SAMPLES_PER_PIXEL), field(ifd, TIME_COUNT)
+    offsets, counts = field(ifd, TILE_OFFSETS), field(ifd, TILE_BYTE_COUNTS)
+    at = offsets[-1] + counts[-1]
+    assert blob[at:at + 4] == b"TAIL"
+    assert struct.unpack_from("<H", blob, at + 4) == (1,)
+
+    pos, texts = at + 6, []
+    for _ in range(bands):
+        (n,) = struct.unpack_from("<H", blob, pos)
+        texts.append(blob[pos + 2:pos + 2 + n].decode("utf-8"))
+        pos += 2 + n
+
+    kind, bits, epoch, step, scale = struct.unpack_from("<BBqqI", blob, pos)
+    pos += 22
+    count = steps * (2 if kind == 1 else 1)
+    seconds = []
+    for i in range(count):
+        packed = 0
+        for j in range(bits):
+            bit = i * bits + j
+            packed |= (blob[pos + bit // 8] >> (bit % 8) & 1) << j
+        residual = packed >> 1 if packed % 2 == 0 else -((packed >> 1) + 1)
+        seconds.append((epoch + i * step + residual) * scale)
+    assert pos + (count * bits + 7) // 8 == len(blob)
+    return texts, kind, seconds
+
+
 def frame_index(unit, spatial, band, step, bands, steps):
     if unit == 0:
         return (spatial * bands + band) * steps + step
@@ -180,6 +213,7 @@ def unit_of(path):
 
 
 DATES = ["2024-05-01", "2024-06-01", "2024-07-01", "2024-08-01"]
+TEXTS = ["B2, Blue, 492.4nm", "B3, Green, 559.8nm", "B4, Red, 664.6nm"]
 
 
 def store(tmp_path, pattern, arr, **kw):
@@ -191,7 +225,7 @@ def store(tmp_path, pattern, arr, **kw):
             graph = graphs[frame.data.shape] = geozl.graph(
                 frame.data, "planar>zigzag>zstd")
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    return rumi.write(tmp_path / "a.rumi", tf, **kw)
+    return rumi.write(tmp_path / "a.rumi", tf, **{**labels(tf), **kw})
 
 
 def cube(dtype="uint16"):
@@ -251,3 +285,22 @@ def test_the_reader_follows_the_offsets_the_file_carries(tmp_path):
 
     with pytest.raises((ValueError, IOError)):
         rumi.info(source=moved)
+
+
+@pytest.mark.parametrize("time", [
+    DATES,
+    [("2024-05-01", "2024-05-16"), ("2024-06-01", "2024-06-16"),
+     ("2024-07-01", "2024-07-16"), ("2024-08-01", "2024-08-16")],
+])
+def test_band_texts_and_dates_read_the_same_both_ways(time, tmp_path):
+    path, _header = store(tmp_path, CUBE_LAYOUTS[3], cube(), bands=TEXTS,
+                          time=time)
+    texts, kind, seconds = spec_trailer(path)
+    days = [dt.date(1970, 1, 1) + dt.timedelta(seconds=s) for s in seconds]
+    metadata = rumi.info(source=path)
+
+    assert texts == metadata.bands == TEXTS
+    if kind == 2:
+        assert days == metadata.time
+    else:
+        assert list(zip(days[::2], days[1::2], strict=True)) == metadata.time

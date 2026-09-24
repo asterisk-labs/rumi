@@ -1,10 +1,12 @@
 """End-to-end conformance checks using an independent file builder."""
 
+import datetime as dt
 import struct
 
 import numpy as np
 import pytest
 import rumi
+from _labels import labels
 from rumi import FrameTable
 from rumi._ffi import _Spec
 from rumi._write import header_bytes, write_frames
@@ -25,8 +27,8 @@ BASE_CONSTANT = IFD_OFFSET + IFD_SIZE      # 292
 FILE_MAGIC = 0x494D5552
 
 MODEL, RASTER, GEOGRAPHIC, PROJECTED = 1024, 1025, 2048, 3072
-TIME_MAGIC = 0x454D4954       # "TIME" on the wire
-TRAILER_SIZE = 28
+TRAILER_MAGIC = 0x4C494154    # "TAIL" on the wire
+TRAILER_FIXED = 28            # magic, version and the time fields
 UTM18S = 32718
 NORTH_UP = (30.0, 0.0, 500000.0, 0.0, -30.0, 8000000.0)
 ROTATED = (30.0, 5.0, 500000.0, 5.0, -30.0, 8000000.0)
@@ -128,13 +130,12 @@ def build_tiff(entries, tiles, bands=1, pad_before_tiles=0, trailer=None):
     out += b"\x00" * pad_before_tiles
     for payload in tiles:
         out += payload
-    out += undefined_trailer() if trailer is None else trailer
+    if trailer is None:
+        steps = entries[65001][1][0] if 65001 in entries else 1
+        trailer = pack_trailer(2, [19723 + i for i in range(steps)],
+                               texts=[f"band {b}" for b in range(bands)])
+    out += trailer
     return bytes(out)
-
-
-# Fixed trailer for undefined time.
-def undefined_trailer():
-    return struct.pack("<IHBBqqI", TIME_MAGIC, 1, 0, 0, 0, 0, 1)
 
 
 def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
@@ -162,54 +163,128 @@ def spec_entries(width, length, tile, bands, tiles, bits=16, fmt=1,
     }
 
 
-# Time trailer
+# Trailer
 
-def test_every_file_ends_with_a_time_trailer(tmp_path):
-    """Return the fixed trailer for undefined time."""
+def read_trailer(path, bands):
+    """Split the trailer into its parts, starting where the last frame ends."""
+    entries, _next, blob = read_ifd(path)
+    at = values(entries[324], "Q")[-1] + values(entries[325], "I")[-1]
+    head = struct.unpack_from("<IH", blob, at)
+    pos, texts = at + 6, []
+    for _ in range(bands):
+        (n,) = struct.unpack_from("<H", blob, pos)
+        texts.append(blob[pos + 2:pos + 2 + n].decode("utf-8"))
+        pos += 2 + n
+    fields = struct.unpack_from("<BBqqI", blob, pos)
+    return at, head, texts, fields, blob[pos + 22:]
+
+
+def test_every_file_ends_with_a_trailer(tmp_path):
+    """The trailer starts after the last frame, and the file ends with it."""
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
-    blob = open(path, "rb").read()
-    at = len(blob) - TRAILER_SIZE
-
-    magic, ver, ttype, tbits, epoch, step, scale = struct.unpack_from(
-        "<IHBBqqI", blob, at)
-    assert blob[at:at + 4] == b"TIME"
-    assert (magic, ver, ttype, tbits, epoch, step, scale) == \
-        (TIME_MAGIC, 1, 0, 0, 0, 0, 1)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
+    at, head, texts, fields, residuals = read_trailer(path, tf.bands)
+    assert open(path, "rb").read()[at:at + 4] == b"TAIL"
+    assert head == (TRAILER_MAGIC, 1)
+    assert texts == labels(tf)["bands"]
+    assert fields == (2, 0, 19723, 0, 86400)      # one instant, in whole days
+    assert residuals == b""
     assert at == header_bytes(tf) + sum(len(f) for f in tf["compressed"])
 
 
-@pytest.mark.parametrize("field, value, because", [
-    (0, b"TIMF", "no time trailer"),          # magic
-    (4, struct.pack("<H", 2), "version"),     # version
-    (6, b"\x03", "time_type"),                # time_type
-    (24, struct.pack("<I", 0), "scale"),      # time_scale
-    (24, struct.pack("<I", 7), "scale"),      # an unregistered scale
-    (7, b"\x41", "time_bits"),                # time_bits, past what fits
+def test_band_texts_are_stored_in_band_order(tmp_path):
+    tf = make_frame(shape=(3, 40, 70))
+    texts = ["B4, Red, 664.5nm (S2A) / 665nm (S2B)", "R\u00e9flectance, 842 nm",
+             "\u6ce2\u6bb5 11"]
+    path = tmp_path / "a.rumi"
+    write_frames(path, tf["compressed"], tf, bands=texts, time=["2024-05-01"])
+    assert read_trailer(path, 3)[2] == texts
+    assert rumi.info(source=path).bands == texts
+
+
+def test_band_texts_do_not_move_the_frames(tmp_path):
+    """Only the trailer grows with the texts; the header and frames stay put."""
+    tf = make_frame()
+    short, wordy = tmp_path / "short.rumi", tmp_path / "wordy.rumi"
+    write_frames(short, tf["compressed"], tf, bands=["a", "b"],
+                 time=["2024-05-01"])
+    write_frames(wordy, tf["compressed"], tf, bands=["a" * 5000, "b" * 5000],
+                 time=["2024-05-01"])
+    a, b = short.read_bytes(), wordy.read_bytes()
+    at = header_bytes(tf) + sum(len(f) for f in tf["compressed"])
+    assert a[:at] == b[:at]
+    assert len(b) - len(a) == 2 * 4999
+    assert rumi.info(source=short).header == rumi.info(source=wordy).header
+
+
+@pytest.mark.parametrize("part, at, value, because", [
+    ("head", 0, b"TAIM", "no trailer"),                 # magic
+    ("head", 4, struct.pack("<H", 2), "version"),       # version
+    ("text", 0, b"\xff", "not valid UTF-8"),            # first byte of band 0
+    ("text", 0, b"\x00", "NUL"),
+    ("text", 8, b"band 0", "same text"),                # band 1 repeats band 0
+    ("time", 0, b"\x00", "time_type"),                  # time is never undefined
+    ("time", 0, b"\x03", "time_type"),
+    ("time", 18, struct.pack("<I", 0), "scale"),        # time_scale
+    ("time", 18, struct.pack("<I", 7), "scale"),        # an unregistered scale
+    ("time", 1, b"\x41", "time_bits"),                  # time_bits, past what fits
 ])
-def test_a_broken_trailer_is_refused(tmp_path, field, value, because):
+def test_a_broken_trailer_is_refused(tmp_path, part, at, value, because):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     blob = bytearray(open(path, "rb").read())
-    at = len(blob) - TRAILER_SIZE + field
-    blob[at:at + len(value)] = value
+    trailer = header_bytes(tf) + sum(len(f) for f in tf["compressed"])
+    start = {"head": trailer, "text": trailer + 6 + 2,
+             "time": trailer + 6 + len(pack_texts(labels(tf)["bands"]))}[part]
+    blob[start + at:start + at + len(value)] = value
     bad = tmp_path / "bad.rumi"
     bad.write_bytes(blob)
     with pytest.raises(ValueError, match=because):
         rumi.info(source=bad)
 
 
+@pytest.mark.parametrize("text, because", [
+    (b"", "band 0 has an empty text"),
+    (b"\xc0\xaf", "not valid UTF-8"),                   # an overlong "/"
+    (b"\xed\xa0\x80", "not valid UTF-8"),               # a surrogate
+    (b"a\x00b", "NUL"),
+])
+def test_a_band_text_the_spec_forbids_is_refused(tmp_path, text, because):
+    tiles = [b"\x01\x02\x03\x04"]
+    entries = spec_entries(16, 16, 16, 1, tiles, unit=0, time=1)
+    path = tmp_path / "text.rumi"
+    path.write_bytes(build_tiff(entries, tiles,
+                                trailer=pack_trailer(2, [19723], texts=[text])))
+    with pytest.raises(ValueError, match=because):
+        rumi.info(source=path)
+
+
 def test_a_file_cut_short_of_its_trailer_is_refused(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     blob = open(path, "rb").read()
     short = tmp_path / "short.rumi"
     short.write_bytes(blob[:-4])
-    with pytest.raises(ValueError, match="no room for"):
+    with pytest.raises(ValueError, match="ends before its time fields"):
         rumi.info(source=short)
+
+    trailer = len(blob) - header_bytes(tf) - sum(len(f) for f in tf["compressed"])
+    short.write_bytes(blob[:-(trailer - 10)])
+    with pytest.raises(ValueError, match="no room for a trailer"):
+        rumi.info(source=short)
+
+
+def test_bytes_after_the_trailer_are_refused(tmp_path):
+    tf = make_frame()
+    path = tmp_path / "a.rumi"
+    write_frames(path, tf["compressed"], tf, **labels(tf))
+    longer = tmp_path / "longer.rumi"
+    longer.write_bytes(open(path, "rb").read() + b"\x00")
+    with pytest.raises(ValueError, match="after the time residuals"):
+        rumi.info(source=longer)
 
 
 # Fixed IFD
@@ -217,7 +292,8 @@ def test_a_file_cut_short_of_its_trailer_is_refused(tmp_path):
 def test_the_tag_set_is_exactly_the_thirteen(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
     assert tuple(sorted(read_ifd(path)[0])) == TAGS
 
 
@@ -225,8 +301,9 @@ def test_the_tag_set_does_not_depend_on_georeferencing(tmp_path):
 
     tf = make_frame()
     plain, geo = tmp_path / "plain.rumi", tmp_path / "geo.rumi"
-    write_frames(plain, tf["compressed"], tf)
-    write_frames(geo, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(plain, tf["compressed"], tf, **labels(tf))
+    write_frames(geo, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
     assert tuple(sorted(read_ifd(plain)[0])) == TAGS
     assert set(read_ifd(plain)[0]) == set(read_ifd(geo)[0])
 
@@ -234,7 +311,7 @@ def test_the_tag_set_does_not_depend_on_georeferencing(tmp_path):
 def test_tags_are_in_ascending_order(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     tags = list(read_ifd(path)[0])
     assert tags == sorted(tags)
 
@@ -242,7 +319,7 @@ def test_tags_are_in_ascending_order(tmp_path):
 def test_the_ifd_starts_at_sixteen_and_is_one(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     _entries, next_ifd, blob = read_ifd(path)
     assert struct.unpack_from("<Q", blob, 8) == (IFD_OFFSET,)
     assert next_ifd == 0
@@ -251,7 +328,7 @@ def test_the_ifd_starts_at_sixteen_and_is_one(tmp_path):
 def test_the_ifd_is_always_276_bytes(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     (count,) = struct.unpack_from("<Q", read_ifd(path)[2], IFD_OFFSET)
     assert count == len(TAGS)
     assert 8 + 20 * count + 8 == IFD_SIZE
@@ -262,7 +339,7 @@ def test_the_ifd_is_always_276_bytes(tmp_path):
 def test_values_are_inline_when_they_fit(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     for tag, (type_, n, at, _payload) in read_ifd(path)[0].items():
         assert (at is None) == (TYPE_SIZE[type_] * n <= 8), tag
 
@@ -270,7 +347,7 @@ def test_values_are_inline_when_they_fit(tmp_path):
 def test_external_values_are_packed_right_after_the_ifd(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     entries = read_ifd(path)[0]
 
     external = [(tag, at, TYPE_SIZE[t] * n)
@@ -286,12 +363,13 @@ def test_external_values_are_packed_right_after_the_ifd(tmp_path):
 def test_no_gap_before_frame_data(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     blob = open(path, "rb").read()
     base = header_bytes(tf)
     payloads = b"".join(tf["compressed"])
     assert blob[base:base + len(payloads)] == payloads
-    assert len(blob) == base + len(payloads) + TRAILER_SIZE
+    trailer = TRAILER_FIXED + len(pack_texts(labels(tf)["bands"]))
+    assert len(blob) == base + len(payloads) + trailer
 
 
 # Deriving base_frame_offset
@@ -307,7 +385,8 @@ def test_no_gap_before_frame_data(tmp_path):
 def test_base_offset_matches_the_derivation(tmp_path, shape, tile):
     tf = make_frame(shape=shape, tile_size=tile)
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
     want = derive_base_offset(tf.bands, len(tf))
     assert header_bytes(tf) == want
     assert min(values(read_ifd(path)[0][324], "Q")) == want
@@ -315,7 +394,7 @@ def test_base_offset_matches_the_derivation(tmp_path, shape, tile):
 
 def test_the_blob_agrees_with_the_derivation(tmp_path):
     tf = make_frame()
-    _path, blob = rumi.write(tmp_path / "a.rumi", tf)
+    _path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
     fields = _Spec(blob).fields
     assert fields.base_frame_offset == derive_base_offset(tf.bands, len(tf))
 
@@ -327,8 +406,8 @@ def test_the_same_shape_gives_the_same_offset(tmp_path):
     b["compressed"] = [bytes(1 + i) for i in range(len(b))]
     pa = tmp_path / "a.rumi"
     pb = tmp_path / "b.rumi"
-    write_frames(pa, a["compressed"], a)
-    write_frames(pb, b["compressed"], b)
+    write_frames(pa, a["compressed"], a, **labels(a))
+    write_frames(pb, b["compressed"], b, **labels(b))
     assert min(values(read_ifd(pa)[0][324], "Q")) == \
            min(values(read_ifd(pb)[0][324], "Q"))
 
@@ -336,8 +415,9 @@ def test_the_same_shape_gives_the_same_offset(tmp_path):
 def test_georeferencing_does_not_move_the_tile_data(tmp_path):
     tf = make_frame()
     plain, geo = tmp_path / "plain.rumi", tmp_path / "geo.rumi"
-    write_frames(plain, tf["compressed"], tf)
-    write_frames(geo, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(plain, tf["compressed"], tf, **labels(tf))
+    write_frames(geo, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
     assert header_bytes(tf) == header_bytes(tf, transform=NORTH_UP, crs=UTM18S)
     assert len(open(plain, "rb").read()) == len(open(geo, "rb").read())
 
@@ -345,8 +425,8 @@ def test_georeferencing_does_not_move_the_tile_data(tmp_path):
 def test_rotation_does_not_move_the_tile_data(tmp_path):
     tf = make_frame()
     up, rot = tmp_path / "up.rumi", tmp_path / "rot.rumi"
-    write_frames(up, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
-    write_frames(rot, tf["compressed"], tf, transform=ROTATED, crs=UTM18S)
+    write_frames(up, tf["compressed"], tf, **labels(tf), transform=NORTH_UP, crs=UTM18S)
+    write_frames(rot, tf["compressed"], tf, **labels(tf), transform=ROTATED, crs=UTM18S)
     assert min(values(read_ifd(up)[0][324], "Q")) == \
            min(values(read_ifd(rot)[0][324], "Q"))
 
@@ -356,7 +436,8 @@ def test_rotation_does_not_move_the_tile_data(tmp_path):
 def test_model_transformation_is_always_the_full_matrix(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
     assert values(read_ifd(path)[0][34264], "d") == [
         30.0, 0.0, 0.0, 500000.0,
         0.0, -30.0, 0.0, 8000000.0,
@@ -367,7 +448,8 @@ def test_model_transformation_is_always_the_full_matrix(tmp_path):
 def test_rotated_transform(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=ROTATED, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, **labels(tf),
+                 transform=ROTATED, crs=UTM18S)
     assert values(read_ifd(path)[0][34264], "d") == [
         30.0, 5.0, 0.0, 500000.0,
         5.0, -30.0, 0.0, 8000000.0,
@@ -383,7 +465,7 @@ def test_rotated_transform(tmp_path):
 def test_the_forbidden_geo_tags_are_never_written(tmp_path, kwargs):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, **kwargs)
+    write_frames(path, tf["compressed"], tf, **labels(tf), **kwargs)
     entries = read_ifd(path)[0]
     for tag in FORBIDDEN_GEO:
         assert tag not in entries
@@ -394,7 +476,7 @@ def test_the_geokey_directory_is_always_32_bytes(tmp_path):
     for kwargs in ({}, {"transform": NORTH_UP, "crs": UTM18S},
                    {"transform": NORTH_UP, "crs": 4326}):
         path = tmp_path / "a.rumi"
-        write_frames(path, tf["compressed"], tf, **kwargs)
+        write_frames(path, tf["compressed"], tf, **labels(tf), **kwargs)
         type_, n, _at, payload = read_ifd(path)[0][34735]
         assert (type_, n, len(payload)) == (SHORT, 16, 32)
 
@@ -402,7 +484,8 @@ def test_the_geokey_directory_is_always_32_bytes(tmp_path):
 def test_geokeys_projected(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
+    write_frames(path, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
     head, keys = geokeys(path)
     assert head == [1, 1, 0, 3]
     assert keys == {MODEL: 1, RASTER: 1, PROJECTED: UTM18S}
@@ -411,7 +494,7 @@ def test_geokeys_projected(tmp_path):
 def test_geokeys_geographic(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4326)
+    write_frames(path, tf["compressed"], tf, **labels(tf), transform=NORTH_UP, crs=4326)
     assert geokeys(path)[1] == {MODEL: 2, RASTER: 1, GEOGRAPHIC: 4326}
 
 
@@ -419,7 +502,7 @@ def test_the_kind_is_not_the_code_range(tmp_path):
     """EPSG:4037 is projected despite its numeric neighborhood."""
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, transform=NORTH_UP, crs=4037)
+    write_frames(path, tf["compressed"], tf, **labels(tf), transform=NORTH_UP, crs=4037)
     assert geokeys(path)[1] == {MODEL: 1, RASTER: 1, PROJECTED: 4037}
 
 
@@ -428,7 +511,7 @@ def test_the_kind_is_not_the_code_range(tmp_path):
 def test_undefined_georeferencing_writes_the_identity(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     assert values(read_ifd(path)[0][34264], "d") == [
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,
@@ -439,7 +522,7 @@ def test_undefined_georeferencing_writes_the_identity(tmp_path):
 def test_undefined_georeferencing_writes_zero_keys(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     head, keys = geokeys(path)
     assert head == [1, 1, 0, 3]
     assert keys == {MODEL: 0, RASTER: 1, GEOGRAPHIC: 0}
@@ -449,16 +532,17 @@ def test_raster_type_survives_without_a_crs(tmp_path):
     """PixelIsPoint is true of any raster, CRS or not."""
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf, pixel_is_point=True)
+    write_frames(path, tf["compressed"], tf, **labels(tf), pixel_is_point=True)
     assert geokeys(path)[1][RASTER] == 2
 
 
 def test_pixel_is_point_with_a_crs(tmp_path):
     tf = make_frame()
     area, point = tmp_path / "area.rumi", tmp_path / "point.rumi"
-    write_frames(area, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S)
-    write_frames(point, tf["compressed"], tf, transform=NORTH_UP, crs=UTM18S,
-                 pixel_is_point=True)
+    write_frames(area, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S)
+    write_frames(point, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=UTM18S, pixel_is_point=True)
     assert geokeys(area)[1][RASTER] == 1
     assert geokeys(point)[1][RASTER] == 2
 
@@ -468,9 +552,10 @@ def test_pixel_is_point_with_a_crs(tmp_path):
 def test_there_is_no_header_size_parameter(tmp_path):
     tf = make_frame()
     with pytest.raises(TypeError):
-        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, header_size=4096)
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, **labels(tf),
+                     header_size=4096)
     with pytest.raises(TypeError):
-        rumi.write(tmp_path / "b.rumi", tf, header_size=4096)
+        rumi.write(tmp_path / "b.rumi", tf, **labels(tf), header_size=4096)
 
 
 @pytest.mark.parametrize("size", [1, 8, 17, 24, 100, 65535])
@@ -489,13 +574,14 @@ def test_tile_size_must_fit_its_uint16_field(bad):
 def test_a_crs_needs_a_transform(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="together"):
-        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, crs=UTM18S)
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, **labels(tf),
+                     crs=UTM18S)
 
 
 def test_an_unknown_epsg_is_refused(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError):
-        write_frames(tmp_path / "a.rumi", tf["compressed"], tf,
+        write_frames(tmp_path / "a.rumi", tf["compressed"], tf, **labels(tf),
                      transform=NORTH_UP, crs=999999)
 
 
@@ -503,7 +589,7 @@ def test_a_crs_that_no_code_names_is_refused(tmp_path):
     tf = make_frame()
     for bad in ("+proj=utm +zone=18 +south", "WGS 84 / UTM zone 18S", 1.5):
         with pytest.raises((ValueError, TypeError), match="EPSG"):
-            write_frames(tmp_path / "a.rumi", tf["compressed"], tf,
+            write_frames(tmp_path / "a.rumi", tf["compressed"], tf, **labels(tf),
                          transform=NORTH_UP, crs=bad)
 
 
@@ -524,6 +610,8 @@ def test_the_independent_writer_is_accepted(valid_file):
     metadata = rumi.info(source=path)
     assert metadata.shape == (2, 40, 70)
     assert _Spec(metadata.header).fields.base_frame_offset == derive_base_offset(2, 30)
+    assert metadata.bands == ["band 0", "band 1"]
+    assert metadata.time == [dt.date(2024, 1, 1)]
 
 
 def _rejects(tmp_path, entries, tiles, match, bands=2, pad=0):
@@ -638,7 +726,7 @@ def test_an_undefined_crs_file_is_accepted(tmp_path):
 
 def test_blob_from_file_matches_blob_from_write(tmp_path):
     tf = make_frame()
-    path, blob = rumi.write(tmp_path / "a.rumi", tf,
+    path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf),
                             transform=NORTH_UP, crs=UTM18S)
     assert rumi.info(source=path).header == blob
 
@@ -653,7 +741,7 @@ def test_pixels_survive_the_round_trip(tmp_path):
         g = graphs.setdefault(t.data.shape,
                               geozl.graph(t.data, "planar>zigzag>entropy"))
         t.compressed = geozl.compress(t.data, graph=g)
-    path, header = rumi.write(tmp_path / "a.rumi", tf,
+    path, header = rumi.write(tmp_path / "a.rumi", tf, **labels(tf),
                               transform=NORTH_UP, crs=UTM18S)
     assert np.array_equal(rumi.read(path, header), data)
     assert _Spec(header).fields.base_frame_offset == \
@@ -667,8 +755,14 @@ def round_half_up(a, b):
     return (2 * a + b) // (2 * b)
 
 
-def pack_trailer(kind, coords, scale=86400, epoch=None, step=None, bits=None,
-                 zigzagged=None, spare=0):
+def pack_texts(texts):
+    """Each band text after its uint16 byte length, in band order."""
+    raw = [text.encode() if isinstance(text, str) else text for text in texts]
+    return b"".join(struct.pack("<H", len(r)) + r for r in raw)
+
+
+def pack_trailer(kind, coords, texts=("band 0",), scale=86400, epoch=None,
+                 step=None, bits=None, zigzagged=None, spare=0):
     """Build a canonical trailer while allowing one field to be overridden."""
     c = list(coords)
     e = c[0] if epoch is None else epoch
@@ -686,8 +780,8 @@ def pack_trailer(kind, coords, scale=86400, epoch=None, step=None, bits=None,
                 packed[(i * width + j) // 8] |= 1 << ((i * width + j) % 8)
     if spare and packed:
         packed[-1] |= spare
-    return struct.pack("<IHBBqqI", TIME_MAGIC, 1, kind, width, e, step,
-                       scale) + bytes(packed)
+    return (struct.pack("<IH", TRAILER_MAGIC, 1) + pack_texts(texts)
+            + struct.pack("<BBqqI", kind, width, e, step, scale) + bytes(packed))
 
 
 def dated_file(path, trailer, steps, **kw):
@@ -728,7 +822,8 @@ def test_an_undefined_crs_needs_the_geographic_key(tmp_path):
 def test_more_coordinates_than_the_reader_will_hold_are_refused(tmp_path):
     """Resource limits bound a zero-width residual axis before allocation."""
     huge = 400_000_000
-    trailer = struct.pack("<IHBBqqI", TIME_MAGIC, 1, 2, 0, 0, 1, 86400)
+    trailer = (struct.pack("<IH", TRAILER_MAGIC, 1) + pack_texts(["band 0"])
+               + struct.pack("<BBqqI", 2, 0, 0, 1, 86400))
     path = dated_file(tmp_path / "big.rumi", trailer, huge)
     with pytest.raises(ValueError, match="this reader will allocate"):
         rumi.info(source=path)
@@ -775,7 +870,7 @@ def test_padding_left_in_the_last_residual_byte_is_refused(tmp_path):
     """Unused bits in the final residual byte must be zero."""
     coords = [19723, 19754, 19782]
     good = pack_trailer(2, coords)
-    assert len(good) == TRAILER_SIZE + 1
+    assert len(good) == TRAILER_FIXED + len(pack_texts(["band 0"])) + 1
     path = dated_file(tmp_path / "pad.rumi",
                       pack_trailer(2, coords, spare=0xC0), len(coords))
     with pytest.raises(ValueError, match="unused bits"):
@@ -838,7 +933,7 @@ def test_many_bands_do_not_make_planning_quadratic():
 def test_the_file_header_is_rumis_own(tmp_path):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     head = open(path, "rb").read(16)
 
     assert head[:4] == b"RUMI" == bytes.fromhex("52554d49")
@@ -860,7 +955,7 @@ def test_the_file_header_is_rumis_own(tmp_path):
 def test_a_foreign_file_header_is_refused(tmp_path, at, value, because):
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     blob = bytearray(open(path, "rb").read())
     blob[at:at + len(value)] = value
     bad = tmp_path / "bad.rumi"
@@ -873,7 +968,7 @@ def test_an_inline_value_leaves_no_room_for_a_second_spelling(tmp_path):
     """Unused bytes in an inline IFD value must be zero."""
     tf = make_frame()
     path = tmp_path / "a.rumi"
-    write_frames(path, tf["compressed"], tf)
+    write_frames(path, tf["compressed"], tf, **labels(tf))
     blob = open(path, "rb").read()
     (first,) = struct.unpack_from("<Q", blob, 8)
     (count,) = struct.unpack_from("<Q", blob, first)
@@ -899,10 +994,10 @@ def test_an_inline_value_leaves_no_room_for_a_second_spelling(tmp_path):
 def test_the_blob_a_writer_returns_is_the_one_the_file_yields(tmp_path):
     """The writer returns the header rebuilt from the finalized file."""
     for kw in ({}, {"transform": NORTH_UP, "crs": UTM18S},
-               {"time": ["2024-08-25"]}):
+               {"time": [("2024-08-01", "2024-09-01")]}):
         tf = make_frame()
         path = tmp_path / "a.rumi"
-        written = write_frames(path, tf["compressed"], tf, **kw)
+        written = write_frames(path, tf["compressed"], tf, **{**labels(tf), **kw})
         assert written == rumi.info(source=path).header
 
 
@@ -993,7 +1088,7 @@ def test_a_complex_frame_may_decode_as_its_components(tmp_path, dtype, component
     for t in tf:
         parts = t.data.view(component)
         t.compressed = geozl.compress(parts, graph=geozl.graph(parts, "planar>zigzag>zstd"))
-    path, header = rumi.write(tmp_path / "complex.rumi", tf)
+    path, header = rumi.write(tmp_path / "complex.rumi", tf, **labels(tf))
 
     assert np.array_equal(rumi.read(path, header), data)
     assert np.array_equal(rumi.read(path, header, bands=[1], window=(5, 7, 30, 30)),
@@ -1014,7 +1109,7 @@ def test_a_frame_of_another_width_is_refused(tmp_path, dtype, view, widths):
     for t in tf:
         raw = t.data.view(view)
         t.compressed = geozl.compress(raw, graph=geozl.graph(raw, "id>zstd"))
-    path, header = rumi.write(tmp_path / "wide.rumi", tf)
+    path, header = rumi.write(tmp_path / "wide.rumi", tf, **labels(tf))
     with pytest.raises(OSError, match=f"expected numeric width {widths}, size"):
         rumi.read(path, header)
 
@@ -1068,7 +1163,7 @@ def test_a_file_hands_back_the_georeferencing_it_was_given(tmp_path):
     ):
         tf = make_frame()
         path = tmp_path / "geo.rumi"
-        write_frames(path, tf["compressed"], tf, **kw)
+        write_frames(path, tf["compressed"], tf, **labels(tf), **kw)
         got = rumi.info(source=path)
         assert got.crs == want[1]
         assert got.pixel_is_point == want[2]

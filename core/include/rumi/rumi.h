@@ -307,10 +307,10 @@ typedef struct { uint64_t offset; uint64_t length; } rumi_range;
 
 RUMI_API void rumi_source_free(rumi_source* src);
 
-// Unified metadata returned by rumi_info. blob and time are owned by this
-// value and released together with rumi_metadata_free. has_source is
-// non-zero when georeferencing and time were read from a source; an external
-// header alone does not contain them.
+// Unified metadata returned by rumi_info. blob, band_texts and time are owned
+// by this value and released together with rumi_metadata_free. has_source is
+// non-zero when georeferencing, band texts and time were read from a source;
+// an external header alone does not contain them.
 typedef struct {
     rumi_header   fields;
     unsigned char* blob;
@@ -319,6 +319,9 @@ typedef struct {
     double         transform[6];
     uint32_t       epsg;
     int            pixel_is_point;
+    // One NUL-terminated UTF-8 text per band, in band order.
+    char**         band_texts;
+    size_t         band_text_count;
     uint8_t        time_type;
     int64_t*       time;
     size_t         time_coords;
@@ -461,9 +464,13 @@ typedef struct {
     int           pixel_is_point;
     // Entry in the frame_unit registry, normally obtained from rumi_frame_unit.
     uint8_t       frame_unit;
-    // Time trailer input: 0 undefined, 1 interval, 2 instant. time contains
-    // POSIX seconds: time_count values for instants, twice that for intervals,
-    // and none for undefined time. rumi derives the canonical storage scale.
+    // One NUL-terminated UTF-8 text per band, in band order. Each text is
+    // non-empty and differs from the others.
+    const char* const* band_texts;
+    uint64_t           band_text_count;
+    // Time axis: 1 interval, 2 instant. time contains POSIX seconds:
+    // time_count values for instants and twice that for intervals. rumi
+    // derives the canonical storage scale.
     uint8_t        time_type;
     const int64_t* time;
     uint64_t       time_coords;

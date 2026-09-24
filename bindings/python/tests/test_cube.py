@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 import rumi
+from _labels import labels
 
 geozl = pytest.importorskip("geozl")
 
@@ -34,7 +35,8 @@ def store(tmp_path, name, arr=None, tile=TILE, time=None, stem=None):
         f.compressed = geozl.compress(
             f.data, graph=geozl.graph(f.data, "planar>zigzag>zstd"))
     stem = stem or name.replace(" ", "_")[:40]
-    return tf, *rumi.write(tmp_path / f"{stem}.rumi", tf, time=time)
+    given = labels(tf) if time is None else {**labels(tf), "time": time}
+    return tf, *rumi.write(tmp_path / f"{stem}.rumi", tf, **given)
 
 
 @pytest.mark.parametrize("name", list(LAYOUTS))

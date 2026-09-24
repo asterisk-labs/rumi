@@ -1,6 +1,6 @@
 import datetime as dt
 
-UNDEFINED, INTERVAL, INSTANT = 0, 1, 2
+INTERVAL, INSTANT = 1, 2
 
 DAY = 86400
 EPOCH = dt.date(1970, 1, 1)
@@ -93,7 +93,9 @@ def _flatten(entries, kind):
 def compile_axis(time, steps):
     """Return ``(time_type, coordinates)`` in POSIX seconds."""
     if time is None:
-        return UNDEFINED, ()
+        raise TypeError(
+            "every file labels its time steps; pass one date per step, or a "
+            "(start, end) pair for a step without a single instant")
 
     entries, kind = _axis_entries(time, steps)
     return kind, tuple(_to_seconds(value)

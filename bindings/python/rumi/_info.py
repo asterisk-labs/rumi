@@ -26,6 +26,7 @@ class Metadata:
     frame_layout: str
     index_order: tuple[str, ...]
     frames: int
+    bands: list[str] | None
     time: list | None
     time_kind: str | None
     transform: tuple[float, ...] | None
@@ -63,7 +64,7 @@ class Metadata:
 
 
 def _shown(value) -> str:
-    """One attribute value on one line, never the whole time axis."""
+    """One attribute value on one line, never a whole list."""
     if value is None:
         return "\u2014"
     if isinstance(value, bytes):
@@ -76,7 +77,7 @@ def _shown(value) -> str:
 
 
 def _shown_axis(steps) -> str:
-    """The ends of a time axis, with its length."""
+    """The ends of a list of bands or time steps, with its length."""
     if not steps:
         return "[]"
     ends = steps[:1] if len(steps) == 1 else [steps[0], steps[-1]]
@@ -113,11 +114,12 @@ def info(*, source: InfoSource | None = None,
          header: Header | None = None) -> Metadata:
     """Inspect a source or header, validating their match when both are given.
 
-    Source metadata includes georeferencing and time. An external header alone
-    contains only the fields needed for reading, so its ``time``, ``transform``
-    and ``pixel_is_point`` values are ``None``. ``shape`` follows ``(B, Y, X)``
-    or ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. When ``source``
-    is given, ``Metadata.header`` contains its canonical external header.
+    Source metadata includes georeferencing, band texts and time. An external
+    header alone contains only the fields needed for reading, so its
+    ``bands``, ``time``, ``transform`` and ``pixel_is_point`` values are
+    ``None``. ``shape`` follows ``(B, Y, X)`` or ``(T, B, Y, X)``, and
+    ``tile`` is ``(height, width)``. When ``source`` is given,
+    ``Metadata.header`` contains its canonical external header.
     ``index_order`` contains the band and time axes walked by the frame index,
     outermost first. Its text and notebook representations list every
     attribute.
@@ -131,9 +133,12 @@ def info(*, source: InfoSource | None = None,
             shape = (int(h.time_count), *shape)
 
         has_source = bool(result.has_source)
+        bands = None
         steps = None
         kind = None
         if has_source:
+            bands = [ffi.string(result.band_texts[b]).decode("utf-8")
+                     for b in range(result.band_text_count)]
             coords = [int(result.time[i]) for i in range(result.time_coords)]
             if result.time_type == INSTANT:
                 steps = [_from_seconds(value) for value in coords]
@@ -142,8 +147,6 @@ def info(*, source: InfoSource | None = None,
                 steps = [(_from_seconds(coords[i]), _from_seconds(coords[i + 1]))
                          for i in range(0, len(coords), 2)]
                 kind = "interval"
-            else:
-                steps = []
 
         crs = (int(result.epsg) or None) if has_source else None
         transform = None
@@ -168,6 +171,7 @@ def info(*, source: InfoSource | None = None,
                 h.frame_unit, h.samples_per_pixel, h.time_count),
             index_order=index_order,
             frames=frames,
+            bands=bands,
             time=steps,
             time_kind=kind,
             transform=transform,

@@ -111,6 +111,8 @@ inline constexpr std::uint16_t TAG_TIME_COUNT           = 65001;
 // frame needs one uint32 count and one uint64 offset.
 inline constexpr std::size_t   MAX_PARSED_INDEX_BYTES = 64u << 20;
 inline constexpr std::size_t   MAX_TIME_COORD_BYTES   = 64u << 20;
+// The trailer is read whole, so its size is bounded before the read.
+inline constexpr std::size_t   MAX_TRAILER_BYTES      = 64u << 20;
 inline constexpr std::uint64_t INDEX_BYTES_PER_FRAME =
     sizeof(std::uint32_t) + sizeof(std::uint64_t);
 
@@ -330,24 +332,30 @@ unit_index_axes(std::uint8_t unit, std::uint16_t bands, std::uint32_t times,
 unit_from_name(std::string_view name, std::uint16_t bands, std::uint32_t times);
 
 
-// Every file ends with a time trailer; undefined time uses TIME_UNDEFINED.
+// Every file ends with a trailer: one text per band, then the time axis. It
+// follows the frames so that its size never moves one.
 
-// TIME_MAGIC is ASCII "TIME" on the wire.
-inline constexpr std::uint32_t TIME_MAGIC   = 0x454D4954;
-inline constexpr std::uint16_t TIME_VERSION = 1;
-inline constexpr std::size_t   TRAILER_SIZE = 28;
-inline constexpr std::int64_t  TIME_DAY     = 86400;
+// TRAILER_MAGIC is ASCII "TAIL" on the wire.
+inline constexpr std::uint32_t TRAILER_MAGIC   = 0x4C494154;
+inline constexpr std::uint16_t TRAILER_VERSION = 1;
+inline constexpr std::int64_t  TIME_DAY        = 86400;
+
+// A band text is stored after its uint16 byte length.
+inline constexpr std::size_t   MAX_BAND_TEXT_BYTES = 0xFFFF;
 
 enum TimeType : std::uint8_t {
-    TIME_UNDEFINED = 0,
-    TIME_INTERVAL  = 1,
-    TIME_INSTANT   = 2,
+    TIME_INTERVAL = 1,
+    TIME_INSTANT  = 2,
 };
 
 #pragma pack(push, 1)
-struct TimeTrailer {
+struct TrailerHead {
     std::uint32_t magic;
     std::uint16_t version;
+};
+
+// Follows the last band text.
+struct TimeFields {
     std::uint8_t  time_type;
     std::uint8_t  time_bits;
     std::int64_t  time_epoch;
@@ -356,34 +364,42 @@ struct TimeTrailer {
 };
 #pragma pack(pop)
 
-static_assert(sizeof(TimeTrailer) == TRAILER_SIZE);
-static_assert(std::is_trivially_copyable_v<TimeTrailer>);
+static_assert(sizeof(TrailerHead) == 6);
+static_assert(sizeof(TimeFields) == 22);
+static_assert(std::is_trivially_copyable_v<TrailerHead>);
+static_assert(std::is_trivially_copyable_v<TimeFields>);
 
 // Decoded time axis. scale converts each coordinate unit to POSIX seconds.
 struct TimeAxis {
-    std::uint8_t              type{TIME_UNDEFINED};
+    std::uint8_t              type{};
     std::uint32_t             scale{1};
     std::vector<std::int64_t> coords;
+};
+
+// Decoded trailer. bands holds one UTF-8 text per band, in band order.
+struct Trailer {
+    std::vector<std::string> bands;
+    TimeAxis                 time;
 };
 
 // Convert POSIX seconds to a time axis with the canonical storage scale.
 [[nodiscard]] std::expected<TimeAxis, std::string>
 axis_from_seconds(std::uint8_t type, std::span<const std::int64_t> seconds);
 
-// The trailer bytes for an axis, fixed part and packed residuals.
+// The trailer bytes for a file with these band and time counts.
 [[nodiscard]] std::expected<std::vector<std::byte>, std::string>
-encode_time(const TimeAxis& axis, std::uint32_t time_count);
+encode_trailer(const Trailer& trailer, std::uint16_t bands,
+               std::uint32_t time_count);
 
-// Decode and validate a trailer at the start of bytes.
-[[nodiscard]] std::expected<TimeAxis, std::string>
-decode_time(std::span<const std::byte> bytes, std::uint32_t time_count);
+// Decode and validate a trailer that spans all of bytes.
+[[nodiscard]] std::expected<Trailer, std::string>
+decode_trailer(std::span<const std::byte> bytes, std::uint16_t bands,
+               std::uint32_t time_count);
 
 // Number of stored coordinates for T time steps.
 [[nodiscard]] constexpr std::uint64_t
 time_coord_count(std::uint8_t type, std::uint32_t t) noexcept {
-    return type == TIME_UNDEFINED ? 0
-         : type == TIME_INTERVAL  ? std::uint64_t(t) * 2
-                                  : std::uint64_t(t);
+    return type == TIME_INTERVAL ? std::uint64_t(t) * 2 : std::uint64_t(t);
 }
 
 // Return the equivalent frame unit with singleton axes omitted.
@@ -845,12 +861,12 @@ struct FileGeo {
 // stored outside that header.
 [[nodiscard]] std::expected<std::vector<std::byte>, Error>
 build_blob_from_source(Source& source, FileGeo* geo = nullptr,
-                       TimeAxis* time = nullptr) noexcept;
+                       Trailer* trailer = nullptr) noexcept;
 
 // Convenience wrapper used after writing a local file.
 [[nodiscard]] std::expected<std::vector<std::byte>, Error>
 build_blob_from_file(const char* path, FileGeo* geo = nullptr,
-                     TimeAxis* time = nullptr) noexcept;
+                     Trailer* trailer = nullptr) noexcept;
 
 // Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned, malloc'd data
 // that the tensor deleter frees. nullptr when the dtype has no DLPack code.
@@ -901,8 +917,8 @@ struct WriteDesc {
     std::uint32_t   epsg{};
     bool            pixel_is_point{};
     std::uint8_t    frame_unit{};
-    // Time axis written to the trailer.
-    TimeAxis        time{};
+    // Band texts and time axis written after the frames.
+    Trailer         trailer{};
 };
 
 // Writes the file and returns the sidecar blob for it. frames are the

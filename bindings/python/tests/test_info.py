@@ -18,7 +18,7 @@ def stored(tmp_path, name="scene", width=32):
         graph = geozl.graph(frame.data, "planar>zigzag>zstd")
         frame.compressed = geozl.compress(frame.data, graph=graph)
     return rumi.write(
-        tmp_path / f"{name}.rumi", table,
+        tmp_path / f"{name}.rumi", table, bands=["red", "nir"],
         time=["2024-08-25"], transform=TRANSFORM, crs=32718)
 
 
@@ -33,6 +33,7 @@ def test_source_returns_complete_metadata(tmp_path):
     assert metadata.tile == (16, 16)
     assert metadata.frame_layout == "b h w"
     assert metadata.index_order == ()
+    assert metadata.bands == ["red", "nir"]
     assert metadata.time == [dt.date(2024, 8, 25)]
     assert metadata.time_kind == "instant"
     assert metadata.transform == TRANSFORM
@@ -46,6 +47,7 @@ def test_header_returns_only_metadata_the_header_contains(tmp_path):
 
     assert metadata.header == header
     assert metadata.shape == (2, 32, 32)
+    assert metadata.bands is None
     assert metadata.time is None
     assert metadata.time_kind is None
     assert metadata.transform is None

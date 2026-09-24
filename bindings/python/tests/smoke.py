@@ -10,6 +10,8 @@ from rumi._ffi import API_VERSION, ffi, lib
 
 CRS = 32630
 TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
+BANDS = ["B4, Red, 664.5nm (S2A) / 665nm (S2B)",
+         "B8, NIR, 835.1nm (S2A) / 833nm (S2B)"]
 
 
 def main() -> int:
@@ -30,8 +32,9 @@ def main() -> int:
     tf["compressed"] = [bytes([i % 251]) * (8 + i) for i in range(len(tf))]
 
     with tempfile.TemporaryDirectory() as d:
-        path, header = rumi.write(Path(d) / "smoke.rumi", tf,
-                                  transform=TRANSFORM, crs=CRS)
+        path, header = rumi.write(Path(d) / "smoke.rumi", tf, bands=BANDS,
+                                  time=["2024-08-25"], transform=TRANSFORM,
+                                  crs=CRS)
         facts = rumi.info(header=header)
         on_disk = rumi.info(source=path)
         blob = Path(path).read_bytes()
@@ -41,6 +44,9 @@ def main() -> int:
         return 1
     if facts.shape != (2, 40, 70) or facts.dtype is not np.uint16:
         print(f"::error::header says {facts}")
+        return 1
+    if on_disk.bands != BANDS:
+        print(f"::error::the file names its bands {on_disk.bands}")
         return 1
 
     print(f"wrote and re-read EPSG:{CRS}, {facts.frames} frames, "

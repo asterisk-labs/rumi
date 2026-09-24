@@ -14,27 +14,32 @@ PATTERN = "b (row h) (col w) -> row col (b h w)"
 UTC = dt.UTC
 
 
-def write(tmp_path, name, time=None):
+def write(tmp_path, name, time):
     data = np.arange(2 * 32 * 32, dtype=np.uint16).reshape(2, 32, 32)
     tf = rumi.frames(data, PATTERN, 16)
     for f in tf:
         f.compressed = geozl.compress(
             f.data, graph=geozl.graph(f.data, "planar>zigzag>zstd"))
-    path, _header = rumi.write(tmp_path / f"{name}.rumi", tf, time=time)
+    path, _header = rumi.write(tmp_path / f"{name}.rumi", tf,
+                               bands=["red", "nir"], time=time)
     return str(path)
 
 
-def trailer(path):
+def time_fields(path):
+    """The time fields, which end the file when no residual follows them."""
     with open(path, "rb") as fh:
-        return fh.read()[-28:]
+        fields = fh.read()[-22:]
+    assert fields[1] == 0              # time_bits
+    return fields
 
 
 def scale_of(path):
-    return struct.unpack_from("<I", trailer(path), 24)[0]
+    return struct.unpack_from("<I", time_fields(path), 18)[0]
 
 
-def test_a_file_with_no_time_says_so_rather_than_omitting_it(tmp_path):
-    assert rumi.info(source=write(tmp_path, "plain")).time == []
+def test_every_file_labels_its_time_steps(tmp_path):
+    with pytest.raises(TypeError, match="labels its time steps"):
+        write(tmp_path, "plain", None)
 
 
 def test_a_dated_scene_round_trips_as_a_date(tmp_path):
@@ -48,10 +53,10 @@ def test_a_date_before_the_epoch_round_trips(tmp_path):
     assert rumi.info(source=path).time == [dt.date(1969, 12, 31)]
 
 
-def test_a_date_costs_nothing_over_a_file_with_none(tmp_path):
-    """One coordinate requires no packed residuals."""
+def test_one_date_costs_no_residuals(tmp_path):
+    """One coordinate lies on any line, so no packed residuals follow it."""
     assert os.path.getsize(write(tmp_path, "scene", ["2024-08-25"])) \
-        == os.path.getsize(write(tmp_path, "plain"))
+        == os.path.getsize(write(tmp_path, "other", ["1999-01-01"]))
 
 
 def test_a_time_of_day_makes_the_axis_seconds(tmp_path):
@@ -71,7 +76,7 @@ def test_a_window_also_costs_nothing(tmp_path):
     """Two coordinates require no packed residuals."""
     window = ("2024-08-25T14:30:00Z", "2024-08-25T14:35:00Z")
     assert os.path.getsize(write(tmp_path, "window", [window])) \
-        == os.path.getsize(write(tmp_path, "plain"))
+        == os.path.getsize(write(tmp_path, "scene", ["2024-08-25"]))
 
 
 @pytest.mark.parametrize("value", [
@@ -160,10 +165,10 @@ def test_one_whole_day_has_one_encoding(tmp_path):
     """Equivalent midnight values select the same day-scale encoding."""
     ways = ["2024-08-25", dt.date(2024, 8, 25), dt.datetime(2024, 8, 25),
             np.datetime64("2024-08-25")]
-    written = {trailer(write(tmp_path, f"day{i}", [v]))
+    written = {time_fields(write(tmp_path, f"day{i}", [v]))
                for i, v in enumerate(ways)}
     assert len(written) == 1
-    assert struct.unpack_from("<I", written.pop(), 24)[0] == 86400
+    assert struct.unpack_from("<I", written.pop(), 18)[0] == 86400
 
 
 def test_a_time_of_day_moves_the_scale_to_seconds(tmp_path):
@@ -172,7 +177,6 @@ def test_a_time_of_day_moves_the_scale_to_seconds(tmp_path):
 
 def test_the_axis_says_what_kind_it_is(tmp_path):
     """Decoded time kind comes from time_type, not Python value shape."""
-    assert rumi.info(source=write(tmp_path, "none")).time_kind is None
     assert rumi.info(source=write(tmp_path, "one", ["2024-08-25"])).time_kind == "instant"
     span = write(tmp_path, "span", [("2024-08-25", "2024-08-26")])
     assert rumi.info(source=span).time_kind == "interval"

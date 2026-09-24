@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 import rumi
+from _labels import labels
 from rumi._ffi import _Spec, ffi, lib
 from rumi._write import write_frames
 
@@ -46,7 +47,7 @@ def build(unit, tmp_path):
     idents = [identify(f, unit) for f in tf]
     tf["compressed"] = [payload(i, ident) for i, ident in enumerate(idents)]
     path = tmp_path / f"{unit}.rumi"
-    return tf, idents, path, write_frames(path, tf["compressed"], tf)
+    return tf, idents, path, write_frames(path, tf["compressed"], tf, **labels(tf))
 
 
 def one_range(header, band, row, col):
@@ -88,7 +89,7 @@ def test_the_list_order_is_the_physical_order(unit, tmp_path):
     base = int(_Spec(header).fields.base_frame_offset)
     payloads = b"".join(tf["compressed"])
     blob = path.read_bytes()
-    # Frames form the contiguous region immediately before the time trailer.
+    # Frames form the contiguous region immediately before the trailer.
     assert blob[base:base + len(payloads)] == payloads
 
 

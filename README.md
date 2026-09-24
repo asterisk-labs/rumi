@@ -49,7 +49,17 @@ for frame in frames:
     graph = geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = geozl.compress(frame.data, graph=graph)
 
-path, header = rumi.write("scene.rumi", frames)
+path, header = rumi.write(
+    "scene.rumi",
+    frames,
+    bands=[
+        "B2, Blue, 496.6nm (S2A) / 492.1nm (S2B)",
+        "B3, Green, 560nm (S2A) / 559nm (S2B)",
+        "B4, Red, 664.5nm (S2A) / 665nm (S2B)",
+        "B8, NIR, 835.1nm (S2A) / 833nm (S2B)",
+    ],
+    time=["2024-08-25"],
+)
 
 result = rumi.read(path, header)
 chip = rumi.read(
@@ -59,6 +69,9 @@ chip = rumi.read(
     window=(0, 0, 512, 512),
 )
 ```
+
+Every file names each band and dates each time step. A step without a single
+instant, such as a composite, takes a `(start, end)` pair.
 
 Selections are zero-based. A window is
 `(row, column, height, width)`.

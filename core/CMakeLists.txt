@@ -80,7 +80,7 @@ set(RUMI_SOURCES
     src/source.cpp
     src/read.cpp
     src/pattern.cpp
-    src/time.cpp
+    src/trailer.cpp
     src/capi.cpp
     src/dlpack.cpp
 )

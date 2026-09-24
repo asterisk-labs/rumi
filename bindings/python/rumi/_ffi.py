@@ -148,6 +148,8 @@ typedef struct {
     double         transform[6];
     uint32_t       epsg;
     int            pixel_is_point;
+    char**         band_texts;
+    size_t         band_text_count;
     uint8_t        time_type;
     int64_t*       time;
     size_t         time_coords;
@@ -252,6 +254,8 @@ typedef struct {
     uint32_t      epsg;
     int           pixel_is_point;
     uint8_t       frame_unit;
+    const char* const* band_texts;
+    uint64_t           band_text_count;
     uint8_t        time_type;
     const int64_t* time;
     uint64_t       time_coords;

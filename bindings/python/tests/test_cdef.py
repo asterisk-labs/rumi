@@ -120,7 +120,8 @@ typedef struct {
 typedef struct {
     rumi_header fields; unsigned char* blob; size_t blob_size;
     int has_source; double transform[6]; uint32_t epsg;
-    int pixel_is_point; uint8_t time_type; int64_t* time; size_t time_coords;
+    int pixel_is_point; char** band_texts; size_t band_text_count;
+    uint8_t time_type; int64_t* time; size_t time_coords;
 } rumi_metadata;
 typedef struct {
     int64_t shape[5]; int ndim; int64_t stride[5]; int native;
@@ -134,6 +135,7 @@ typedef struct {
     uint16_t tile_size;
     uint16_t samples_per_pixel; rumi_dtype dtype; const double* transform;
     uint32_t epsg; int pixel_is_point; uint8_t frame_unit;
+    const char* const* band_texts; uint64_t band_text_count;
     uint8_t time_type; const int64_t* time; uint64_t time_coords;
 } rumi_write_desc;
 """

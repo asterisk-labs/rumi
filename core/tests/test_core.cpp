@@ -78,6 +78,20 @@ rumi::WriteDesc desc_of(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     return d;
 }
 
+// Every written file names its bands and dates its steps; most tests only need
+// some text and some days.
+void label(rumi::WriteDesc& d)
+{
+    d.trailer.bands.clear();
+    for (std::uint16_t b = 0; b < d.samples_per_pixel; ++b) {
+        d.trailer.bands.push_back("band " + std::to_string(b));
+    }
+    d.trailer.time = rumi::TimeAxis{rumi::TIME_INSTANT, 86400, {}};
+    for (std::uint32_t t = 0; t < d.time_count; ++t) {
+        d.trailer.time.coords.push_back(19723 + t);  // 2024-01-01 onwards
+    }
+}
+
 std::uint64_t tiles_of(std::uint32_t w, std::uint32_t h, std::uint16_t t,
                        std::uint16_t bands)
 {
@@ -560,6 +574,7 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
     d.image_width = w; d.image_length = h; d.tile_size = tile;
     d.samples_per_pixel = bands; d.dtype = RUMI_DT_UINT16;
     if (geo) { d.transform = tf; d.epsg = 32718; }
+    label(d);
 
     char path[64];
     std::snprintf(path, sizeof path, "/tmp/e2e_%llu.rumi", (unsigned long long)seed);
@@ -593,9 +608,13 @@ void write_read_check(std::uint32_t w, std::uint32_t h, std::uint16_t tile,
         OK(std::fread(got.data(), 1, sizes[i], f) == sizes[i]);
         OK(got == payload[i]);
     }
-    // Frame data ends immediately before the fixed undefined-time trailer.
+    // Frame data ends where the trailer begins, and the file ends with it.
+    auto trailer = rumi::encode_trailer(d.trailer, bands, d.time_count);
+    OK(trailer.has_value());
     std::fseek(f, 0, SEEK_END);
-    OK((std::uint64_t)std::ftell(f) == ph->data_end() + rumi::TRAILER_SIZE);
+    if (trailer) {
+        OK((std::uint64_t)std::ftell(f) == ph->data_end() + trailer->size());
+    }
     std::fclose(f);
     std::remove(path);
 }
@@ -707,6 +726,7 @@ void test_read_c_api_rejects_invalid_requests()
     desc.tile_size         = 16;
     desc.samples_per_pixel = 1;
     desc.dtype             = RUMI_DT_UINT16;
+    label(desc);
 
     const std::string path = "/tmp/rumi_capi_guard_"
                            + std::to_string(std::random_device{}()) + ".rumi";
@@ -1282,129 +1302,282 @@ void test_frame_unit_registry()
     }
 }
 
-void test_time_trailer()
+void test_trailer()
 {
     using rumi::TimeAxis;
+    using rumi::Trailer;
 
-    auto trip = [](const TimeAxis& a, std::uint32_t t) -> std::size_t {
-        auto enc = rumi::encode_time(a, t);
+    auto trip = [](const Trailer& t, std::uint16_t bands,
+                   std::uint32_t steps) -> std::size_t {
+        auto enc = rumi::encode_trailer(t, bands, steps);
         OK(enc.has_value());
         if (!enc) return 0;
-        auto dec = rumi::decode_time(*enc, t);
+        auto dec = rumi::decode_trailer(*enc, bands, steps);
         OK(dec.has_value());
         if (dec) {
-            OK(dec->coords == a.coords);
-            EQ(dec->type, a.type);
-            EQ(dec->scale, a.type == rumi::TIME_UNDEFINED ? 1u : a.scale);
+            OK(dec->bands == t.bands);
+            OK(dec->time.coords == t.time.coords);
+            EQ(dec->time.type, t.time.type);
+            EQ(dec->time.scale, t.time.scale);
         }
         return enc->size();
     };
 
-    CASE("an undefined axis is the fixed part and nothing else")
-    EQ(trip(TimeAxis{}, 1), rumi::TRAILER_SIZE);
+    // Magic, version and time fields, then a one-byte text after its length.
+    constexpr std::size_t fixed = sizeof(rumi::TrailerHead)
+                                + sizeof(rumi::TimeFields);
+    const std::vector<std::string> one{"x"};
+    const std::size_t bare = fixed + 3;
+    const std::size_t time_at = sizeof(rumi::TrailerHead) + 3;
 
-    CASE("an arithmetic axis lands on the line, so it costs nothing either")
-    TimeAxis fixed{rumi::TIME_INSTANT, 86400, {}};
-    for (int k = 0; k < 73; ++k) fixed.coords.push_back(k * 5);
-    EQ(trip(fixed, 73), rumi::TRAILER_SIZE);
+    CASE("a band text is stored after its length, in band order")
+    {
+        const Trailer s2{{"B4, Red, 664.5nm (S2A) / 665nm (S2B)", "B8, NIR"},
+                         TimeAxis{rumi::TIME_INSTANT, 86400, {19723}}};
+        const std::size_t size = trip(s2, 2, 1);
+        EQ(size, fixed + 2 + s2.bands[0].size() + 2 + s2.bands[1].size());
+        auto enc = rumi::encode_trailer(s2, 2, 1);
+        if (enc) {
+            std::uint16_t n = 0;
+            std::memcpy(&n, enc->data() + sizeof(rumi::TrailerHead), 2);
+            EQ(n, s2.bands[0].size());
+            OK(std::memcmp(enc->data() + sizeof(rumi::TrailerHead) + 2,
+                           s2.bands[0].data(), n) == 0);
+        }
+    }
+
+    CASE("an arithmetic axis lands on the line, so it costs nothing")
+    Trailer every_fifth{one, TimeAxis{rumi::TIME_INSTANT, 86400, {}}};
+    for (int k = 0; k < 73; ++k) every_fifth.time.coords.push_back(k * 5);
+    EQ(trip(every_fifth, 1, 73), bare);
 
     CASE("a calendar axis departs from the line by a few days")
     // Month starts in whole days produce small non-zero residuals.
     const int len[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    TimeAxis months{rumi::TIME_INSTANT, 86400, {}};
+    Trailer months{one, TimeAxis{rumi::TIME_INSTANT, 86400, {}}};
     std::int64_t at = 18262;
-    for (int k = 0; k < 60; ++k) { months.coords.push_back(at); at += len[k % 12]; }
-    const std::size_t calendar = trip(months, 60);
-    OK(calendar > rumi::TRAILER_SIZE);
-    EQ(calendar, std::size_t(73));
+    for (int k = 0; k < 60; ++k) {
+        months.time.coords.push_back(at);
+        at += len[k % 12];
+    }
+    const std::size_t calendar = trip(months, 1, 60);
+    EQ(calendar, bare + 45);
 
     CASE("a fine scale is what makes that cost grow")
     // Adding a time of day selects second scale and wider residuals.
-    TimeAxis noon{rumi::TIME_INSTANT, 1, {}};
-    for (std::int64_t d : months.coords) noon.coords.push_back(d * 86400 + 43200);
-    OK(trip(noon, 60) > calendar);
+    Trailer noon{one, TimeAxis{rumi::TIME_INSTANT, 1, {}}};
+    for (std::int64_t d : months.time.coords) {
+        noon.time.coords.push_back(d * 86400 + 43200);
+    }
+    OK(trip(noon, 1, 60) > calendar);
 
     CASE("which is why a whole-day axis may not use it")
     // Whole-day coordinates require day scale.
-    TimeAxis seconds{rumi::TIME_INSTANT, 1, {}};
-    for (std::int64_t d : months.coords) seconds.coords.push_back(d * 86400);
-    OK(!rumi::encode_time(seconds, 60));
+    Trailer seconds{one, TimeAxis{rumi::TIME_INSTANT, 1, {}}};
+    for (std::int64_t d : months.time.coords) {
+        seconds.time.coords.push_back(d * 86400);
+    }
+    OK(!rumi::encode_trailer(seconds, 1, 60));
 
     CASE("an interval step carries its own start and end")
     // Adjacent intervals may share an endpoint.
-    TimeAxis spans{rumi::TIME_INTERVAL, 86400, {0, 31, 31, 59, 59, 90}};
-    OK(trip(spans, 3) >= rumi::TRAILER_SIZE);
+    const Trailer spans{one, TimeAxis{rumi::TIME_INTERVAL, 86400,
+                                      {0, 31, 31, 59, 59, 90}}};
+    OK(trip(spans, 1, 3) >= bare);
 
     CASE("a gap is what two coordinates per step buy")
     // Separate interval endpoints preserve gaps.
-    TimeAxis gappy{rumi::TIME_INTERVAL, 86400, {0, 31, 59, 90}};
-    OK(trip(gappy, 2) >= rumi::TRAILER_SIZE);
+    const Trailer gappy{one, TimeAxis{rumi::TIME_INTERVAL, 86400,
+                                      {0, 31, 59, 90}}};
+    OK(trip(gappy, 1, 2) >= bare);
 
     CASE("one step with an acquisition window costs nothing")
     // Two coordinates always define the line between them.
-    TimeAxis window{rumi::TIME_INTERVAL, 1, {1724596200, 1724596500}};
-    EQ(trip(window, 1), rumi::TRAILER_SIZE);
+    const Trailer window{one, TimeAxis{rumi::TIME_INTERVAL, 1,
+                                       {1724596200, 1724596500}}};
+    EQ(trip(window, 1, 1), bare);
 
     CASE("a span past int64 is fine when the slope it implies is not")
     // The endpoint span exceeds int64 while the resulting slope still fits.
-    TimeAxis wide{rumi::TIME_INSTANT, 1, {-4611686018427387904LL, 0,
-                                          4611686018427387904LL}};
-    EQ(trip(wide, 3), rumi::TRAILER_SIZE);
-    auto enc = rumi::encode_time(wide, 3);
+    const Trailer wide{one, TimeAxis{rumi::TIME_INSTANT, 1,
+                                     {-4611686018427387904LL, 0,
+                                      4611686018427387904LL}}};
+    EQ(trip(wide, 1, 3), bare);
+    auto enc = rumi::encode_trailer(wide, 1, 3);
     OK(enc.has_value());
     if (enc) {
         std::int64_t step = 0;
-        std::memcpy(&step, enc->data() + 16, 8);
+        std::memcpy(&step, enc->data() + time_at + 10, 8);
         EQ(step, 4611686018427387904LL);
     }
 
     CASE("what an axis may not say")
-    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INSTANT, 86400, {0, 1}}, 3));
-    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INSTANT, 86400, {5, 3}}, 2));
+    auto axis_refused = [&](TimeAxis axis, std::uint32_t steps) {
+        return !rumi::encode_trailer(Trailer{one, std::move(axis)}, 1, steps);
+    };
+    OK(axis_refused(TimeAxis{rumi::TIME_INSTANT, 86400, {0, 1}}, 3));
+    OK(axis_refused(TimeAxis{rumi::TIME_INSTANT, 86400, {5, 3}}, 2));
     // Reject an empty interval and overlapping intervals.
-    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INTERVAL, 86400, {5, 5}}, 1));
-    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INTERVAL, 86400, {0, 40, 31, 59}}, 2));
-    OK(!rumi::encode_time(TimeAxis{rumi::TIME_INSTANT, 0, {7}}, 1));
+    OK(axis_refused(TimeAxis{rumi::TIME_INTERVAL, 86400, {5, 5}}, 1));
+    OK(axis_refused(TimeAxis{rumi::TIME_INTERVAL, 86400, {0, 40, 31, 59}}, 2));
+    OK(axis_refused(TimeAxis{rumi::TIME_INSTANT, 0, {7}}, 1));
+    // Every step has a coordinate, so there is no undefined axis to write.
+    OK(axis_refused(TimeAxis{0, 1, {}}, 1));
+    OK(axis_refused(TimeAxis{0, 1, {7}}, 1));
+
+    CASE("what a band text may not be")
+    const TimeAxis one_day{rumi::TIME_INSTANT, 86400, {19723}};
+    auto refusal = [&](std::vector<std::string> texts, std::uint16_t bands) {
+        auto out = rumi::encode_trailer(Trailer{std::move(texts), one_day},
+                                        bands, 1);
+        return out ? std::string() : out.error();
+    };
+    auto says = [](const std::string& error, const char* what) {
+        return error.find(what) != std::string::npos;
+    };
+    OK(says(refusal({"red", "nir"}, 1), "one text per band"));
+    OK(says(refusal({"red"}, 2), "one text per band"));
+    OK(says(refusal({""}, 1), "band 0 has an empty text"));
+    OK(says(refusal({"red", std::string("n\0r", 3)}, 2), "band 1 text contains a NUL"));
+    OK(says(refusal({"red", "nir", "red"}, 3), "bands 0 and 2 have the same text"));
+    OK(says(refusal({std::string(65536, 'x')}, 1), "past the 65535"));
+    OK(refusal({std::string(65535, 'x')}, 1).empty());
+    // Overlong forms, surrogates, code points past U+10FFFF, stray and cut
+    // sequences are not UTF-8.
+    for (const char* bad : {"\x80", "\xC0\xAF", "\xC1\xBF", "\xE0\x80\xAF",
+                            "\xF0\x8F\xBF\xBF", "\xED\xA0\x80",
+                            "\xF4\x90\x80\x80", "\xF5\x80\x80\x80",
+                            "\xE2\x82", "\xE2\x82\x28", "\xFF"}) {
+        OK(says(refusal({bad}, 1), "not valid UTF-8"));
+    }
+    for (const char* good : {"R\xC3\xA9" "flectance, 665 nm",
+                             "\xE6\xB3\xA2\xE6\xAE\xB5 4", "\xF0\x9F\x8C\x8D",
+                             "\xEF\xBF\xBD", "\xF4\x8F\xBF\xBF"}) {
+        OK(refusal({good}, 1).empty());
+    }
+
+    CASE("a reader applies the same rules to the texts it finds")
+    {
+        auto pair = rumi::encode_trailer(Trailer{{"ab", "cd"}, one_day}, 2, 1);
+        OK(pair.has_value());
+        if (pair) {
+            // The second text starts after the head, "ab" and two lengths.
+            const std::size_t second = sizeof(rumi::TrailerHead) + 2 + 2 + 2;
+            auto twin = *pair;
+            twin[second] = std::byte{'a'};
+            twin[second + 1] = std::byte{'b'};
+            auto dec = rumi::decode_trailer(twin, 2, 1);
+            OK(!dec && says(dec.error(), "bands 0 and 1 have the same text"));
+
+            auto broken = *pair;
+            broken[second] = std::byte{0xFF};
+            dec = rumi::decode_trailer(broken, 2, 1);
+            OK(!dec && says(dec.error(), "band 1 text is not valid UTF-8"));
+
+            auto nul = *pair;
+            nul[second] = std::byte{0};
+            dec = rumi::decode_trailer(nul, 2, 1);
+            OK(!dec && says(dec.error(), "band 1 text contains a NUL"));
+        }
+
+        // A zero length leaves the band with nothing to say.
+        rumi::TrailerHead head{rumi::TRAILER_MAGIC, rumi::TRAILER_VERSION};
+        rumi::TimeFields fields{rumi::TIME_INSTANT, 0, 19723, 0, 86400};
+        std::vector<std::byte> empty(sizeof head + 2 + sizeof fields);
+        std::memcpy(empty.data(), &head, sizeof head);
+        std::memcpy(empty.data() + sizeof head + 2, &fields, sizeof fields);
+        auto dec = rumi::decode_trailer(empty, 1, 1);
+        OK(!dec && says(dec.error(), "band 0 has an empty text"));
+    }
 
     CASE("a trailer that is not canonical is refused")
-    auto good = rumi::encode_time(months, 60);
+    auto good = rumi::encode_trailer(months, 1, 60);
     OK(good.has_value());
     if (good) {
-        auto widened = *good;
-        widened[7] = std::byte(std::uint8_t(widened[7]) + 1);  // time_bits
-        OK(!rumi::decode_time(widened, 60));
+        // The same residuals repacked one bit wider break only the width rule.
+        const std::size_t first = time_at + sizeof(rumi::TimeFields);
+        const unsigned bits = std::to_integer<unsigned>((*good)[time_at + 1]);
+        std::vector<std::byte> widened(good->begin(), good->begin() + first);
+        widened[time_at + 1] = std::byte(bits + 1);
+        widened.resize(first + (60 * (bits + 1) + 7) / 8);
+        for (std::size_t i = 0; i < 60; ++i) {
+            for (std::size_t j = 0; j < bits; ++j) {
+                const std::size_t from = i * bits + j, to = i * (bits + 1) + j;
+                if ((std::to_integer<unsigned>((*good)[first + from / 8])
+                     >> (from % 8)) & 1u) {
+                    widened[first + to / 8] |= std::byte(1u << (to % 8));
+                }
+            }
+        }
+        auto wide = rumi::decode_trailer(widened, 1, 60);
+        OK(!wide && says(wide.error(), "time_bits is not the width"));
 
         // residual(0) must be zero because time_epoch is the first coordinate.
         auto nudged = *good;
-        nudged[rumi::TRAILER_SIZE] |= std::byte{1};
-        OK(!rumi::decode_time(nudged, 60));
+        nudged[time_at + sizeof(rumi::TimeFields)] |= std::byte{1};
+        OK(!rumi::decode_trailer(nudged, 1, 60));
 
         // Changing epoch consistently produces a different valid axis.
         auto moved = *good;
-        moved[8] = std::byte(std::uint8_t(moved[8]) + 1);
-        auto later = rumi::decode_time(moved, 60);
+        moved[time_at + 2] = std::byte(std::uint8_t(moved[time_at + 2]) + 1);
+        auto later = rumi::decode_trailer(moved, 1, 60);
         OK(later.has_value());
-        if (later) EQ(later->coords.front(), months.coords.front() + 1);
+        if (later) EQ(later->time.coords.front(), months.time.coords.front() + 1);
 
         auto wrong_magic = *good;
         wrong_magic[0] = std::byte{0};
-        OK(!rumi::decode_time(wrong_magic, 60));
+        OK(!rumi::decode_trailer(wrong_magic, 1, 60));
+
+        // A trailer from before band texts is not read as one.
+        auto older = *good;
+        std::memcpy(older.data(), "TIME", 4);
+        OK(!rumi::decode_trailer(older, 1, 60));
+
+        auto longer = *good;
+        longer.push_back(std::byte{0});
+        auto dec = rumi::decode_trailer(longer, 1, 60);
+        OK(!dec && says(dec.error(), "1 extra byte after the time residuals"));
+
+        auto shorter = *good;
+        shorter.pop_back();
+        dec = rumi::decode_trailer(shorter, 1, 60);
+        OK(!dec && says(dec.error(), "the time residuals need"));
+
+        auto overrun = *good;
+        const std::uint16_t past = 0xFFFF;
+        std::memcpy(overrun.data() + sizeof(rumi::TrailerHead), &past, 2);
+        dec = rumi::decode_trailer(overrun, 1, 60);
+        OK(!dec && says(dec.error(), "runs past the end of the trailer"));
     }
 
     CASE("a tiny arithmetic trailer cannot expand past the time-axis budget")
-    rumi::TimeTrailer huge{};
-    huge.magic      = rumi::TIME_MAGIC;
-    huge.version    = rumi::TIME_VERSION;
-    huge.time_type  = rumi::TIME_INSTANT;
-    huge.time_scale = 1;
-    std::vector<std::byte> tiny_time(rumi::TRAILER_SIZE);
-    std::memcpy(tiny_time.data(), &huge, sizeof huge);
-    const auto too_many = static_cast<std::uint32_t>(
-        rumi::MAX_TIME_COORD_BYTES / sizeof(std::int64_t) + 1);
-    auto bounded = rumi::decode_time(tiny_time, too_many);
-    OK(!bounded.has_value());
-    if (!bounded) {
-        OK(bounded.error().find("time coordinates") != std::string::npos);
+    {
+        rumi::TrailerHead head{rumi::TRAILER_MAGIC, rumi::TRAILER_VERSION};
+        rumi::TimeFields huge{rumi::TIME_INSTANT, 0, 0, 0, 1};
+        const std::uint16_t n = 1;
+        std::vector<std::byte> tiny(bare);
+        std::memcpy(tiny.data(), &head, sizeof head);
+        std::memcpy(tiny.data() + sizeof head, &n, 2);
+        tiny[sizeof head + 2] = std::byte{'x'};
+        std::memcpy(tiny.data() + time_at, &huge, sizeof huge);
+        const auto too_many = static_cast<std::uint32_t>(
+            rumi::MAX_TIME_COORD_BYTES / sizeof(std::int64_t) + 1);
+        auto bounded = rumi::decode_trailer(tiny, 1, too_many);
+        OK(!bounded && says(bounded.error(), "time coordinates"));
+    }
+
+    CASE("a writer will not produce a trailer its reader refuses")
+    {
+        // 1030 texts at the length limit pass 64 MiB before any time field.
+        std::vector<std::string> long_texts;
+        for (int b = 0; b < 1030; ++b) {
+            std::string text = std::to_string(b);
+            text.resize(rumi::MAX_BAND_TEXT_BYTES, 'x');
+            long_texts.push_back(std::move(text));
+        }
+        auto big = rumi::encode_trailer(Trailer{std::move(long_texts), one_day},
+                                        1030, 1);
+        OK(!big && says(big.error(), "a reader accepts"));
     }
 }
 
@@ -1431,6 +1604,7 @@ struct FillerFile {
         desc.tile_size         = tile;
         desc.samples_per_pixel = bands;
         desc.dtype             = dtype;
+        label(desc);
 
         path = "/tmp/rumi_batch_" + std::to_string(std::random_device{}())
              + ".rumi";
@@ -1467,12 +1641,19 @@ void test_info_c_api()
     EQ(source.fields.image_length, 32u);
     EQ(source.has_source, 1);
     OK(source.blob != nullptr && source.blob_size >= rumi::HEADER_SIZE);
+    EQ(source.band_text_count, std::size_t(1));
+    OK(source.band_texts != nullptr
+       && std::strcmp(source.band_texts[0], "band 0") == 0);
+    EQ(source.time_type, std::uint8_t(rumi::TIME_INSTANT));
+    EQ(source.time_coords, std::size_t(1));
 
     rumi_metadata header{};
     EQ(rumi_info(nullptr, source.blob, source.blob_size, &header), RUMI_OK);
     EQ(header.fields.image_width, source.fields.image_width);
     EQ(header.has_source, 0);
     OK(header.time == nullptr);
+    OK(header.band_texts == nullptr);
+    EQ(header.band_text_count, std::size_t(0));
 
     rumi_metadata matched{};
     EQ(rumi_info(file.src, source.blob, source.blob_size, &matched), RUMI_OK);
@@ -1485,10 +1666,122 @@ void test_info_c_api()
        RUMI_ERR_INVALID);
     OK(untouched.blob == nullptr);
 
+    CASE("a trailer past the reader's budget is refused before it is read")
+    {
+        std::vector<unsigned char> bytes;
+        if (std::FILE* f = std::fopen(file.path.c_str(), "rb")) {
+            for (int c; (c = std::fgetc(f)) != EOF;) {
+                bytes.push_back(static_cast<unsigned char>(c));
+            }
+            std::fclose(f);
+        }
+        bytes.resize(bytes.size() + rumi::MAX_TRAILER_BYTES, 0);
+        rumi_source* padded = nullptr;
+        EQ(rumi_source_memory(bytes.data(), bytes.size(), &padded), RUMI_OK);
+        rumi_metadata refused{};
+        EQ(rumi_info(padded, nullptr, 0, &refused), RUMI_ERR_FORMAT);
+        OK(std::strstr(rumi_last_error(), "this reader will read") != nullptr);
+        rumi_source_free(padded);
+    }
+
     rumi_metadata_free(&source);
     rumi_metadata_free(&header);
     rumi_metadata_free(&matched);
     rumi_metadata_free(nullptr);
+}
+
+void test_write_c_api_band_texts()
+{
+    CASE("the write C API stores every band text and info returns them")
+    constexpr std::size_t n = 8;  // 32 by 32 in 16-pixel tiles, two bands
+    std::vector<std::vector<unsigned char>> payload(n);
+    std::vector<const unsigned char*> ptrs(n);
+    std::vector<std::size_t> sizes(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        payload[i].assign(64, static_cast<unsigned char>(i));
+        ptrs[i]  = payload[i].data();
+        sizes[i] = payload[i].size();
+    }
+    const char* texts[2] = {"B4, Red, 665nm", "B8, NIR, 842nm"};
+    const std::int64_t day[1] = {1704067200};  // 2024-01-01T00:00:00Z
+
+    rumi_write_desc desc{};
+    desc.image_width       = 32;
+    desc.image_length      = 32;
+    desc.time_count        = 1;
+    desc.tile_size         = 16;
+    desc.samples_per_pixel = 2;
+    desc.dtype             = RUMI_DT_UINT16;
+    desc.band_texts        = texts;
+    desc.band_text_count   = 2;
+    desc.time_type         = rumi::TIME_INSTANT;
+    desc.time              = day;
+    desc.time_coords       = 1;
+
+    const std::string path = "/tmp/rumi_band_texts_"
+                           + std::to_string(std::random_device{}()) + ".rumi";
+    auto write = [&]() {
+        unsigned char* blob = nullptr;
+        std::size_t blob_size = 0;
+        const rumi_status st = rumi_write(path.c_str(), &desc, ptrs.data(),
+                                          sizes.data(), n, &blob, &blob_size);
+        rumi_free(blob);
+        return st;
+    };
+    EQ(write(), RUMI_OK);
+
+    rumi_source* src = nullptr;
+    rumi_metadata meta{};
+    EQ(rumi_source_file(path.c_str(), &src), RUMI_OK);
+    if (src) EQ(rumi_info(src, nullptr, 0, &meta), RUMI_OK);
+    EQ(meta.band_text_count, std::size_t(2));
+    if (meta.band_texts && meta.band_text_count == 2) {
+        OK(std::strcmp(meta.band_texts[0], texts[0]) == 0);
+        OK(std::strcmp(meta.band_texts[1], texts[1]) == 0);
+    }
+    EQ(meta.time_type, std::uint8_t(rumi::TIME_INSTANT));
+    EQ(meta.time_coords, std::size_t(1));
+    if (meta.time && meta.time_coords == 1) EQ(meta.time[0], day[0]);
+    rumi_metadata_free(&meta);
+    rumi_source_free(src);
+    std::remove(path.c_str());
+
+    CASE("a missing text, a short list or an unlabelled axis writes nothing")
+    const char* holed[2] = {"B4, Red, 665nm", nullptr};
+    desc.band_texts = holed;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(), "band text 1 is null") == 0);
+
+    desc.band_texts = nullptr;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(),
+                   "band_texts is null but band_text_count is 2") == 0);
+
+    desc.band_texts      = texts;
+    desc.band_text_count = 1;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "one text per band") != nullptr);
+
+    desc.band_text_count = 0;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "one text per band") != nullptr);
+
+    desc.band_text_count = 2;
+    desc.time_coords     = 2;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "needs 1 coordinates, got 2") != nullptr);
+
+    desc.time_coords = 1;
+    desc.time_type   = 0;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "time_type is 0") != nullptr);
+
+    std::FILE* left = std::fopen(path.c_str(), "rb");
+    OK(left == nullptr);
+    if (left) {
+        std::fclose(left);
+        std::remove(path.c_str());
+    }
 }
 
 void test_read_many_c_api()
@@ -1583,7 +1876,7 @@ int main()
     test_checksum_verification();
     test_frame_pattern();
     test_frame_unit_registry();
-    test_time_trailer();
+    test_trailer();
     test_c_api_metadata();
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();
@@ -1596,6 +1889,7 @@ int main()
     test_plan_ranges_c_api_rejects_invalid_requests();
     test_read_c_api_rejects_invalid_requests();
     test_info_c_api();
+    test_write_c_api_band_texts();
     test_read_many_c_api();
     test_dtype_table();
     test_dlpack_wrappers();

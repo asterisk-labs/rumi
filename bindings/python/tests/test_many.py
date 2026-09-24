@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import rumi
+from _labels import labels
 
 geozl = pytest.importorskip("geozl")
 
@@ -26,7 +27,7 @@ def _write(path, data, pattern=PATTERN):
         if graph is None:
             graph = graphs[frame.data.shape] = geozl.graph(frame.data, GRAPH)
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    return rumi.write(path, tf)
+    return rumi.write(path, tf, **labels(tf))
 
 
 @pytest.fixture(scope="module")

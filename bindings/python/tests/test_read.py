@@ -9,6 +9,7 @@ import pytest
 import rumi
 import rumi._dtype as dtype_module
 import rumi._read as read_module
+from _labels import labels
 from rumi._ffi import _Spec, ffi, lib
 
 geozl = pytest.importorskip("geozl")
@@ -50,7 +51,7 @@ def image(tmp_path_factory):
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
     path = tmp_path_factory.mktemp("read") / "img.rumi"
-    path, header = rumi.write(path, tf)
+    path, header = rumi.write(path, tf, **labels(tf))
     return str(path), header, data
 
 
@@ -110,7 +111,7 @@ def ml_float(request, tmp_path_factory):
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, "id>zstd"))
     path = tmp_path_factory.mktemp("ml") / f"{request.param}.rumi"
-    path, header = rumi.write(path, tf)
+    path, header = rumi.write(path, tf, **labels(tf))
     return str(path), header, data
 
 
@@ -181,7 +182,7 @@ def test_fused_planar_pfor_frame_round_trips(tmp_path):
         graph = geozl.graph(frame.data, "planar>zigzag>pfor")
         frame.compressed = geozl.compress(frame.data, graph=graph)
 
-    path, header = rumi.write(tmp_path / "planar-pfor.rumi", tf)
+    path, header = rumi.write(tmp_path / "planar-pfor.rumi", tf, **labels(tf))
     assert np.array_equal(rumi.read(path, header), data)
 
 
@@ -341,7 +342,7 @@ def cell_image(tmp_path_factory):
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
     path = tmp_path_factory.mktemp("cell") / "img.rumi"
-    path, header = rumi.write(path, tf)
+    path, header = rumi.write(path, tf, **labels(tf))
     return str(path), header, data
 
 
@@ -372,7 +373,7 @@ def test_every_layout_reads_the_same_window(tmp_path, bands):
             if g is None:
                 g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
             t.compressed = geozl.compress(t.data, graph=g)
-        path, header = rumi.write(tmp_path / f"{unit}.rumi", tf)
+        path, header = rumi.write(tmp_path / f"{unit}.rumi", tf, **labels(tf))
         out[unit] = np.asarray(
             rumi.read(str(path), header, bands=bands,
                       window=(30, 20, 40, 70)))
@@ -390,7 +391,7 @@ def test_a_chunky_frame_holds_the_pixel_spectrum(tmp_path):
     assert tf[-1].data.shape == (6, 26, 4)          # the corner, cut to bounds
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    path, header = rumi.write(tmp_path / "chunky.rumi", tf)
+    path, header = rumi.write(tmp_path / "chunky.rumi", tf, **labels(tf))
     assert rumi.info(header=header).frame_layout == "h w b"
     assert np.array_equal(rumi.read(str(path), header), data)
 
@@ -399,7 +400,7 @@ def _write(tmp_path, name, data, unit, tile=16):
     tf = rumi.frames(data, PATTERNS[unit], tile)
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    path, header = rumi.write(tmp_path / f"{name}.rumi", tf)
+    path, header = rumi.write(tmp_path / f"{name}.rumi", tf, **labels(tf))
     return str(path), header
 
 
@@ -433,7 +434,7 @@ def test_a_chunky_read_decodes_each_frame_once(tmp_path):
     tf = rumi.frames(data, PATTERNS["chunky"], 32)
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    _path, header = rumi.write(tmp_path / "chunky.rumi", tf)
+    _path, header = rumi.write(tmp_path / "chunky.rumi", tf, **labels(tf))
     one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
     all_five = plan(header, bands=[0, 1, 2, 3, 4], y=(0, 100), x=(0, 130))
     assert len(one) == len(all_five) == len(tf)
@@ -466,7 +467,7 @@ def test_a_cell_batch_round_trips(tmp_path):
         for t in tf:
             t.compressed = geozl.compress(t.data,
                                           graph=geozl.graph(t.data, GRAPH))
-        path, header = rumi.write(tmp_path / f"s{i}.rumi", tf)
+        path, header = rumi.write(tmp_path / f"s{i}.rumi", tf, **labels(tf))
         paths.append(str(path))
         headers.append(header)
         cubes.append(cube)
@@ -483,7 +484,7 @@ def test_a_sub_byte_read_names_its_only_framework(tmp_path):
     tf = rumi.frames(data, "b (row h) (col w) -> row col (b h w)", 16)
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    path, header = rumi.write(tmp_path / "u2.rumi", tf)
+    path, header = rumi.write(tmp_path / "u2.rumi", tf, **labels(tf))
 
     for framework in ("torch", "jax", "tensorflow", "tf"):
         with pytest.raises(ValueError, match="uint2 reads only as numpy"):

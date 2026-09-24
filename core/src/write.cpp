@@ -307,8 +307,8 @@ try {
     head.insert(head.end(), ext.begin(), ext.end());
     head.resize(static_cast<std::size_t>(l->base), std::byte{0});
 
-    // Validate and encode the time axis before creating the output file.
-    auto encoded = encode_time(d.time, d.time_count);
+    // Validate and encode the trailer before creating the output file.
+    auto encoded = encode_trailer(d.trailer, spp, d.time_count);
     if (!encoded) return fail(RUMI_ERR_INVALID, std::move(encoded.error()));
     const std::vector<std::byte>& trailer = *encoded;
 

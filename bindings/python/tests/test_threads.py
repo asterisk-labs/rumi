@@ -8,6 +8,7 @@ import textwrap
 import numpy as np
 import pytest
 import rumi
+from _labels import labels
 
 geozl = pytest.importorskip("geozl")
 
@@ -30,7 +31,7 @@ def image(tmp_path_factory):
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
     path = tmp_path_factory.mktemp("threads") / "img.rumi"
-    path, _ = rumi.write(path, tf)
+    path, _ = rumi.write(path, tf, **labels(tf))
     return str(path)
 
 

@@ -25,7 +25,7 @@ def _epsg(crs) -> int:
     raise ValueError(f"crs must be an EPSG code, got {crs!r}")
 
 
-def _desc(tf, transform, crs, pixel_is_point, time):
+def _desc(tf, transform, crs, pixel_is_point):
     """Build a write descriptor and retain its referenced buffers."""
     if (transform is None) != (crs is None):
         raise ValueError("transform and crs must be given together")
@@ -40,18 +40,6 @@ def _desc(tf, transform, crs, pixel_is_point, time):
     d.dtype = dtype_code(tf.dtype)
     d.pixel_is_point = 1 if pixel_is_point else 0
     d.frame_unit = tf.frame_unit
-
-    # Pass POSIX seconds to the core; it selects the canonical trailer scale.
-    kind, coords = compile_axis(time, tf.time_count)
-    d.time_type = kind
-    if coords:
-        buf = ffi.new("int64_t[]", [int(c) for c in coords])
-        keep.append(buf)
-        d.time = buf
-        d.time_coords = len(coords)
-    else:
-        d.time = ffi.NULL
-        d.time_coords = 0
 
     if transform is None:
         d.transform = ffi.NULL
@@ -70,21 +58,63 @@ def _desc(tf, transform, crs, pixel_is_point, time):
     return d, keep
 
 
+def _band_text(text, b) -> bytes:
+    """Encode one band text as the C string the core receives."""
+    if not isinstance(text, str):
+        raise TypeError(
+            f"a band text is a str, got {type(text).__name__} for band {b}")
+    if "\x00" in text:
+        raise ValueError(
+            f"band {b} text contains a NUL character, which a C string "
+            f"cannot carry")
+    try:
+        return text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(
+            f"band {b} text cannot be encoded as UTF-8") from None
+
+
+def _label(d, keep, tf, bands, time):
+    """Point the descriptor at the band texts and time coordinates."""
+    if bands is None:
+        raise TypeError(
+            "every file names its bands; pass one text per band, in band order")
+    if isinstance(bands, (str, bytes)) or not hasattr(bands, "__iter__"):
+        raise TypeError(
+            f"bands is a list with one text per band; wrap a single text as "
+            f"bands=[{bands!r}]")
+    texts = [ffi.new("char[]", _band_text(text, b))
+             for b, text in enumerate(bands)]
+    keep.extend(texts)
+    array = ffi.new("const char*[]", texts)
+    keep.append(array)
+    d.band_texts = array
+    d.band_text_count = len(texts)
+
+    # Pass POSIX seconds to the core; it selects the canonical trailer scale.
+    kind, coords = compile_axis(time, tf.time_count)
+    seconds = ffi.new("int64_t[]", [int(c) for c in coords])
+    keep.append(seconds)
+    d.time_type = kind
+    d.time = seconds
+    d.time_coords = len(coords)
+
+
 def header_bytes(tf, *, transform=None, crs=None,
                  pixel_is_point=False) -> int:
     """Return the first frame offset for this layout."""
-    d, _keep = _desc(tf, transform, crs, pixel_is_point, None)
+    d, _keep = _desc(tf, transform, crs, pixel_is_point)
     out = ffi.new("uint64_t*")
     _check(lib.rumi_write_base_offset(d, out))
     return int(out[0])
 
 
-def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
-                 transform=None, crs=None, pixel_is_point=False,
-                 time=None) -> bytes:
+def write_frames(path: PathLike, frames: Iterable[bytes], tf, *, bands, time,
+                 transform=None, crs=None, pixel_is_point=False) -> bytes:
     """Write compressed frames and return the binary header."""
     frames = [ffi.from_buffer(f) for f in frames]
-    d, keep = _desc(tf, transform, crs, pixel_is_point, time)
+    d, keep = _desc(tf, transform, crs, pixel_is_point)
+    _label(d, keep, tf, bands, time)
     ptrs = ffi.new("unsigned char*[]", [ffi.cast("unsigned char*", f)
                                         for f in frames])
     sizes = ffi.new("size_t[]", [len(f) for f in frames])
@@ -99,23 +129,24 @@ def write_frames(path: PathLike, frames: Iterable[bytes], tf, *,
         lib.rumi_free(out[0])
 
 
-def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
-          time=None):
+def write(path, tf, *, bands, time, transform=None, crs=None,
+          pixel_is_point=False):
     """Write a compressed FrameTable to a rumi file.
 
     Returns ``(path, header)``. Pass the header to ``read`` or store it in a
     catalog.
 
     tf              a FrameTable with every frame compressed.
+    bands           one text per band, in band order, such as
+                    "B4, Red, 664.5nm (S2A) / 665nm (S2B)". No two are equal.
+    time            one entry per time step: a date, datetime or ISO string
+                    for an instant, or a (start, end) pair for an interval.
     transform       affine coefficients (x_res, row_rot, x_origin, col_rot,
                     y_res, y_origin); pairs with crs.
     crs             EPSG code, as an int, "EPSG:32718", or any object with
                     a to_epsg(); pairs with transform.
     pixel_is_point  anchor the pixel at its center (PixelIsPoint) rather than
                     its top-left corner (PixelIsArea, the default).
-    time            one entry per time step: a date, datetime or ISO string
-                    for an instant, or a (start, end) pair for an interval.
-                    Omit it and the file records no time.
     """
     frames = tf["compressed"]
     missing = [i for i, f in enumerate(frames) if f is None]
@@ -124,6 +155,7 @@ def write(path, tf, *, transform=None, crs=None, pixel_is_point=False,
             f"{len(missing)} of {len(frames)} frames have no payload, first is "
             f"{missing[0]}; compress every frame before writing")
 
-    header = write_frames(path, frames, tf, transform=transform, crs=crs,
-                          pixel_is_point=pixel_is_point, time=time)
+    header = write_frames(path, frames, tf, bands=bands, time=time,
+                          transform=transform, crs=crs,
+                          pixel_is_point=pixel_is_point)
     return path, header

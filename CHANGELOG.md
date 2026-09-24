@@ -4,8 +4,23 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Breaking
+
+- Every file now names each band and labels each time step. `rumi.write`
+  requires `bands=`, one text per band, and `time=`; a file can no longer leave
+  its time undefined. A step without a single instant, such as a DEM or an
+  annual composite, takes a `(start, end)` interval.
+- The trailer after the frames now starts with `TAIL` and stores the band texts
+  before the time axis. The header blob, the IFD and every frame offset are
+  unchanged, so reads never touch the trailer. `rumi.info(source=...)` refuses
+  files written by 0.24 and earlier, so their headers can no longer be rebuilt,
+  and 0.25 is the new compatibility baseline.
+- The C API adds `band_texts` and `band_text_count` to `rumi_write_desc` and
+  `rumi_metadata`, and `time_type` no longer accepts 0.
+
 ### Added
 
+- `Metadata.bands` returns the band texts of a source.
 - Bindings that load Rumi without compiling against Python can now use
   `rumi_dlpack_capsule_api` and `rumi_dlpack_capsule_destructor` to clean up
   rejected DLPack capsules.
