@@ -25,6 +25,8 @@ Notable user-visible changes are recorded here.
   `update geozl (CTid N)` instead of a generic custom-codec message.
 - A read plan too large to allocate raises `MemoryError` (`RUMI_ERR_OOM`)
   instead of `RuntimeError`.
+- `rumi_plan_ranges` names the band, time step or window it rejects, with the
+  same messages as a read.
 
 ## [0.24.1] - 2026-09-24
 

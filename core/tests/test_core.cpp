@@ -677,6 +677,7 @@ void test_plan_ranges_c_api_rejects_invalid_requests()
     const int bad_band[] = {999};
     EQ(rumi_plan_ranges(spec, nullptr, 0, bad_band, 1, 0, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(), "band 999 out of range [1, 2]") == 0);
     EQ(rumi_plan_ranges(spec, nullptr, 0, nullptr, 0, -1, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
     EQ(rumi_plan_ranges(spec, nullptr, 0, nullptr, 0, 0, 65, 0, 64,

@@ -786,20 +786,26 @@ bool set_checksum_verification(bool on) noexcept;
 
 // Reading.
 
+// Share request checks so planning and decoding reject the same inputs.
+[[nodiscard]] std::expected<void, std::string>
+validate_request(const Header& h, std::span<const int> times,
+                 std::span<const int> bands,
+                 int y_off, int y_size, int x_off, int x_size);
+
 // Compute required ranges from the external header without I/O.
 [[nodiscard]] std::vector<Range>
 plan_ranges(const Header& h, std::span<const int> times,
             std::span<const int> bands,
             int y_off, int y_size, int x_off, int x_size);
 
-// Resource-bounded form of plan_ranges.
+// Validate and bound the plan before allocating its range array.
 [[nodiscard]] std::expected<std::vector<Range>, std::string>
 plan_ranges_checked(const Header& h, std::span<const int> times,
                     std::span<const int> bands,
                     int y_off, int y_size, int x_off, int x_size);
 
-// Read a window into dst. Band and time indices are 1-based. Work is scheduled
-// on the process-wide pool.
+// Read a window into dst and use the process-wide pool. Band and time indices
+// are 1-based because this is called from the C boundary.
 [[nodiscard]] std::expected<void, Error>
 read_window(Source& src, const Header& h,
             std::span<const int> times, std::span<const int> bands,

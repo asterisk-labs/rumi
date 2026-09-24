@@ -364,8 +364,8 @@ rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
 
 extern "C" rumi_status
 rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
-              uint16_t bands, uint32_t times, uint64_t index,
-              rumi_frame_at* out)
+                  uint16_t bands, uint32_t times, uint64_t index,
+                  rumi_frame_at* out)
 {
     return capi_call([&]() -> rumi_status {
         if (!out) {
@@ -645,24 +645,6 @@ rumi_plan_ranges(const rumi_spec* spec,
             return RUMI_ERR_INVALID;
         }
         const auto picked_t = resolve_times(times, n_times, h.time_count);
-        for (int t : picked_t) {
-            if (t < 1 || static_cast<uint32_t>(t) > h.time_count) {
-                set_error("time step out of range");
-                return RUMI_ERR_INVALID;
-            }
-        }
-        for (int band : picked) {
-            if (band < 1 || band > h.samples_per_pixel) {
-                set_error("band out of range");
-                return RUMI_ERR_INVALID;
-            }
-        }
-        if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
-            static_cast<std::int64_t>(x_off) + x_size > h.image_width ||
-            static_cast<std::int64_t>(y_off) + y_size > h.image_length) {
-            set_error("requested window out of bounds");
-            return RUMI_ERR_INVALID;
-        }
         auto planned = rumi::plan_ranges_checked(
             h, std::span<const int>(picked_t), std::span<const int>(picked),
             y_off, y_size, x_off, x_size);
@@ -1063,6 +1045,33 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
 
 // Writing.
 
+namespace {
+
+// Convert once so write and base-offset queries validate time identically.
+std::expected<rumi::WriteDesc, std::string>
+to_write_desc(const rumi_write_desc& desc)
+{
+    rumi::WriteDesc d{};
+    d.image_width       = desc.image_width;
+    d.image_length      = desc.image_length;
+    d.time_count        = desc.time_count;
+    d.tile_size         = desc.tile_size;
+    d.samples_per_pixel = desc.samples_per_pixel;
+    d.dtype             = desc.dtype;
+    d.transform         = desc.transform;
+    d.epsg              = desc.epsg;
+    d.pixel_is_point    = desc.pixel_is_point != 0;
+    d.frame_unit        = desc.frame_unit;
+    auto axis = rumi::axis_from_seconds(
+        desc.time_type,
+        std::span<const std::int64_t>(desc.time, desc.time ? desc.time_coords : 0));
+    if (!axis) return std::unexpected(std::move(axis.error()));
+    d.time = std::move(*axis);
+    return d;
+}
+
+}  // namespace
+
 extern "C" rumi_status
 rumi_write(const char*                 path,
            const rumi_write_desc*      desc,
@@ -1078,30 +1087,12 @@ rumi_write(const char*                 path,
             return RUMI_ERR_INVALID;
         }
 
-        rumi::WriteDesc d{};
-        d.image_width       = desc->image_width;
-        d.image_length      = desc->image_length;
-        d.time_count        = desc->time_count;
-        d.tile_size         = desc->tile_size;
-        d.samples_per_pixel = desc->samples_per_pixel;
-        d.dtype             = desc->dtype;
-        d.transform         = desc->transform;
-        d.epsg              = desc->epsg;
-        d.pixel_is_point    = desc->pixel_is_point != 0;
-        d.frame_unit        = desc->frame_unit;
-        // The core derives the canonical on-disk scale from POSIX seconds.
-        {
-            auto axis = rumi::axis_from_seconds(
-                desc->time_type,
-                std::span<const std::int64_t>(
-                    desc->time, desc->time ? desc->time_coords : 0));
-            if (!axis) {
-                set_error(axis.error());
-                return RUMI_ERR_INVALID;
-            }
-            d.time = std::move(*axis);
+        auto d = to_write_desc(*desc);
+        if (!d) {
+            set_error(d.error());
+            return RUMI_ERR_INVALID;
         }
-        auto result = rumi::write_file(path, d, frames, sizes, frame_count);
+        auto result = rumi::write_file(path, *d, frames, sizes, frame_count);
         if (!result) {
             set_error(result.error().message);
             return result.error().status;
@@ -1129,30 +1120,12 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
             return RUMI_ERR_INVALID;
         }
 
-        rumi::WriteDesc d{};
-        d.image_width       = desc->image_width;
-        d.image_length      = desc->image_length;
-        d.time_count        = desc->time_count;
-        d.tile_size         = desc->tile_size;
-        d.samples_per_pixel = desc->samples_per_pixel;
-        d.dtype             = desc->dtype;
-        d.transform         = desc->transform;
-        d.epsg              = desc->epsg;
-        d.pixel_is_point    = desc->pixel_is_point != 0;
-        d.frame_unit        = desc->frame_unit;
-        // The core derives the canonical on-disk scale from POSIX seconds.
-        {
-            auto axis = rumi::axis_from_seconds(
-                desc->time_type,
-                std::span<const std::int64_t>(
-                    desc->time, desc->time ? desc->time_coords : 0));
-            if (!axis) {
-                set_error(axis.error());
-                return RUMI_ERR_INVALID;
-            }
-            d.time = std::move(*axis);
+        auto d = to_write_desc(*desc);
+        if (!d) {
+            set_error(d.error());
+            return RUMI_ERR_INVALID;
         }
-        auto base = rumi::base_offset(d);
+        auto base = rumi::base_offset(*d);
         if (!base) {
             set_error(base.error());
             return RUMI_ERR_INVALID;

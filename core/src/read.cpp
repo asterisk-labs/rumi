@@ -28,31 +28,6 @@ transport_error(std::string message, karu_status status)
     return fail(RUMI_ERR_IO, std::move(message));
 }
 
-std::expected<void, std::string>
-validate_request(const Header& h, std::span<const int> times,
-                 std::span<const int> bands,
-                 int y_off, int y_size, int x_off, int x_size)
-{
-    if (bands.empty()) return err("no bands selected");
-    for (int b : bands) {
-        if (b < 1 || b > h.samples_per_pixel) {
-            return errf("band %d out of range [1, %u]", b, h.samples_per_pixel);
-        }
-    }
-    if (times.empty()) return err("no time steps selected");
-    for (int t : times) {
-        if (t < 1 || static_cast<std::uint32_t>(t) > h.time_count) {
-            return errf("t=%d out of range [1, %u]", t, h.time_count);
-        }
-    }
-    if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
-        static_cast<std::int64_t>(x_off) + x_size > h.image_width ||
-        static_cast<std::int64_t>(y_off) + y_size > h.image_length) {
-        return err("requested window out of bounds");
-    }
-    return {};
-}
-
 constexpr int MAX_THREADS = 1024;
 
 int clamp_threads(int n) noexcept
@@ -749,11 +724,40 @@ read_items(std::span<const ReadItem> items,
 }  // namespace
 
 
+std::expected<void, std::string>
+validate_request(const Header& h, std::span<const int> times,
+                 std::span<const int> bands,
+                 int y_off, int y_size, int x_off, int x_size)
+{
+    if (bands.empty()) return err("no bands selected");
+    for (int b : bands) {
+        if (b < 1 || b > h.samples_per_pixel) {
+            return errf("band %d out of range [1, %u]", b, h.samples_per_pixel);
+        }
+    }
+    if (times.empty()) return err("no time steps selected");
+    for (int t : times) {
+        if (t < 1 || static_cast<std::uint32_t>(t) > h.time_count) {
+            return errf("t=%d out of range [1, %u]", t, h.time_count);
+        }
+    }
+    if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
+        static_cast<std::int64_t>(x_off) + x_size > h.image_width ||
+        static_cast<std::int64_t>(y_off) + y_size > h.image_length) {
+        return err("requested window out of bounds");
+    }
+    return {};
+}
+
 std::expected<std::vector<Range>, std::string>
 plan_ranges_checked(const Header& h, std::span<const int> times,
                     std::span<const int> bands,
                     int y_off, int y_size, int x_off, int x_size)
 {
+    if (auto ok = validate_request(h, times, bands, y_off, y_size, x_off, x_size);
+        !ok) {
+        return std::unexpected(std::move(ok.error()));
+    }
     const std::uint64_t y_last = static_cast<std::uint64_t>(y_off)
                                + static_cast<std::uint64_t>(y_size) - 1;
     const std::uint64_t x_last = static_cast<std::uint64_t>(x_off)
