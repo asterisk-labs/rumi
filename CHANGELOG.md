@@ -6,8 +6,11 @@ Notable user-visible changes are recorded here.
 
 ### Changed
 
-- `geozl` is a plain dependency of `rumi-eo`, so `pip install rumi-eo` installs
-  everything writing needs. The `write` extra is gone.
+- `geozl` and `ml_dtypes` are plain dependencies of `rumi-eo`, so
+  `pip install rumi-eo` installs everything writing and every dtype need. The
+  `write` and `ml` extras are gone.
+- `rumi-eo` requires `numpy>=2`. The old `numpy>=1.24` floor was never tested,
+  and no framework Rumi reads into holds you below it.
 
 ## [0.24.0] - 2026-09-20
 

@@ -16,9 +16,10 @@ authors = [
 ]
 
 dependencies = [
-    "numpy>=1.24",
+    "numpy>=2",
     "cffi>=1.17",
     "geozl>=0.18.0,<0.19",
+    "ml_dtypes",
 ]
 
 classifiers = [
@@ -39,9 +40,6 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-ml = [
-    "ml_dtypes",
-]
 test = [
     "mypy>=1.11",
     "pytest>=7",

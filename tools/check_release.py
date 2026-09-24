@@ -61,10 +61,8 @@ def check(tag: str | None) -> tuple[str, str, str]:
         fail("Python version must remain dynamic and sourced from VERSION")
 
     expected = next_minor_constraint(geozl_version)
-    extras = project.get("optional-dependencies", {})
-    for extra in ("write", "test"):
-        if expected not in extras.get(extra, []):
-            fail(f"Python extra {extra!r} must contain {expected!r}")
+    if expected not in project.get("dependencies", []):
+        fail(f"Python dependencies must contain {expected!r}")
 
     classifiers = set(project.get("classifiers", []))
     required = {

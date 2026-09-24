@@ -20,12 +20,12 @@ and `_ffi.py`). The examples and messages were captured from a 0.24.0 build.
 ## 1. Install and runtime
 
 ```bash
-pip install rumi-eo            # reader and writer
-pip install "rumi-eo[ml]"      # adds ml_dtypes for float8, int4 and other ML types
+pip install rumi-eo            # reader, writer and every dtype
 ```
 
-- Python 3.11 to 3.14; runtime dependencies `numpy>=1.24`, `cffi>=1.17` and `geozl>=0.18.0,<0.19`. The import
-  name is `rumi`, the distribution is `rumi-eo`.
+- Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17`,
+  `geozl>=0.18.0,<0.19` and `ml_dtypes`. The import name is `rumi`, the
+  distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, then the copy bundled under `rumi/_lib/`,
   then `ctypes.util.find_library("rumi")`. Import fails when the library's C API version
