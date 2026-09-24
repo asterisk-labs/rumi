@@ -1,5 +1,6 @@
 """Regenerate the versioned fuzz corpora with valid OpenZL frames."""
 
+import datetime as dt
 import pathlib
 import shutil
 import sys
@@ -15,6 +16,11 @@ from rumi._write import write_frames  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 UTM = (10.0, 0.0, 500000.0, 0.0, -10.0, 4600000.0)
+
+# Real band texts give the fuzzer lengths and multibyte UTF-8 to mutate.
+TEXTS = ["B4, Red, 664.5nm (S2A) / 665nm (S2B)", "R\u00e9flectance, 842 nm",
+         "VV"]
+FIRST_DAY = dt.date(2024, 1, 1)
 
 CASES = [
     ("image_tile",    (1, 16, 16),    8, "b (row h) (col w) -> row col b (h w)", {}),
@@ -51,7 +57,9 @@ def build(out_index: pathlib.Path, out_header: pathlib.Path) -> int:
                     frame.data, "planar>zigzag>zstd")
             frame.compressed = geozl.compress(frame.data, graph=graph)
         path = out_index / name
-        blob = write_frames(path, tf["compressed"], tf, **kw)
+        days = [FIRST_DAY + dt.timedelta(days=t) for t in range(tf.time_count)]
+        labels = {"bands": TEXTS[:tf.bands], "time": days}
+        blob = write_frames(path, tf["compressed"], tf, **{**labels, **kw})
         (out_header / name).write_bytes(blob)
     return len(CASES)
 
