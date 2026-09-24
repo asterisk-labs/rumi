@@ -18,7 +18,7 @@ so each frame may use its own compression graph. A small external header locates
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 
-This skill describes **rumi 0.24.0** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.2.2). Check
+This skill describes **rumi 0.24.1** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.2.2). Check
 `rumi.__version__`. If it differs, trust the installed source, `SPEC.md` and
 `CHANGELOG.md` over this file.
 
