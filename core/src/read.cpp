@@ -264,8 +264,13 @@ void group_planes(const Header& h, std::uint32_t row, std::uint32_t col,
 {
     const int nt = static_cast<int>(times.size());
     const int nb = static_cast<int>(bands.size());
+    const std::size_t groups = static_cast<std::size_t>(walks_t ? nt : 1)
+                             * static_cast<std::size_t>(walks_b ? nb : 1);
     out.index.clear();
-    out.planes.clear();
+    out.index.reserve(groups);
+    out.planes.resize(groups);
+    for (auto& planes : out.planes) planes.clear();
+    std::size_t group = 0;
     for (int wt = 0; wt < (walks_t ? nt : 1); ++wt) {
         for (int wb = 0; wb < (walks_b ? nb : 1); ++wb) {
             out.index.push_back(h.frame_index(
@@ -274,7 +279,7 @@ void group_planes(const Header& h, std::uint32_t row, std::uint32_t col,
                 static_cast<std::uint32_t>(times[walks_t ? wt : 0] - 1)));
             const int t0 = walks_t ? wt : 0, t1 = walks_t ? wt + 1 : nt;
             const int b0 = walks_b ? wb : 0, b1 = walks_b ? wb + 1 : nb;
-            auto& into = out.planes.emplace_back();
+            auto& into = out.planes[group++];
             for (int i = t0; i < t1; ++i)
                 for (int j = b0; j < b1; ++j) into.emplace_back(i, j);
         }
