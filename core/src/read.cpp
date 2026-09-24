@@ -10,6 +10,7 @@
 #include <expected>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -78,7 +79,8 @@ int env_threads() noexcept
     return n > MAX_THREADS ? MAX_THREADS : static_cast<int>(n);
 }
 
-// Store PID, thread count, and pinned state in one atomic value.
+// Keep PID, count and pinned state in one lock-free value. A child can then
+// discard the parent's state after fork without touching an inherited mutex.
 constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
 constexpr std::uint32_t PINNED       = 0x80000000u;
 
@@ -262,15 +264,76 @@ std::size_t checked_size_product(std::size_t a, std::size_t b)
     return a * b;
 }
 
+// Name window fields to keep x and y ordering visible at planner call sites.
+struct Window {
+    std::int64_t x_off;
+    std::int64_t y_off;
+    std::int64_t x_size;
+    std::int64_t y_size;
+};
+
+// Store byte strides once so sample widths are not applied in several loops.
+struct OutStrides {
+    std::int64_t pixel;
+    std::int64_t line;
+    std::int64_t band;
+    std::int64_t time;
+};
+
+// Group selected planes by frame so each compressed payload is decoded once.
+struct CellFrames {
+    std::vector<std::uint64_t>                    index;
+    std::vector<std::vector<std::pair<int, int>>> planes;
+};
+
+// Indexed axes produce one frame per selected position. Held axes keep their
+// selected planes together so one task can share the decoded payload.
+void group_planes(const Header& h, std::uint32_t row, std::uint32_t col,
+                  std::span<const int> times, std::span<const int> bands,
+                  bool walks_t, bool walks_b, CellFrames& out)
+{
+    const int nt = static_cast<int>(times.size());
+    const int nb = static_cast<int>(bands.size());
+    out.index.clear();
+    out.planes.clear();
+    for (int wt = 0; wt < (walks_t ? nt : 1); ++wt) {
+        for (int wb = 0; wb < (walks_b ? nb : 1); ++wb) {
+            out.index.push_back(h.frame_index(
+                row, col,
+                static_cast<std::uint32_t>(bands[walks_b ? wb : 0] - 1),
+                static_cast<std::uint32_t>(times[walks_t ? wt : 0] - 1)));
+            const int t0 = walks_t ? wt : 0, t1 = walks_t ? wt + 1 : nt;
+            const int b0 = walks_b ? wb : 0, b1 = walks_b ? wb + 1 : nb;
+            auto& into = out.planes.emplace_back();
+            for (int i = t0; i < t1; ++i)
+                for (int j = b0; j < b1; ++j) into.emplace_back(i, j);
+        }
+    }
+}
+
+// Find one output origin only when every selected plane keeps its decoded
+// offset. That proof lets the decoder bypass scratch storage safely.
+std::optional<std::int64_t>
+direct_origin(std::span<const std::int64_t> src,
+              std::span<const std::int64_t> dst) noexcept
+{
+    std::optional<std::int64_t> origin;
+    for (std::size_t k = 0; k < src.size(); ++k) {
+        if (src[k] == 0) origin = dst[k];
+    }
+    if (!origin) return std::nullopt;
+    for (std::size_t k = 0; k < src.size(); ++k) {
+        if (dst[k] - *origin != src[k]) return std::nullopt;
+    }
+    return origin;
+}
+
 // Append one task per intersecting frame. Band/time pairs that share a frame
 // stay in the same task.
 void append_read_plan(Plan& plan, const Header& h, Source* source,
-                      int x_off, int y_off, int x_size, int y_size,
-                      std::byte* data,
+                      const Window& win, std::byte* data,
                       std::span<const int> times, std::span<const int> bands,
-                      std::int64_t pixel_space, std::int64_t line_space,
-                      std::int64_t band_space, std::int64_t time_space,
-                      std::size_t item)
+                      const OutStrides& out, std::size_t item)
 {
     const std::int64_t tw = h.tile_width;
     const std::int64_t tl = h.tile_length;
@@ -280,18 +343,16 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
     const std::uint8_t  unit = h.frame_unit;
     const std::uint16_t B = h.samples_per_pixel;
     const std::uint32_t T = h.time_count;
-    const int nb = static_cast<int>(bands.size());
-    const int nt = static_cast<int>(times.size());
+    const std::size_t nb = bands.size();
+    const std::size_t nt = times.size();
 
-    const std::int64_t tx_min = x_off / tw;
-    const std::int64_t ty_min = y_off / tl;
-    const std::int64_t tx_max =
-        (static_cast<std::int64_t>(x_off) + x_size + tw - 1) / tw;
-    const std::int64_t ty_max =
-        (static_cast<std::int64_t>(y_off) + y_size + tl - 1) / tl;
+    const std::int64_t tx_min = win.x_off / tw;
+    const std::int64_t ty_min = win.y_off / tl;
+    const std::int64_t tx_max = (win.x_off + win.x_size + tw - 1) / tw;
+    const std::int64_t ty_max = (win.y_off + win.y_size + tl - 1) / tl;
 
     // Direct decode requires contiguous pixels; row pitch is checked per tile.
-    const bool one_sample_stride = pixel_space == static_cast<std::int64_t>(bps);
+    const bool one_sample_stride = out.pixel == static_cast<std::int64_t>(bps);
 
     const bool walks_b = unit_indexes_bands(unit, B, T);
     const bool walks_t = unit_indexes_time(unit, B, T);
@@ -305,32 +366,25 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
     }
     const std::size_t tiles = checked_size_product(
         static_cast<std::size_t>(x_tiles), static_cast<std::size_t>(y_tiles));
-    std::size_t task_count = checked_size_product(
-        tiles, walks_t ? static_cast<std::size_t>(nt) : 1);
-    task_count = checked_size_product(
-        task_count, walks_b ? static_cast<std::size_t>(nb) : 1);
+    const std::size_t frames_per_tile =
+        checked_size_product(walks_t ? nt : 1, walks_b ? nb : 1);
+    const std::size_t task_count = checked_size_product(tiles, frames_per_tile);
     const std::size_t offset_count = checked_size_product(
-        checked_size_product(tiles, static_cast<std::size_t>(nt)),
-        static_cast<std::size_t>(nb));
+        checked_size_product(tiles, nt), nb);
     // This function runs once per item. Grow geometrically so reserving
     // each item's addition does not repeatedly move every earlier item.
     reserve_append(plan.tasks, task_count);
     reserve_append(plan.src_offset, offset_count);
     reserve_append(plan.dst_offset, offset_count);
 
-    const std::size_t frames_per_tile =
-        checked_size_product(static_cast<std::size_t>(walks_t ? nt : 1),
-                             static_cast<std::size_t>(walks_b ? nb : 1));
-
-    // Frame index to selected band/time pairs, rebuilt for each grid position.
-    std::vector<std::uint64_t> frames;
-    std::vector<std::vector<std::pair<int, int>>> members;
-
+    CellFrames cell;
     for (std::int64_t ty = ty_min; ty < ty_max; ++ty) {
         if (frames_per_tile > std::numeric_limits<std::size_t>::max()
                             - plan.next_write_group) {
             throw std::length_error("read plan exceeds addressable memory");
         }
+        // Give one worker each output-plane tile row so two workers never
+        // fault and write the same pages at once.
         const std::size_t group_base = plan.next_write_group;
         for (std::int64_t tx = tx_min; tx < tx_max; ++tx) {
             const std::int64_t tile_px = tx * tw;
@@ -339,14 +393,10 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
             const std::int64_t ex_w = std::min(tw, img_w - tile_px);
             const std::int64_t ex_h = std::min(tl, img_h - tile_py);
 
-            const std::int64_t ix0 = std::max(
-                tile_px, static_cast<std::int64_t>(x_off));
-            const std::int64_t iy0 = std::max(
-                tile_py, static_cast<std::int64_t>(y_off));
-            const std::int64_t ix1 = std::min(
-                tile_px + ex_w, static_cast<std::int64_t>(x_off) + x_size);
-            const std::int64_t iy1 = std::min(
-                tile_py + ex_h, static_cast<std::int64_t>(y_off) + y_size);
+            const std::int64_t ix0 = std::max(tile_px, win.x_off);
+            const std::int64_t iy0 = std::max(tile_py, win.y_off);
+            const std::int64_t ix1 = std::min(tile_px + ex_w, win.x_off + win.x_size);
+            const std::int64_t iy1 = std::min(tile_py + ex_h, win.y_off + win.y_size);
             if (ix1 <= ix0 || iy1 <= iy0) continue;
 
             const bool full_tile =
@@ -362,42 +412,30 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
             if (unit_holds(unit, AXIS_TIME, B, T)) {
                 frame_bytes = checked_size_product(frame_bytes, T);
             }
+            // Direct decode is safe only when frame rows stay adjacent in the
+            // destination.
+            const bool packed_rows = full_tile && one_sample_stride
+                && out.line == ex_w * static_cast<std::int64_t>(bps);
 
-            // Group selected planes by frame index without searching existing
-            // tasks.
-            frames.clear();
-            members.clear();
-            for (int wi = 0; wi < (walks_t ? nt : 1); ++wi) {
-                for (int wj = 0; wj < (walks_b ? nb : 1); ++wj) {
-                    frames.push_back(h.frame_index(
-                        static_cast<std::uint32_t>(ty),
-                        static_cast<std::uint32_t>(tx),
-                        static_cast<std::uint32_t>(bands[walks_b ? wj : 0] - 1),
-                        static_cast<std::uint32_t>(times[walks_t ? wi : 0] - 1)));
-                    auto& into = members.emplace_back();
-                    for (int i = walks_t ? wi : 0; i < (walks_t ? wi + 1 : nt); ++i)
-                        for (int j = walks_b ? wj : 0; j < (walks_b ? wj + 1 : nb); ++j)
-                            into.emplace_back(i, j);
-                }
-            }
+            group_planes(h, static_cast<std::uint32_t>(ty),
+                         static_cast<std::uint32_t>(tx), times, bands,
+                         walks_t, walks_b, cell);
 
-            std::byte* base = data
-                + static_cast<std::int64_t>(iy0 - y_off) * line_space
-                + static_cast<std::int64_t>(ix0 - x_off) * pixel_space;
+            std::byte* base = data + (iy0 - win.y_off) * out.line
+                                   + (ix0 - win.x_off) * out.pixel;
 
-            for (std::size_t g = 0; g < frames.size(); ++g) {
-                const std::uint32_t idx = static_cast<std::uint32_t>(frames[g]);
+            for (std::size_t g = 0; g < cell.index.size(); ++g) {
+                const auto idx = static_cast<std::uint32_t>(cell.index[g]);
+                const auto& planes = cell.planes[g];
                 const std::size_t at = plan.src_offset.size();
-                for (const auto& [i, j] : members[g]) {
+                for (const auto& [i, j] : planes) {
                     const auto tt = static_cast<std::uint32_t>(times[i] - 1);
                     const auto bb = static_cast<std::uint32_t>(bands[j] - 1);
                     plan.src_offset.push_back(static_cast<std::int64_t>(
                         unit_plane_offset(unit, B, T, bb, tt,
                                           static_cast<std::uint32_t>(ex_h),
                                           static_cast<std::uint32_t>(ex_w)) * bps));
-                    plan.dst_offset.push_back(
-                        static_cast<std::int64_t>(i) * time_space
-                        + static_cast<std::int64_t>(j) * band_space);
+                    plan.dst_offset.push_back(i * out.time + j * out.band);
                 }
 
                 FrameTask task{};
@@ -408,46 +446,34 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                 task.frame_bytes     = frame_bytes;
                 task.src_pixel_stride = src_pixel_stride;
                 task.offset_at       = at;
-                task.plane_count     = members[g].size();
+                task.plane_count     = planes.size();
                 task.item            = item;
                 task.write_group     = group_base + g;
                 // Decode straight into the result whenever the entire frame
                 // maps byte-for-byte onto one contiguous output region. This
                 // includes a one-chip b-h-w training sample.
-                bool direct = full_tile && one_sample_stride &&
-                    line_space == static_cast<std::int64_t>(ex_w)
-                                * static_cast<std::int64_t>(bps) &&
-                    members[g].size() * area_bytes == frame_bytes;
-                std::int64_t direct_dst = 0;
-                bool has_origin = false;
-                for (std::size_t k = 0; direct && k < members[g].size(); ++k) {
-                    if (plan.src_offset[at + k] == 0) {
-                        direct_dst = plan.dst_offset[at + k];
-                        has_origin = true;
-                    }
+                std::optional<std::int64_t> origin;
+                if (packed_rows && planes.size() * area_bytes == frame_bytes) {
+                    origin = direct_origin(
+                        std::span(plan.src_offset).subspan(at, planes.size()),
+                        std::span(plan.dst_offset).subspan(at, planes.size()));
                 }
-                direct = direct && has_origin;
-                for (std::size_t k = 0; direct && k < members[g].size(); ++k) {
-                    direct = plan.dst_offset[at + k] - direct_dst
-                           == plan.src_offset[at + k];
-                }
-                if (direct) {
-                    task.direct = base + direct_dst;
+                if (origin) {
+                    task.direct = base + *origin;
                 } else {
                     task.dst              = base;
                     task.src_x            = static_cast<std::uint32_t>(ix0 - tile_px);
                     task.src_y            = static_cast<std::uint32_t>(iy0 - tile_py);
                     task.w                = static_cast<std::uint32_t>(ix1 - ix0);
                     task.h                = static_cast<std::uint32_t>(iy1 - iy0);
-                    task.dst_pitch        = static_cast<std::size_t>(line_space);
-                    task.dst_pixel_stride = static_cast<std::size_t>(pixel_space);
+                    task.dst_pitch        = static_cast<std::size_t>(out.line);
+                    task.dst_pixel_stride = static_cast<std::size_t>(out.pixel);
                 }
                 plan.tasks.push_back(task);
             }
         }
         plan.next_write_group += frames_per_tile;
     }
-
 }
 
 
@@ -490,7 +516,7 @@ decode_tasks(Executor& executor, const Plan& plan,
     if (!executor.error().empty()) {
         return fail(executor.status(), executor.error());
     }
-    // A worker that could not allocate its message still reports the status.
+    // Keep a useful fallback when the failing worker could not allocate text.
     return fail(executor.status(), executor.status() == RUMI_ERR_UNSUPPORTED
         ? "file uses a custom OpenZL codec this reader has not registered"
         : "read failed");
@@ -660,7 +686,8 @@ read_items(std::span<const ReadItem> items,
         }
     }
 
-    // A batch names the item that failed.
+    // Add the item label here so every validation and transport error gets the
+    // same batch context.
     const auto item_error = [item_name](const ReadItem& item, rumi_status status,
                                         std::string message) {
         if (item_name) {
@@ -674,6 +701,10 @@ read_items(std::span<const ReadItem> items,
     const std::size_t bps = ref.bytes_per_sample;
     const std::size_t n_stride =
         static_cast<std::size_t>(layout.stride[OUT_N]) * bps;
+    const auto bytes = [&](std::size_t axis) {
+        return layout.stride[axis] * static_cast<std::int64_t>(bps);
+    };
+    const OutStrides strides{bytes(OUT_X), bytes(OUT_Y), bytes(OUT_B), bytes(OUT_T)};
 
     TransportSession transport;
     Plan plan;
@@ -705,13 +736,9 @@ read_items(std::span<const ReadItem> items,
                 static_cast<unsigned long long>(*available)));
         }
 
-        append_read_plan(
-            plan, h, item.source, item.x_off, item.y_off, x_size, y_size,
-            dst + k * n_stride, times, bands,
-            layout.stride[OUT_X] * static_cast<std::int64_t>(bps),
-            layout.stride[OUT_Y] * static_cast<std::int64_t>(bps),
-            layout.stride[OUT_B] * static_cast<std::int64_t>(bps),
-            layout.stride[OUT_T] * static_cast<std::int64_t>(bps), item.label);
+        append_read_plan(plan, h, item.source,
+                         Window{item.x_off, item.y_off, x_size, y_size},
+                         dst + k * n_stride, times, bands, strides, item.label);
     }
     bind_offsets(plan);
 
