@@ -142,9 +142,8 @@ fuzz-seed:
 	done
 
 # libc++ container annotations produce false positives while loading the corpus.
-# OpenZL reserves the sizes a frame declares, which Rumi cannot bound. Above
-# 1 GiB its malloc returns NULL and the decode fails instead of libFuzzer
-# reporting out of memory; Rumi's own new still reports.
+# Above 1 GiB, OpenZL's malloc returns NULL instead of aborting the fuzzer.
+# This is a fuzz-only guard; production decoding has no equivalent budget.
 FUZZ_ASAN := allocator_may_return_null=1:detect_container_overflow=0:max_allocation_size_mb=1024
 
 fuzz: fuzz-build fuzz-seed
