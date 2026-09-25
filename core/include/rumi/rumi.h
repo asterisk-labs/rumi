@@ -490,7 +490,8 @@ rumi_write(const char*                 path,
            unsigned char**             out_blob,
            size_t*                     out_size);
 
-// Validate desc and return the byte offset of its first frame without writing.
+// Validate the layout and return the first frame offset without writing.
+// Band texts and time coordinates are not accessed.
 RUMI_API rumi_status
 rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 

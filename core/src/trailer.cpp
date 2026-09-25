@@ -216,6 +216,10 @@ check_bands(const std::vector<std::string>& texts, std::uint16_t bands)
 std::expected<TimeAxis, std::string>
 axis_from_seconds(std::uint8_t type, std::span<const std::int64_t> seconds)
 {
+    if (auto ok = check_type(type); !ok) return std::unexpected(ok.error());
+    if (auto ok = check_coord_budget(seconds.size()); !ok) {
+        return std::unexpected(ok.error());
+    }
     TimeAxis axis;
     axis.type  = type;
     axis.scale = TIME_DAY;

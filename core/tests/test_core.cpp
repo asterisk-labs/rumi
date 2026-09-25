@@ -1302,7 +1302,19 @@ void test_frame_unit_registry()
     }
 }
 
-void test_trailer()
+rumi::Trailer monthly_trailer()
+{
+    const int days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    rumi::Trailer trailer{{"x"}, {rumi::TIME_INSTANT, 86400, {}}};
+    std::int64_t at = 18262;
+    for (int k = 0; k < 60; ++k) {
+        trailer.time.coords.push_back(at);
+        at += days[k % 12];
+    }
+    return trailer;
+}
+
+void test_trailer_time()
 {
     using rumi::TimeAxis;
     using rumi::Trailer;
@@ -1346,24 +1358,18 @@ void test_trailer()
         }
     }
 
-    CASE("an arithmetic axis lands on the line, so it costs nothing")
+    CASE("arithmetic time axes need no residual bytes")
     Trailer every_fifth{one, TimeAxis{rumi::TIME_INSTANT, 86400, {}}};
     for (int k = 0; k < 73; ++k) every_fifth.time.coords.push_back(k * 5);
     EQ(trip(every_fifth, 1, 73), bare);
 
-    CASE("a calendar axis departs from the line by a few days")
+    CASE("monthly time axes encode day residuals")
     // Month starts in whole days produce small non-zero residuals.
-    const int len[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    Trailer months{one, TimeAxis{rumi::TIME_INSTANT, 86400, {}}};
-    std::int64_t at = 18262;
-    for (int k = 0; k < 60; ++k) {
-        months.time.coords.push_back(at);
-        at += len[k % 12];
-    }
+    const Trailer months = monthly_trailer();
     const std::size_t calendar = trip(months, 1, 60);
     EQ(calendar, bare + 45);
 
-    CASE("a fine scale is what makes that cost grow")
+    CASE("second-scale residuals need more bytes")
     // Adding a time of day selects second scale and wider residuals.
     Trailer noon{one, TimeAxis{rumi::TIME_INSTANT, 1, {}}};
     for (std::int64_t d : months.time.coords) {
@@ -1371,7 +1377,7 @@ void test_trailer()
     }
     OK(trip(noon, 1, 60) > calendar);
 
-    CASE("which is why a whole-day axis may not use it")
+    CASE("whole-day axes require day scale")
     // Whole-day coordinates require day scale.
     Trailer seconds{one, TimeAxis{rumi::TIME_INSTANT, 1, {}}};
     for (std::int64_t d : months.time.coords) {
@@ -1385,13 +1391,13 @@ void test_trailer()
                                       {0, 31, 31, 59, 59, 90}}};
     OK(trip(spans, 1, 3) >= bare);
 
-    CASE("a gap is what two coordinates per step buy")
+    CASE("interval endpoints preserve gaps")
     // Separate interval endpoints preserve gaps.
     const Trailer gappy{one, TimeAxis{rumi::TIME_INTERVAL, 86400,
                                       {0, 31, 59, 90}}};
     OK(trip(gappy, 1, 2) >= bare);
 
-    CASE("one step with an acquisition window costs nothing")
+    CASE("a single interval needs no residual bytes")
     // Two coordinates always define the line between them.
     const Trailer window{one, TimeAxis{rumi::TIME_INTERVAL, 1,
                                        {1724596200, 1724596500}}};
@@ -1411,7 +1417,7 @@ void test_trailer()
         EQ(step, 4611686018427387904LL);
     }
 
-    CASE("what an axis may not say")
+    CASE("invalid time axes are rejected")
     auto axis_refused = [&](TimeAxis axis, std::uint32_t steps) {
         return !rumi::encode_trailer(Trailer{one, std::move(axis)}, 1, steps);
     };
@@ -1424,8 +1430,14 @@ void test_trailer()
     // Every step has a coordinate, so there is no undefined axis to write.
     OK(axis_refused(TimeAxis{0, 1, {}}, 1));
     OK(axis_refused(TimeAxis{0, 1, {7}}, 1));
+}
 
-    CASE("what a band text may not be")
+void test_trailer_bands()
+{
+    using rumi::TimeAxis;
+    using rumi::Trailer;
+
+    CASE("invalid band texts are rejected")
     const TimeAxis one_day{rumi::TIME_INSTANT, 86400, {19723}};
     auto refusal = [&](std::vector<std::string> texts, std::uint16_t bands) {
         auto out = rumi::encode_trailer(Trailer{std::move(texts), one_day},
@@ -1480,7 +1492,6 @@ void test_trailer()
             OK(!dec && says(dec.error(), "band 1 text contains a NUL"));
         }
 
-        // A zero length leaves the band with nothing to say.
         rumi::TrailerHead head{rumi::TRAILER_MAGIC, rumi::TRAILER_VERSION};
         rumi::TimeFields fields{rumi::TIME_INSTANT, 0, 19723, 0, 86400};
         std::vector<std::byte> empty(sizeof head + 2 + sizeof fields);
@@ -1489,6 +1500,15 @@ void test_trailer()
         auto dec = rumi::decode_trailer(empty, 1, 1);
         OK(!dec && says(dec.error(), "band 0 has an empty text"));
     }
+}
+
+void test_trailer_malformed()
+{
+    const auto months = monthly_trailer();
+    constexpr std::size_t time_at = sizeof(rumi::TrailerHead) + 3;
+    auto says = [](const std::string& error, const char* what) {
+        return error.find(what) != std::string::npos;
+    };
 
     CASE("a trailer that is not canonical is refused")
     auto good = rumi::encode_trailer(months, 1, 60);
@@ -1548,6 +1568,26 @@ void test_trailer()
         std::memcpy(overrun.data() + sizeof(rumi::TrailerHead), &past, 2);
         dec = rumi::decode_trailer(overrun, 1, 60);
         OK(!dec && says(dec.error(), "runs past the end of the trailer"));
+    }
+}
+
+void test_trailer_budgets()
+{
+    using rumi::TimeAxis;
+    using rumi::Trailer;
+    constexpr std::size_t time_at = sizeof(rumi::TrailerHead) + 3;
+    constexpr std::size_t bare = time_at + sizeof(rumi::TimeFields);
+    const TimeAxis one_day{rumi::TIME_INSTANT, 86400, {19723}};
+    auto says = [](const std::string& error, const char* what) {
+        return error.find(what) != std::string::npos;
+    };
+
+    CASE("time conversion rejects axes over the coordinate budget")
+    {
+        std::vector<std::int64_t> seconds(
+            rumi::MAX_TIME_COORD_BYTES / sizeof(std::int64_t) + 1, 0);
+        auto axis = rumi::axis_from_seconds(rumi::TIME_INSTANT, seconds);
+        OK(!axis && says(axis.error(), "time coordinates"));
     }
 
     CASE("a tiny arithmetic trailer cannot expand past the time-axis budget")
@@ -1776,6 +1816,30 @@ void test_write_c_api_band_texts()
     EQ(write(), RUMI_ERR_INVALID);
     OK(std::strstr(rumi_last_error(), "time_type is 0") != nullptr);
 
+    CASE("base offset does not inspect invalid trailer metadata")
+    std::uint64_t base = 0;
+    desc.band_texts = nullptr;
+    EQ(rumi_write_base_offset(&desc, &base), RUMI_OK);
+    OK(base > 0);
+
+    CASE("C band texts are bounded before copying")
+    // No terminator: a bounded scan must reject this without reading past it.
+    std::vector<char> oversized(rumi::MAX_BAND_TEXT_BYTES + 1, 'x');
+    const char* too_long[2] = {texts[0], oversized.data()};
+    desc.band_texts = too_long;
+    desc.time_type = rumi::TIME_INSTANT;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "exceeds the 65535 bytes") != nullptr);
+
+    CASE("C band texts are bounded in total before copying")
+    const std::string longest(rumi::MAX_BAND_TEXT_BYTES, 'x');
+    const std::vector<const char*> many(1030, longest.c_str());
+    desc.band_texts = many.data();
+    desc.band_text_count = many.size();
+    desc.samples_per_pixel = static_cast<std::uint16_t>(many.size());
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "trailer size") != nullptr);
+
     std::FILE* left = std::fopen(path.c_str(), "rb");
     OK(left == nullptr);
     if (left) {
@@ -1876,7 +1940,10 @@ int main()
     test_checksum_verification();
     test_frame_pattern();
     test_frame_unit_registry();
-    test_trailer();
+    test_trailer_time();
+    test_trailer_bands();
+    test_trailer_malformed();
+    test_trailer_budgets();
     test_c_api_metadata();
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();

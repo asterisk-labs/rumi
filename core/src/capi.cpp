@@ -1071,8 +1071,7 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
 
 namespace {
 
-std::expected<rumi::WriteDesc, std::string>
-to_write_desc(const rumi_write_desc& desc)
+rumi::WriteDesc write_layout(const rumi_write_desc& desc)
 {
     rumi::WriteDesc d{};
     d.image_width       = desc.image_width;
@@ -1085,9 +1084,15 @@ to_write_desc(const rumi_write_desc& desc)
     d.epsg              = desc.epsg;
     d.pixel_is_point    = desc.pixel_is_point != 0;
     d.frame_unit        = desc.frame_unit;
+    return d;
+}
+
+std::expected<rumi::WriteDesc, std::string>
+to_write_desc(const rumi_write_desc& desc)
+{
+    auto d = write_layout(desc);
     // A count that cannot match the file is refused before any text is copied.
-    if (desc.band_text_count
-        && desc.band_text_count != desc.samples_per_pixel) {
+    if (desc.band_text_count != desc.samples_per_pixel) {
         return rumi::errf("a file with %u band%s needs one text per band; got %llu",
                           unsigned(desc.samples_per_pixel),
                           desc.samples_per_pixel == 1 ? "" : "s",
@@ -1097,12 +1102,31 @@ to_write_desc(const rumi_write_desc& desc)
         return rumi::errf("band_texts is null but band_text_count is %llu",
                           static_cast<unsigned long long>(desc.band_text_count));
     }
+    std::vector<std::size_t> lengths;
+    lengths.reserve(desc.band_text_count);
+    std::size_t trailer_bytes = sizeof(rumi::TrailerHead) + sizeof(rumi::TimeFields);
     for (std::uint64_t b = 0; b < desc.band_text_count; ++b) {
         if (!desc.band_texts[b]) {
             return rumi::errf("band text %llu is null",
                               static_cast<unsigned long long>(b));
         }
-        d.trailer.bands.emplace_back(desc.band_texts[b]);
+        const char* text = desc.band_texts[b];
+        std::size_t size = 0;
+        while (size <= rumi::MAX_BAND_TEXT_BYTES && text[size]) ++size;
+        if (size > rumi::MAX_BAND_TEXT_BYTES) {
+            return rumi::errf("band %llu text exceeds the %zu bytes a trailer stores",
+                              static_cast<unsigned long long>(b),
+                              rumi::MAX_BAND_TEXT_BYTES);
+        }
+        trailer_bytes += sizeof(std::uint16_t) + size;
+        if (trailer_bytes > rumi::MAX_TRAILER_BYTES) {
+            return rumi::err("band texts exceed the trailer size a reader accepts");
+        }
+        lengths.push_back(size);
+    }
+    d.trailer.bands.reserve(lengths.size());
+    for (std::size_t b = 0; b < lengths.size(); ++b) {
+        d.trailer.bands.emplace_back(desc.band_texts[b], lengths[b]);
     }
     // The same holds for the time coordinates.
     if (desc.time_coords) {
@@ -1179,12 +1203,7 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
             return RUMI_ERR_INVALID;
         }
 
-        auto d = to_write_desc(*desc);
-        if (!d) {
-            set_error(d.error());
-            return RUMI_ERR_INVALID;
-        }
-        auto base = rumi::base_offset(*d);
+        auto base = rumi::base_offset(write_layout(*desc));
         if (!base) {
             set_error(base.error());
             return RUMI_ERR_INVALID;
