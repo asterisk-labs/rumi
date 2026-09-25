@@ -55,6 +55,19 @@ def test_header_returns_only_metadata_the_header_contains(tmp_path):
     assert metadata.pixel_is_point is None
 
 
+def test_band_preview_is_short_and_escapes_control_characters(tmp_path):
+    path, _ = stored(tmp_path)
+    metadata = rumi.info(source=path)
+    text = "red\n\t\x1b" + "x" * 65500
+    metadata.bands = [text]
+
+    preview = repr(metadata)
+    assert "red\\n\\t\\x1b" in preview
+    assert "x" * 81 not in preview
+    assert "x" * 81 not in metadata._repr_html_()
+    assert metadata.bands == [text]
+
+
 def test_source_and_header_validate_their_synchronization(tmp_path):
     path, header = stored(tmp_path)
     assert rumi.info(source=path, header=header).header == header

@@ -86,7 +86,10 @@ def _shown_axis(steps) -> str:
 
 
 def _shown_step(step) -> str:
-    """One coordinate; an interval keeps both of its ends."""
+    """A short band text or a time coordinate with both interval endpoints."""
+    if isinstance(step, str):
+        text = repr(step[:80])[1:-1]
+        return text[:79] + "\u2026" if len(step) > 80 or len(text) > 80 else text
     if isinstance(step, tuple):
         return f"{step[0]}/{step[1]}"
     return str(step)
