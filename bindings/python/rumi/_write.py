@@ -1,4 +1,5 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Set
+from itertools import islice
 
 from ._dtype import dtype_code
 from ._ffi import PathLike, _check, _enc, ffi, lib
@@ -79,12 +80,20 @@ def _label(d, keep, tf, bands, time):
     if bands is None:
         raise TypeError(
             "every file names its bands; pass one text per band, in band order")
+    if isinstance(bands, Set):
+        raise TypeError("bands must be ordered; a set cannot preserve band order")
     if isinstance(bands, (str, bytes)) or not hasattr(bands, "__iter__"):
         raise TypeError(
             f"bands is a list with one text per band; wrap a single text as "
             f"bands=[{bands!r}]")
+    names = list(islice(bands, tf.bands + 1))
+    if len(names) > tf.bands:
+        noun = "band" if tf.bands == 1 else "bands"
+        raise ValueError(
+            f"a file with {tf.bands} {noun} needs one text per band; "
+            f"got more than {tf.bands}")
     texts = [ffi.new("char[]", _band_text(text, b))
-             for b, text in enumerate(bands)]
+             for b, text in enumerate(names)]
     keep.extend(texts)
     array = ffi.new("const char*[]", texts)
     keep.append(array)

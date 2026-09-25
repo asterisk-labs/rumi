@@ -1,4 +1,6 @@
 import datetime as dt
+from collections.abc import Set
+from itertools import islice
 
 INTERVAL, INSTANT = 1, 2
 
@@ -45,6 +47,8 @@ def _to_seconds(value):
 
 def _axis_entries(time, steps):
     """Validate the outer sequence and classify its entries."""
+    if isinstance(time, Set):
+        raise TypeError("time must be ordered; a set cannot preserve time order")
     if isinstance(time, tuple):
         raise TypeError(
             "a tuple is one step's start and end, so it cannot be the list of "
@@ -54,7 +58,7 @@ def _axis_entries(time, steps):
             f"time is a list with one entry per time step; wrap a single "
             f"coordinate as time=[{time!r}]")
 
-    entries = list(time)
+    entries = list(islice(time, steps + 1))
     if not entries:
         raise ValueError(
             f"a time axis covers every step, so {steps} coordinates are "
@@ -69,9 +73,10 @@ def _axis_entries(time, steps):
     kind = INTERVAL if intervals else INSTANT
     if len(entries) != steps:
         what = "interval" if kind == INTERVAL else "instant"
+        got = f"more than {steps}" if len(entries) > steps else str(len(entries))
         raise ValueError(
             f"a {what} axis needs one entry per time step, so {steps} of "
-            f"them; got {len(entries)}")
+            f"them; got {got}")
     return entries, kind
 
 

@@ -495,8 +495,10 @@ def test_every_file_names_its_bands(tmp_path):
 
 @pytest.mark.parametrize("bands, error, because", [
     (None, TypeError, "names its bands"),
-    (["band 0"], ValueError, "one text per band"),
-    (["band 0", "band 1", "band 2"], ValueError, "one text per band"),
+    ({"red", "nir"}, TypeError, "must be ordered"),
+    (frozenset({"red", "nir"}), TypeError, "must be ordered"),
+    (["band 0"], ValueError, "one text per band; got 1"),
+    (["band 0", "band 1", "band 2"], ValueError, "one text per band; got more than 2"),
     ("band 0", TypeError, "one text per band"),
     (["band 0", "band 0"], ValueError, "bands 0 and 1 have the same text"),
     (["band 0", ""], ValueError, "band 1 has an empty text"),
@@ -511,6 +513,48 @@ def test_a_band_text_that_cannot_be_stored_writes_nothing(tmp_path, bands,
     with pytest.raises(error, match=because):
         rumi.write(path, tf, bands=bands, time=["2024-01-01"])
     assert not path.exists()
+
+
+@pytest.mark.parametrize("axis", ["bands", "time"])
+def test_writer_stops_reading_an_axis_after_one_extra_entry(tmp_path, axis):
+    tf = make_frame()
+    count = tf.bands if axis == "bands" else tf.time_count
+
+    def oversized():
+        for _ in range(count + 1):
+            yield "2024-01-01"
+        pytest.fail("writer consumed entries beyond the expected axis length")
+
+    kwargs = labels(tf)
+    kwargs[axis] = oversized()
+    path = tmp_path / "a.rumi"
+    with pytest.raises(ValueError, match=f"; got more than {count}$"):
+        rumi.write(path, tf, **kwargs)
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("bands, count", [([], "0"), (["red", "nir"], "more than 1")])
+def test_band_count_error_uses_singular_for_one_band(tmp_path, bands, count):
+    tf = make_frame(shape=(1, 16, 16))
+    message = f"a file with 1 band needs one text per band; got {count}"
+    with pytest.raises(ValueError, match=f"^{message}$"):
+        rumi.write(tmp_path / "a.rumi", tf, bands=bands, time=["2024-01-01"])
+
+
+@pytest.mark.parametrize("container", [set, frozenset])
+def test_writer_rejects_unordered_time(tmp_path, container):
+    tf = make_frame()
+    with pytest.raises(TypeError, match="must be ordered"):
+        rumi.write(tmp_path / "a.rumi", tf, bands=["red", "nir"],
+                   time=container(["2024-01-01"]))
+
+
+def test_writer_preserves_generator_order(tmp_path):
+    tf = make_frame()
+    path, _ = rumi.write(tmp_path / "a.rumi", tf,
+                         bands=(b for b in ["nir", "red"]),
+                         time=(t for t in ["2024-01-01"]))
+    assert rumi.info(source=path).bands == ["nir", "red"]
 
 
 def test_a_transform_is_six_coefficients(tmp_path):

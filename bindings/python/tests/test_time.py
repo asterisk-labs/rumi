@@ -117,9 +117,9 @@ def test_a_zone_conversion_may_cross_into_the_next_day(tmp_path):
 
 @pytest.mark.parametrize("time, because", [
     ([], "empty list"),
-    (["2024-08-25", "2024-08-26"], "one entry per time step"),
+    (["2024-08-25", "2024-08-26"], "one entry per time step, so 1 of them; got more than 1"),
     ([("2024-08-25", "2024-08-26"), ("2024-08-27", "2024-08-28")],
-     "one entry per time step"),
+     "one entry per time step, so 1 of them; got more than 1"),
     ([("2024-08-25",)], "a pair of a start and an end"),
     ([("2024-08-25", "2024-08-25")], "covers nothing"),
     ([("2024-08-26", "2024-08-25")], "covers nothing"),
