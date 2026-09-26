@@ -1,92 +1,85 @@
-import importlib
 from dataclasses import dataclass
-from types import ModuleType
 
 import numpy as np
 
 from ._ffi import _check, ffi, lib
 
-_ml_dtypes: ModuleType | None
-try:
-    _ml_dtypes = importlib.import_module("ml_dtypes")
-except ImportError:
-    _ml_dtypes = None
 
+@dataclass(frozen=True, repr=False)
+class DType:
+    """A Rumi sample type and its exact decoded representation."""
 
-@dataclass(frozen=True)
-class _DType:
+    code: int
     name: str
+    sample_format: int
     bits: int
-    scalar: type | None
-    ml_name: str | None = None
+    itemsize: int
+    component_size: int
+    dlpack: tuple[int, int, int]
+    numpy_dtype: type[np.generic] | None
+
+    def __repr__(self) -> str:
+        return f"<rumi.DType {self.name}>"
+
+    def __str__(self) -> str:
+        return self.name
 
 
-def _load_registry() -> dict[int, _DType]:
+def _load_registry() -> dict[int, DType]:
     out = ffi.new("const rumi_dtype_info**")
     count = lib.rumi_dtype_table(out)
-    registry = {0: _DType("unknown", 0, None)}
-
+    registry = {}
     for i in range(count):
         row = out[0][i]
-        # The registry names one scalar; NumPy owns it, or ml_dtypes does.
-        named = (ffi.string(row.scalar).decode("ascii")
-                 if row.scalar != ffi.NULL else None)
-        scalar = getattr(np, named, None) if named is not None else None
-        ml_name = named if named is not None and scalar is None else None
-        if ml_name is not None and _ml_dtypes is not None:
-            scalar = getattr(_ml_dtypes, ml_name, None)
-
-        registry[int(row.code)] = _DType(
+        named = (ffi.string(row.numpy).decode("ascii")
+                 if row.numpy != ffi.NULL else None)
+        numpy_scalar = getattr(np, named) if named is not None else None
+        code = int(row.code)
+        registry[code] = DType(
+            code=code,
             name=ffi.string(row.name).decode("ascii"),
+            sample_format=int(row.sample_format),
             bits=int(row.bits),
-            scalar=scalar,
-            ml_name=ml_name,
+            itemsize=int(row.storage_bytes),
+            component_size=int(row.component_bytes),
+            dlpack=(int(row.dl_code), int(row.dl_bits), int(row.dl_lanes)),
+            numpy_dtype=numpy_scalar,
         )
-
     return registry
 
 
 _DTYPES = _load_registry()
 
 
-def name(rumi_dtype: int) -> str:
-    info = _DTYPES.get(rumi_dtype)
-    return info.name if info is not None else f"rumi_dtype({rumi_dtype})"
+def dtype_info(code: int) -> DType:
+    try:
+        return _DTYPES[code]
+    except KeyError:
+        raise KeyError(f"unknown rumi dtype code {code}") from None
 
 
-def numpy_dtype(rumi_dtype: int) -> type:
-    info = _DTYPES.get(rumi_dtype)
-    if info is None:
-        raise KeyError(rumi_dtype)
-    if info.scalar is not None:
-        return info.scalar
-    if info.ml_name is not None:
-        raise NotImplementedError(
-            f"{info.name} needs ml_dtypes, pip install ml_dtypes")
-    raise KeyError(rumi_dtype)
+def name(code: int) -> str:
+    info = _DTYPES.get(code)
+    return info.name if info is not None else f"rumi_dtype({code})"
 
 
 def dtype_code(dtype) -> int:
     resolved = np.dtype(dtype)
     for code, info in _DTYPES.items():
-        if info.scalar is resolved.type:
+        if info.numpy_dtype is resolved.type:
             return code
-    raise TypeError(f"dtype {resolved} is not supported by rumi")
+        if resolved.name == info.name and resolved.itemsize == info.itemsize:
+            return code
+    raise TypeError(f"dtype {resolved} is not supported by rumi's NumPy writer")
 
 
-def is_subbyte(rumi_dtype: int) -> bool:
-    info = _DTYPES.get(rumi_dtype)
-    return info is not None and 0 < info.bits < 8
+def needs_sample_validation(code: int) -> bool:
+    info = _DTYPES.get(code)
+    return info is not None and info.bits < info.itemsize * 8
 
 
-def is_ml_float(rumi_dtype: int) -> bool:
-    """Byte-wide ML floats, which NumPy cannot import through DLPack."""
-    info = _DTYPES.get(rumi_dtype)
-    return info is not None and info.ml_name is not None and info.bits >= 8
-
-
-def check_samples(arr, rumi_dtype: int) -> None:
+def check_samples(arr, code: int) -> None:
     """Validate decoded samples using the core's dtype rules."""
     view = arr.reshape(-1).view("uint8")
     _check(lib.rumi_check_samples(ffi.from_buffer(view), view.nbytes,
-                                  rumi_dtype))
+                                  code))

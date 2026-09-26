@@ -2,7 +2,7 @@ from dataclasses import dataclass, fields
 
 import numpy as np
 
-from ._dtype import numpy_dtype
+from ._dtype import DType, dtype_info
 from ._ffi import PathLike, _check, _Source, ffi, lib
 from ._pattern import index_axes, layout_name
 from ._repr import _human, meta_html, meta_text
@@ -21,7 +21,7 @@ class Metadata:
     header: bytes
     shape: tuple[int, ...]
     time_count: int
-    dtype: type[np.generic]
+    dtype: DType
     tile: tuple[int, int]
     frame_layout: str
     index_order: tuple[str, ...]
@@ -69,8 +69,8 @@ def _shown(value) -> str:
         return "\u2014"
     if isinstance(value, bytes):
         return _human(len(value))
-    if isinstance(value, type):
-        return np.dtype(value).name
+    if isinstance(value, DType):
+        return value.name
     if isinstance(value, list):
         return _shown_axis(value)
     return str(value)
@@ -168,7 +168,7 @@ def info(*, source: InfoSource | None = None,
             header=bytes(ffi.buffer(result.blob, result.blob_size)),
             shape=shape,
             time_count=int(h.time_count),
-            dtype=numpy_dtype(h.dtype),
+            dtype=dtype_info(h.dtype),
             tile=(int(h.tile_length), int(h.tile_width)),
             frame_layout=layout_name(
                 h.frame_unit, h.samples_per_pixel, h.time_count),

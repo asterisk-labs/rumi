@@ -1,6 +1,6 @@
 import numpy as np
 
-from ._dtype import check_samples, dtype_code, is_subbyte
+from ._dtype import check_samples, dtype_code, needs_sample_validation
 from ._pattern import (
     AXES,
     COLUMN,
@@ -132,7 +132,7 @@ class FrameTable:
         self.time_count = int(time_count)
         self.dtype = np.dtype(dtype)
         code = dtype_code(self.dtype)
-        subbyte = is_subbyte(code)
+        validate_samples = needs_sample_validation(code)
         if self.image_width <= 0 or self.image_length <= 0:
             raise ValueError(
                 f"image dimensions must be positive, got "
@@ -177,7 +177,7 @@ class FrameTable:
             if a.dtype != self.dtype:
                 raise ValueError(
                     f"frame {k} has dtype {a.dtype}, expected {self.dtype}")
-            if subbyte:
+            if validate_samples:
                 try:
                     check_samples(a, code)
                 except ValueError as exc:

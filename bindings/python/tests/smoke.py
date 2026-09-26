@@ -42,7 +42,8 @@ def main() -> int:
     if facts.header != on_disk.header:
         print("::error::the header written and the header read back differ")
         return 1
-    if facts.shape != (2, 40, 70) or facts.dtype is not np.uint16:
+    if (facts.shape != (2, 40, 70)
+            or facts.dtype.numpy_dtype is not np.uint16):
         print(f"::error::header says {facts}")
         return 1
     if on_disk.bands != BANDS:

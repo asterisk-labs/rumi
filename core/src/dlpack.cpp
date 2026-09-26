@@ -56,8 +56,6 @@ extern "C" void rumi_dlpack_capsule_destructor(void* capsule)
 extern "C" DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t)
 {
     if (!t) return nullptr;
-    // DLPack 0.x cannot describe padded sub-byte storage.
-    if (t->flags & DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED) return nullptr;
     auto* self = static_cast<DLManagedTensor*>(
         std::malloc(sizeof(DLManagedTensor)));
     if (!self) return nullptr;
@@ -70,26 +68,23 @@ extern "C" DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t)
 namespace rumi {
 namespace {
 
-constexpr DLDataType dt(unsigned code, unsigned bits) noexcept
+constexpr DLDataType dt(unsigned code, unsigned bits, unsigned lanes) noexcept
 {
     return DLDataType{static_cast<std::uint8_t>(code),
-                      static_cast<std::uint8_t>(bits), 1};
+                      static_cast<std::uint8_t>(bits),
+                      static_cast<std::uint16_t>(lanes)};
 }
 
-// DLPack codes come directly from the dtype registry. RUMI_DL_NONE marks types
-// without a DLPack representation.
 DLDataType dtype_to_dlpack(rumi_dtype d) noexcept
 {
     std::size_t n = 0;
     const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (t[i].code == static_cast<std::uint8_t>(d)) {
-            return t[i].dl_code == RUMI_DL_NONE
-                 ? dt(0, 0)
-                 : dt(t[i].dl_code, t[i].dl_bits);
+            return dt(t[i].dl_code, t[i].dl_bits, t[i].dl_lanes);
         }
     }
-    return dt(0, 0);
+    return dt(0, 0, 0);
 }
 
 }  // namespace
@@ -120,8 +115,7 @@ build_dlpack(void* data, rumi_dtype dtype,
     self->version.minor = DLPACK_MINOR_VERSION;
     self->manager_ctx   = nullptr;
     self->deleter       = rumi_dlpack_free;
-    self->flags         = dl.bits < 8
-                        ? DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED : 0;
+    self->flags         = 0;
     self->dl_tensor.data        = data;
     self->dl_tensor.device      = DLDevice{kDLCPU, 0};
     self->dl_tensor.ndim        = ndim;

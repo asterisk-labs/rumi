@@ -5,7 +5,7 @@ from pathlib import Path
 from cffi import FFI
 
 # ABI version transcribed by the CFFI declarations below.
-API_VERSION = 1
+API_VERSION = 2
 
 _CDEF = """
 typedef enum {
@@ -26,10 +26,13 @@ typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
     uint8_t     bits;
+    uint8_t     storage_bytes;
+    uint8_t     component_bytes;
     uint8_t     dl_code;
     uint8_t     dl_bits;
+    uint16_t    dl_lanes;
     const char* name;
-    const char* scalar;
+    const char* numpy;
 } rumi_dtype_info;
 
 typedef struct {

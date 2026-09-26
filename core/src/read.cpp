@@ -203,14 +203,20 @@ namespace {
 
 FrameSpec make_frame_spec(const Header& h) noexcept
 {
-    // OpenZL numeric elements stop at 8 bytes, below a complex128 sample.
-    const bool is_complex = h.sample_format == 5 || h.sample_format == 6;
+    std::size_t count = 0;
+    const rumi_dtype_info* rows = dtype_table(&count);
+    std::uint8_t component_bytes = static_cast<std::uint8_t>(h.bytes_per_sample);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (rows[i].code == static_cast<std::uint8_t>(h.dtype)) {
+            component_bytes = rows[i].component_bytes;
+            break;
+        }
+    }
     return FrameSpec{
         h.tile_width,
         h.tile_length,
         static_cast<std::uint8_t>(h.bytes_per_sample),
-        static_cast<std::uint8_t>(is_complex ? h.bytes_per_sample / 2
-                                             : h.bytes_per_sample),
+        component_bytes,
         h.bits_per_sample,
         h.max_frame_size,
     };

@@ -111,9 +111,9 @@ void pack_counts(std::span<const std::uint32_t> counts,
 
 // Expanded once from the dtype registry.
 static const rumi_dtype_info k_dtype_table[] = {
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, scalar) \
-    { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
-      static_cast<std::uint8_t>(dlbits), name, scalar },
+#define RUMI_DTYPE(code, sym, name, sf, bits, store, comp, dlcode, dlbits, lanes, numpy) \
+    { code, sf, bits, store, comp, static_cast<std::uint8_t>(dlcode), \
+      static_cast<std::uint8_t>(dlbits), lanes, name, numpy },
 #include "rumi/rumi_dtypes.def"
 #undef RUMI_DTYPE
 };
@@ -138,14 +138,14 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
     return RUMI_DT_UNKNOWN;
 }
 
-// Decoded storage width. Sub-byte samples occupy one byte.
+// Decoded storage width of one sample.
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
     std::size_t n = 0;
     const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (t[i].code == static_cast<std::uint8_t>(dt)) {
-            return t[i].bits >= 8 ? t[i].bits / 8u : 1u;
+            return t[i].storage_bytes;
         }
     }
     return 0;
@@ -164,9 +164,8 @@ parse_blob(std::span<const std::byte> blob)
     if (bh.magic   != MAGIC)   return std::unexpected(ParseError::bad_magic);
     if (bh.version != VERSION) return std::unexpected(ParseError::unsupported_version);
 
-    if (bh.bits_per_sample != 1  && bh.bits_per_sample != 2  &&
-        bh.bits_per_sample != 4  && bh.bits_per_sample != 6  &&
-        bh.bits_per_sample != 8  && bh.bits_per_sample != 16 &&
+    if (bh.bits_per_sample != 1  && bh.bits_per_sample != 8  &&
+        bh.bits_per_sample != 16 &&
         bh.bits_per_sample != 32 && bh.bits_per_sample != 64 &&
         bh.bits_per_sample != 128) {
         return std::unexpected(ParseError::invalid_bits_per_sample);

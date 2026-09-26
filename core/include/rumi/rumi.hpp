@@ -645,7 +645,7 @@ struct FrameSpec {
     std::uint8_t  bytes_per_sample;
     // Complex samples may also decode as a stream of their two components.
     std::uint8_t  component_bytes;
-    // Logical sample width; unused high bits of padded samples must be zero.
+    // Logical sample width; boolean bytes are restricted to 0 or 1.
     std::uint8_t  bits_per_sample;
     // Maximum decoded frame size used to allocate worker scratch buffers.
     std::size_t   frame_bytes;

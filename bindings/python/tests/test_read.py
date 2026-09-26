@@ -1,13 +1,11 @@
 """Read paths for local files, memory buffers, and windows."""
 
-import gc
 import inspect
 import threading
 
 import numpy as np
 import pytest
 import rumi
-import rumi._dtype as dtype_module
 import rumi._read as read_module
 from _labels import labels
 from rumi._ffi import _Spec, ffi, lib
@@ -62,7 +60,7 @@ def test_path_round_trip(image):
 
 def test_dlpack_capsule_failure_restores_versioned_owner(image, monkeypatch):
     path, header, data = image
-    result = rumi.read(path, header, framework=None)
+    result = rumi.read(path, header, framework="dlpack")
 
     def fail_capsule(*_args):
         raise MemoryError("capsule failed")
@@ -77,7 +75,7 @@ def test_dlpack_capsule_failure_restores_versioned_owner(image, monkeypatch):
 
 def test_dlpack_export_is_exactly_once_across_threads(image):
     path, header, _data = image
-    result = rumi.read(path, header, framework=None)
+    result = rumi.read(path, header, framework="dlpack")
     barrier = threading.Barrier(2)
     outcomes = []
 
@@ -99,7 +97,8 @@ def test_dlpack_export_is_exactly_once_across_threads(image):
 
 
 @pytest.fixture(scope="module",
-                params=["float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu", "bfloat16"])
+                params=["float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu",
+                        "float8_e4m3fnuz", "float8_e5m2fnuz", "bfloat16"])
 def ml_float(request, tmp_path_factory):
     """A scene of an ML float that NumPy cannot import through DLPack."""
     ml_dtypes = pytest.importorskip("ml_dtypes")
@@ -122,46 +121,35 @@ def same_samples(got, want):
                                np.ascontiguousarray(want).view(np.uint8)))
 
 
-def test_an_ml_float_reads_as_numpy(ml_float):
+def test_numpy_refuses_a_torch_only_dtype_before_opening_the_source(ml_float):
+    _path, header, data = ml_float
+    with pytest.raises(TypeError, match=(
+            rf"NumPy cannot represent rumi dtype {data.dtype.name}; "
+            r"use framework='torch' or framework='dlpack'")):
+        rumi.read("does-not-exist.rumi", header)
+
+
+def test_numpy_checks_every_batch_dtype_before_opening_sources(image, ml_float):
+    _path, ordinary_header, _data = image
+    _path, torch_header, torch_data = ml_float
+    with pytest.raises(TypeError, match=rf"NumPy cannot represent.*{torch_data.dtype.name}"):
+        rumi.read_many(
+            ["missing-one.rumi", "missing-two.rumi"],
+            [ordinary_header, torch_header],
+            windows=[(0, 0, 8, 8), (0, 0, 8, 8)],
+        )
+
+
+def test_a_torch_only_dlpack_result_survives_a_numpy_refusal(ml_float):
+    torch = pytest.importorskip("torch")
     path, header, data = ml_float
-    assert same_samples(rumi.read(path, header), data)
-    assert same_samples(rumi.read(path, header, bands=[2, 0], window=(5, 10, 30, 30)),
-                        data[[2, 0], 5:35, 10:40])
-    batch = rumi.read_many([path, path], [header, header],
-                           windows=[(0, 0, 16, 16), (20, 30, 16, 16)])
-    assert same_samples(batch[1], data[:, 20:36, 30:46])
-
-
-def test_an_ml_float_array_owns_its_samples(ml_float):
-    path, header, data = ml_float
-    result = rumi.read(path, header, framework=None)
-    array = result.numpy()
-    with pytest.raises(RuntimeError, match="already exported"):
+    result = rumi.read(path, header, framework="dlpack")
+    with pytest.raises(TypeError, match="NumPy cannot represent"):
         result.numpy()
-    del result
-    gc.collect()
-    assert same_samples(array, data)
-
-
-def test_an_ml_float_without_ml_dtypes_stays_exportable(ml_float, monkeypatch):
-    path, header, _data = ml_float
-    result = rumi.read(path, header, framework=None)
-    info = dtype_module._DTYPES[result._dtype_code]
-    monkeypatch.setitem(dtype_module._DTYPES, result._dtype_code,
-                        dtype_module._DType(info.name, info.bits, None, info.ml_name))
-    with pytest.raises(NotImplementedError, match="needs ml_dtypes"):
-        result.numpy()
-    assert result._tensor is not None
-
-
-def test_a_rejected_capsule_keeps_the_consumer_error(ml_float):
-    # Re-entering Python here used to replace NumPy's error with SystemError.
-    path, header, _data = ml_float
-    result = rumi.read(path, header, framework=None)
-    try:
-        np.from_dlpack(result)
-    except (BufferError, RuntimeError):
-        pass
+    tensor = result.torch()
+    assert tensor.dtype == getattr(torch, data.dtype.name)
+    assert np.array_equal(tensor.view(torch.uint8).numpy(),
+                          np.ascontiguousarray(data).view(np.uint8))
 
 
 def test_an_ml_float_still_reaches_torch(ml_float):
@@ -477,23 +465,18 @@ def test_a_cell_batch_round_trips(tmp_path):
     assert np.array_equal(got, np.stack([c[[3, 0]] for c in cubes]))
 
 
-def test_a_sub_byte_read_names_its_only_framework(tmp_path):
-    """Sub-byte dtypes have no DLPack form, so read refuses before decoding."""
-    ml_dtypes = pytest.importorskip("ml_dtypes")
-    data = (np.arange(3 * 32 * 32).reshape(3, 32, 32) % 4).astype(ml_dtypes.uint2)
+def test_bool_reads_through_numpy_torch_and_dlpack(tmp_path):
+    torch = pytest.importorskip("torch")
+    data = np.arange(3 * 32 * 32).reshape(3, 32, 32) % 4 == 0
     tf = rumi.frames(data, "b (row h) (col w) -> row col (b h w)", 16)
     for t in tf:
-        t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    path, header = rumi.write(tmp_path / "u2.rumi", tf, **labels(tf))
+        raw = t.data.view(np.uint8)
+        t.compressed = geozl.compress(raw, graph=geozl.graph(raw, GRAPH))
+    path, header = rumi.write(tmp_path / "bool.rumi", tf, **labels(tf))
 
-    for framework in ("torch", "jax", "tensorflow", "tf"):
-        with pytest.raises(ValueError, match="uint2 reads only as numpy"):
-            rumi.read(path, header, framework=framework)
-        with pytest.raises(ValueError, match="uint2 reads only as numpy"):
-            rumi.read_many([path], [header], windows=[(0, 0, 32, 32)],
-                           framework=framework)
-
-    got = rumi.read(path, header)
-    assert got.dtype == ml_dtypes.uint2
-    assert np.array_equal(np.asarray(got).astype(np.uint8),
-                          np.asarray(data).astype(np.uint8))
+    assert np.array_equal(rumi.read(path, header), data)
+    tensor = rumi.read(path, header, framework="torch")
+    assert tensor.dtype == torch.bool
+    assert np.array_equal(tensor.numpy(), data)
+    raw = rumi.read(path, header, framework="dlpack")
+    assert np.array_equal(torch.from_dlpack(raw).numpy(), data)

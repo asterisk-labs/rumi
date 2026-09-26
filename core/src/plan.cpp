@@ -263,15 +263,12 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         return RUMI_ERR_DECODE;
     }
 
-    // Padded sub-byte samples must leave unused high bits clear.
-    if (spec.bits_per_sample < 8) {
-        const auto spare = static_cast<std::byte>(
-            (0xFFu << spec.bits_per_sample) & 0xFFu);
+    // Boolean storage is one byte per sample, restricted to 0 or 1.
+    if (spec.bits_per_sample == 1) {
         for (std::size_t i = 0; i < t.frame_bytes; ++i) {
-            if ((frame[i] & spare) != std::byte{0}) {
-                say(msg, "rumi: byte %zu of a decoded frame has bits set above "
-                    "the %u its encoding occupies%s",
-                    i, static_cast<unsigned>(spec.bits_per_sample), item);
+            if (frame[i] != std::byte{0} && frame[i] != std::byte{1}) {
+                say(msg, "rumi: byte %zu of a decoded bool frame is neither "
+                    "0 nor 1%s", i, item);
                 return RUMI_ERR_DECODE;
             }
         }

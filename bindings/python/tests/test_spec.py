@@ -8,6 +8,7 @@ import pytest
 import rumi
 from _labels import labels
 from rumi import FrameTable
+from rumi._dtype import _DTYPES
 from rumi._ffi import _Spec
 from rumi._write import header_bytes, write_frames
 
@@ -804,6 +805,20 @@ def test_a_sample_format_wider_than_a_byte_is_refused(tmp_path):
         rumi.info(source=path)
 
 
+@pytest.mark.parametrize("fmt,bits", [
+    (1, 2), (1, 4), (2, 2), (2, 4), (5, 32), (5, 64),
+    (104, 6), (105, 6), (106, 4),
+])
+def test_retired_sample_encodings_are_refused(tmp_path, fmt, bits):
+    tiles = [b"\x01\x02\x03\x04"]
+    entries = spec_entries(16, 16, 16, 1, tiles, bits=bits, fmt=fmt,
+                           unit=0, time=1)
+    path = tmp_path / f"retired-{fmt}-{bits}.rumi"
+    path.write_bytes(build_tiff(entries, tiles))
+    with pytest.raises(ValueError):
+        rumi.info(source=path)
+
+
 def test_an_undefined_crs_needs_the_geographic_key(tmp_path):
     """Undefined CRS uses GeographicTypeGeoKey 2048 with value zero."""
     tiles = [b"\x01\x02\x03\x04"]
@@ -1054,23 +1069,48 @@ def test_georeferencing_fields_have_one_legal_shape(tmp_path, because, mutate):
         rumi.info(source=path)
 
 
-def test_a_decoded_sub_byte_frame_proves_its_padding(tmp_path):
-    """Readers validate unused high bits after decoding sub-byte samples."""
-    pytest.importorskip("ml_dtypes")
+def test_a_decoded_bool_frame_contains_only_zero_or_one(tmp_path):
+    """The one-bit file encoding still occupies one decoded byte."""
     geozl = pytest.importorskip("geozl")
-    for fill, ok in ((0x07, True), (0xF1, False)):
+    for fill, ok in ((0x01, True), (0x03, False)):
         buf = np.full((16, 16), fill, np.uint8)
         payload = geozl.compress(buf, graph=geozl.graph(buf, "planar>zigzag>zstd"))
-        entries = spec_entries(16, 16, 16, 1, [payload], bits=4, fmt=1,
+        entries = spec_entries(16, 16, 16, 1, [payload], bits=1, fmt=1,
                                unit=0, time=1)
         path = tmp_path / f"{fill:02x}.rumi"
         path.write_bytes(build_tiff(entries, [payload]))
         header = rumi.info(source=path).header
         if ok:
-            assert np.unique(np.asarray(rumi.read(path, header))) == [fill]
+            assert np.unique(rumi.read(path, header)) == [True]
         else:
-            with pytest.raises(Exception, match="bits set above"):
+            with pytest.raises(OSError, match="neither 0 nor 1|bits set above"):
                 rumi.read(path, header)
+
+
+@pytest.mark.parametrize("dtype", list(_DTYPES.values()), ids=lambda dtype: dtype.name)
+def test_every_registered_dtype_reaches_torch_exactly(tmp_path, dtype):
+    """The registry is the intersection of Rumi storage, DLPack, and Torch."""
+    geozl = pytest.importorskip("geozl")
+    torch = pytest.importorskip("torch")
+    raw = np.zeros((1, 16 * dtype.itemsize // dtype.component_size),
+                   dtype=f"u{dtype.component_size}")
+    payload = geozl.compress(raw, graph=geozl.graph(raw, "id>zstd"))
+    entries = spec_entries(4, 4, 4, 1, [payload], bits=dtype.bits,
+                           fmt=dtype.sample_format, unit=0, time=1)
+    path = tmp_path / f"{dtype.name}.rumi"
+    path.write_bytes(build_tiff(entries, [payload]))
+    header = rumi.info(source=path).header
+
+    result = rumi.read(path, header, framework="torch")
+    assert result.dtype == getattr(torch, dtype.name)
+    assert result.shape == (1, 4, 4)
+    assert result.numel() == 16
+
+    if dtype.numpy_dtype is None:
+        with pytest.raises(TypeError, match="NumPy cannot represent"):
+            rumi.read(path, header)
+    else:
+        assert rumi.read(path, header).dtype.type is dtype.numpy_dtype
 
 
 @pytest.mark.parametrize("dtype, component", [(np.complex128, np.float64),
@@ -1130,17 +1170,15 @@ def test_an_undefined_crs_carries_the_matrix_the_spec_fixes(tmp_path):
         rumi.info(source=bad)
 
 
-def test_a_sub_byte_window_reads_like_any_other(tmp_path):
-    """Sub-byte windows use the same byte-stride arithmetic as uint8."""
-    pytest.importorskip("ml_dtypes")
+def test_a_bool_window_reads_like_any_other(tmp_path):
     geozl = pytest.importorskip("geozl")
-    src = (np.arange(32 * 32, dtype=np.uint8) & 0x0F).reshape(32, 32)
+    src = (np.arange(32 * 32, dtype=np.uint8) & 1).reshape(32, 32)
     payloads = [geozl.compress(t, graph=geozl.graph(t, "planar>zigzag>zstd"))
                 for t in (np.ascontiguousarray(src[r * 16:(r + 1) * 16,
                                                    c * 16:(c + 1) * 16])
                           for r in range(2) for c in range(2))]
-    entries = spec_entries(32, 32, 16, 1, payloads, bits=4, fmt=1, unit=0, time=1)
-    path = tmp_path / "sb.rumi"
+    entries = spec_entries(32, 32, 16, 1, payloads, bits=1, fmt=1, unit=0, time=1)
+    path = tmp_path / "bool.rumi"
     path.write_bytes(build_tiff(entries, payloads))
     header = rumi.info(source=path).header
 
@@ -1170,17 +1208,15 @@ def test_a_file_hands_back_the_georeferencing_it_was_given(tmp_path):
         assert got.transform == want[0]
 
 
-def test_a_sub_byte_batch_reads_without_dlpack(tmp_path):
-    """Sub-byte batches use the materialized numpy read path."""
-    pytest.importorskip("ml_dtypes")
+def test_a_bool_batch_reads_through_dlpack(tmp_path):
     geozl = pytest.importorskip("geozl")
     paths, headers, want = [], [], []
     for i in range(3):
-        buf = np.full((16, 16), 0x03 + i, np.uint8)
+        buf = np.full((16, 16), i % 2, np.uint8)
         payload = geozl.compress(buf, graph=geozl.graph(buf, "planar>zigzag>zstd"))
-        entries = spec_entries(16, 16, 16, 1, [payload], bits=4, fmt=1,
+        entries = spec_entries(16, 16, 16, 1, [payload], bits=1, fmt=1,
                                unit=0, time=1)
-        path = tmp_path / f"sb{i}.rumi"
+        path = tmp_path / f"bool{i}.rumi"
         path.write_bytes(build_tiff(entries, [payload]))
         paths.append(path)
         headers.append(rumi.info(source=path).header)

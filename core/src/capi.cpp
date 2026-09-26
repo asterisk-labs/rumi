@@ -80,23 +80,23 @@ rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype)
         }
         const rumi_dtype_info* table = nullptr;
         const size_t rows = rumi_dtype_table(&table);
-        unsigned bits = 0;
+        bool known = false;
         for (size_t i = 0; i < rows; ++i) {
-            if (table[i].code == static_cast<uint8_t>(dtype)) { bits = table[i].bits; break; }
+            if (table[i].code == static_cast<uint8_t>(dtype)) {
+                known = true;
+                break;
+            }
         }
-        if (bits == 0) {
+        if (!known) {
             set_error("rumi_check_samples: unknown dtype");
             return RUMI_ERR_INVALID;
         }
-        if (bits >= 8) return RUMI_OK;
-        const auto spare = static_cast<unsigned char>((0xFFu << bits) & 0xFFu);
+        if (dtype != RUMI_DT_BOOL) return RUMI_OK;
         const auto* p = static_cast<const unsigned char*>(data);
         for (size_t i = 0; i < n_bytes; ++i) {
-            if (p[i] & spare) {
-                set_error("sample " + std::to_string(i) + " has bits set above "
-                          "the " + std::to_string(bits) + " its encoding "
-                          "occupies; a sub-byte sample fills one byte and its "
-                          "unused high bits are zero");
+            if (p[i] > 1) {
+                set_error("sample " + std::to_string(i)
+                          + " is not a boolean byte; expected 0 or 1");
                 return RUMI_ERR_INVALID;
             }
         }

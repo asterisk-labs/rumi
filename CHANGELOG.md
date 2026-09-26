@@ -4,6 +4,31 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Breaking
+
+- The sample registry is now the exact CPU DLPack subset that PyTorch imports
+  without changing dtype. Complex integers, padded 2- and 4-bit integers,
+  float6 and padded float4 are removed. Their file encodings remain reserved
+  and are rejected rather than reassigned.
+- Python reads accept `framework="numpy"`, `"torch"` or `"dlpack"`. The last
+  returns `RumiArray`; `None`, JAX and TensorFlow adapters are removed. NumPy
+  now fails before opening or decoding a file whose dtype it cannot represent,
+  rather than returning an `ml_dtypes` view.
+- `Metadata.dtype` is a `rumi.DType` descriptor instead of a NumPy scalar.
+  `DType.numpy_dtype` is `None` for Torch-only types. `ml_dtypes` is no longer
+  a runtime dependency.
+- The C API and shared-library SONAME advance to version 2. `rumi_dtype_info`
+  now distinguishes logical bits, decoded storage bytes, complex component
+  width and all three DLPack dtype fields.
+
+### Added
+
+- Boolean data exports as `(kDLBool, 8, 1)` and reads directly into
+  `torch.bool`, while retaining its one-bit logical file encoding and one-byte
+  decoded storage.
+- Added float8 E4M3FNUZ and E5M2FNUZ sample encodings. Every registered type is
+  tested through `torch.from_dlpack` on CPU.
+
 ## [0.25.0] - 2026-09-24
 
 ### Breaking

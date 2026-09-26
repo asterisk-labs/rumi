@@ -303,13 +303,13 @@ void test_parse_blob()
         EQ(multi->frame_index(1, 0, 0, 0), 12u);
     }
 
-    CASE("sub-byte frames use padded decoded storage at any tile size")
-    auto subbyte = rumi::parse_blob(make_blob(
-        17, 13, 5, 1, std::vector<std::uint32_t>(12, 5), 4, 1));
-    OK(subbyte.has_value());
-    if (subbyte) {
-        EQ(subbyte->bytes_per_sample, std::size_t(1));
-        EQ(subbyte->max_frame_size, std::size_t(25));
+    CASE("bool uses one decoded byte at any tile size")
+    auto boolean = rumi::parse_blob(make_blob(
+        17, 13, 5, 1, std::vector<std::uint32_t>(12, 5), 1, 1));
+    OK(boolean.has_value());
+    if (boolean) {
+        EQ(boolean->bytes_per_sample, std::size_t(1));
+        EQ(boolean->max_frame_size, std::size_t(25));
     }
 
     CASE("a nominal tile larger than the raster uses its clipped size")
@@ -795,27 +795,54 @@ void test_dtype_table()
         const auto back = rumi::sample_to_dtype(rows[i].sample_format,
                                                 rows[i].bits);
         EQ(static_cast<int>(back), static_cast<int>(rows[i].code));
+        EQ(rows[i].storage_bytes,
+           std::uint8_t((rows[i].dl_bits * rows[i].dl_lanes + 7) / 8));
+        OK(rows[i].component_bytes == rows[i].storage_bytes ||
+           rows[i].component_bytes * 2 == rows[i].storage_bytes);
+        OK(rows[i].component_bytes == 1 || rows[i].component_bytes == 2 ||
+           rows[i].component_bytes == 4 || rows[i].component_bytes == 8);
+        OK(rows[i].dl_lanes == 1);
+        for (std::size_t j = i + 1; j < n; ++j) {
+            OK(rows[i].sample_format != rows[j].sample_format ||
+               rows[i].bits != rows[j].bits);
+        }
     }
     OK(rumi::sample_to_dtype(1, 3) == RUMI_DT_UNKNOWN);
     OK(rumi::sample_to_dtype(99, 8) == RUMI_DT_UNKNOWN);
-    EQ(rumi::dtype_size(RUMI_DT_UINT4), std::size_t(1));
+    EQ(rumi::dtype_size(RUMI_DT_BOOL), std::size_t(1));
+
+    CASE("sample validation is specific to boolean bytes")
+    const std::uint8_t booleans[] = {0, 1};
+    const std::uint8_t invalid[]  = {2};
+    const std::uint8_t ordinary[] = {255};
+    EQ(rumi_check_samples(booleans, sizeof booleans, RUMI_DT_BOOL), RUMI_OK);
+    EQ(rumi_check_samples(invalid, sizeof invalid, RUMI_DT_BOOL),
+       RUMI_ERR_INVALID);
+    EQ(rumi_check_samples(ordinary, sizeof ordinary, RUMI_DT_UINT8), RUMI_OK);
+    EQ(rumi_check_samples(ordinary, sizeof ordinary, RUMI_DT_UNKNOWN),
+       RUMI_ERR_INVALID);
 }
 
 void test_dlpack_wrappers()
 {
-    CASE("DLPack marks padded sub-byte storage and refuses a legacy wrapper")
+    CASE("bool has byte storage and the DLPack bool type")
     void* data = std::malloc(3);
     const std::int64_t shape[] = {3};
     DLManagedTensorVersioned* tensor =
-        rumi::build_dlpack(data, RUMI_DT_UINT4, shape, 1);
+        rumi::build_dlpack(data, RUMI_DT_BOOL, shape, 1);
     OK(tensor != nullptr);
     if (!tensor) {
         std::free(data);
         return;
     }
-    OK((tensor->flags & DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED) != 0);
-    OK(rumi_dlpack_legacy(tensor) == nullptr);
-    rumi_dlpack_free(tensor);
+    EQ(tensor->dl_tensor.dtype.code, std::uint8_t(kDLBool));
+    EQ(tensor->dl_tensor.dtype.bits, std::uint8_t(8));
+    EQ(tensor->dl_tensor.dtype.lanes, std::uint16_t(1));
+    OK(tensor->flags == 0);
+    DLManagedTensor* bool_legacy = rumi_dlpack_legacy(tensor);
+    OK(bool_legacy != nullptr);
+    if (bool_legacy) bool_legacy->deleter(bool_legacy);
+    else rumi_dlpack_free(tensor);
 
     CASE("a legacy DLPack wrapper owns the versioned tensor")
     data = std::malloc(4 * sizeof(std::uint16_t));

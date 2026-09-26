@@ -107,8 +107,9 @@ typedef enum {
     RUMI_ERR_OOM = 6, RUMI_ERR_UNSUPPORTED = 7, RUMI_ERR_INTERNAL = 99
 } rumi_status;
 typedef struct {
-    uint8_t code; uint8_t sample_format; uint8_t bits; uint8_t dl_code;
-    uint8_t dl_bits; const char* name; const char* scalar;
+    uint8_t code; uint8_t sample_format; uint8_t bits; uint8_t storage_bytes;
+    uint8_t component_bytes; uint8_t dl_code; uint8_t dl_bits;
+    uint16_t dl_lanes; const char* name; const char* numpy;
 } rumi_dtype_info;
 typedef struct {
     uint32_t image_width; uint32_t image_length; uint32_t time_count;
@@ -140,17 +141,15 @@ typedef struct {
 } rumi_write_desc;
 """
 
-_DTYPES_0_15 = {
+_DTYPE_CODES = {
     "UNKNOWN": 0,
     "UINT8": 1, "INT8": 2, "UINT16": 3, "INT16": 4,
     "UINT32": 5, "INT32": 6, "UINT64": 7, "INT64": 8,
     "FLOAT16": 9, "FLOAT32": 10, "FLOAT64": 11,
-    "CINT16": 12, "CINT32": 13,
-    "CFLOAT16": 14, "CFLOAT32": 15, "CFLOAT64": 16,
+    "COMPLEX32": 14, "COMPLEX64": 15, "COMPLEX128": 16,
     "FLOAT8_E4M3FN": 17, "FLOAT8_E5M2": 18, "BFLOAT16": 19,
-    "UINT4": 20, "INT4": 21, "UINT2": 22, "INT2": 23, "BINARY": 24,
-    "FLOAT8_E8M0": 25, "FLOAT6_E2M3": 26, "FLOAT6_E3M2": 27,
-    "FLOAT4_E2M1": 28,
+    "BOOL": 24, "FLOAT8_E8M0FNU": 25,
+    "FLOAT8_E4M3FNUZ": 29, "FLOAT8_E5M2FNUZ": 30,
 }
 
 
@@ -286,10 +285,10 @@ def test_public_c_types_match_the_recorded_layouts():
     from rumi._ffi import API_VERSION
     api_version = re.search(r"^#define RUMI_API_VERSION\s+(\d+)$",
                             _HEADER.read_text(), re.MULTILINE)
-    assert api_version and int(api_version[1]) == API_VERSION == 1
+    assert api_version and int(api_version[1]) == API_VERSION == 2
 
 
-def test_dtype_codes_are_append_only():
+def test_dtype_codes_match_the_torch_dlpack_registry():
     current = {"UNKNOWN": 0}
     for code, symbol in re.findall(
         r"RUMI_DTYPE\(\s*(\d+)\s*,\s*(\w+)", _DTYPES.read_text()
@@ -297,10 +296,11 @@ def test_dtype_codes_are_append_only():
         current[symbol] = int(code)
     drift = {
         symbol: (code, current.get(symbol))
-        for symbol, code in _DTYPES_0_15.items()
+        for symbol, code in _DTYPE_CODES.items()
         if current.get(symbol) != code
     }
-    assert not drift, f"released dtype codes changed: {drift}"
+    assert not drift, f"dtype codes changed: {drift}"
+    assert current == _DTYPE_CODES
 
 
 def test_the_parser_sees_a_planted_change(c_declarations):

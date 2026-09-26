@@ -27,7 +27,7 @@ extern "C" {
 // Version.
 
 // C API compatibility version.
-#define RUMI_API_VERSION 1
+#define RUMI_API_VERSION 2
 
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
@@ -93,29 +93,30 @@ RUMI_API int rumi_get_checksum_verification(void);
 
 // Dtypes and external-header fields.
 
-// Sentinel in the DLCODE column of rumi_dtypes.def for a type with no DLPack
-// form (the complex integers). Never a real DLPack code.
-#define RUMI_DL_NONE 255
-
 // Generated from rumi_dtypes.def. RUMI_DT_UNKNOWN = 0 has no row.
 typedef enum {
     RUMI_DT_UNKNOWN = 0,
-#define RUMI_DTYPE(code, sym, name, sf, bits, dlcode, dlbits, scalar) \
+#define RUMI_DTYPE(code, sym, name, sf, bits, store, comp, dlcode, dlbits, lanes, numpy) \
     RUMI_DT_##sym = code,
 #include "rumi_dtypes.def"
 #undef RUMI_DTYPE
 } rumi_dtype;
 
-// ABI-stable view of one dtype-registry entry. dl_code is RUMI_DL_NONE when
-// there is no DLPack form, and scalar is NULL when no host scalar names it.
+// One dtype-registry entry. bits describes the file encoding; storage_bytes
+// describes one decoded sample. component_bytes is smaller only for complex
+// samples that OpenZL may decode as a stream of components. numpy is NULL when
+// NumPy has no exact scalar for the type.
 typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
     uint8_t     bits;
+    uint8_t     storage_bytes;
+    uint8_t     component_bytes;
     uint8_t     dl_code;
     uint8_t     dl_bits;
+    uint16_t    dl_lanes;
     const char* name;
-    const char* scalar;
+    const char* numpy;
 } rumi_dtype_info;
 
 // Return the number of rows in the process-lifetime dtype table. If out is not
@@ -233,8 +234,7 @@ rumi_unit_index_axes(uint8_t unit, uint16_t bands, uint32_t times,
 // "w". Return NULL if axis is invalid.
 RUMI_API const char* rumi_axis_name(uint8_t axis);
 
-// Check that dtype is known. For sub-byte types, each decoded sample occupies
-// one byte and all unused high bits must be zero.
+// Check that dtype is known. Boolean samples must be byte values 0 or 1.
 RUMI_API rumi_status
 rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype);
 
@@ -359,9 +359,8 @@ rumi_plan_ranges(const rumi_spec* spec,
 
 // Read a zero-based (offset, size) window. times and bands are 1-based indices
 // in output order; (NULL, 0) selects all in file order. NULL pattern uses the
-// default Image or Cube layout. dst_size must cover every decoded sample;
-// sub-byte samples occupy one byte each. Reads use the process-wide thread
-// pool.
+// default Image or Cube layout. dst_size must cover every decoded sample using
+// the registry's storage_bytes. Reads use the process-wide thread pool.
 RUMI_API rumi_status
 rumi_read(rumi_source*     src,
           const rumi_spec* spec,
@@ -373,8 +372,7 @@ rumi_read(rumi_source*     src,
           void*            dst,   size_t dst_size);
 
 // DLPack form of rumi_read. It allocates the output instead of accepting dst.
-// On success, release *out with its deleter or rumi_dlpack_free. A dtype with
-// no DLPack representation returns RUMI_ERR_UNSUPPORTED.
+// On success, release *out with its deleter or rumi_dlpack_free.
 RUMI_API rumi_status
 rumi_read_dlpack(rumi_source*     src,
                  const rumi_spec* spec,
@@ -426,8 +424,7 @@ RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
 
 // Wrap a versioned tensor for a DLPack 0.x consumer. On success, the wrapper
 // owns t and must be released with rumi_dlpack_legacy_free. On failure, NULL is
-// returned and the caller still owns t. Padded sub-byte tensors cannot be
-// wrapped.
+// returned and the caller still owns t.
 RUMI_API DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 
 // Release a legacy wrapper and its versioned tensor. Safe to call with NULL.

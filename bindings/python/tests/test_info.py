@@ -29,7 +29,10 @@ def test_source_returns_complete_metadata(tmp_path):
     assert metadata.header == header
     assert metadata.shape == (2, 32, 32)
     assert metadata.time_count == 1
-    assert metadata.dtype is np.uint16
+    assert isinstance(metadata.dtype, rumi.DType)
+    assert metadata.dtype.name == "uint16"
+    assert metadata.dtype.itemsize == metadata.dtype.component_size == 2
+    assert metadata.dtype.numpy_dtype is np.uint16
     assert metadata.tile == (16, 16)
     assert metadata.frame_layout == "b h w"
     assert metadata.index_order == ()

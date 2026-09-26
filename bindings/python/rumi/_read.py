@@ -1,5 +1,4 @@
 import ctypes
-import math
 import operator
 import os
 import threading
@@ -7,7 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ._dtype import is_ml_float, is_subbyte, numpy_dtype
+from ._dtype import dtype_info
 from ._dtype import name as dtype_name
 from ._ffi import PathLike, _check, _Source, _Spec, ffi, lib
 
@@ -38,32 +37,13 @@ lib.rumi_dlpack_capsule_api(
 _c_destructor = int(ffi.cast("uintptr_t", lib.rumi_dlpack_capsule_destructor))
 
 
-class _Storage:
-    """A decoded tensor owned by the NumPy arrays that view its bytes."""
-
-    def __init__(self, tensor, nbytes):
-        self._tensor = ffi.gc(tensor, lib.rumi_dlpack_free)
-        data = tensor.dl_tensor
-        address = int(ffi.cast("uintptr_t", data.data)) + data.byte_offset
-        self.__array_interface__ = {"version": 3, "shape": (nbytes,),
-                                    "typestr": "|u1", "data": (address, False)}
-
-
 class RumiArray:
-    """Decoded samples with helpers for NumPy and tensor frameworks.
+    """Decoded CPU samples that transfer once through DLPack."""
 
-    Most results are exported without a copy through DLPack. Padded sub-byte
-    dtypes use a NumPy array because DLPack consumers cannot import them. A
-    DLPack-backed instance can be converted once; conversion transfers its
-    storage to the receiving framework. NumPy views the bytes of ML floats,
-    which it cannot import through DLPack.
-    """
-
-    def __init__(self, tensor, shape, dtype_code, array=None):
+    def __init__(self, tensor, shape, dtype_code):
         self._tensor = tensor
         self._shape = shape
         self._dtype_code = dtype_code
-        self._array = array
         self._export_lock = threading.Lock()
 
     @property
@@ -76,10 +56,6 @@ class RumiArray:
     def __dlpack__(self, *, stream=None, max_version=None,
                    dl_device=None, copy=None):
         with self._export_lock:
-            if self._array is not None:
-                raise BufferError(
-                    "padded sub-byte dtypes cannot be exported through DLPack; "
-                    "use numpy()")
             if self._tensor is None:
                 raise RuntimeError("this RumiArray was already exported")
             if dl_device is not None and tuple(dl_device) != (1, 0):
@@ -90,9 +66,6 @@ class RumiArray:
             tensor, name = owner, _VERSIONED_NAME
             legacy = max_version is None or tuple(max_version)[:1] < (1,)
             if legacy:
-                if is_subbyte(self._dtype_code):
-                    raise BufferError(
-                        "this padded sub-byte dtype needs a DLPack 1.0 consumer")
                 tensor = lib.rumi_dlpack_legacy(owner)
                 name = _LEGACY_NAME
                 if tensor == ffi.NULL:
@@ -112,41 +85,20 @@ class RumiArray:
                 raise
 
     def numpy(self):
-        """Return a NumPy array, transferring DLPack-backed storage if present."""
-        if self._array is not None:
-            return self._array
-        if not is_ml_float(self._dtype_code):
-            return np.from_dlpack(self)
-
-        # Resolve the ml_dtypes scalar before taking the tensor, so a missing
-        # package leaves it exportable to other frameworks.
-        scalar = numpy_dtype(self._dtype_code)
-        nbytes = math.prod(self._shape) * np.dtype(scalar).itemsize
-        with self._export_lock:
-            if self._tensor is None:
-                raise RuntimeError("this RumiArray was already exported")
-            tensor, self._tensor = self._tensor, None
-        storage = np.asarray(_Storage(tensor, nbytes))
-        return storage.view(scalar).reshape(self._shape)
+        """Transfer the decoded samples to an exact NumPy dtype."""
+        info = dtype_info(self._dtype_code)
+        if info.numpy_dtype is None:
+            raise TypeError(
+                f"NumPy cannot represent rumi dtype {info.name}; "
+                "use torch() or consume this object through DLPack")
+        return np.from_dlpack(self)
 
     def torch(self):
         """Transfer the decoded samples to a PyTorch tensor."""
         import torch
         return torch.from_dlpack(self)
 
-    def jax(self):
-        """Transfer the decoded samples to a JAX array."""
-        import jax.numpy as jnp
-        return jnp.from_dlpack(self)
-
-    def tensorflow(self):
-        """Transfer the decoded samples to a TensorFlow tensor."""
-        from tensorflow.experimental import dlpack as tf_dlpack
-        return tf_dlpack.from_dlpack(self.__dlpack__(max_version=(0, 8)))
-
     def __del__(self):
-        if self._array is not None:
-            return
         tensor = self._tensor
         if tensor is None:
             return
@@ -160,26 +112,21 @@ class RumiArray:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
 
 
-_DLPACK_FRAMEWORKS = ("torch", "jax", "tensorflow", "tf")
-
-
-# Refuse a framework the dtype cannot reach, before decoding rather than on
-# the way out.
 def _check_framework(dtype_code: int, framework: str | None) -> None:
-    if framework in _DLPACK_FRAMEWORKS and is_subbyte(dtype_code):
+    if framework not in ("numpy", "torch", "dlpack"):
         raise ValueError(
-            f"{dtype_name(dtype_code)} reads only as numpy; "
-            "torch, jax and tensorflow need a DLPack form")
+            f"unknown framework {framework!r}; expected 'numpy', 'torch', or 'dlpack'")
+    info = dtype_info(dtype_code)
+    if framework == "numpy" and info.numpy_dtype is None:
+        raise TypeError(
+            f"NumPy cannot represent rumi dtype {info.name}; "
+            "use framework='torch' or framework='dlpack'")
 
 
-def _to_framework(arr: RumiArray, framework: str | None):
-    if framework is None:
+def _to_framework(arr: RumiArray, framework: str):
+    if framework == "dlpack":
         return arr
-    fn = {"numpy": arr.numpy, "torch": arr.torch, "jax": arr.jax,
-          "tensorflow": arr.tensorflow, "tf": arr.tensorflow}.get(framework)
-    if fn is None:
-        raise ValueError(f"unknown framework {framework!r}")
-    return fn()
+    return arr.numpy() if framework == "numpy" else arr.torch()
 
 
 # Convert Python indices to the C API's 1-based convention. NULL/0 means all.
@@ -229,25 +176,6 @@ def _to_c(lst: list[int] | None):
     return ffi.new("int[]", lst), len(lst)
 
 
-def _pattern_for(pattern: str | None, n_items: int, times: int) -> bytes:
-    """Use the requested output pattern, or the default for this shape."""
-    if pattern is not None:
-        return pattern.encode("ascii")
-    return ffi.string(lib.rumi_default_pattern(n_items, times))
-
-
-def _many_pattern(pattern: str | None, times: int) -> bytes:
-    # Ask the core for a multi-item default so n remains present for one item.
-    return _pattern_for(pattern, 2, times)
-
-
-def _empty_subbyte(shape, dtype_code):
-    """Allocate the byte-padded NumPy result used by sub-byte dtypes."""
-    storage = np.empty(shape, np.uint8)
-    array: np.ndarray = storage.view(numpy_dtype(dtype_code))
-    return storage, RumiArray(None, shape, dtype_code, array=array)
-
-
 def _dlpack_shape(tensor) -> tuple[int, ...]:
     """Read result metadata produced by the core instead of recompiling it."""
     value = tensor.dl_tensor
@@ -262,32 +190,12 @@ def _read_one(src: _Source, spec: _Spec, pattern: str | None,
     y_off, y_size, x_off, x_size = _resolve_window(
         window, h.image_length, h.image_width)
 
-    n_bands = (len(picked_bands) if picked_bands is not None
-               else h.samples_per_pixel)
-    n_times = len(times) if times is not None else h.time_count
     # The file controls which axes exist; selections only change their lengths.
-    # NULL lets the read API choose its default from the file's complete time
-    # axis. Sub-byte storage needs the shape before reading, so that fallback
-    # asks the core to compile the equivalent explicit default first.
+    # NULL lets the read API choose its default from the complete time axis.
     output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
 
     times_c, n_times_c = _to_c(times)
     bands_c, n_bands_c = _to_c(picked_bands)
-    if is_subbyte(spec.fields.dtype):
-        subbyte_pattern = _pattern_for(pattern, 1, h.time_count)
-        layout = ffi.new("rumi_layout*")
-        _check(lib.rumi_compile_layout(
-            subbyte_pattern, 1, n_times, n_bands, y_size, x_size, layout
-        ))
-        shape = tuple(layout.shape[i] for i in range(layout.ndim))
-        storage, result = _empty_subbyte(shape, spec.fields.dtype)
-        _check(lib.rumi_read(
-            src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
-            y_off, y_size, x_off, x_size, subbyte_pattern,
-            ffi.cast("void*", storage.ctypes.data), storage.nbytes,
-        ))
-        return result
-
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_dlpack(
         src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
@@ -353,9 +261,6 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
     times = _resolve_axis(time, "time", h.time_count)
     picked_bands = _resolve_axis(bands, "bands", h.samples_per_pixel)
     n_items = len(specs)
-    n_bands = (len(picked_bands) if picked_bands is not None
-               else h.samples_per_pixel)
-    n_times = len(times) if times is not None else h.time_count
     output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
 
     items = ffi.new("rumi_read_item[]", [
@@ -367,23 +272,6 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
     times_c, n_times_c = _to_c(times)
     bands_c, n_bands_c = _to_c(picked_bands)
 
-    if is_subbyte(h.dtype):
-        subbyte_pattern = _many_pattern(pattern, h.time_count)
-        layout = ffi.new("rumi_layout*")
-        _check(lib.rumi_compile_layout(
-            subbyte_pattern, n_items, n_times, n_bands,
-            y_size, x_size, layout
-        ))
-        shape = tuple(layout.shape[i] for i in range(layout.ndim))
-        storage, result = _empty_subbyte(shape, h.dtype)
-        _check(lib.rumi_read_many(
-            items, n_items,
-            times_c, n_times_c, bands_c, n_bands_c,
-            y_size, x_size, subbyte_pattern,
-            ffi.cast("void*", storage.ctypes.data), storage.nbytes,
-        ))
-        return result
-
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_many_dlpack(
         items, n_items,
@@ -394,7 +282,7 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
 
 
 def read(source: _ReadSource, header: Header, *,
-         framework: str | None = "numpy", pattern: str | None = None,
+         framework: str = "numpy", pattern: str | None = None,
          time: Axis = None, bands: Axis = None, window: Window = None):
     """Read one rumi raster.
 
@@ -408,8 +296,9 @@ def read(source: _ReadSource, header: Header, *,
     ``(start, stop)`` range. ``window`` is ``(row, column, height, width)``.
     Indices are zero-based. ``pattern`` controls the output axis order.
 
-    ``framework`` selects NumPy, PyTorch, JAX, or TensorFlow. Pass ``None`` to
-    receive a RumiArray instead. Reads use the process-wide thread pool; call
+    ``framework`` selects ``"numpy"``, ``"torch"``, or ``"dlpack"``. The last
+    returns a RumiArray implementing the DLPack protocol. Reads use the
+    process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
     if not isinstance(source, (str, os.PathLike,
@@ -426,7 +315,7 @@ def read(source: _ReadSource, header: Header, *,
 def read_many(sources: Sequence[_ReadSource],
               headers: Sequence[Header], *,
               windows: Sequence[tuple[int, int, int, int]],
-              framework: str | None = "numpy", pattern: str | None = None,
+              framework: str = "numpy", pattern: str | None = None,
               time: Axis = None, bands: Axis = None):
     """Read one fixed-size window per source.
 
@@ -458,8 +347,8 @@ def read_many(sources: Sequence[_ReadSource],
     raw_headers = list(headers)
 
     specs = [_Spec(raw) for raw in raw_headers]
-    if specs:
-        _check_framework(specs[0].fields.dtype, framework)
+    for spec in specs:
+        _check_framework(spec.fields.dtype, framework)
     arr = _read_many([_Source(s) for s in sources], specs, windows, pattern,
                      time, bands)
     return _to_framework(arr, framework)

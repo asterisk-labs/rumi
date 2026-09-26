@@ -283,7 +283,7 @@ def test_write_blob_round_trip(tmp_path):
 
     header = rumi.info(header=blob)
     assert header.shape == (tf.bands, tf.image_length, tf.image_width)
-    assert header.dtype == tf.dtype
+    assert header.dtype.numpy_dtype is tf.dtype.type
     assert header.tile == (tf.tile_size, tf.tile_size)
     assert header.frames == len(tf)
     assert _Spec(blob).fields.base_frame_offset == header_bytes(tf)
@@ -349,17 +349,6 @@ def test_a_frame_past_the_size_limit_is_refused():
         assert rumi.info(header=huge).shape == (1, 65535, 65535)
     finally:
         assert lib.rumi_set_max_frame_bytes(0) == 1 << 30
-
-
-def test_sub_byte_samples_leave_their_high_bits_zero():
-    """Padded sub-byte samples require zero in every unused high bit."""
-    ml = pytest.importorskip("ml_dtypes")
-    data = np.zeros((2, 8, 8), dtype=ml.float4_e2m1fn)
-    assert len(rumi.frames(data, CELL, 4)) == 4
-
-    data.view(np.uint8)[0, 0, 0] = 0xF0
-    with pytest.raises(ValueError, match="bits set above"):
-        rumi.frames(data, CELL, 4)
 
 
 def test_the_file_names_its_own_layout(tmp_path):
@@ -446,8 +435,7 @@ def test_frames_reject_unsupported_dtypes(dtype):
         rumi.frames(np.zeros((1, 16, 16), dtype=dtype), "b (row h) (col w) -> row col b (h w)", 16)
 
 
-def test_a_boolean_mask_is_the_binary_type(tmp_path):
-    """numpy.bool_ round-trips through rumi's padded binary encoding."""
+def test_a_boolean_mask_uses_the_bool_dtype(tmp_path):
     geozl = pytest.importorskip("geozl")
     mask = np.arange(1 * 32 * 32).reshape(1, 32, 32) % 3 == 0
     tf = rumi.frames(mask, "b (row h) (col w) -> row col (b h w)", 16)
@@ -458,7 +446,8 @@ def test_a_boolean_mask_is_the_binary_type(tmp_path):
     path, header = rumi.write(tmp_path / "mask.rumi", tf, **labels(tf))
 
     h = rumi.info(header=header)
-    assert h.dtype is np.bool_
+    assert h.dtype.name == "bool"
+    assert h.dtype.numpy_dtype is np.bool_
     assert np.array_equal(np.asarray(rumi.read(path, header)), mask)
 
 

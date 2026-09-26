@@ -1,8 +1,8 @@
 # rumi
 
-- Specification 0.1.0
+- Specification 0.2.0
 - Status Draft
-- Date 2026-09-24
+- Date 2026-09-26
 - License GPLv3
 
 rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
@@ -247,7 +247,8 @@ offsets in frame-index order.
 `sample_format` gives the sample type and `bits_per_sample` its width in bits.
 Unsigned integers use ordinary binary representation, and signed integers use
 two's-complement representation. IEEE formats use the IEEE 754 binary16,
-binary32, or binary64 encoding named in the table.
+binary32, or binary64 encoding named in the table. Boolean samples use one
+decoded byte whose value is `0` or `1`, although their logical width is one bit.
 
 A complex sample stores two equal-width components: real first, then imaginary.
 For complex formats, `bits_per_sample` is their combined width.
@@ -257,60 +258,55 @@ For complex formats, `bits_per_sample` is their combined width.
 | `1`           | unsigned integer             |
 | `2`           | signed integer               |
 | `3`           | IEEE floating point          |
-| `5`           | complex signed integer       |
 | `6`           | complex IEEE floating point  |
-| `100`..`106`  | rumi-private ML and EO types |
+| `100`..`103`, `107`, `108` | rumi-private ML floating point types |
 
 Only the following pairs are valid:
 
-| sample_format | bits_per_sample | encoding                                       |
-| ------------- | --------------- | ---------------------------------------------- |
-| 1             | 1               | 1-bit binary                                   |
-| 1             | 2               | unsigned 2-bit integer                         |
-| 1             | 4               | unsigned 4-bit integer                         |
-| 1             | 8               | unsigned 8-bit integer                         |
-| 1             | 16              | unsigned 16-bit integer                        |
-| 1             | 32              | unsigned 32-bit integer                        |
-| 1             | 64              | unsigned 64-bit integer                        |
-| 2             | 2               | signed 2-bit integer                           |
-| 2             | 4               | signed 4-bit integer                           |
-| 2             | 8               | signed 8-bit integer                           |
-| 2             | 16              | signed 16-bit integer                          |
-| 2             | 32              | signed 32-bit integer                          |
-| 2             | 64              | signed 64-bit integer                          |
-| 3             | 16              | IEEE 16-bit floating point                     |
-| 3             | 32              | IEEE 32-bit floating point                     |
-| 3             | 64              | IEEE 64-bit floating point                     |
-| 5             | 32              | complex signed integer, 16-bit components      |
-| 5             | 64              | complex signed integer, 32-bit components      |
-| 6             | 32              | complex IEEE floating point, 16-bit components |
-| 6             | 64              | complex IEEE floating point, 32-bit components |
-| 6             | 128             | complex IEEE floating point, 64-bit components |
-| 100           | 8               | float8 E4M3FN                                  |
-| 101           | 8               | float8 E5M2                                    |
-| 102           | 16              | bfloat16                                       |
-| 103           | 8               | float8 E8M0FNU                                 |
-| 104           | 6               | float6 E2M3FN                                  |
-| 105           | 6               | float6 E3M2FN                                  |
-| 106           | 4               | float4 E2M1FN                                  |
+| sample_format | bits_per_sample | decoded bytes | encoding                                       |
+| ------------- | --------------- | ------------: | ---------------------------------------------- |
+| 1             | 1               | 1             | boolean                                        |
+| 1             | 8               | 1             | unsigned 8-bit integer                         |
+| 1             | 16              | 2             | unsigned 16-bit integer                        |
+| 1             | 32              | 4             | unsigned 32-bit integer                        |
+| 1             | 64              | 8             | unsigned 64-bit integer                        |
+| 2             | 8               | 1             | signed 8-bit integer                           |
+| 2             | 16              | 2             | signed 16-bit integer                          |
+| 2             | 32              | 4             | signed 32-bit integer                          |
+| 2             | 64              | 8             | signed 64-bit integer                          |
+| 3             | 16              | 2             | IEEE 16-bit floating point                     |
+| 3             | 32              | 4             | IEEE 32-bit floating point                     |
+| 3             | 64              | 8             | IEEE 64-bit floating point                     |
+| 6             | 32              | 4             | complex IEEE floating point, 16-bit components |
+| 6             | 64              | 8             | complex IEEE floating point, 32-bit components |
+| 6             | 128             | 16            | complex IEEE floating point, 64-bit components |
+| 100           | 8               | 1             | float8 E4M3FN                                  |
+| 101           | 8               | 1             | float8 E5M2                                    |
+| 102           | 16              | 2             | bfloat16                                       |
+| 103           | 8               | 1             | float8 E8M0FNU                                 |
+| 107           | 8               | 1             | float8 E4M3FNUZ                                |
+| 108           | 8               | 1             | float8 E5M2FNUZ                                |
 
 A reader MUST reject any pair not listed above.
 
+The pairs `(1, 2)`, `(1, 4)`, `(2, 2)`, `(2, 4)`, `(5, 32)`, `(5, 64)`,
+`(104, 6)`, `(105, 6)`, and `(106, 4)` appeared in development releases but are
+not valid in this specification. Their numeric values remain reserved and MUST
+NOT be assigned another meaning.
+
 `bfloat16` has one sign bit, eight exponent bits, and seven fraction bits, with
-the exponent and special values of IEEE binary32. `E4M3FN` and `E5M2` use the
+the exponent and special values of IEEE binary32. `E4M3FN`, `E4M3FNUZ`,
+`E5M2`, and `E5M2FNUZ` use the
 [ONNX float8 encodings](https://onnx.ai/onnx/technical/float8.html).
-`E8M0FNU`, `E2M3FN`, `E3M2FN`, and `E2M1FN` use the corresponding encodings in
+`E8M0FNU` uses the corresponding encoding in
 the [OCP Microscaling Formats (MX) Specification
 1.0](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf).
 
 All bands and time steps in a file MUST use the same pair.
 
 `bits_per_sample` is the logical width of a sample, not necessarily its storage
-stride. When `bits_per_sample` is less than `8`, decoded frames MUST use padded
-storage: each sample occupies one byte, its encoding occupies the least
-significant `bits_per_sample` bits, and the unused high bits MUST be zero. Signed
-sub-byte integers use two's-complement representation in the occupied bits.
-Packed sub-byte storage MUST NOT be used.
+stride. Boolean samples occupy one decoded byte and every byte MUST be `0` or
+`1`. Packed boolean storage MUST NOT be used.
 
 The decoded frame size is defined by:
 
@@ -318,14 +314,37 @@ The decoded frame size is defined by:
 decoded_samples  = h * w           when the frame holds a tile
                    B * T * h * w   when the frame holds a cell
 
-bytes_per_sample = 1                       if bits_per_sample < 8
-                   bits_per_sample / 8     otherwise
+bytes_per_sample = the decoded bytes in the sample-encoding table
 
 decoded_frame_bytes = decoded_samples * bytes_per_sample
 ```
 
 An absent axis contributes a factor of one. [Resource limits](#resource-limits)
 applies to `decoded_frame_bytes`.
+
+### DLPack representation
+
+An implementation that exports decoded samples through DLPack MUST use the
+following `(code, bits, lanes)` values. Every tensor is native-endian CPU memory
+and one tensor element corresponds to one rumi sample.
+
+| encoding | DLPack `(code, bits, lanes)` |
+| -------- | ---------------------------- |
+| signed integers | `(kDLInt, bits_per_sample, 1)` |
+| unsigned integers | `(kDLUInt, bits_per_sample, 1)` |
+| boolean | `(kDLBool, 8, 1)` |
+| IEEE floats | `(kDLFloat, bits_per_sample, 1)` |
+| complex IEEE floats | `(kDLComplex, bits_per_sample, 1)` |
+| bfloat16 | `(kDLBfloat, 16, 1)` |
+| float8 E4M3FN | `(kDLFloat8_e4m3fn, 8, 1)` |
+| float8 E4M3FNUZ | `(kDLFloat8_e4m3fnuz, 8, 1)` |
+| float8 E5M2 | `(kDLFloat8_e5m2, 8, 1)` |
+| float8 E5M2FNUZ | `(kDLFloat8_e5m2fnuz, 8, 1)` |
+| float8 E8M0FNU | `(kDLFloat8_e8m0fnu, 8, 1)` |
+
+The file's logical width and DLPack's element width differ for boolean data;
+the decoded storage width connects them. A reader MUST NOT silently cast,
+reinterpret, or widen a sample to satisfy a consumer.
 
 ## Bit-packed arrays
 
@@ -915,4 +934,7 @@ allocation or decode. This does not make the rumi file invalid.
 
 ## Changelog
 
+- 0.2.0. The sample registry is limited to exact PyTorch CPU DLPack types;
+  boolean storage and every DLPack mapping are explicit, and retired development
+  encodings are reserved.
 - 0.1.0. Initial draft.
