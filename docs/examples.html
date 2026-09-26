@@ -389,11 +389,8 @@ assert batch.shape == (3, 4, 128, 128)</code></pre>
 torch_chip = rumi.read(
     cube_path, cube_header, framework="torch"
 )
-jax_chip = rumi.read(
-    cube_path, cube_header, framework="jax"
-)
-tf_chip = rumi.read(
-    cube_path, cube_header, framework="tensorflow"
+dlpack_chip = rumi.read(
+    cube_path, cube_header, framework="dlpack"
 )</code></pre>
             </div>
             <div data-language-panel="r" data-coming-soon>
@@ -409,12 +406,11 @@ tf_chip = rumi.read(
               <tbody>
                 <tr><td><code>"numpy"</code></td><td>NumPy array; the default</td></tr>
                 <tr><td><code>"torch"</code></td><td>PyTorch tensor</td></tr>
-                <tr><td><code>"jax"</code></td><td>JAX array</td></tr>
-                <tr><td><code>"tensorflow"</code> or <code>"tf"</code></td><td>TensorFlow tensor</td></tr>
-                <tr><td><code>None</code></td><td><code>RumiArray</code> with explicit export methods</td></tr>
+                <tr><td><code>"dlpack"</code></td><td><code>RumiArray</code>, a one-shot DLPack producer</td></tr>
               </tbody>
             </table>
           </div>
+          <p>Every Rumi dtype maps exactly to a CPU dtype accepted by PyTorch. NumPy reads are available only when NumPy has the same dtype; Rumi raises before reading data instead of casting or returning a byte view.</p>
         </section>
 
         <section class="guide-section" id="metadata">

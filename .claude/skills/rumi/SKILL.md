@@ -18,7 +18,8 @@ each frame may use its own compression graph. A small external header locates ev
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 
-This skill describes **rumi 0.25.0** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.2.2). Check
+This skill describes **rumi 0.25.0** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.2.2).
+It includes the unreleased dtype changes in this checkout. Check
 `rumi.__version__`. If it differs, trust the installed source, `SPEC.md` and
 `CHANGELOG.md` over this file.
 
@@ -38,7 +39,7 @@ This skill describes **rumi 0.25.0** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.2.2). C
   the file in a catalog or manifest; `rumi.info(source=path).header` rebuilds it.
 - Reads take zero-based `time`, `bands` and `window=(row, column, height, width)` plus an
   output `pattern` over `n t b y x`. They decode on the CPU and return NumPy unless
-  `framework=` names PyTorch, JAX or TensorFlow.
+  `framework="torch"` or `framework="dlpack"` is requested.
 
 ## Canonical workflow
 
@@ -107,9 +108,9 @@ band or time selection. Measure compression when more than one layout fits the r
 - **Checksums are off**: decoded type and byte count are still checked.
   `rumi.set_checksum_verification(True)` or `RUMI_VERIFY=1` enables OpenZL checksums.
   Set it before the first read; later changes warn and are ignored.
-- **Framework exports.** A `RumiArray` exports once, and sub-byte and `bool` data read only
-  as NumPy. NumPy reads of `float8_*` and `bfloat16` data return `ml_dtypes` arrays; Rumi
-  0.21.3 raised `SystemError` there and needed `framework="torch"`.
+- **Framework exports.** Every dtype has an exact CPU DLPack form accepted by PyTorch.
+  A `RumiArray` from `framework="dlpack"` exports once. NumPy is the default but fails
+  before I/O for Torch-only types such as float8, bfloat16 and complex32.
 - **`transform` uses rasterio `Affine` order** `(x_res, row_rot, x_origin, col_rot, y_res,
   y_origin)`, not a GDAL geotransform, and needs an EPSG `crs`. `time` takes one entry per
   step, in whole UTC seconds; a step without a single instant, such as a DEM or an annual
@@ -131,7 +132,7 @@ repository, and its examples were run against the version it names.
 | Frame patterns, the `frame_unit` registry, output patterns, choosing a layout | [references/patterns.md](references/patterns.md) |
 | Writing: GeoZL graphs per layout, lossy frames, time, georeferencing, headers | [references/writing.md](references/writing.md) |
 | Reading: selections, batches, DataLoader, threads, DLPack, cloud sources | [references/reading.md](references/reading.md) |
-| Sample types: sub-byte, `bool`, complex, ML floats, framework support | [references/dtypes.md](references/dtypes.md) |
+| Sample types: storage widths, `bool`, complex, ML floats, DLPack | [references/dtypes.md](references/dtypes.md) |
 | File layout, header blob, offsets, trailer, an independent reader | [references/format.md](references/format.md) |
 | C API (`rumi.h`): ownership, threading, linking, compiled examples | [references/c-api.md](references/c-api.md) |
 | Compatibility policy, dependency pins, version history, format changes | [references/compatibility.md](references/compatibility.md) |

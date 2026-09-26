@@ -124,9 +124,9 @@
         <!-- RUMI_SPEC_BODY_START -->
 <h1 id="rumi">rumi</h1>
 <ul>
-<li>Specification 0.1.0</li>
+<li>Specification 0.2.0</li>
 <li>Status Draft</li>
-<li>Date 2026-09-24</li>
+<li>Date 2026-09-26</li>
 <li>License GPLv3</li>
 </ul>
 <p>rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
@@ -394,7 +394,8 @@ offsets in frame-index order.</p>
 <p><code>sample_format</code> gives the sample type and <code>bits_per_sample</code> its width in bits.
 Unsigned integers use ordinary binary representation, and signed integers use
 two's-complement representation. IEEE formats use the IEEE 754 binary16,
-binary32, or binary64 encoding named in the table.</p>
+binary32, or binary64 encoding named in the table. Boolean samples use one
+decoded byte whose value is <code>0</code> or <code>1</code>, although their logical width is one bit.</p>
 <p>A complex sample stores two equal-width components: real first, then imaginary.
 For complex formats, <code>bits_per_sample</code> is their combined width.</p>
 <table>
@@ -418,16 +419,12 @@ For complex formats, <code>bits_per_sample</code> is their combined width.</p>
 <td>IEEE floating point</td>
 </tr>
 <tr>
-<td><code>5</code></td>
-<td>complex signed integer</td>
-</tr>
-<tr>
 <td><code>6</code></td>
 <td>complex IEEE floating point</td>
 </tr>
 <tr>
-<td><code>100</code>..<code>106</code></td>
-<td>rumi-private ML and EO types</td>
+<td><code>100</code>..<code>103</code>, <code>107</code>, <code>108</code></td>
+<td>rumi-private ML floating point types</td>
 </tr>
 </tbody>
 </table>
@@ -437,6 +434,7 @@ For complex formats, <code>bits_per_sample</code> is their combined width.</p>
 <tr>
 <th>sample_format</th>
 <th>bits_per_sample</th>
+<th style="text-align:right">decoded bytes</th>
 <th>encoding</th>
 </tr>
 </thead>
@@ -444,170 +442,180 @@ For complex formats, <code>bits_per_sample</code> is their combined width.</p>
 <tr>
 <td>1</td>
 <td>1</td>
-<td>1-bit binary</td>
-</tr>
-<tr>
-<td>1</td>
-<td>2</td>
-<td>unsigned 2-bit integer</td>
-</tr>
-<tr>
-<td>1</td>
-<td>4</td>
-<td>unsigned 4-bit integer</td>
+<td style="text-align:right">1</td>
+<td>boolean</td>
 </tr>
 <tr>
 <td>1</td>
 <td>8</td>
+<td style="text-align:right">1</td>
 <td>unsigned 8-bit integer</td>
 </tr>
 <tr>
 <td>1</td>
 <td>16</td>
+<td style="text-align:right">2</td>
 <td>unsigned 16-bit integer</td>
 </tr>
 <tr>
 <td>1</td>
 <td>32</td>
+<td style="text-align:right">4</td>
 <td>unsigned 32-bit integer</td>
 </tr>
 <tr>
 <td>1</td>
 <td>64</td>
+<td style="text-align:right">8</td>
 <td>unsigned 64-bit integer</td>
 </tr>
 <tr>
 <td>2</td>
-<td>2</td>
-<td>signed 2-bit integer</td>
-</tr>
-<tr>
-<td>2</td>
-<td>4</td>
-<td>signed 4-bit integer</td>
-</tr>
-<tr>
-<td>2</td>
 <td>8</td>
+<td style="text-align:right">1</td>
 <td>signed 8-bit integer</td>
 </tr>
 <tr>
 <td>2</td>
 <td>16</td>
+<td style="text-align:right">2</td>
 <td>signed 16-bit integer</td>
 </tr>
 <tr>
 <td>2</td>
 <td>32</td>
+<td style="text-align:right">4</td>
 <td>signed 32-bit integer</td>
 </tr>
 <tr>
 <td>2</td>
 <td>64</td>
+<td style="text-align:right">8</td>
 <td>signed 64-bit integer</td>
 </tr>
 <tr>
 <td>3</td>
 <td>16</td>
+<td style="text-align:right">2</td>
 <td>IEEE 16-bit floating point</td>
 </tr>
 <tr>
 <td>3</td>
 <td>32</td>
+<td style="text-align:right">4</td>
 <td>IEEE 32-bit floating point</td>
 </tr>
 <tr>
 <td>3</td>
 <td>64</td>
+<td style="text-align:right">8</td>
 <td>IEEE 64-bit floating point</td>
-</tr>
-<tr>
-<td>5</td>
-<td>32</td>
-<td>complex signed integer, 16-bit components</td>
-</tr>
-<tr>
-<td>5</td>
-<td>64</td>
-<td>complex signed integer, 32-bit components</td>
 </tr>
 <tr>
 <td>6</td>
 <td>32</td>
+<td style="text-align:right">4</td>
 <td>complex IEEE floating point, 16-bit components</td>
 </tr>
 <tr>
 <td>6</td>
 <td>64</td>
+<td style="text-align:right">8</td>
 <td>complex IEEE floating point, 32-bit components</td>
 </tr>
 <tr>
 <td>6</td>
 <td>128</td>
+<td style="text-align:right">16</td>
 <td>complex IEEE floating point, 64-bit components</td>
 </tr>
 <tr>
 <td>100</td>
 <td>8</td>
+<td style="text-align:right">1</td>
 <td>float8 E4M3FN</td>
 </tr>
 <tr>
 <td>101</td>
 <td>8</td>
+<td style="text-align:right">1</td>
 <td>float8 E5M2</td>
 </tr>
 <tr>
 <td>102</td>
 <td>16</td>
+<td style="text-align:right">2</td>
 <td>bfloat16</td>
 </tr>
 <tr>
 <td>103</td>
 <td>8</td>
+<td style="text-align:right">1</td>
 <td>float8 E8M0FNU</td>
 </tr>
 <tr>
-<td>104</td>
-<td>6</td>
-<td>float6 E2M3FN</td>
+<td>107</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E4M3FNUZ</td>
 </tr>
 <tr>
-<td>105</td>
-<td>6</td>
-<td>float6 E3M2FN</td>
-</tr>
-<tr>
-<td>106</td>
-<td>4</td>
-<td>float4 E2M1FN</td>
+<td>108</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E5M2FNUZ</td>
 </tr>
 </tbody>
 </table>
 <p>A reader MUST reject any pair not listed above.</p>
+<p>The pairs <code>(1, 2)</code>, <code>(1, 4)</code>, <code>(2, 2)</code>, <code>(2, 4)</code>, <code>(5, 32)</code>, <code>(5, 64)</code>,
+<code>(104, 6)</code>, <code>(105, 6)</code>, and <code>(106, 4)</code> appeared in development releases but are
+not valid in this specification. Their numeric values remain reserved and MUST
+NOT be assigned another meaning.</p>
 <p><code>bfloat16</code> has one sign bit, eight exponent bits, and seven fraction bits, with
-the exponent and special values of IEEE binary32. <code>E4M3FN</code> and <code>E5M2</code> use the
+the exponent and special values of IEEE binary32. <code>E4M3FN</code>, <code>E4M3FNUZ</code>,
+<code>E5M2</code>, and <code>E5M2FNUZ</code> use the
 <a href="https://onnx.ai/onnx/technical/float8.html">ONNX float8 encodings</a>.
-<code>E8M0FNU</code>, <code>E2M3FN</code>, <code>E3M2FN</code>, and <code>E2M1FN</code> use the corresponding encodings in
+<code>E8M0FNU</code> uses the corresponding encoding in
 the <a href="https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf">OCP Microscaling Formats (MX) Specification
 1.0</a>.</p>
 <p>All bands and time steps in a file MUST use the same pair.</p>
 <p><code>bits_per_sample</code> is the logical width of a sample, not necessarily its storage
-stride. When <code>bits_per_sample</code> is less than <code>8</code>, decoded frames MUST use padded
-storage: each sample occupies one byte, its encoding occupies the least
-significant <code>bits_per_sample</code> bits, and the unused high bits MUST be zero. Signed
-sub-byte integers use two's-complement representation in the occupied bits.
-Packed sub-byte storage MUST NOT be used.</p>
+stride. Boolean samples occupy one decoded byte and every byte MUST be <code>0</code> or
+<code>1</code>. Packed boolean storage MUST NOT be used.</p>
 <p>The decoded frame size is defined by:</p>
 <pre><code class="language-text">decoded_samples  = h * w           when the frame holds a tile
                    B * T * h * w   when the frame holds a cell
 
-bytes_per_sample = 1                       if bits_per_sample &lt; 8
-                   bits_per_sample / 8     otherwise
+bytes_per_sample = the decoded bytes in the sample-encoding table
 
 decoded_frame_bytes = decoded_samples * bytes_per_sample
 </code></pre>
 <p>An absent axis contributes a factor of one. <a href="#/spec/resource-limits">Resource limits</a>
 applies to <code>decoded_frame_bytes</code>.</p>
+<h3 id="dlpack-representation">DLPack representation</h3>
+<p>An implementation that exports decoded samples through DLPack MUST use the
+following <code>(code, bits, lanes)</code> values. Every tensor is native-endian CPU memory
+and one tensor element corresponds to one rumi sample.</p>
+<table>
+<thead><tr><th>encoding</th><th>DLPack <code>(code, bits, lanes)</code></th></tr></thead>
+<tbody>
+<tr><td>signed integers</td><td><code>(kDLInt, bits_per_sample, 1)</code></td></tr>
+<tr><td>unsigned integers</td><td><code>(kDLUInt, bits_per_sample, 1)</code></td></tr>
+<tr><td>boolean</td><td><code>(kDLBool, 8, 1)</code></td></tr>
+<tr><td>IEEE floats</td><td><code>(kDLFloat, bits_per_sample, 1)</code></td></tr>
+<tr><td>complex IEEE floats</td><td><code>(kDLComplex, bits_per_sample, 1)</code></td></tr>
+<tr><td>bfloat16</td><td><code>(kDLBfloat, 16, 1)</code></td></tr>
+<tr><td>float8 E4M3FN</td><td><code>(kDLFloat8_e4m3fn, 8, 1)</code></td></tr>
+<tr><td>float8 E4M3FNUZ</td><td><code>(kDLFloat8_e4m3fnuz, 8, 1)</code></td></tr>
+<tr><td>float8 E5M2</td><td><code>(kDLFloat8_e5m2, 8, 1)</code></td></tr>
+<tr><td>float8 E5M2FNUZ</td><td><code>(kDLFloat8_e5m2fnuz, 8, 1)</code></td></tr>
+<tr><td>float8 E8M0FNU</td><td><code>(kDLFloat8_e8m0fnu, 8, 1)</code></td></tr>
+</tbody>
+</table>
+<p>The file's logical width and DLPack's element width differ for boolean data;
+the decoded storage width connects them. A reader MUST NOT silently cast,
+reinterpret, or widen a sample to satisfy a consumer.</p>
 <h2 id="bit-packed-arrays">Bit-packed arrays</h2>
 <p>Time residuals and frame byte-count residuals use the same bit packing.</p>
 <p>Values are stored consecutively using <code>bits</code> bits each. Bit <code>j</code> of value <code>i</code>
@@ -1390,6 +1398,9 @@ An operation that exceeds the reader's resource limits MUST fail before the
 allocation or decode. This does not make the rumi file invalid.</p>
 <h2 id="changelog">Changelog</h2>
 <ul>
+<li>0.2.0. The sample registry is limited to exact PyTorch CPU DLPack types;
+boolean storage and every DLPack mapping are explicit, and retired development
+encodings are reserved.</li>
 <li>0.1.0. Initial draft.</li>
 </ul>
         <!-- RUMI_SPEC_BODY_END -->

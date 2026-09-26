@@ -21,7 +21,7 @@ For changes inside `github.com/asterisk-labs/rumi`. Sources: `Makefile`,
 ```text
 core/
   include/rumi/rumi.h            public C API, kept valid C11
-  include/rumi/rumi_dtypes.def   sample type registry (X-macro), append-only
+  include/rumi/rumi_dtypes.def   sample, storage and DLPack registry (X-macro)
   include/rumi/epsg_kinds.def    projected and geographic EPSG ranges, generated
   include/rumi/rumi.hpp          internal C++ interface: UNIT_REGISTRY, Header, Trailer
   include/rumi/thread_pool.hpp   the process-wide read pool
@@ -111,7 +111,7 @@ make ctest       # C++ component tests in core/build-tests
 | `test_read.py`, `test_many.py` | reads, batches, DLPack exactly-once, remote paths against a local HTTP server, DataLoader batching |
 | `test_time.py`, `test_info.py`, `test_repr.py` | `time=` conversion, `Metadata`, table and notebook output |
 | `test_threads.py` | pool sizing, pinning, fork and DataLoader workers |
-| `test_cdef.py` | the cdef against `rumi.h`, recorded public signatures and struct layouts, append-only dtype codes |
+| `test_cdef.py` | the cdef against `rumi.h`, recorded public signatures, struct layouts and dtype codes |
 | `test_editable.py` | `tools/check_editable.py` |
 | `test_skill.py` | this skill names the release in `VERSION`, `.agents/skills/rumi` points at it, and its links resolve |
 | `core/tests/test_core.cpp` | C++ components, built as `rumi_tests` |
@@ -153,9 +153,9 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
 - **C API function:** declare it in `rumi.h` with `RUMI_API` and a short comment,
   implement it in `capi.cpp`, add it to the cdef in `_ffi.py` and to `_PUBLIC_API` in
   `test_cdef.py`, then wrap and test it in Python.
-- **Sample type:** append a row to `rumi_dtypes.def` (never renumber), extend the Sample
-  encodings table in `SPEC.md`, map its DLPack code in `_dtype.py`, and cover it in
-  `test_writer.py` and `test_spec.py`.
+- **Sample type:** add a row to `rumi_dtypes.def` without reusing a retired file pair,
+  extend the Sample encodings table in `SPEC.md`, and prove exact PyTorch DLPack import
+  in `test_spec.py`.
 - **EPSG table:** `python tools/gen_epsg_kinds.py > core/include/rumi/epsg_kinds.def`
   (needs pyproj).
 - **GeoZL update:** move `extern/geozl` to the release tag, update the `write` and `test`

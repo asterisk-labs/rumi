@@ -1,125 +1,82 @@
 # Sample types
 
-Sources: `core/include/rumi/rumi_dtypes.def` (the registry shared by C and Python),
-`bindings/python/rumi/_dtype.py`, `bindings/python/rumi/_read.py`, the frame check in
-`core/src/plan.cpp`, and Sample encodings in `SPEC.md`. Every row was written and read
-back with rumi 0.24.0, NumPy 2.4, PyTorch 2.11 and ml_dtypes installed; notes mark
-what changed after 0.21.3.
+Sources: `core/include/rumi/rumi_dtypes.def`, `bindings/python/rumi/_dtype.py`,
+`bindings/python/rumi/_read.py`, `core/src/plan.cpp`, and Sample encodings in
+`SPEC.md`. The registry is tested with PyTorch 2.11 on CPU.
 
-## Contents
+## The contract
 
-1. The registry
-2. Sub-byte types and `bool`
-3. ML floats
-4. Complex types
-5. Converting between frameworks
+Rumi stores only types with an exact CPU DLPack representation that
+`torch.from_dlpack` imports without changing dtype. Three widths are distinct:
 
-## 1. The registry
+- `bits_per_sample` is the logical width recorded in the file;
+- `storage_bytes` is the decoded stride of one Rumi sample;
+- DLPack supplies `code`, `bits`, and `lanes` to the consumer.
 
-Codes are append-only (`test_cdef.py` guards them). `rumi.info(...).dtype` returns the
-NumPy scalar type in the Python column.
+No read casts, widens, or presents bytes under a substitute dtype. GeoZL and
+OpenZL return a flat numeric byte stream; Rumi checks its element width and byte
+count before assigning shape, strides, and DLPack metadata.
 
-| Code | Name | `sample_format`, bits | Python dtype | DLPack | NumPy read | `framework="torch"` |
-| ---: | --- | --- | --- | --- | --- | --- |
-| 1 | `uint8` | 1, 8 | `numpy.uint8` | yes | yes | yes |
-| 2 | `int8` | 2, 8 | `numpy.int8` | yes | yes | yes |
-| 3 | `uint16` | 1, 16 | `numpy.uint16` | yes | yes | `torch.uint16` |
-| 4 | `int16` | 2, 16 | `numpy.int16` | yes | yes | yes |
-| 5 | `uint32` | 1, 32 | `numpy.uint32` | yes | yes | `torch.uint32` |
-| 6 | `int32` | 2, 32 | `numpy.int32` | yes | yes | yes |
-| 7 | `uint64` | 1, 64 | `numpy.uint64` | yes | yes | `torch.uint64` |
-| 8 | `int64` | 2, 64 | `numpy.int64` | yes | yes | yes |
-| 9 | `float16` | 3, 16 | `numpy.float16` | yes | yes | yes |
-| 10 | `float32` | 3, 32 | `numpy.float32` | yes | yes | yes |
-| 11 | `float64` | 3, 64 | `numpy.float64` | yes | yes | yes |
-| 12 | `cint16` | 5, 32 | none | no | C only | no |
-| 13 | `cint32` | 5, 64 | none | no | C only | no |
-| 14 | `cfloat16` | 6, 32 | none | yes | C only | no |
-| 15 | `cfloat32` | 6, 64 | `numpy.complex64` | yes | yes | `torch.complex64` |
-| 16 | `cfloat64` | 6, 128 | `numpy.complex128` | yes | yes, as components (0.21.3 fails) | `torch.complex128` |
-| 17 | `float8_e4m3fn` | 100, 8 | `ml_dtypes.float8_e4m3fn` | yes | yes, viewed (0.21.3 fails) | `torch.float8_e4m3fn` |
-| 18 | `float8_e5m2` | 101, 8 | `ml_dtypes.float8_e5m2` | yes | yes, viewed (0.21.3 fails) | yes |
-| 19 | `bfloat16` | 102, 16 | `ml_dtypes.bfloat16` | yes | yes, viewed (0.21.3 fails) | `torch.bfloat16` |
-| 20 | `uint4` | 1, 4 | `ml_dtypes.uint4` | no | yes | no |
-| 21 | `int4` | 2, 4 | `ml_dtypes.int4` | no | yes | no |
-| 22 | `uint2` | 1, 2 | `ml_dtypes.uint2` | no | yes | no |
-| 23 | `int2` | 2, 2 | `ml_dtypes.int2` | no | yes | no |
-| 24 | `binary` | 1, 1 | `numpy.bool_` | no | yes | no |
-| 25 | `float8_e8m0` | 103, 8 | `ml_dtypes.float8_e8m0fnu` | yes | yes, viewed (0.21.3 fails) | yes |
-| 26 | `float6_e2m3` | 104, 6 | `ml_dtypes.float6_e2m3fn` | no | yes | no |
-| 27 | `float6_e3m2` | 105, 6 | `ml_dtypes.float6_e3m2fn` | no | yes | no |
-| 28 | `float4_e2m1` | 106, 4 | `ml_dtypes.float4_e2m1fn` | no | yes | no |
+## Registry
 
-- One file has one type for every band and step. Mixed types need separate files.
-- Any other NumPy dtype raises `TypeError: dtype ... is not supported by rumi` in
-  `rumi.frames`.
-- GeoZL compresses every Python-writable type here; `complex128` goes through its
-  `float64` components (section 4), and ML and sub-byte types are 1 or 2-byte elements
-  to it. Lossy `error=` works only for the eleven integer
-  and IEEE float types.
-- Decoded samples are little-endian in the file and native in results. `rumi.frames`
-  accepts a big-endian array, but GeoZL refuses it (`dtype >u2 is not native byte order`);
-  convert with `arr.astype(arr.dtype.newbyteorder("="))` first.
+| Name | File `(sample_format, bits)` | Decoded bytes | NumPy | PyTorch |
+| --- | --- | ---: | --- | --- |
+| `uint8`, `uint16`, `uint32`, `uint64` | `(1, 8/16/32/64)` | 1/2/4/8 | exact | exact |
+| `int8`, `int16`, `int32`, `int64` | `(2, 8/16/32/64)` | 1/2/4/8 | exact | exact |
+| `float16`, `float32`, `float64` | `(3, 16/32/64)` | 2/4/8 | exact | exact |
+| `complex32` | `(6, 32)` | 4 | no | `torch.complex32` |
+| `complex64`, `complex128` | `(6, 64/128)` | 8/16 | exact | exact |
+| `float8_e4m3fn` | `(100, 8)` | 1 | no | exact |
+| `float8_e5m2` | `(101, 8)` | 1 | no | exact |
+| `bfloat16` | `(102, 16)` | 2 | no | exact |
+| `float8_e8m0fnu` | `(103, 8)` | 1 | no | exact |
+| `bool` | `(1, 1)` | 1 | exact | `torch.bool` |
+| `float8_e4m3fnuz` | `(107, 8)` | 1 | no | exact |
+| `float8_e5m2fnuz` | `(108, 8)` | 1 | no | exact |
 
-## 2. Sub-byte types and `bool`
+The DLPack mapping uses one lane for every type. Boolean is the important
+exception to deriving DLPack width from the file: it exports as
+`(kDLBool, 8, 1)` because each decoded value is a byte.
 
-- Stored padded: one byte per sample, the value in the low bits, every higher bit zero.
-  Signed types use two's complement in the occupied bits. `ml_dtypes` already stores
-  them this way (`int4` -1 is byte `0x0F`).
-- `rumi.frames` checks the padding before compression (`ValueError: frame 0: sample 0
-  has bits set above the 4 its encoding occupies; a sub-byte sample fills one byte and its
-  unused high bits are zero`), and the reader checks it again after decoding
-  (`OSError: rumi: byte N of a decoded frame has bits set above the 4 its encoding
-  occupies`).
-- `bool` arrays are the `binary` type (1 bit, padded to 0 or 1).
-- Reads return NumPy arrays and never use DLPack: `framework="torch"` raises
-  `ValueError: uint2 reads only as numpy; torch, jax and tensorflow need a DLPack
-  form` before any frame is decoded. Convert afterwards; `torch.from_numpy(result)`
-  works for `bool`.
-- Reading ML sub-byte types needs `ml_dtypes` (`pip install "rumi-eo[ml]"`); without it
-  the read raises `NotImplementedError: int4 needs ml_dtypes, pip install ml_dtypes`.
+Codes and file pairs removed during development remain reserved: complex
+integers, padded 2- and 4-bit integers, float6, and padded float4. A reader
+rejects them rather than assigning the numbers another meaning. Packed float4
+would require a separate storage and indexing design because Torch represents
+two values in one byte; it is not part of this registry.
 
-## 3. ML floats
+## Python behavior
 
-- `float8_e4m3fn` and `float8_e5m2` follow the ONNX encodings; `float8_e8m0`,
-  `float6_*` and `float4_e2m1` follow OCP Microscaling 1.0; `bfloat16` has one sign, eight
-  exponent and seven fraction bits.
-- Write them from `ml_dtypes` arrays; `rumi.frames` and GeoZL treat them as bytes.
-- NumPy has no DLPack import for the 8 and 16-bit ML floats (`float8_e4m3fn`,
-  `float8_e5m2`, `float8_e8m0`, `bfloat16`), so a NumPy read views the decoded bytes as
-  the `ml_dtypes` type, without a copy. `framework="torch"` returns the matching PyTorch
-  dtype.
-- Rumi 0.21.3 passed them to `np.from_dlpack` and raised `SystemError: <built-in
-  function from_dlpack> returned NULL without setting an exception`; on that release read
-  them with `framework="torch"`.
+`rumi.info(...).dtype` is a `rumi.DType`. It exposes `name`, `itemsize`,
+`component_size`, `sample_format`, `bits`, `dlpack`, and `numpy_dtype`. The last
+value is `None` for Torch-only types.
 
-## 4. Complex types
+Reads accept:
 
-- A complex sample is two components, real then imaginary; `bits_per_sample` is their sum.
-- A complex frame may decode as whole samples or as a stream of components twice as
-  long. OpenZL numeric elements stop at 8 bytes (`Numeric input takes 8-, 16-, 32-, or
-  64-bit data`), so `complex128` (`cfloat64`) frames must use components:
+| `framework` | Result |
+| --- | --- |
+| `"numpy"` | default; exact `numpy.ndarray`, or an early `TypeError` |
+| `"torch"` | exact CPU `torch.Tensor` through DLPack |
+| `"dlpack"` | one-shot `RumiArray` DLPack producer |
+
+The NumPy compatibility check happens after parsing the external header but
+before opening the source or decoding a frame. Use Torch to cast a shell dtype
+for training; for example, unsigned tensors have limited operator coverage even
+though their DLPack import is exact.
+
+The Python writer remains array-oriented. Standard NumPy dtypes and `bool` are
+always writable. An installed extension dtype with the exact registered name
+and storage width can also be written, but `ml_dtypes` is not a Rumi dependency.
+
+## Complex frames
+
+A complex sample stores real then imaginary components. OpenZL numeric elements
+stop at eight bytes, so a complex frame may decode either as whole samples or as
+twice as many components. `complex128` must use `float64` components:
 
 ```python
-parts = frame.data.view(np.float64)      # complex64: frame.data, or view(np.float32)
-frame.compressed = geozl.compress(parts, graph=geozl.graph(parts, "planar>zigzag>zstd"))
+parts = frame.data.view(np.float64)
+frame.compressed = geozl.compress(parts, graph=geozl.graph(parts, "id>zstd"))
 ```
 
-- The view doubles the last axis, so GeoZL's row predictors alternate real and imaginary
-  values; profile against `id>transpose>zstd`.
-- Any other element width fails with `unexpected frame output (...; expected numeric
-  width 16 or 8, ...)`.
-- Rumi 0.21.3 accepted only whole samples, so its `complex128` files write but never
-  read. On that release store real and imaginary parts as a `float64` band pair.
-- `cint16`, `cint32` and `cfloat16` have no NumPy scalar, so Python cannot write or read
-  them; `cint16` and `cint32` also have no DLPack form (`RUMI_ERR_UNSUPPORTED` from
-  `rumi_read_dlpack`).
-
-## 5. Converting between frameworks
-
-| Want | Do |
-| --- | --- |
-| PyTorch tensor of a DLPack type | `framework="torch"` (no copy) |
-| PyTorch tensor of `bool` or a sub-byte type | read NumPy, then `torch.from_numpy` or a cast |
-| NumPy array of `float8_*` or `bfloat16` on Rumi 0.21.3 | `framework="torch"`, then convert in PyTorch |
-| Training-ready unsigned data | read, then cast (`.to(torch.int32)`, `.float()`); PyTorch's unsigned 16 to 64-bit tensors support few operations |
+The registry's `component_bytes` field supplies this rule; the reader does not
+infer it from `sample_format`.

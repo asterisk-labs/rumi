@@ -173,7 +173,7 @@
                 <tr><td><code>time</code>, <code>bands</code></td><td>Zero-based lists or half-open <code>(start, stop)</code> ranges; <code>None</code> means all</td><td>Validates them and converts them to the C API’s one-based indices</td></tr>
                 <tr><td><code>window</code></td><td><code>(row, column, height, width)</code>; <code>None</code> means the whole image</td><td>Checks bounds and converts it to offsets plus sizes</td></tr>
                 <tr><td><code>pattern</code></td><td>The order of output axes such as band, time, row, and column</td><td>Compiles shape and byte strides before any frame runs</td></tr>
-                <tr><td><code>framework</code></td><td><code>numpy</code>, <code>torch</code>, <code>jax</code>, <code>tensorflow</code>, or <code>None</code></td><td>Chooses the final array adapter; numeric results transfer through DLPack, while <code>None</code> leaves a <code>RumiArray</code></td></tr>
+                <tr><td><code>framework</code></td><td><code>numpy</code>, <code>torch</code>, or <code>dlpack</code></td><td>Chooses an exact consumer; <code>dlpack</code> leaves a <code>RumiArray</code></td></tr>
               </tbody>
             </table>
           </div>
@@ -263,7 +263,7 @@ return _to_framework(arr, framework)</code></pre>
 
           <p><code>prepare_selection()</code> centralizes pointer/count checks, selected-axis resolution, output-layout compilation, and overflow-safe size calculation. Both <code>rumi_read()</code>, where the caller supplies storage, and <code>rumi_read_dlpack()</code>, where Rumi allocates storage, use this same preparation. The two entry points cannot silently disagree about shape or required bytes.</p>
 
-          <p>The normal numeric path allocates exactly <code>need</code> bytes, invokes <code>read_window()</code>, and only then wraps the allocation with <code>finish_dlpack()</code>. Every failure path frees the allocation. Padded sub-byte dtypes take the other entry point: Python preallocates byte-backed NumPy storage and passes it to <code>rumi_read()</code>, because DLPack consumers cannot describe those padded values.</p>
+          <p>The read path allocates exactly <code>need</code> bytes, invokes <code>read_window()</code>, and only then wraps the allocation with <code>finish_dlpack()</code>. Every failure path frees the allocation. The dtype registry supplies the decoded byte width and exact DLPack code independently from the logical width stored in the file.</p>
 
           <div class="callout">
             <span>Exceptions stop at the boundary</span>
@@ -471,7 +471,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
           <p><code>WorkerState</code> in <code>core/src/plan.cpp</code> is declared <code>thread_local</code>: every worker thread receives its own instance the first time it decodes. The worker can reuse its OpenZL context plus compressed and decoded scratch buffers for later tasks, but no two threads share that mutable decoder state. Frames remain independent; reuse avoids rebuilding the runtime and reallocating scratch for every frame.</p>
 
-          <p><code>execute_task()</code> calls <code>ZL_DCtx_decompressTyped()</code>, then checks that OpenZL produced numeric samples with the expected fixed width and exact decoded byte size. Sub-byte samples receive one additional check: unused high bits must be zero. Only a validated frame can reach output placement.</p>
+          <p><code>execute_task()</code> calls <code>ZL_DCtx_decompressTyped()</code>, then checks that OpenZL produced numeric samples with the expected fixed width and exact decoded byte size. Boolean frames receive one additional check: every decoded byte must be zero or one. Only a validated frame can reach output placement.</p>
 
           <div class="technical-note">
             <span>Missing codec errors stay specific</span>
@@ -513,9 +513,9 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
           <p>The output <code>pattern</code> determines shape and strides. For example, <code>"t y x b"</code> places time first and band last; another order changes where a task must write without changing which source frames it needs. This is why <code>compile_layout()</code> runs before <code>append_read_plan()</code>.</p>
 
-          <p>For the normal numeric path, <code>rumi_read_dlpack()</code> allocated the exact output size before calling the core. <code>finish_dlpack()</code> wraps that allocation in a versioned DLPack tensor. DLPack is a small ownership-and-metadata protocol shared by array libraries: it describes the address, shape, strides, dtype, and device without copying the decoded array into a second framework-owned buffer.</p>
+          <p><code>rumi_read_dlpack()</code> allocates the exact output size before calling the core. <code>finish_dlpack()</code> wraps that allocation in a versioned DLPack tensor. DLPack is a small ownership-and-metadata protocol shared by array libraries: it describes the address, shape, strides, dtype, and device without copying the decoded array into a second framework-owned buffer.</p>
 
-          <p>Python wraps the native tensor in <code>RumiArray</code>. Calling <code>numpy()</code>, <code>torch()</code>, <code>jax()</code>, or <code>tensorflow()</code> transfers that allocation through DLPack. <code>RumiArray.__dlpack__()</code> permits the transfer exactly once; if no consumer takes it, the wrapper frees the native tensor itself.</p>
+          <p>Python wraps the native tensor in <code>RumiArray</code>. Calling <code>numpy()</code> or <code>torch()</code> transfers that allocation through DLPack. <code>RumiArray.__dlpack__()</code> permits the transfer exactly once; if no consumer takes it, the wrapper frees the native tensor itself. NumPy compatibility is checked before any source is opened.</p>
 
           <div class="callout">
             <span>Why completions may arrive out of order</span>

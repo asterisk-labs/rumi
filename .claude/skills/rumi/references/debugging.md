@@ -1,6 +1,7 @@
 # Debugging
 
-Messages below were captured from rumi 0.24.0 (GeoZL 0.18.0, NumPy 2.4, PyTorch 2.11).
+Messages below describe the development version after rumi 0.25.0 (GeoZL 0.18.0,
+NumPy 2.4, PyTorch 2.11).
 Numeric values inside them vary; match on the text. Pattern messages are in
 `patterns.md` section 7 and `time=` messages in `writing.md` section 6.
 
@@ -19,7 +20,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | Message (excerpt) | Cause | Fix |
 | --- | --- | --- |
 | `OSError: librumi not found. Install it or set RUMI_LIB to its path.` | no bundled or system library | `pip install rumi-eo`, or `make python` in a checkout |
-| `ImportError: librumi C API N is incompatible with this binding, which requires C API 1` | `RUMI_LIB` or a stale library from another release | unset `RUMI_LIB`, rebuild with `make python` |
+| `ImportError: librumi C API N is incompatible with this binding, which requires C API 2` | `RUMI_LIB` or a stale library from another release | unset `RUMI_LIB`, rebuild with `make python` |
 | `editable install check failed: import rumi loaded ..., expected ...` | another `rumi` distribution shadows the checkout | uninstall it, rerun `make python` |
 | `editable install check failed: native library is 0.21.2, expected 0.21.3` | staged library older than `VERSION` | `make python` |
 
@@ -27,8 +28,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 
 | Message (excerpt) | Cause | Fix |
 | --- | --- | --- |
-| `TypeError: dtype <U1 is not supported by rumi` | type outside the registry | cast to a registered type (`dtypes.md`) |
-| `ValueError: frame 0: sample 0 has bits set above the 4 its encoding occupies; ...` | sub-byte data with high bits set | mask to the low bits; build `ml_dtypes` values with `astype` |
+| `TypeError: dtype <U1 is not supported by rumi's NumPy writer` | type outside the registry | cast to a registered writable type (`dtypes.md`) |
 | `ValueError: expected 4 (b h w) frames for this grid, got 3` | `FrameTable(...)` with the wrong number of frames | cut one frame per index position (`patterns.md` section 4) |
 | `ValueError: frame K at row R col C has shape S, expected E` | a hand-cut frame in the wrong order or shape | follow the frame order; clip edge frames |
 | `TypeError: frame 0 must be bytes-like, got int` / `ValueError: frame 0 is empty` | bad payload assignment | assign the bytes GeoZL returned |
@@ -62,10 +62,9 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `TypeError: window: expected (row, column, height, width) tuple` | a list window | a tuple |
 | `ValueError: window: requested window is out of image bounds` | window past the edge | clamp the window |
 | `ValueError: b > 1 needs b in the pattern` | output pattern drops an axis longer than one | select one position or keep the axis |
-| `ValueError: unknown framework 'cupy'` | unsupported framework | `numpy`, `torch`, `jax`, `tensorflow`, `tf` or `None` |
+| `ValueError: unknown framework 'cupy'; expected 'numpy', 'torch', or 'dlpack'` | unsupported framework | choose one of those three values |
 | `RuntimeError: this RumiArray was already exported` | second export of one result | keep the first array or tensor |
-| `ValueError: uint2 reads only as numpy; torch, jax and tensorflow need a DLPack form` | `framework="torch"` on sub-byte or `bool` data | read NumPy, then convert |
-| `BufferError: padded sub-byte dtypes cannot be exported through DLPack; use numpy()` | `__dlpack__()` on a sub-byte `framework=None` result | use `numpy()` |
+| `TypeError: NumPy cannot represent rumi dtype ...` | a Torch-only dtype with the default framework | use `framework="torch"` or `framework="dlpack"` |
 
 ### Batches
 
@@ -116,7 +115,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 - `complex128` files write but never read: the reader requires 16-byte numeric
   elements, which OpenZL cannot produce. Fixed after 0.21.3, where frames may decode as
   `float64` components (`dtypes.md` section 4).
-- `bool` and sub-byte results cannot use `framework="torch"` (`ValueError`).
+- `bool` and every registered dtype use the exact DLPack mapping in `dtypes.md`.
 
 ## 3. Library loading and editable installs
 

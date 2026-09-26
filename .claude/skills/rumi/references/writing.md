@@ -23,7 +23,7 @@ with geozl 0.18.0.
 array --rumi.frames--> FrameTable --you compress--> payloads --rumi.write--> (path, header)
 ```
 
-Rumi checks structure (frame count, shapes, dtype, sub-byte padding, band text, time and
+Rumi checks structure (frame count, shapes, dtype, boolean values, band text, time and
 CRS rules) and never decodes a payload. Compression, recipe choice and lossy bounds
 belong to the caller, usually through GeoZL.
 
@@ -93,14 +93,14 @@ products differ more, so profile.
 
 The reader decodes each frame with OpenZL plus every GeoZL codec (GeoZL is linked into
 `librumi`), then requires one numeric output stream whose element width is the file's
-bytes per sample (1 for sub-byte types, or one component for complex types) and whose
-byte size matches the frame's decoded samples (`plan.cpp`). Sub-byte frames must also
-leave the unused high bits zero.
+decoded sample width (or the registered component width for complex types) and whose
+byte size matches the frame's decoded samples (`plan.cpp`). Boolean frames contain only
+the byte values zero and one.
 
 | Payload | Result at read time |
 | --- | --- |
 | `geozl.compress(frame.data, ...)` | reads |
-| same bytes through another dtype of equal width (`frame.data.view(np.int16)`) | reads |
+| same bytes through another dtype of an accepted width (`frame.data.view(np.int16)`) | reads |
 | complex samples as components (`frame.data.view(np.float64)` for `complex128`) | reads; Rumi 0.21.3 refuses them |
 | plain OpenZL frame (`openzl.ext`, standard codecs only) | reads |
 | lossy GeoZL frame | reads, within its bound |

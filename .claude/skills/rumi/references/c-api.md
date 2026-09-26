@@ -3,8 +3,8 @@
 The public header is `core/include/rumi/rumi.h`; it includes `rumi_dtypes.def` and
 `dlpack/dlpack.h`. Other sources: `core/src/capi.cpp`, `core/tests/test_c_header.c`,
 `core/CMakeLists.txt`, and `bindings/python/rumi/_ffi.py`, whose hand-written cdef is the
-reference caller. Both examples compile with `-std=c11 -Wall -Wextra` and ran against a
-0.25.0 build.
+reference caller. Both examples compile with `-std=c11 -Wall -Wextra` and ran against
+the development build described here.
 
 ## Contents
 
@@ -20,8 +20,8 @@ reference caller. Both examples compile with `-std=c11 -Wall -Wextra` and ran ag
 
 ## 1. Stability
 
-- `RUMI_API_VERSION` is 1. Neither the source API nor the ABI is stable before 1.0, and
-  the version and SONAME stay at 1 until then, so recompile after every update.
+- `RUMI_API_VERSION` is 2. Neither the source API nor the ABI is stable before 1.0;
+  recompile after every update.
 - The C header is the surface for future R and Julia bindings; `test_c_header.c` keeps it
   valid C11.
 - 0.20.0 removed `rumi_read_stack`, `rumi_read_stack_dlpack`, `rumi_index_file`,
@@ -41,9 +41,9 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 - `librumi` links GeoZL, OpenZL and Karu statically and exports only `RUMI_API`
   symbols. Building needs CMake 3.21, a C++23 compiler, Ninja by default, and libcurl
   7.83 or newer with OpenSSL 3 for Karu.
-- The library's install name is `@rpath/librumi.1.dylib` on macOS (`librumi.so.1` on
+- The library's install name is `@rpath/librumi.2.dylib` on macOS (`librumi.so.2` on
   Linux). The renamed copy in `bindings/python/rumi/_lib/` cannot satisfy that name at
-  run time (`Library not loaded: @rpath/librumi.1.dylib`); link against `core/build` or an
+  run time (`Library not loaded: @rpath/librumi.2.dylib`); link against `core/build` or an
   installed prefix.
 
 ## 3. Conventions
@@ -54,8 +54,8 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 - Outputs are unchanged on error.
 - `times` and `bands` are **1-based** `int` arrays in output order; `(NULL, 0)` selects
   all in file order. Windows are zero-based and ordered `y_off, y_size, x_off, x_size`.
-- `dst_size` is in bytes and must cover every decoded sample (one byte per sub-byte
-  sample).
+- `dst_size` is in bytes and must cover every decoded sample. The registry's
+  `storage_bytes` field is authoritative; a boolean sample occupies one byte.
 
 | Returned by | Release with |
 | --- | --- |

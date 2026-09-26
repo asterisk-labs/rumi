@@ -1,8 +1,9 @@
 # Python API
 
-Everything here is `rumi` 0.25.0 as implemented in `bindings/python/rumi/`
+Everything here describes the development version after `rumi` 0.25.0, as
+implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_threads.py`, `_checksums.py`,
-and `_ffi.py`). The examples and messages were captured from a 0.25.0 build.
+and `_ffi.py`). The examples and messages describe that development build.
 
 ## Contents
 
@@ -20,18 +21,18 @@ and `_ffi.py`). The examples and messages were captured from a 0.25.0 build.
 ## 1. Install and runtime
 
 ```bash
-pip install rumi-eo            # reader, writer and every dtype
+pip install rumi-eo
 ```
 
-- Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17`,
-  `geozl>=0.18.0,<0.19` and `ml_dtypes`. The import name is `rumi`, the
+- Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17` and
+  `geozl>=0.18.0,<0.19`. The import name is `rumi`, the
   distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, then the copy bundled under `rumi/_lib/`,
   then `ctypes.util.find_library("rumi")`. Import fails when the library's C API version
-  is not 1.
+  is not 2.
 - Public names: `frames`, `FrameTable`, `Frame`, `write`, `read`, `read_many`,
-  `RumiArray`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`,
+  `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`,
   `set_checksum_verification`, `get_checksum_verification`, `__version__`.
   Everything under `rumi._*` is private.
 
@@ -127,7 +128,7 @@ rumi.read(source, header, *, framework="numpy", pattern=None, time=None, bands=N
 | `time`, `bands` | `None` (all, file order), a list of zero-based positions (any order, repeats allowed), or a half-open `(start, stop)` tuple |
 | `window` | `None` (whole image) or a tuple `(row, column, height, width)` of integers |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
-| `framework` | `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"` or `"tf"`, or `None` for a `RumiArray` |
+| `framework` | `"numpy"` (default), `"torch"`, or `"dlpack"` for a `RumiArray` |
 
 ```python
 cube = rumi.read(path, header)                                    # (3, 4, 300, 260)
@@ -170,7 +171,7 @@ bytes.
 | `header` | canonical header bytes | the header |
 | `shape` | `(B, Y, X)` or `(T, B, Y, X)` | same |
 | `time_count` | `T` | same |
-| `dtype` | NumPy scalar type, such as `numpy.uint16` (an `ml_dtypes` type for ML floats) | same |
+| `dtype` | `rumi.DType`; `numpy_dtype` is the exact NumPy scalar or `None` | same |
 | `tile` | `(height, width)` | same |
 | `frame_layout` | decoded frame axes, such as `"b h w"` | same |
 | `index_order` | band and time axes the index walks, outermost first, such as `("b", "t")`; `()` for cell frames | same |
@@ -186,19 +187,14 @@ bytes.
 
 ## 7. `RumiArray`
 
-Returned by `read` and `read_many` with `framework=None`.
+Returned by `read` and `read_many` with `framework="dlpack"`.
 
 - `shape`; `__dlpack__` and `__dlpack_device__` (always CPU, `(1, 0)`).
-- `numpy()`, `torch()`, `jax()`, `tensorflow()` import from DLPack without copying. The
+- `numpy()` and `torch()` import from DLPack without copying. The
   storage moves to the first consumer; a second export raises `RuntimeError: this
   RumiArray was already exported`.
-- Sub-byte and `bool` results are backed by NumPy instead: `numpy()` returns the same
-  array every time, a tensor `framework=` is refused by `read` itself, and DLPack
-  export raises `BufferError` (`dtypes.md`).
-- `numpy()` views the bytes of `float8_*` and `bfloat16` results as `ml_dtypes` arrays,
-  because NumPy cannot import them through DLPack; this also counts as the one export.
-  Rumi 0.21.3 raised `SystemError` here.
-- TensorFlow receives a DLPack 0.x capsule.
+- `numpy()` raises without consuming the result when the dtype has no exact NumPy
+  representation. `torch()` accepts every registered dtype, including `bool`.
 
 ## 8. Threads
 

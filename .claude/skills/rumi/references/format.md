@@ -118,7 +118,7 @@ trailer       = offset[N - 1] + count[N - 1]
 ```
 
 A frame's decoded size is `h * w` samples for tile frames and `B * T * h * w` for cell
-frames, times the bytes per sample (1 below 8 bits). The frame index formulas are in
+frames, times the registry's decoded bytes per sample. The frame index formulas are in
 `patterns.md` section 4.
 
 ## 6. The trailer
@@ -247,8 +247,9 @@ def read_trailer(data, h):
 
 ## 9. Versions
 
-- `SPEC.md` declares specification 0.1.0, status Draft. The file header, header blob and
+- `SPEC.md` declares specification 0.2.0, status Draft. The file header, header blob and
   trailer are each version 1.
-- Readers open files written by Rumi 0.25.0 and later (`compatibility.md`).
-- The `frame_unit` and sample type registries are append-only: values are never
+- The development reader keeps 0.25 encodings that remain in the sample registry
+  (`compatibility.md`).
+- `frame_unit` is append-only. Removed sample encodings stay reserved and are never
   reassigned.
