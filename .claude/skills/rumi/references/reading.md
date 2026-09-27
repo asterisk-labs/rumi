@@ -1,9 +1,10 @@
 # Reading
 
-Sources: `bindings/python/rumi/_read.py`, `core/src/read.cpp`, `core/src/plan.cpp`,
-`core/src/source.cpp`, `core/src/capi.cpp`, `extern/karu/README.md`,
+Sources: `bindings/python/rumi/_read.py`, `_native.py`, `_dlpack.py`,
+`_framework.py`, `core/src/read.cpp`, `core/src/plan.cpp`, `core/src/source.cpp`,
+`core/src/capi.cpp`, `extern/karu/README.md`,
 `extern/karu/CONFIGURATION.md`, `bindings/python/tests/test_many.py` and
-`test_threads.py`. Examples ran against rumi 0.21.3, including the public fixtures.
+`test_threads.py`. Examples describe the current development build.
 
 ## Contents
 

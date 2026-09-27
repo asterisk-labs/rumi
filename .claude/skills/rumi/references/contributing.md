@@ -40,7 +40,10 @@ core/
   tests/test_c_header.c          C11 compile check of rumi.h
 bindings/python/
   rumi/_ffi.py                   hand-written cffi cdef (ABI mode) and library loading
-  rumi/_frames.py _pattern.py _write.py _read.py _info.py _time.py _threads.py _dtype.py _repr.py
+  rumi/_native.py                source and parsed-header handle ownership
+  rumi/_dlpack.py _framework.py  DLPack lifetime and framework consumers
+  rumi/_read.py _config.py       read orchestration and process configuration
+  rumi/_frames.py _pattern.py _write.py _info.py _time.py _dtype.py _repr.py
   rumi/_lib/                     staged librumi (ignored by git)
   tests/                         pytest suites
   pyproject.toml hatch_build.py check_wheel.py

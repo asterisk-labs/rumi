@@ -1,7 +1,7 @@
 # Sample types
 
 Sources: `core/include/rumi/rumi_dtypes.def`, `bindings/python/rumi/_dtype.py`,
-`bindings/python/rumi/_read.py`, `core/src/plan.cpp`, and Sample encodings in
+`bindings/python/rumi/_framework.py`, `core/src/plan.cpp`, and Sample encodings in
 `SPEC.md`. CI tests the complete registry with PyTorch 2.11, the supported JAX
 subset with JAX 0.11.2, and the supported TensorFlow subset with TensorFlow 2.21
 on CPU. These are tested versions, not declared minimums.

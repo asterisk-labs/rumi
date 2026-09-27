@@ -142,7 +142,7 @@
               <path class="figure-arrow" marker-end="url(#arrow-whole)" d="M442 72H464"/>
               <g class="figure-card"><rect x="468" y="36" width="126" height="72" rx="6"/><text x="531" y="59">execute_plan()</text><text class="sub" x="531" y="79">Karu ranges</text><text class="sub" x="531" y="94">decode workers</text></g>
               <path class="figure-arrow" marker-end="url(#arrow-whole)" d="M594 72H616"/>
-              <g class="figure-card accent"><rect x="620" y="36" width="128" height="72" rx="6"/><text x="684" y="59">RumiArray</text><text class="sub" x="684" y="79">DLPack</text><text class="sub" x="684" y="94">PyTorch tensor</text></g>
+              <g class="figure-card accent"><rect x="620" y="36" width="128" height="72" rx="6"/><text x="684" y="59">RumiArray</text><text class="sub" x="684" y="79">DLPack</text><text class="sub" x="684" y="94">framework array</text></g>
 
               <path class="figure-arrow" marker-end="url(#arrow-whole)" d="M492 112V142H417"/>
               <g class="figure-card"><rect x="285" y="135" width="132" height="55" rx="6"/><text x="351" y="158">Karu</text><text class="sub" x="351" y="176">compressed ranges</text></g>
@@ -180,14 +180,16 @@
 
           <p>The data file and header are separate on purpose. Rumi can plan exact byte ranges from the small header before touching the potentially large data source. A caller that already has the header can therefore begin a remote read without first downloading metadata from the data object.</p>
 
-          <p><code>read()</code> in <code>bindings/python/rumi/_read.py</code> first checks the broad Python types. It then creates two short-lived wrappers from <code>bindings/python/rumi/_ffi.py</code>, normalizes the selection, and crosses the native boundary.</p>
+          <p><code>read()</code> in <code>bindings/python/rumi/_read.py</code> parses the external header, validates the selection and resolves the framework consumer before opening the source. The native handle wrappers live in <code>bindings/python/rumi/_native.py</code>; the CFFI declarations and library loading remain isolated in <code>_ffi.py</code>.</p>
 
-          <pre><code>arr = _read_one(
-    _Source(source),
-    _Spec(header),
-    pattern, time, bands, window,
-)
-return _to_framework(arr, framework)</code></pre>
+          <pre><code>spec = _Spec(header)
+consumer = resolve_framework(framework, spec.fields.dtype)
+times = _resolve_axis(time, "time", spec.fields.time_count)
+bands = _resolve_axis(bands, "bands", spec.fields.samples_per_pixel)
+window = _resolve_window(window, spec.fields.image_length, spec.fields.image_width)
+pattern = _resolve_pattern(pattern)
+arr = _read_one(_Source(source), spec, times, bands, window, pattern)
+return consumer.convert(arr)</code></pre>
 
           <figure class="story-figure">
             <svg viewBox="0 0 760 250" role="img" aria-labelledby="python-title python-desc">
@@ -216,7 +218,7 @@ return _to_framework(arr, framework)</code></pre>
               <path class="figure-arrow" marker-end="url(#arrow-python)" d="M404 193H478"/>
               <g class="figure-card"><rect x="482" y="168" width="250" height="50" rx="6"/><text x="607" y="188">rumi_spec + C arguments</text><text class="sub" x="607" y="204">ready for rumi_read_dlpack()</text></g>
             </svg>
-            <figcaption>Only memory sources bypass Karu. A local path and a remote URI both enter through <code>TransportSource</code>; Karu resolves which transport they need.</figcaption>
+            <figcaption>Header, selection, pattern, and framework validation finish before <code>_Source</code> opens anything. Only memory sources bypass Karu. A local path and a remote URI both enter through <code>TransportSource</code>; Karu resolves which transport they need.</figcaption>
           </figure>
 
           <p><code>_resolve_axis()</code> expands a half-open range when necessary, validates Python’s zero-based band and time indices, and converts them to the C API’s one-based convention. A null pointer plus count zero means “all.” <code>_resolve_window()</code> turns <code>(row, column, height, width)</code> into the row and column offsets and sizes expected by C.</p>
@@ -569,8 +571,11 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
             <table>
               <thead><tr><th>File</th><th>What it owns</th><th>Main symbols</th></tr></thead>
               <tbody>
-                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_read.py"><code>bindings/python/rumi/_read.py</code></a></td><td>Public Python selection, framework conversion, and DLPack ownership</td><td><code>read</code>, <code>_read_one</code>, <code>RumiArray</code></td></tr>
-                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_ffi.py"><code>bindings/python/rumi/_ffi.py</code></a></td><td>Python wrappers around native source and parsed-header handles</td><td><code>_Source</code>, <code>_Spec</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_read.py"><code>bindings/python/rumi/_read.py</code></a></td><td>Public argument validation and read orchestration</td><td><code>read</code>, <code>read_many</code>, <code>_read_one</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_framework.py"><code>bindings/python/rumi/_framework.py</code></a></td><td>Framework compatibility and exact DLPack transfer</td><td><code>resolve_framework</code>, <code>_FRAMEWORKS</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_dlpack.py"><code>bindings/python/rumi/_dlpack.py</code></a></td><td>DLPack capsule and native tensor ownership</td><td><code>RumiArray</code>, <code>__dlpack__</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_native.py"><code>bindings/python/rumi/_native.py</code></a></td><td>Native source and parsed-header handles</td><td><code>_Source</code>, <code>_Spec</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/bindings/python/rumi/_ffi.py"><code>bindings/python/rumi/_ffi.py</code></a></td><td>C declarations, library loading, ABI checks, and status mapping</td><td><code>ffi</code>, <code>lib</code>, <code>_check</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/capi.cpp"><code>core/src/capi.cpp</code></a></td><td>C validation, output layout, allocation, and DLPack wrapping</td><td><code>prepare_selection</code>, <code>rumi_read_dlpack</code>, <code>prepare_many</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/read.cpp"><code>core/src/read.cpp</code></a></td><td>Frame planning, source checks, Karu batching, and execution order</td><td><code>append_read_plan</code>, <code>read_items</code>, <code>execute_plan</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/source.cpp"><code>core/src/source.cpp</code></a></td><td>Memory sources, Karu locator resolution, and transport sessions</td><td><code>MemorySource</code>, <code>TransportSource</code>, <code>TransportSession</code></td></tr>
