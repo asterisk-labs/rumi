@@ -32,7 +32,7 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.25.0 | Where it is pinned |
+| Component | Rumi 0.26.0 | Where it is pinned |
 | --- | --- | --- |
 | GeoZL | 0.18.0 | `extern/geozl` submodule; `geozl>=0.18.0,<0.19` in the package dependencies |
 | OpenZL | 0.2.0 | through GeoZL's submodule |
@@ -61,6 +61,7 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 | Version | Change |
 | --- | --- |
+| 0.26.0 | The dtype registry is the CPU DLPack subset that PyTorch imports unchanged. Codes 12, 13, 20-23 and 26-28 (`cint16`, `cint32`, the 2- and 4-bit integers, float6 and float4) are reserved, and files that use them are refused. `cfloat16/32/64`, `binary` and `float8_e8m0` are now `complex32/64/128`, `bool` and `float8_e8m0fnu`. `framework="dlpack"` replaces `framework=None`, `"tf"` is not accepted, `Metadata.dtype` is a `rumi.DType`, and `write` refuses `bytes` paths. C: `rumi_dtype_info` changed layout (recompile), and thread and checksum setters return `rumi_status` while their getters write through a pointer. |
 | 0.25.0 | Every file names each band and labels each time step: `rumi.write` requires `bands=` and `time=`, and the trailer (`TAIL`) stores the band texts before the time axis. Undefined time is gone. `info(source=...)` refuses files written by 0.24 and earlier, so their headers cannot be rebuilt (the current file baseline). C adds `band_texts` to `rumi_write_desc` and `rumi_metadata`. |
 | 0.20.0 | `read` and `read_many` require a header for every source. Removed `rumi.chunks`, `RumiHeader`, `Geo`, `Time`, `read_geo` and `read_time` (use `info` and `Metadata`); the `n`, `t`, `b`, `y`, `x` read keywords (use `time`, `bands`, `window`, and source order); multi-source `read` (use `read_many`). C removed `rumi_read_stack`, `rumi_read_stack_dlpack`, `rumi_index_file`, `rumi_read_geo`, `rumi_read_time`. |
 | 0.18.0 | Files start with the 16-byte `RUMI` header instead of a BigTIFF header. Reads lost `num_threads`; the process-wide pool replaced it. C layout and read APIs gained time axes. |

@@ -1,10 +1,9 @@
 # Python API
 
-Everything here describes the development version after `rumi` 0.25.0, as
-implemented in `bindings/python/rumi/`
+Everything here describes `rumi` 0.26.0, as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_config.py`, `_dlpack.py`,
-`_framework.py`, `_native.py`, and `_ffi.py`). The examples and messages describe
-that development build.
+`_framework.py`, `_native.py`, and `_ffi.py`). The examples and messages come from
+that release.
 
 ## Contents
 
