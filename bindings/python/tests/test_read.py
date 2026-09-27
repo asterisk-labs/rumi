@@ -85,6 +85,20 @@ def test_dlpack_copy_is_not_silently_ignored(image):
         result.__dlpack__(copy=1)
 
 
+def test_dlpack_read_buffers_are_256_byte_aligned(image):
+    path, header, _data = image
+    one = rumi.read(path, header, framework="dlpack")
+    many = rumi.read_many(
+        [path, path], [header, header],
+        windows=[(0, 0, 32, 32), (32, 32, 32, 32)],
+        framework="dlpack",
+    )
+
+    for result in (one, many):
+        address = int(ffi.cast("uintptr_t", result._tensor.dl_tensor.data))
+        assert address % 256 == 0
+
+
 def test_dlpack_capsule_failure_restores_versioned_owner(image, monkeypatch):
     path, header, data = image
     result = rumi.read(path, header, framework="dlpack")

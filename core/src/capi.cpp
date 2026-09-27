@@ -25,6 +25,17 @@ struct FreeDeleter {
     void operator()(void* ptr) const noexcept { std::free(ptr); }
 };
 
+constexpr std::size_t DLPACK_BUFFER_ALIGNMENT = 256;
+
+std::byte* allocate_dlpack_buffer(std::size_t size) noexcept
+{
+    void* data = nullptr;
+    if (::posix_memalign(&data, DLPACK_BUFFER_ALIGNMENT, size ? size : 1) != 0) {
+        return nullptr;
+    }
+    return static_cast<std::byte*>(data);
+}
+
 // Move assignment avoids a newer libstdc++ symbol required by assign().
 void set_error(std::string_view msg) noexcept
 {
@@ -969,8 +980,7 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
         }
 
         std::unique_ptr<std::byte, FreeDeleter> buffer(
-            static_cast<std::byte*>(
-                std::malloc(setup.need ? setup.need : 1)));
+            allocate_dlpack_buffer(setup.need));
         if (!buffer) {
             set_error("could not allocate the read buffer");
             return RUMI_ERR_OOM;
@@ -1100,8 +1110,7 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
         }
 
         std::unique_ptr<std::byte, FreeDeleter> buffer(
-            static_cast<std::byte*>(std::malloc(
-                setup.selection.need ? setup.selection.need : 1)));
+            allocate_dlpack_buffer(setup.selection.need));
         if (!buffer) {
             set_error("could not allocate the read buffer");
             return RUMI_ERR_OOM;

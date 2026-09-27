@@ -37,6 +37,11 @@ Notable user-visible changes are recorded here.
   `jax_enable_x64` for 64-bit dtypes; framework-specific unsupported dtypes
   fail explicitly.
 
+### Performance
+
+- DLPack read buffers are 256-byte aligned so JAX can import them without an
+  alignment copy.
+
 ### Fixed
 
 - Dtype validation rejects integer values above 255, and DLPack metadata
