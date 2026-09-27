@@ -48,6 +48,35 @@ def test_framework_none_is_invalid(image):
         rumi.read(path, header, framework=None)
 
 
+@pytest.mark.parametrize("kwargs, message", [
+    ({"bands": [99]}, "bands: index"),
+    ({"window": (0, 0, 1000, 1000)}, "window: requested window"),
+    ({"pattern": 1}, "pattern must be a string"),
+])
+def test_read_validates_arguments_before_opening_source(image, kwargs, message):
+    _path, header, _data = image
+    with pytest.raises((TypeError, ValueError), match=message):
+        rumi.read("does-not-exist.rumi", header, **kwargs)
+
+
+def test_read_many_validates_lengths_before_opening_sources(image):
+    _path, header, _data = image
+    with pytest.raises(ValueError, match="sources and headers length mismatch"):
+        rumi.read_many(
+            ["missing-one.rumi", "missing-two.rumi"], [header],
+            windows=[(0, 0, 8, 8)] * 2,
+        )
+
+
+def test_read_many_validates_windows_before_opening_sources(image):
+    _path, header, _data = image
+    with pytest.raises(ValueError, match=r"windows\[1\].*same size"):
+        rumi.read_many(
+            ["missing-one.rumi", "missing-two.rumi"], [header, header],
+            windows=[(0, 0, 8, 8), (0, 0, 4, 4)],
+        )
+
+
 @pytest.mark.parametrize("selection", [
     {"bands": [1.5]},
     {"bands": ["1"]},

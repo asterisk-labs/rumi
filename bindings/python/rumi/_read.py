@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from ._dlpack import RumiArray
 from ._ffi import _check, ffi, lib
 from ._framework import resolve_framework
-from ._native import Header, ReadSource, _Source, _Spec
+from ._native import Header, ReadSource, _Source, _Spec, encode_path
 
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
@@ -59,6 +59,22 @@ def _resolve_window(window: Window, image_height: int, image_width: int) \
     return row, height, column, width
 
 
+def _resolve_pattern(pattern: str | None):
+    if pattern is None:
+        return ffi.NULL
+    if not isinstance(pattern, str):
+        raise TypeError("pattern must be a string or None")
+    return pattern.encode("ascii")
+
+
+def _validate_source(source: ReadSource) -> None:
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        return
+    if not isinstance(source, (str, os.PathLike)):
+        raise TypeError("source must be path-like or bytes-like")
+    encode_path(source)
+
+
 def _to_c(lst: list[int] | None):
     if lst is None:
         return ffi.NULL, 0
@@ -71,20 +87,12 @@ def _dlpack_shape(tensor) -> tuple[int, ...]:
     return tuple(int(value.shape[i]) for i in range(value.ndim))
 
 
-def _read_one(src: _Source, spec: _Spec, pattern: str | None,
-              time: Axis, bands: Axis, window: Window) -> RumiArray:
-    h = spec.fields
-    times = _resolve_axis(time, "time", h.time_count)
-    picked_bands = _resolve_axis(bands, "bands", h.samples_per_pixel)
-    y_off, y_size, x_off, x_size = _resolve_window(
-        window, h.image_length, h.image_width)
-
-    # The file controls which axes exist; selections only change their lengths.
-    # NULL lets the read API choose its default from the complete time axis.
-    output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
-
+def _read_one(src: _Source, spec: _Spec,
+              times: list[int] | None, bands: list[int] | None,
+              window: tuple[int, int, int, int], output_pattern) -> RumiArray:
+    y_off, y_size, x_off, x_size = window
     times_c, n_times_c = _to_c(times)
-    bands_c, n_bands_c = _to_c(picked_bands)
+    bands_c, n_bands_c = _to_c(bands)
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_dlpack(
         src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
@@ -93,7 +101,8 @@ def _read_one(src: _Source, spec: _Spec, pattern: str | None,
     return RumiArray(out[0], _dlpack_shape(out[0]), spec.fields.dtype)
 
 
-def _resolve_windows(windows) -> tuple[list[int], list[int], int, int]:
+def _resolve_windows(windows, specs: Sequence[_Spec]) \
+        -> tuple[list[int], list[int], int, int]:
     """Split equal-sized windows into row offsets, column offsets, and size."""
     rows: list[int] = []
     cols: list[int] = []
@@ -113,6 +122,11 @@ def _resolve_windows(windows) -> tuple[list[int], list[int], int, int]:
             raise ValueError(f"windows[{i}]: row and column must not be negative")
         if height <= 0 or width <= 0:
             raise ValueError(f"windows[{i}]: height and width must be positive")
+        fields = specs[i].fields
+        if row + height > fields.image_length \
+                or column + width > fields.image_width:
+            raise ValueError(
+                f"windows[{i}]: requested window is out of bounds for image")
         if size is None:
             size = (height, width)
         elif (height, width) != size:
@@ -128,29 +142,11 @@ def _resolve_windows(windows) -> tuple[list[int], list[int], int, int]:
 
 
 def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
-               windows, pattern: str | None,
-               time: Axis, bands: Axis) -> RumiArray:
-    sources = list(sources)
-    specs = list(specs)
-    windows = list(windows)
-    if not sources:
-        raise ValueError("read_many requires at least one item")
-    if len(sources) != len(specs):
-        raise ValueError(
-            f"sources and specs length mismatch: {len(sources)} vs {len(specs)}"
-        )
-    if len(windows) != len(sources):
-        raise ValueError(
-            f"sources and windows length mismatch: {len(sources)} vs {len(windows)}"
-        )
-
-    y_offs, x_offs, y_size, x_size = _resolve_windows(windows)
-
-    h = specs[0].fields
-    times = _resolve_axis(time, "time", h.time_count)
-    picked_bands = _resolve_axis(bands, "bands", h.samples_per_pixel)
+               y_offs: list[int], x_offs: list[int],
+               y_size: int, x_size: int,
+               times: list[int] | None, bands: list[int] | None,
+               output_pattern) -> RumiArray:
     n_items = len(specs)
-    output_pattern = pattern.encode("ascii") if pattern is not None else ffi.NULL
 
     items = ffi.new("rumi_read_item[]", [
         (source.handle, spec.handle, y_off, x_off)
@@ -159,7 +155,7 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
     ])
 
     times_c, n_times_c = _to_c(times)
-    bands_c, n_bands_c = _to_c(picked_bands)
+    bands_c, n_bands_c = _to_c(bands)
 
     out = ffi.new("DLManagedTensorVersioned**")
     _check(lib.rumi_read_many_dlpack(
@@ -191,14 +187,21 @@ def read(source: _ReadSource, header: Header, *,
     process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
-    if not isinstance(source, (str, os.PathLike,
-                               bytes, bytearray, memoryview)):
-        raise TypeError("source must be path-like or bytes-like")
+    _validate_source(source)
     if not isinstance(header, (bytes, bytearray, memoryview)):
         raise TypeError("read needs one bytes-like header")
     spec = _Spec(header)
     consumer = resolve_framework(framework, spec.fields.dtype)
-    arr = _read_one(_Source(source), spec, pattern, time, bands, window)
+    fields = spec.fields
+    times = _resolve_axis(time, "time", fields.time_count)
+    picked_bands = _resolve_axis(bands, "bands", fields.samples_per_pixel)
+    resolved_window = _resolve_window(
+        window, fields.image_length, fields.image_width)
+    output_pattern = _resolve_pattern(pattern)
+
+    arr = _read_one(
+        _Source(source), spec, times, picked_bands, resolved_window,
+        output_pattern)
     return consumer.convert(arr)
 
 
@@ -235,10 +238,31 @@ def read_many(sources: Sequence[_ReadSource],
     if headers is None or isinstance(headers, (bytes, bytearray, memoryview)):
         raise TypeError("read_many needs one header per source")
     raw_headers = list(headers)
+    raw_windows = list(windows)
+
+    if not sources:
+        raise ValueError("read_many requires at least one item")
+    if len(raw_headers) != len(sources):
+        raise ValueError(
+            f"sources and headers length mismatch: "
+            f"{len(sources)} vs {len(raw_headers)}")
+    if len(raw_windows) != len(sources):
+        raise ValueError(
+            f"sources and windows length mismatch: "
+            f"{len(sources)} vs {len(raw_windows)}")
+    for source in sources:
+        _validate_source(source)
 
     specs = [_Spec(raw) for raw in raw_headers]
     consumers = [resolve_framework(framework, spec.fields.dtype)
                  for spec in specs]
-    arr = _read_many([_Source(s) for s in sources], specs, windows, pattern,
-                     time, bands)
+    fields = specs[0].fields
+    times = _resolve_axis(time, "time", fields.time_count)
+    picked_bands = _resolve_axis(bands, "bands", fields.samples_per_pixel)
+    y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows, specs)
+    output_pattern = _resolve_pattern(pattern)
+
+    arr = _read_many(
+        [_Source(source) for source in sources], specs,
+        y_offs, x_offs, y_size, x_size, times, picked_bands, output_pattern)
     return consumers[0].convert(arr)
