@@ -1,6 +1,8 @@
 """Freeze the public Python surface independently of private modules."""
 
 import inspect
+import subprocess
+import sys
 
 import rumi
 
@@ -26,6 +28,17 @@ PUBLIC = (
 def test_public_names_are_explicit():
     assert tuple(rumi.__all__) == PUBLIC
     assert all(hasattr(rumi, name) for name in PUBLIC)
+
+
+def test_import_keeps_optional_frameworks_lazy():
+    code = (
+        "import sys, rumi; "
+        "print(','.join(name for name in ('torch', 'jax', 'tensorflow') "
+        "if name in sys.modules))"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert done.stdout == "\n"
 
 
 def test_public_function_parameters_stay_stable():

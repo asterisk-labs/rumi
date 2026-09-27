@@ -1,10 +1,10 @@
 from importlib.metadata import version
 
 from ._config import (
-                      get_checksum_verification,
-                      get_num_threads,
-                      set_checksum_verification,
-                      set_num_threads,
+    get_checksum_verification,
+    get_num_threads,
+    set_checksum_verification,
+    set_num_threads,
 )
 from ._dlpack import RumiArray
 from ._dtype import DType

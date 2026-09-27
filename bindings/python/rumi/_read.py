@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from ._dlpack import RumiArray
 from ._ffi import _check, ffi, lib
 from ._framework import resolve_framework
-from ._native import Header, ReadSource, _Source, _Spec, encode_path
+from ._native import Header, ReadSource, _Source, _Spec, normalize_source
 
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
@@ -65,14 +65,6 @@ def _resolve_pattern(pattern: str | None):
     if not isinstance(pattern, str):
         raise TypeError("pattern must be a string or None")
     return pattern.encode("ascii")
-
-
-def _validate_source(source: ReadSource) -> None:
-    if isinstance(source, (bytes, bytearray, memoryview)):
-        return
-    if not isinstance(source, (str, os.PathLike)):
-        raise TypeError("source must be path-like or bytes-like")
-    encode_path(source)
 
 
 def _to_c(lst: list[int] | None):
@@ -187,7 +179,7 @@ def read(source: _ReadSource, header: Header, *,
     process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
-    _validate_source(source)
+    source = normalize_source(source)
     if not isinstance(header, (bytes, bytearray, memoryview)):
         raise TypeError("read needs one bytes-like header")
     spec = _Spec(header)
@@ -250,12 +242,12 @@ def read_many(sources: Sequence[_ReadSource],
         raise ValueError(
             f"sources and windows length mismatch: "
             f"{len(sources)} vs {len(raw_windows)}")
-    for source in sources:
-        _validate_source(source)
+    sources = [normalize_source(source) for source in sources]
 
     specs = [_Spec(raw) for raw in raw_headers]
-    consumers = [resolve_framework(framework, spec.fields.dtype)
-                 for spec in specs]
+    consumer = resolve_framework(framework, specs[0].fields.dtype)
+    for spec in specs[1:]:
+        resolve_framework(framework, spec.fields.dtype)
     fields = specs[0].fields
     times = _resolve_axis(time, "time", fields.time_count)
     picked_bands = _resolve_axis(bands, "bands", fields.samples_per_pixel)
@@ -265,4 +257,4 @@ def read_many(sources: Sequence[_ReadSource],
     arr = _read_many(
         [_Source(source) for source in sources], specs,
         y_offs, x_offs, y_size, x_size, times, picked_bands, output_pattern)
-    return consumers[0].convert(arr)
+    return consumer.convert(arr)

@@ -44,15 +44,32 @@ def _to_torch(array: Any, dtype: DType) -> Any:
     return value
 
 
-_JAX_DLPACK = frozenset({
-    (1, 8, 1), (1, 16, 1), (1, 32, 1),
-    (0, 8, 1), (0, 16, 1), (0, 32, 1),
-    (2, 16, 1), (2, 32, 1),
-    (5, 64, 1), (4, 16, 1), (6, 8, 1),
-})
-_JAX_X64_DLPACK = frozenset({
-    (1, 64, 1), (0, 64, 1), (2, 64, 1), (5, 128, 1),
-})
+_DL_INT = 0
+_DL_UINT = 1
+_DL_FLOAT = 2
+_DL_BFLOAT = 4
+_DL_COMPLEX = 5
+_DL_BOOL = 6
+
+
+def _dlpack_types(code: int, *bits: int) -> set[tuple[int, int, int]]:
+    return {(code, width, 1) for width in bits}
+
+
+_JAX_DLPACK = frozenset(
+    _dlpack_types(_DL_UINT, 8, 16, 32)
+    | _dlpack_types(_DL_INT, 8, 16, 32)
+    | _dlpack_types(_DL_FLOAT, 16, 32)
+    | _dlpack_types(_DL_COMPLEX, 64)
+    | _dlpack_types(_DL_BFLOAT, 16)
+    | _dlpack_types(_DL_BOOL, 8)
+)
+_JAX_X64_DLPACK = frozenset(
+    _dlpack_types(_DL_UINT, 64)
+    | _dlpack_types(_DL_INT, 64)
+    | _dlpack_types(_DL_FLOAT, 64)
+    | _dlpack_types(_DL_COMPLEX, 128)
+)
 
 
 def _validate_jax(dtype: DType) -> None:
@@ -110,31 +127,22 @@ class _Consumer:
         return self.transfer(array, self.dtype)
 
 
-@dataclass(frozen=True)
-class _Framework:
-    validate: Callable[[DType], None]
-    transfer: Callable[[Any, DType], Any]
-
-    def resolve(self, code: int) -> _Consumer:
-        dtype = dtype_info(code)
-        self.validate(dtype)
-        return _Consumer(dtype, self.transfer)
-
-
 _FRAMEWORKS = {
-    "numpy": _Framework(_validate_numpy, _to_numpy),
-    "torch": _Framework(_validate_torch, _to_torch),
-    "jax": _Framework(_validate_jax, _to_jax),
-    "tensorflow": _Framework(_validate_tensorflow, _to_tensorflow),
-    "dlpack": _Framework(_accept, _to_dlpack),
+    "numpy": (_validate_numpy, _to_numpy),
+    "torch": (_validate_torch, _to_torch),
+    "jax": (_validate_jax, _to_jax),
+    "tensorflow": (_validate_tensorflow, _to_tensorflow),
+    "dlpack": (_accept, _to_dlpack),
 }
 
 
 def resolve_framework(name: str, dtype_code: int) -> _Consumer:
     try:
-        framework = _FRAMEWORKS[name]
+        validate, transfer = _FRAMEWORKS[name]
     except (KeyError, TypeError):
         choices = ", ".join(repr(value) for value in _FRAMEWORKS)
         raise ValueError(
             f"unknown framework {name!r}; expected {choices}") from None
-    return framework.resolve(dtype_code)
+    dtype = dtype_info(dtype_code)
+    validate(dtype)
+    return _Consumer(dtype, transfer)

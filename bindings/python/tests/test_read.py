@@ -1,6 +1,7 @@
 """Read paths for local files, memory buffers, and windows."""
 
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -39,7 +40,17 @@ def image(tmp_path_factory):
 
 def test_path_round_trip(image):
     path, header, data = image
-    assert np.array_equal(rumi.read(path, header), data)
+    assert np.array_equal(rumi.read(Path(path), header), data)
+
+
+def test_a_pathlike_must_resolve_to_text(image):
+    class BytesPath:
+        def __fspath__(self):
+            return b"scene.rumi"
+
+    _path, header, _data = image
+    with pytest.raises(TypeError, match="path-like returning str"):
+        rumi.read(BytesPath(), header)
 
 
 def test_framework_none_is_invalid(image):

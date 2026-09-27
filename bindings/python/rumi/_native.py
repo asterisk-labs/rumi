@@ -7,6 +7,18 @@ ReadSource = FilePath | bytes | bytearray | memoryview
 Header = bytes | bytearray | memoryview
 
 
+def normalize_source(source: ReadSource) -> ReadSource:
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        return source
+    try:
+        path = os.fspath(source)
+    except TypeError:
+        raise TypeError("source must be path-like or bytes-like") from None
+    if not isinstance(path, str):
+        raise TypeError("path must be str or path-like returning str")
+    return path
+
+
 def encode_path(path: FilePath) -> bytes:
     value = os.fspath(path)
     if not isinstance(value, str):
@@ -21,6 +33,7 @@ class _Source:
     _keep: object
 
     def __init__(self, target: ReadSource) -> None:
+        target = normalize_source(target)
         out = ffi.new("rumi_source**")
         if isinstance(target, (bytes, bytearray, memoryview)):
             buffer = ffi.from_buffer(target)
