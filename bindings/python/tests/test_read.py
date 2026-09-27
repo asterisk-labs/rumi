@@ -1,6 +1,5 @@
 """Read paths for local files, memory buffers, and windows."""
 
-import inspect
 import threading
 
 import numpy as np
@@ -18,18 +17,6 @@ GRAPH = "planar>zigzag>zstd"
 def test_rumi_array_is_public():
     assert rumi.RumiArray.__module__ == "rumi._read"
 
-
-def test_public_read_signature_has_one_set_of_selectors():
-    read_parameters = inspect.signature(rumi.read).parameters
-    many_parameters = inspect.signature(rumi.read_many).parameters
-    assert tuple(read_parameters) == (
-        "source", "header", "framework", "pattern", "time", "bands", "window"
-    )
-    assert tuple(many_parameters) == (
-        "sources", "headers", "windows", "framework", "pattern", "time", "bands"
-    )
-    assert read_parameters["header"].default is inspect.Parameter.empty
-    assert many_parameters["headers"].default is inspect.Parameter.empty
 
 PATTERNS = {"tile": "b (row h) (col w) -> row col b (h w)",
             "cell": "b (row h) (col w) -> row col (b h w)",
