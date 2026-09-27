@@ -1,17 +1,11 @@
 import operator
-import warnings
 
-from ._ffi import lib
+from ._ffi import _check, ffi, lib
 
 
 def _apply(n: int) -> int:
-    effective = lib.rumi_set_num_threads(n)
-    if effective != n:
-        warnings.warn(
-            f"rumi's thread count is pinned at {effective}; the request for "
-            f"{n} was ignored. Configure it before the first parallel read.",
-            RuntimeWarning, stacklevel=3)
-    return effective
+    _check(lib.rumi_set_num_threads(n))
+    return n
 
 
 def _validate(n) -> int:
@@ -36,4 +30,6 @@ def set_num_threads(n: int) -> int:
 
 def get_num_threads() -> int:
     """Return the process-wide count currently configured or pinned."""
-    return lib.rumi_get_num_threads()
+    out = ffi.new("int*")
+    _check(lib.rumi_get_num_threads(out))
+    return out[0]

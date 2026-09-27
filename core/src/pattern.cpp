@@ -245,17 +245,14 @@ std::size_t row_for_order(const std::uint8_t* axes, std::size_t ndim) noexcept
     for (std::size_t u = 0; u < UNIT_REGISTRY.size(); ++u) {
         const UnitRow& row = UNIT_REGISTRY[u];
         if (row.ndim != ndim || row.time_first) continue;
-        std::uint8_t stands_for = 0;
         bool ok = true;
         for (std::size_t i = 0; i < ndim && ok; ++i) {
             if (row.axes[i] == AXIS_ONE) {
                 if (axes[i] != AXIS_BAND && axes[i] != AXIS_TIME) ok = false;
-                else stands_for = axes[i];
             } else if (row.axes[i] != axes[i]) {
                 ok = false;
             }
         }
-        (void)stands_for;
         if (ok) return u;
     }
     return UNIT_REGISTRY.size();

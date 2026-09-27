@@ -1,3 +1,5 @@
+import operator
+
 import numpy as np
 
 from ._dtype import check_samples, dtype_code, needs_sample_validation
@@ -13,7 +15,6 @@ from ._pattern import (
 from ._repr import _human, frame_html, frame_text
 
 _HEAD, _HEAD_TAIL = 5, 10  # rows either side of the gap, and when to cut
-_MAX_CELLS = 24            # past this the drawn face bins, one cell per block
 _PAYLOAD_COLS = ("data", "compressed")
 
 # Names reserved by Frame and by every possible FrameTable layout.
@@ -125,11 +126,16 @@ class FrameTable:
                  dtype, pattern, time_count=1):
         self.pattern = (pattern if not isinstance(pattern, str)
                         else compile_pattern(pattern))
-        self.image_width = int(image_width)
-        self.image_length = int(image_length)
-        self.tile_size = t = int(tile_size)
-        self.bands = int(bands)
-        self.time_count = int(time_count)
+        try:
+            self.image_width = operator.index(image_width)
+            self.image_length = operator.index(image_length)
+            self.tile_size = t = operator.index(tile_size)
+            self.bands = operator.index(bands)
+            self.time_count = operator.index(time_count)
+        except TypeError:
+            raise TypeError(
+                "image dimensions, tile_size, bands and time_count must be integers"
+            ) from None
         self.dtype = np.dtype(dtype)
         code = dtype_code(self.dtype)
         validate_samples = needs_sample_validation(code)
@@ -199,7 +205,10 @@ class FrameTable:
             raise ValueError(
                 f"the pattern names {len(p.input_axes)} axes "
                 f"({' '.join(p.input_axes)}), got shape {arr.shape}")
-        tile = int(tile_size)
+        try:
+            tile = operator.index(tile_size)
+        except TypeError:
+            raise TypeError("tile_size must be an integer") from None
         if not 1 <= tile <= 65535:
             raise ValueError(f"tile_size must be in [1, 65535], got {tile_size}")
 
@@ -427,25 +436,8 @@ class FrameTable:
 
     def _repr_html_(self):
         f, rows = self._facts(), self._rows()
-        return frame_html(f, rows, self._states(), self.columns,
+        return frame_html(f, rows, self.columns,
                           frame_text(f, rows, self.columns))
-
-    def _states(self):
-        """Return the binned completion state used by the grid preview."""
-        across, down = self.tiles_across, self.tiles_down
-        per = self._per_cell
-        step = max(1, -(-max(across, down) // _MAX_CELLS))
-        ny, nx = -(-down // step), -(-across // step)
-
-        hits = np.zeros((ny * step, nx * step), np.int64)
-        hits[:down, :across] = (self._size >= 0).reshape(down, across,
-                                                         per).sum(2)
-        total = np.zeros_like(hits)
-        total[:down, :across] = per
-
-        hits = hits.reshape(ny, step, nx, step).sum((1, 3))
-        total = total.reshape(ny, step, nx, step).sum((1, 3))
-        return np.where(hits == total, 2, np.where(hits == 0, 0, 1))
 
 
 def _frame_bytes(v, i):

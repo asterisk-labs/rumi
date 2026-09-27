@@ -210,6 +210,16 @@ void test_base_offset_accepts_valid_tile_sizes()
     }
 }
 
+void test_writer_rejects_a_noncanonical_frame_unit()
+{
+    CASE("the writer requires a frame unit valid for the raster extents")
+    auto d = desc_of(32, 32, 16, 1, nullptr, 0);
+    d.frame_unit = rumi::FRAME_PLANAR;
+    auto result = rumi::base_offset(d);
+    OK(!result.has_value());
+    if (!result) OK(result.error().find("not valid") != std::string::npos);
+}
+
 void test_geokeys()
 {
     CASE("the geokey directory is three keys and 32 bytes, always")
@@ -944,6 +954,13 @@ void test_checksum_verification()
     OK(rumi::checksum_verification());
     OK(!rumi::set_checksum_verification(false));
     OK(!rumi::checksum_verification());
+
+    CASE("the C API validates values and output pointers")
+    EQ(rumi_set_checksum_verification(2), RUMI_ERR_INVALID);
+    EQ(rumi_get_checksum_verification(nullptr), RUMI_ERR_INVALID);
+    int value = -1;
+    EQ(rumi_get_checksum_verification(&value), RUMI_OK);
+    EQ(value, 0);
 }
 
 // These checks run before pool creation. Pinned behavior is tested in isolated
@@ -959,6 +976,13 @@ void test_thread_count()
     EQ(rumi::set_num_threads(1 << 20), 1024);
     EQ(rumi::num_threads(), 1024);
     EQ(rumi::set_num_threads(1), 1);
+
+    CASE("the C API validates values and output pointers")
+    EQ(rumi_set_num_threads(0), RUMI_ERR_INVALID);
+    EQ(rumi_get_num_threads(nullptr), RUMI_ERR_INVALID);
+    int value = 0;
+    EQ(rumi_get_num_threads(&value), RUMI_OK);
+    EQ(value, 1);
 }
 
 void test_failed_pool_construction_releases_the_count()
@@ -1226,6 +1250,11 @@ void test_frame_unit_registry()
 {
     using rumi::unit_name;
     using rumi::unit_valid_for;
+
+    CASE("the C API rejects an invalid unit instead of returning no axes")
+    std::uint8_t axes[2]{};
+    int ndim = -1;
+    EQ(rumi_unit_index_axes(255, 3, 1, axes, &ndim), RUMI_ERR_INVALID);
 
     CASE("a row that places one axis names whichever axis the raster has")
     OK(unit_name(1, 3, 1) == "b h w");
@@ -1848,6 +1877,12 @@ void test_write_c_api_band_texts()
     EQ(write(), RUMI_ERR_INVALID);
     OK(std::strstr(rumi_last_error(), "time_type is 0") != nullptr);
 
+    desc.time_type = rumi::TIME_INSTANT;
+    desc.time = nullptr;
+    EQ(write(), RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(), "time is null") == 0);
+    desc.time = day;
+
     CASE("base offset does not inspect invalid trailer metadata")
     std::uint64_t base = 0;
     desc.band_texts = nullptr;
@@ -1980,6 +2015,7 @@ int main()
     test_base_offset_matches_the_spec();
     test_georeferencing_does_not_change_the_size();
     test_base_offset_accepts_valid_tile_sizes();
+    test_writer_rejects_a_noncanonical_frame_unit();
     test_geokeys();
     test_parse_blob();
     test_count_packing();

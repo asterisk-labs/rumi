@@ -431,7 +431,6 @@ enum class ParseError {
     blob_too_short,
     bad_magic,
     unsupported_version,
-    invalid_bits_per_sample,
     invalid_sample_format,
     invalid_frame_unit,
     invalid_dimensions,
@@ -483,6 +482,7 @@ struct Header {
     std::uint32_t tiles_down{};
     std::uint32_t frame_count{};
     std::size_t   bytes_per_sample{};
+    std::uint8_t  component_bytes{};
     std::size_t   max_frame_size{};
     rumi_dtype    dtype{RUMI_DT_UNKNOWN};
 
@@ -706,7 +706,6 @@ inline void bind_offsets(Plan& plan) noexcept {
 class Executor {
 public:
     explicit Executor(ThreadPool* pool) noexcept;
-    [[nodiscard]] bool run(const Plan& plan) const;
     [[nodiscard]] bool run(std::span<const FrameTask> tasks,
                            const FrameSpec& spec,
                            TransportSession* transport) const;
@@ -800,6 +799,7 @@ std::uint64_t set_max_frame_bytes(std::uint64_t n) noexcept;
 // forked child initializes its own value and pool.
 int set_num_threads(int n) noexcept;
 [[nodiscard]] int num_threads() noexcept;
+[[nodiscard]] const char* thread_configuration_error() noexcept;
 
 
 // Checksums.
@@ -807,6 +807,7 @@ int set_num_threads(int n) noexcept;
 // Process-wide OpenZL checksum verification. The first decoded frame pins it.
 bool set_checksum_verification(bool on) noexcept;
 [[nodiscard]] bool checksum_verification() noexcept;
+[[nodiscard]] const char* checksum_configuration_error() noexcept;
 
 
 // Reading.
@@ -863,13 +864,13 @@ struct FileGeo {
 build_blob_from_source(Source& source, FileGeo* geo = nullptr,
                        Trailer* trailer = nullptr) noexcept;
 
-// Convenience wrapper used after writing a local file.
+// Convenience wrapper for indexing a local file.
 [[nodiscard]] std::expected<std::vector<std::byte>, Error>
 build_blob_from_file(const char* path, FileGeo* geo = nullptr,
                      Trailer* trailer = nullptr) noexcept;
 
-// Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned, malloc'd data
-// that the tensor deleter frees. nullptr when the dtype has no DLPack code.
+// Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned. The tensor
+// deleter frees the malloc'd data; nullptr reports an allocation failure.
 [[nodiscard]] DLManagedTensorVersioned*
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;

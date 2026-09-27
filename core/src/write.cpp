@@ -149,6 +149,10 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
     if (!unit_is_defined(d.frame_unit))
         return errf("frame_unit is %u; the registry runs 0 to %zu",
                    unsigned(d.frame_unit), UNIT_REGISTRY.size() - 1);
+    if (!unit_valid_for(d.frame_unit, d.samples_per_pixel, d.time_count))
+        return errf("frame_unit %u is not valid for %u bands and %u time steps",
+                    unsigned(d.frame_unit), unsigned(d.samples_per_pixel),
+                    d.time_count);
     if ((d.transform == nullptr) != (d.epsg == 0))
         return errf("transform and a CRS must be given together");
 
@@ -159,9 +163,7 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
     g.across = 1 + (d.image_width  - 1) / d.tile_size;
     g.down   = 1 + (d.image_length - 1) / d.tile_size;
     // Indexed axes multiply frames per grid position.
-    const std::uint8_t unit =
-        effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count);
-    if (!frame_count_of(unit, g.across, g.down, d.samples_per_pixel,
+    if (!frame_count_of(d.frame_unit, g.across, g.down, d.samples_per_pixel,
                         d.time_count, &g.frames))
         return errf("frame count overflows uint64");
     if (g.frames > 0xFFFFFFFFu)
@@ -192,8 +194,7 @@ plan(const WriteDesc& d, const Grid& g,
 
     // Rumi's two private tags are last in the fixed profile.
     l.entries.push_back(pack(TAG_FRAME_UNIT, TIFF_SHORT,
-        {static_cast<std::uint16_t>(
-            effective_unit(d.frame_unit, d.samples_per_pixel, d.time_count))}));
+        {static_cast<std::uint16_t>(d.frame_unit)}));
     l.entries.push_back(pack(TAG_TIME_COUNT, TIFF_LONG, {d.time_count}));
 
     l.base = place_external(l.entries, IFD_OFFSET + IFD_SIZE, l.external);
@@ -351,8 +352,7 @@ try {
     bh.samples_per_pixel = spp;
     bh.bits_per_sample   = g->bits;
     bh.sample_format     = g->sample_format;
-    // Omit singleton band and time axes from the recorded frame unit.
-    bh.frame_unit        = effective_unit(d.frame_unit, spp, d.time_count);
+    bh.frame_unit        = d.frame_unit;
 
     // Verify the planned base offset against the format formula.
     if (l->base != derived_base_offset(spp, n)) {
@@ -369,21 +369,6 @@ try {
     std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
     pack_counts(counts, cp, blob.data() + HEADER_SIZE);
 
-    // Rebuild the external header from the finalized file and compare it with
-    // the writer's result. Indexing reads metadata only, not frame payloads.
-    auto indexed = build_blob_from_file(path);
-    if (!indexed) {
-        // A format error here is the writer's fault, not the caller's file.
-        const rumi_status status = indexed.error().status == RUMI_ERR_IO
-                                 ? RUMI_ERR_IO : RUMI_ERR_INTERNAL;
-        return failf(status, "wrote %s but could not index it back: %s", path,
-                     indexed.error().message.c_str());
-    }
-    if (*indexed != blob) {
-        return failf(RUMI_ERR_INTERNAL,
-                     "the header describes something other than the file just "
-                     "written to %s", path);
-    }
     leave_nothing.keep = true;
     return blob;
 }

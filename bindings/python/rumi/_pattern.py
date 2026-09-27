@@ -45,8 +45,7 @@ def index_axes(frame_unit, bands, times):
 
 def unit_indexes_bands(frame_unit, bands, times):
     """Return whether band is part of the frame index."""
-    layout_name(frame_unit, bands, times)  # Validate the unit first.
-    return bool(lib.rumi_unit_indexes_bands(frame_unit, bands, times))
+    return "b" in index_axes(frame_unit, bands, times)
 
 
 def compile_layout_unit(layout, bands, times):
@@ -99,11 +98,6 @@ class FramePattern:
         return (*GRID_COLUMNS,
                 *(COLUMN[a] for a in self.index_axes
                   if (bands if a == "b" else times) > 1))
-
-    @property
-    def canonical_axes(self):
-        """Return the axis order used before applying the frame permutation."""
-        return (*AXES, *TILE)
 
     @property
     def canonical_input(self):

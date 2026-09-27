@@ -37,6 +37,12 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
     return tf
 
 
+@pytest.mark.parametrize("tile_size", [16.5, "16"])
+def test_frame_tile_size_is_an_integer(tile_size):
+    with pytest.raises(TypeError, match="tile_size must be an integer"):
+        rumi.frames(np.zeros((1, 16, 16), np.uint8), CELL, tile_size)
+
+
 def read_ifd(path):
     """Return ``(entries, next_ifd, bytes)`` from the independent parser."""
     blob = open(path, "rb").read()
@@ -546,13 +552,16 @@ def test_writer_preserves_generator_order(tmp_path):
     assert rumi.info(source=path).bands == ["nir", "red"]
 
 
-def test_a_transform_is_six_coefficients(tmp_path):
-    """Reject transforms missing any of the six affine coefficients."""
+def test_a_transform_is_six_coefficients_or_an_affine_matrix(tmp_path):
     tf = make_frame()
     with pytest.raises(ValueError, match="six coefficients"):
         write_frames(tmp_path / "a.rumi", tf["compressed"], tf, **labels(tf),
                      transform=(10.0, 0.0, 3e5, 0.0, -10.0), crs=UTM18S)
-    # Affine objects may expose additional values after the six coefficients.
     write_frames(tmp_path / "b.rumi", tf["compressed"], tf, **labels(tf),
                  transform=(10.0, 0.0, 3e5, 0.0, -10.0, 8.1e6, 0.0, 0.0, 1.0),
                  crs=UTM18S)
+    for values in ((1,) * 7, (1,) * 8, (1,) * 10,
+                   (10.0, 0.0, 3e5, 0.0, -10.0, 8.1e6, 0.0, 1.0, 0.0)):
+        with pytest.raises(ValueError, match="transform|affine"):
+            write_frames(tmp_path / "bad.rumi", tf["compressed"], tf,
+                         **labels(tf), transform=values, crs=UTM18S)

@@ -62,14 +62,40 @@ def test_the_environment_seeds_the_count(image):
                RUMI_NUM_THREADS="3") == "3"
 
 
-def test_an_invalid_environment_falls_back_to_one(image):
-    assert run(image, "print(rumi.get_num_threads())",
-               RUMI_NUM_THREADS="3 trailing") == "1"
+def test_an_invalid_environment_is_an_error(image):
+    assert run(image, """
+        try:
+            rumi.get_num_threads()
+        except ValueError as error:
+            print(error)
+    """, RUMI_NUM_THREADS="3 trailing") == (
+        "RUMI_NUM_THREADS must be an integer in [1, 1024] or ALL_CPUS")
 
 
-def test_the_environment_is_bounded(image):
-    assert run(image, "print(rumi.get_num_threads())",
-               RUMI_NUM_THREADS="2000") == "1024"
+def test_an_out_of_range_environment_is_an_error(image):
+    assert run(image, """
+        try:
+            rumi.get_num_threads()
+        except ValueError as error:
+            print(error)
+    """, RUMI_NUM_THREADS="2000") == (
+        "RUMI_NUM_THREADS must be an integer in [1, 1024] or ALL_CPUS")
+
+
+def test_an_explicit_setting_replaces_an_invalid_environment(image):
+    assert run(image, """
+        print(rumi.set_num_threads(3), rumi.get_num_threads())
+    """, RUMI_NUM_THREADS="invalid") == "3 3"
+
+
+def test_an_invalid_environment_prevents_a_read(image):
+    assert run(image, """
+        try:
+            rumi.read(PATH, HDR)
+        except ValueError as error:
+            print(error)
+    """, RUMI_NUM_THREADS="invalid") == (
+        "RUMI_NUM_THREADS must be an integer in [1, 1024] or ALL_CPUS")
 
 
 def test_all_cpus_is_spelled_out(image):
@@ -97,14 +123,15 @@ def test_a_serial_read_does_not_pin_the_count(image):
     """) == "4 4"
 
 
-def test_the_pool_pins_the_count_and_a_later_set_warns(image):
+def test_the_pool_pins_the_count_and_rejects_a_later_change(image):
     assert run(image, """
         rumi.set_num_threads(4)
         rumi.read(PATH, HDR)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            print(rumi.set_num_threads(2), len(caught))
-    """) == "4 1"
+        try:
+            rumi.set_num_threads(2)
+        except ValueError as error:
+            print(error)
+    """) == "thread count is pinned at 4, not 2"
 
 
 def test_a_read_takes_the_process_count(image):

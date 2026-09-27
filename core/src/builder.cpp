@@ -43,18 +43,6 @@ struct Entry {
     std::byte     value[8];
 };
 
-// Byte width of a supported IFD field type, or zero.
-std::size_t type_size(std::uint16_t t) noexcept
-{
-    switch (t) {
-        case 1: case 2: case 6: case 7:                      return 1;
-        case 3: case 8:                                      return 2;
-        case 4: case 9: case 11:                             return 4;
-        case 5: case 10: case 12: case 16: case 17: case 18: return 8;
-        default:                                             return 0;
-    }
-}
-
 // The build requires a little-endian host, so values can be copied directly.
 std::uint64_t read_uint(const std::byte* p, std::size_t sz) noexcept
 {
@@ -181,7 +169,7 @@ try {
 
     // Unused inline bytes must be zero for canonical encoding.
     for (const Entry& e : entries) {
-        const std::size_t ts = type_size(e.type);
+        const std::size_t ts = tiff_field_bytes(e.type);
         if (ts == 0 || e.count > 8 / ts) continue;      // stored externally
         const std::size_t used = ts * static_cast<std::size_t>(e.count);
         for (std::size_t k = used; k < 8; ++k) {
@@ -203,7 +191,7 @@ try {
     // before interpreting any external value.
     std::uint64_t cursor = IFD_OFFSET + IFD_SIZE;
     for (const Entry& e : entries) {
-        const std::uint64_t ts = type_size(e.type);
+        const std::uint64_t ts = tiff_field_bytes(e.type);
         if (e.count > std::numeric_limits<std::uint64_t>::max() / ts) {
             return bad("tag %u byte size overflows uint64", e.tag);
         }
@@ -229,12 +217,11 @@ try {
                    "16 values");
     }
 
-    // Read one integer value, or return the supplied default when absent.
-    auto scalar = [&](std::uint16_t tag, std::uint64_t deflt)
+    // Read one required integer value.
+    auto scalar = [&](std::uint16_t tag)
         -> std::expected<std::uint64_t, Error> {
         const Entry* e = find(tag);
-        if (!e) return deflt;
-        const std::size_t ts = type_size(e->type);
+        const std::size_t ts = tiff_field_bytes(e->type);
         if (ts == 0 || ts > 8 || e->count < 1) {
             return bad("tag %u has an unreadable type or count", tag);
         }
@@ -264,7 +251,7 @@ try {
                        static_cast<unsigned long long>(e->count),
                        static_cast<unsigned long long>(expected));
         }
-        const std::size_t ts = type_size(e->type);
+        const std::size_t ts = tiff_field_bytes(e->type);
         if (ts == 0 || ts > 8) return bad("tag %u has an unreadable type", tag);
         if (e->count > std::numeric_limits<std::uint64_t>::max() / ts) {
             return bad("tag %u size overflows", tag);
@@ -296,15 +283,15 @@ try {
     };
 
     // Raster dimensions and band count.
-    auto iw_e  = scalar(TAG_IMAGE_WIDTH, 0);
+    auto iw_e  = scalar(TAG_IMAGE_WIDTH);
     if (!iw_e)  return std::unexpected(iw_e.error());
-    auto ih_e  = scalar(TAG_IMAGE_LENGTH, 0);
+    auto ih_e  = scalar(TAG_IMAGE_LENGTH);
     if (!ih_e)  return std::unexpected(ih_e.error());
-    auto tw_e  = scalar(TAG_TILE_WIDTH, 0);
+    auto tw_e  = scalar(TAG_TILE_WIDTH);
     if (!tw_e)  return std::unexpected(tw_e.error());
-    auto tl_e  = scalar(TAG_TILE_LENGTH, 0);
+    auto tl_e  = scalar(TAG_TILE_LENGTH);
     if (!tl_e)  return std::unexpected(tl_e.error());
-    auto spp_e = scalar(TAG_SAMPLES_PER_PIXEL, 1);
+    auto spp_e = scalar(TAG_SAMPLES_PER_PIXEL);
     if (!spp_e) return std::unexpected(spp_e.error());
 
     const std::uint64_t iw  = *iw_e;
@@ -328,14 +315,12 @@ try {
     const auto& bits = *bits_e;
     for (std::uint64_t v : bits) if (v != bits[0]) return bad("mixed BitsPerSample is not supported");
 
-    std::uint64_t sf = 1;
-    if (find(TAG_SAMPLE_FORMAT) != nullptr) {
-        auto sf_e = array(TAG_SAMPLE_FORMAT, spp);
-        if (!sf_e) return std::unexpected(sf_e.error());
-        const auto& sfa = *sf_e;
-        for (std::uint64_t v : sfa) if (v != sfa[0]) return bad("mixed SampleFormat is not supported");
-        sf = sfa[0];
-    }
+    auto sf_e = array(TAG_SAMPLE_FORMAT, spp);
+    if (!sf_e) return std::unexpected(sf_e.error());
+    const auto& sfa = *sf_e;
+    for (std::uint64_t v : sfa)
+        if (v != sfa[0]) return bad("mixed SampleFormat is not supported");
+    const std::uint64_t sf = sfa[0];
 
     const std::uint8_t bps = static_cast<std::uint8_t>(bits[0]);
     const std::uint8_t sff = static_cast<std::uint8_t>(sf);
@@ -454,7 +439,7 @@ try {
         static_cast<std::uint64_t>(tiles_across) * tiles_down;
 
     // FrameUnit and both frame-table counts must describe the same layout.
-    auto time_e = scalar(TAG_TIME_COUNT, 1);
+    auto time_e = scalar(TAG_TIME_COUNT);
     if (!time_e) return std::unexpected(time_e.error());
     if (*time_e == 0 || *time_e > 0xFFFFFFFFull) {
         return bad("time_count is %llu, which is not a usable count",
@@ -462,7 +447,7 @@ try {
     }
     const auto time_count = static_cast<std::uint32_t>(*time_e);
 
-    auto unit_e = scalar(TAG_FRAME_UNIT, FRAME_TILE);
+    auto unit_e = scalar(TAG_FRAME_UNIT);
     if (!unit_e) return std::unexpected(unit_e.error());
     if (*unit_e > 0xFF || !unit_is_defined(static_cast<std::uint8_t>(*unit_e))) {
         return bad("frame_unit is %llu, which names no frame layout",

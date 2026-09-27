@@ -34,7 +34,6 @@ std::string_view describe(ParseError e) noexcept
         case ParseError::blob_too_short:               return "blob shorter than header";
         case ParseError::bad_magic:                    return "bad magic";
         case ParseError::unsupported_version:          return "unsupported version";
-        case ParseError::invalid_bits_per_sample:      return "invalid bits per sample";
         case ParseError::invalid_sample_format:        return "invalid sample format";
         case ParseError::invalid_dimensions:           return "invalid dimensions";
         case ParseError::blob_size_mismatch:           return "blob size does not match frame count";
@@ -164,12 +163,6 @@ parse_blob(std::span<const std::byte> blob)
     if (bh.magic   != MAGIC)   return std::unexpected(ParseError::bad_magic);
     if (bh.version != VERSION) return std::unexpected(ParseError::unsupported_version);
 
-    if (bh.bits_per_sample != 1  && bh.bits_per_sample != 8  &&
-        bh.bits_per_sample != 16 &&
-        bh.bits_per_sample != 32 && bh.bits_per_sample != 64 &&
-        bh.bits_per_sample != 128) {
-        return std::unexpected(ParseError::invalid_bits_per_sample);
-    }
     const rumi_dtype dt = sample_to_dtype(bh.sample_format, bh.bits_per_sample);
     if (dt == RUMI_DT_UNKNOWN) {
         return std::unexpected(ParseError::invalid_sample_format);
@@ -201,7 +194,14 @@ parse_blob(std::span<const std::byte> blob)
     h.sample_format     = bh.sample_format;
     h.frame_unit        = bh.frame_unit;
     h.dtype             = dt;
-    h.bytes_per_sample  = dtype_size(dt);
+    std::size_t dtype_count = 0;
+    const rumi_dtype_info* dtypes = dtype_table(&dtype_count);
+    for (std::size_t i = 0; i < dtype_count; ++i) {
+        if (dtypes[i].code != static_cast<std::uint8_t>(dt)) continue;
+        h.bytes_per_sample = dtypes[i].storage_bytes;
+        h.component_bytes = dtypes[i].component_bytes;
+        break;
+    }
 
     h.tiles_across = 1 + (bh.image_width  - 1) / bh.tile_width;
     h.tiles_down   = 1 + (bh.image_length - 1) / bh.tile_length;

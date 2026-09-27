@@ -64,6 +64,22 @@ def test_a_time_of_day_makes_the_axis_seconds(tmp_path):
     assert rumi.info(source=path).time == [dt.datetime(2024, 8, 25, 14, 32, 7, tzinfo=UTC)]
 
 
+def test_a_second_scale_axis_has_one_python_type(tmp_path):
+    data = np.zeros((2, 1, 16, 16), np.uint16)
+    tf = rumi.frames(
+        data, "t b (row h) (col w) -> row col t b (h w)", 16)
+    for frame in tf:
+        frame.compressed = geozl.compress(
+            frame.data, graph=geozl.graph(frame.data, "id>zstd"))
+    path, _ = rumi.write(
+        tmp_path / "mixed-clock.rumi", tf, bands=["red"],
+        time=["2024-08-25", "2024-08-26T01:00:00Z"])
+    assert rumi.info(source=path).time == [
+        dt.datetime(2024, 8, 25, tzinfo=UTC),
+        dt.datetime(2024, 8, 26, 1, tzinfo=UTC),
+    ]
+
+
 def test_an_acquisition_window_is_a_pair(tmp_path):
     window = ("2024-08-25T14:30:00Z", "2024-08-25T14:35:00Z")
     path = write(tmp_path, "window", [window])
@@ -129,6 +145,17 @@ def test_a_zone_conversion_may_cross_into_the_next_day(tmp_path):
 def test_an_axis_that_cannot_be_recorded_is_refused(tmp_path, time, because):
     with pytest.raises((ValueError, TypeError), match=because):
         write(tmp_path, "bad", time)
+
+
+def test_an_object_with_astype_is_not_treated_as_numpy_datetime(tmp_path):
+    class Pretender:
+        dtype = "datetime64[s]"
+
+        def astype(self, _dtype):
+            return self
+
+    with pytest.raises(TypeError, match="date, a datetime or an ISO string"):
+        write(tmp_path, "pretender", [Pretender()])
 
 
 @pytest.mark.parametrize("time, because", [

@@ -61,7 +61,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
     const std::uint8_t byte = size ? data[0] : 0;
     char name[16] = {0};
     (void)rumi_unit_name(byte, 3, 4, name, sizeof name);
-    (void)rumi_unit_indexes_bands(byte, 3, 4);
     std::uint8_t axes[2] = {0, 0};
     int ndim = 0;
     (void)rumi_unit_index_axes(byte, 3, 4, axes, &ndim);

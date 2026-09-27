@@ -61,11 +61,39 @@ def test_the_environment_turns_it_on(image, value):
     ) == "True"
 
 
-@pytest.mark.parametrize("value", ["0", "false", "True", "maybe"])
-def test_any_other_environment_value_leaves_it_off(image, value):
+@pytest.mark.parametrize("value", ["0", "false", "off", "no"])
+def test_the_environment_turns_it_off(image, value):
     assert run(
         image, "print(rumi.get_checksum_verification())", RUMI_VERIFY=value
     ) == "False"
+
+
+@pytest.mark.parametrize("value", ["True", "maybe", "2"])
+def test_an_invalid_environment_is_an_error(image, value):
+    assert run(image, """
+        try:
+            rumi.get_checksum_verification()
+        except ValueError as error:
+            print(error)
+    """, RUMI_VERIFY=value) == (
+        "RUMI_VERIFY must be 0, 1, false, true, off, on, no, or yes")
+
+
+def test_an_explicit_setting_replaces_an_invalid_environment(image):
+    assert run(image, """
+        print(rumi.set_checksum_verification(True),
+              rumi.get_checksum_verification())
+    """, RUMI_VERIFY="invalid") == "True True"
+
+
+def test_an_invalid_environment_prevents_a_read(image):
+    assert run(image, """
+        try:
+            rumi.read(PATH, HDR)
+        except ValueError as error:
+            print(error)
+    """, RUMI_VERIFY="invalid") == (
+        "RUMI_VERIFY must be 0, 1, false, true, off, on, no, or yes")
 
 
 def test_set_before_any_read(image):
@@ -83,13 +111,20 @@ def test_the_setting_survives_a_round_trip(image):
     """) == "False False"
 
 
-def test_a_read_pins_the_setting_and_a_later_set_warns(image):
+def test_a_read_pins_the_setting_and_rejects_a_later_change(image):
     assert run(image, """
         rumi.read(PATH, HDR)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            print(rumi.set_checksum_verification(True), len(caught))
-    """) == "False 1"
+        try:
+            rumi.set_checksum_verification(True)
+        except ValueError as error:
+            print(error)
+    """) == "checksum verification is pinned at 0, not 1"
+
+
+@pytest.mark.parametrize("value", [0, 1, None, "yes"])
+def test_python_requires_a_boolean(value):
+    with pytest.raises(TypeError, match="must be a bool"):
+        rumi.set_checksum_verification(value)
 
 
 def test_a_checksum_verified_read_returns_the_same_data(image):

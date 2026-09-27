@@ -47,11 +47,12 @@ def _desc(tf, transform, crs, pixel_is_point):
         d.epsg = 0
     else:
         values = tuple(transform)
-        if len(values) < 6:
+        if len(values) not in (6, 9):
             raise ValueError(
                 f"a transform is six coefficients (x_res, row_rot, x_origin, "
                 f"col_rot, y_res, y_origin), got {len(values)}")
-        # Affine objects may expose additional values after the six coefficients.
+        if len(values) == 9 and values[6:] != (0.0, 0.0, 1.0):
+            raise ValueError("a nine-value affine transform must end in (0, 0, 1)")
         coeffs = ffi.new("double[6]", [float(v) for v in values[:6]])
         keep.append(coeffs)
         d.transform = coeffs

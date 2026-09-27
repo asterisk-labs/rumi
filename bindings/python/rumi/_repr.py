@@ -274,11 +274,11 @@ def _layout_frame(f):
         f'font-family="monospace" fill="currentColor" opacity=".52">{layout}</text></svg>')
 
 
-def _frame_figure(f, states, *, show_progress=True):
+def _frame_figure(f):
     return _layout_frame(f)
 
 
-def frame_html(f, rows, states, cols, fallback):
+def frame_html(f, rows, cols, fallback):
     e = html.escape
     summary = "".join(f'<tr><td class="k">{k}</td><td>{e(v)}</td></tr>'
                       for k, v in _meta(f))
@@ -298,7 +298,7 @@ def frame_html(f, rows, states, cols, fallback):
 
     return (f'<div class="rumi-tf"><style>{_FRAME_CSS}</style>'
             f'<pre class="fallback">{e(fallback)}</pre>'
-            f'<div class="box">{meta}<div class="g">{_frame_figure(f, states)}</div>'
+            f'<div class="box">{meta}<div class="g">{_frame_figure(f)}</div>'
             f'</div>{grid}</div>')
 
 

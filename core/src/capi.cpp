@@ -158,26 +158,73 @@ extern "C" uint64_t rumi_get_max_frame_bytes(void)
     return rumi::max_frame_bytes();
 }
 
-extern "C" int rumi_set_num_threads(int n)
+extern "C" rumi_status rumi_set_num_threads(int n)
 {
-    return rumi::set_num_threads(n);
+    return capi_call([&]() -> rumi_status {
+        if (n < 1 || n > 1024) {
+            set_error("num_threads must be in [1, 1024]");
+            return RUMI_ERR_INVALID;
+        }
+        const int effective = rumi::set_num_threads(n);
+        if (effective != n) {
+            set_error("thread count is pinned at " + std::to_string(effective)
+                      + ", not " + std::to_string(n));
+            return RUMI_ERR_INVALID;
+        }
+        return RUMI_OK;
+    });
 }
 
-extern "C" int rumi_get_num_threads(void)
+extern "C" rumi_status rumi_get_num_threads(int* out)
 {
-    return rumi::num_threads();
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_get_num_threads: null output");
+            return RUMI_ERR_INVALID;
+        }
+        if (const char* error = rumi::thread_configuration_error()) {
+            set_error(error);
+            return RUMI_ERR_INVALID;
+        }
+        *out = rumi::num_threads();
+        return RUMI_OK;
+    });
 }
 
 // Checksums.
 
-extern "C" int rumi_set_checksum_verification(int on)
+extern "C" rumi_status rumi_set_checksum_verification(int on)
 {
-    return rumi::set_checksum_verification(on != 0) ? 1 : 0;
+    return capi_call([&]() -> rumi_status {
+        if (on != 0 && on != 1) {
+            set_error("checksum verification must be 0 or 1");
+            return RUMI_ERR_INVALID;
+        }
+        const bool effective = rumi::set_checksum_verification(on != 0);
+        if (effective != (on != 0)) {
+            set_error("checksum verification is pinned at "
+                      + std::to_string(effective ? 1 : 0) + ", not "
+                      + std::to_string(on));
+            return RUMI_ERR_INVALID;
+        }
+        return RUMI_OK;
+    });
 }
 
-extern "C" int rumi_get_checksum_verification(void)
+extern "C" rumi_status rumi_get_checksum_verification(int* out)
 {
-    return rumi::checksum_verification() ? 1 : 0;
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_get_checksum_verification: null output");
+            return RUMI_ERR_INVALID;
+        }
+        if (const char* error = rumi::checksum_configuration_error()) {
+            set_error(error);
+            return RUMI_ERR_INVALID;
+        }
+        *out = rumi::checksum_verification() ? 1 : 0;
+        return RUMI_OK;
+    });
 }
 
 // Layout.
@@ -315,6 +362,10 @@ rumi_unit_index_axes(uint8_t unit, uint16_t bands, uint32_t times,
             set_error("rumi_unit_index_axes: null argument");
             return RUMI_ERR_INVALID;
         }
+        if (!rumi::unit_valid_for(unit, bands, times)) {
+            set_error("frame_unit names no layout for this raster");
+            return RUMI_ERR_INVALID;
+        }
         std::array<std::uint8_t, 2> axes{};
         const std::size_t n = rumi::unit_index_axes(unit, bands, times, axes);
         for (std::size_t i = 0; i < n; ++i) out[i] = axes[i];
@@ -340,13 +391,6 @@ rumi_unit_from_name(const char* name, uint16_t bands, uint32_t times,
         *out = *u;
         return RUMI_OK;
     });
-}
-
-extern "C" int rumi_unit_indexes_bands(uint8_t unit, uint16_t bands,
-                                       uint32_t times)
-{
-    return rumi::unit_is_defined(unit)
-        && rumi::unit_indexes_bands(unit, bands, times) ? 1 : 0;
 }
 
 extern "C" rumi_status
@@ -1139,25 +1183,26 @@ to_write_desc(const rumi_write_desc& desc)
         d.trailer.bands.emplace_back(desc.band_texts[b], lengths[b]);
     }
     // The same holds for the time coordinates.
-    if (desc.time_coords) {
-        if (desc.time_type != rumi::TIME_INTERVAL
-            && desc.time_type != rumi::TIME_INSTANT) {
-            return rumi::errf("time_type is %u; rumi records intervals (1) or "
-                              "instants (2)", unsigned(desc.time_type));
-        }
-        const std::uint64_t want =
-            rumi::time_coord_count(desc.time_type, desc.time_count);
-        if (desc.time_coords != want) {
-            return rumi::errf(
-                "a %s axis over %u time steps needs %llu coordinates, got %llu",
-                desc.time_type == rumi::TIME_INTERVAL ? "interval" : "instant",
-                desc.time_count, static_cast<unsigned long long>(want),
-                static_cast<unsigned long long>(desc.time_coords));
-        }
+    if (desc.time_type != rumi::TIME_INTERVAL
+        && desc.time_type != rumi::TIME_INSTANT) {
+        return rumi::errf("time_type is %u; rumi records intervals (1) or "
+                          "instants (2)", unsigned(desc.time_type));
+    }
+    const std::uint64_t want =
+        rumi::time_coord_count(desc.time_type, desc.time_count);
+    if (desc.time_coords != want) {
+        return rumi::errf(
+            "a %s axis over %u time steps needs %llu coordinates, got %llu",
+            desc.time_type == rumi::TIME_INTERVAL ? "interval" : "instant",
+            desc.time_count, static_cast<unsigned long long>(want),
+            static_cast<unsigned long long>(desc.time_coords));
+    }
+    if (!desc.time) {
+        return rumi::err("time is null");
     }
     auto axis = rumi::axis_from_seconds(
         desc.time_type,
-        std::span<const std::int64_t>(desc.time, desc.time ? desc.time_coords : 0));
+        std::span<const std::int64_t>(desc.time, desc.time_coords));
     if (!axis) return std::unexpected(std::move(axis.error()));
     d.trailer.time = std::move(*axis);
     return d;

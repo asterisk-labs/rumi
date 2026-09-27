@@ -6,7 +6,7 @@ from ._dtype import DType, dtype_info
 from ._ffi import PathLike, _check, _Source, ffi, lib
 from ._pattern import index_axes, layout_name
 from ._repr import _human, meta_html, meta_text
-from ._time import INSTANT, INTERVAL, _from_seconds
+from ._time import INSTANT, INTERVAL, from_seconds_axis
 
 _MAX_CELLS = 24  # the drawn face bins past this, one cell per block
 
@@ -143,13 +143,17 @@ def info(*, source: InfoSource | None = None,
             bands = [ffi.string(result.band_texts[b]).decode("utf-8")
                      for b in range(result.band_text_count)]
             coords = [int(result.time[i]) for i in range(result.time_coords)]
+            values = from_seconds_axis(coords)
             if result.time_type == INSTANT:
-                steps = [_from_seconds(value) for value in coords]
+                steps = values
                 kind = "instant"
             elif result.time_type == INTERVAL:
-                steps = [(_from_seconds(coords[i]), _from_seconds(coords[i + 1]))
-                         for i in range(0, len(coords), 2)]
+                steps = [(values[i], values[i + 1])
+                         for i in range(0, len(values), 2)]
                 kind = "interval"
+            else:
+                raise RuntimeError(
+                    f"librumi returned invalid time_type {result.time_type}")
 
         crs = (int(result.epsg) or None) if has_source else None
         transform = None

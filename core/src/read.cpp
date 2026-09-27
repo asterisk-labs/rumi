@@ -35,27 +35,34 @@ int clamp_threads(int n) noexcept
     return n < 1 ? 1 : (n > MAX_THREADS ? MAX_THREADS : n);
 }
 
-// Parse RUMI_NUM_THREADS as an integer or ALL_CPUS; invalid values select 1.
-int env_threads() noexcept
+struct ThreadSetting {
+    int  count;
+    bool valid;
+};
+
+ThreadSetting env_threads() noexcept
 {
     const char* s = std::getenv("RUMI_NUM_THREADS");
-    if (!s || !*s) return 1;
+    if (!s || !*s) return {1, true};
     if (std::strcmp(s, "ALL_CPUS") == 0) {
         const unsigned n = std::thread::hardware_concurrency();
-        if (n == 0) return 1;
-        return n > static_cast<unsigned>(MAX_THREADS)
-            ? MAX_THREADS : static_cast<int>(n);
+        if (n == 0) return {1, true};
+        return {n > static_cast<unsigned>(MAX_THREADS)
+                    ? MAX_THREADS : static_cast<int>(n), true};
     }
     errno = 0;
     char* end = nullptr;
     const long n = std::strtol(s, &end, 10);
-    if (errno == ERANGE || end == s || *end != '\0') return 1;
-    if (n < 1) return 1;
-    return n > MAX_THREADS ? MAX_THREADS : static_cast<int>(n);
+    if (errno == ERANGE || end == s || *end != '\0'
+        || n < 1 || n > MAX_THREADS) {
+        return {1, false};
+    }
+    return {static_cast<int>(n), true};
 }
 
 // A child must discard inherited state without touching the parent's mutex.
-constexpr std::uint32_t THREADS_MASK = 0x7FFFFFFFu;
+constexpr std::uint32_t THREADS_MASK = 0x3FFFFFFFu;
+constexpr std::uint32_t ENV_INVALID  = 0x40000000u;
 constexpr std::uint32_t PINNED       = 0x80000000u;
 
 std::atomic<std::uint64_t> g_thread_state{0};
@@ -69,10 +76,11 @@ std::uint32_t pid_key() noexcept
 }
 
 std::uint64_t pack_thread_state(std::uint32_t pid, int threads,
-                                bool pinned) noexcept
+                                bool pinned, bool invalid = false) noexcept
 {
     const std::uint32_t low = static_cast<std::uint32_t>(threads)
-                            | (pinned ? PINNED : 0u);
+                            | (pinned ? PINNED : 0u)
+                            | (invalid ? ENV_INVALID : 0u);
     return (static_cast<std::uint64_t>(pid) << 32) | low;
 }
 
@@ -84,6 +92,11 @@ int state_threads(std::uint64_t state) noexcept
 bool state_pinned(std::uint64_t state) noexcept
 {
     return (static_cast<std::uint32_t>(state) & PINNED) != 0;
+}
+
+bool state_invalid(std::uint64_t state) noexcept
+{
+    return (static_cast<std::uint32_t>(state) & ENV_INVALID) != 0;
 }
 
 bool state_owned_by(std::uint64_t state, std::uint32_t pid) noexcept
@@ -98,7 +111,9 @@ std::uint64_t process_thread_state() noexcept
     const std::uint32_t pid = pid_key();
     std::uint64_t state = g_thread_state.load(std::memory_order_acquire);
     while (!state_owned_by(state, pid)) {
-        const std::uint64_t seed = pack_thread_state(pid, env_threads(), false);
+        const ThreadSetting setting = env_threads();
+        const std::uint64_t seed = pack_thread_state(
+            pid, setting.count, false, !setting.valid);
         if (g_thread_state.compare_exchange_weak(
                 state, seed, std::memory_order_acq_rel,
                 std::memory_order_acquire)) {
@@ -198,26 +213,26 @@ int num_threads() noexcept
     return state_threads(process_thread_state());
 }
 
+const char* thread_configuration_error() noexcept
+{
+    return state_invalid(process_thread_state())
+        ? "RUMI_NUM_THREADS must be an integer in [1, 1024] or ALL_CPUS"
+        : nullptr;
+}
+
 
 namespace {
 
 FrameSpec make_frame_spec(const Header& h) noexcept
 {
-    std::size_t count = 0;
-    const rumi_dtype_info* rows = dtype_table(&count);
-    for (std::size_t i = 0; i < count; ++i) {
-        if (rows[i].code == static_cast<std::uint8_t>(h.dtype)) {
-            return FrameSpec{
-                h.tile_width,
-                h.tile_length,
-                static_cast<std::uint8_t>(h.bytes_per_sample),
-                rows[i].component_bytes,
-                h.bits_per_sample,
-                h.max_frame_size,
-            };
-        }
-    }
-    std::unreachable();
+    return FrameSpec{
+        h.tile_width,
+        h.tile_length,
+        static_cast<std::uint8_t>(h.bytes_per_sample),
+        h.component_bytes,
+        h.bits_per_sample,
+        h.max_frame_size,
+    };
 }
 
 template<class T>
@@ -655,6 +670,10 @@ read_items(std::span<const ReadItem> items,
            const LayoutPlan& layout, std::byte* dst,
            const char* item_name)
 {
+    if (const char* error = thread_configuration_error())
+        return fail(RUMI_ERR_INVALID, error);
+    if (const char* error = checksum_configuration_error())
+        return fail(RUMI_ERR_INVALID, error);
     if (items.empty()) return fail(RUMI_ERR_INVALID, "a read needs at least one item");
     for (const ReadItem& item : items) {
         if (!item.source || !item.header) {

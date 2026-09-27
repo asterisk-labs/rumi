@@ -2,6 +2,8 @@ import datetime as dt
 from collections.abc import Set
 from itertools import islice
 
+import numpy as np
+
 INTERVAL, INSTANT = 1, 2
 
 DAY = 86400
@@ -20,7 +22,7 @@ def _to_seconds(value):
             except ValueError:
                 raise ValueError(
                     f"{value!r} is not an ISO date or datetime") from None
-    elif hasattr(value, "astype") and hasattr(value, "dtype"):
+    elif isinstance(value, np.datetime64):
         # NumPy datetime64 values must fall on a whole second.
         whole = value.astype("datetime64[s]")
         if whole.astype(value.dtype) != value:
@@ -107,8 +109,8 @@ def compile_axis(time, steps):
                        for value in _flatten(entries, kind))
 
 
-def _from_seconds(seconds):
-    """Return a date when possible, otherwise a UTC datetime."""
-    if seconds % DAY == 0:
-        return EPOCH + dt.timedelta(days=seconds // DAY)
-    return dt.datetime.fromtimestamp(seconds, dt.UTC)
+def from_seconds_axis(seconds):
+    """Decode one axis as dates or as timezone-aware UTC datetimes."""
+    if all(value % DAY == 0 for value in seconds):
+        return [EPOCH + dt.timedelta(days=value // DAY) for value in seconds]
+    return [dt.datetime.fromtimestamp(value, dt.UTC) for value in seconds]

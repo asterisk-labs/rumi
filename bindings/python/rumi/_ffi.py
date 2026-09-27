@@ -1,4 +1,3 @@
-import ctypes.util
 import os
 from pathlib import Path
 
@@ -69,11 +68,11 @@ void        rumi_free(void* ptr);
 uint64_t rumi_set_max_frame_bytes(uint64_t n);
 uint64_t rumi_get_max_frame_bytes(void);
 
-int rumi_set_num_threads(int n);
-int rumi_get_num_threads(void);
+rumi_status rumi_set_num_threads(int n);
+rumi_status rumi_get_num_threads(int* out);
 
-int rumi_set_checksum_verification(int on);
-int rumi_get_checksum_verification(void);
+rumi_status rumi_set_checksum_verification(int on);
+rumi_status rumi_get_checksum_verification(int* out);
 
 size_t rumi_dtype_info_size(void);
 size_t rumi_dtype_registry(const rumi_dtype_info** out);
@@ -107,8 +106,6 @@ rumi_status rumi_unit_index_axes(uint8_t unit, uint16_t bands, uint32_t times,
                                  uint8_t* out, int* out_ndim);
 rumi_status rumi_unit_from_name(const char* name, uint16_t bands,
                                 uint32_t times, uint8_t* out);
-int         rumi_unit_indexes_bands(uint8_t unit, uint16_t bands,
-                                    uint32_t times);
 
 rumi_status
 rumi_frame_count(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
@@ -294,10 +291,10 @@ def _bundled_lib():
 
 def _load_lib():
     env_path = os.environ.get("RUMI_LIB")
-    candidate = env_path or _bundled_lib() or ctypes.util.find_library("rumi")
+    candidate = env_path or _bundled_lib()
     if candidate is None:
         raise OSError(
-            "librumi not found. Install it or set RUMI_LIB to its path."
+            "librumi is not bundled; set RUMI_LIB to its path"
         )
     try:
         return ffi.dlopen(candidate)

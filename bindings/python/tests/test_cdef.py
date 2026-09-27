@@ -36,10 +36,10 @@ int rumi_openzl_format_version(void);
 const char* rumi_last_error(void);
 void rumi_clear_error(void);
 void rumi_free(void* ptr);
-int rumi_set_num_threads(int n);
-int rumi_get_num_threads(void);
-int rumi_set_checksum_verification(int on);
-int rumi_get_checksum_verification(void);
+rumi_status rumi_set_num_threads(int n);
+rumi_status rumi_get_num_threads(int* out);
+rumi_status rumi_set_checksum_verification(int on);
+rumi_status rumi_get_checksum_verification(int* out);
 size_t rumi_dtype_info_size(void);
 size_t rumi_dtype_registry(const rumi_dtype_info** out);
 rumi_status rumi_compile_layout(const char* pattern, int64_t n, int64_t t,

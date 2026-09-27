@@ -25,23 +25,38 @@ namespace {
 constexpr std::uint32_t CHECKSUM_ON     = 1u;
 constexpr std::uint32_t CHECKSUM_PINNED = 2u;
 constexpr std::uint32_t CHECKSUM_READY  = 4u;
+constexpr std::uint32_t CHECKSUM_INVALID = 8u;
 
 std::atomic<std::uint32_t> g_checksum_state{0};
 
-bool env_checksum_verification() noexcept
+struct ChecksumSetting {
+    bool value;
+    bool valid;
+};
+
+ChecksumSetting env_checksum_verification() noexcept
 {
     const char* s = std::getenv("RUMI_VERIFY");
-    if (!s || !*s) return false;
-    return std::strcmp(s, "1") == 0 || std::strcmp(s, "true") == 0
-        || std::strcmp(s, "on") == 0 || std::strcmp(s, "yes") == 0;
+    if (!s || !*s) return {false, true};
+    if (std::strcmp(s, "1") == 0 || std::strcmp(s, "true") == 0
+        || std::strcmp(s, "on") == 0 || std::strcmp(s, "yes") == 0) {
+        return {true, true};
+    }
+    if (std::strcmp(s, "0") == 0 || std::strcmp(s, "false") == 0
+        || std::strcmp(s, "off") == 0 || std::strcmp(s, "no") == 0) {
+        return {false, true};
+    }
+    return {false, false};
 }
 
 std::uint32_t checksum_state() noexcept
 {
     std::uint32_t state = g_checksum_state.load(std::memory_order_acquire);
     if (state & CHECKSUM_READY) return state;
+    const ChecksumSetting setting = env_checksum_verification();
     const std::uint32_t seed = CHECKSUM_READY
-        | (env_checksum_verification() ? CHECKSUM_ON : 0u);
+        | (setting.value ? CHECKSUM_ON : 0u)
+        | (setting.valid ? 0u : CHECKSUM_INVALID);
     if (g_checksum_state.compare_exchange_strong(state, seed,
                                                  std::memory_order_acq_rel,
                                                  std::memory_order_acquire)) {
@@ -307,13 +322,15 @@ bool checksum_verification() noexcept
     return (checksum_state() & CHECKSUM_ON) != 0;
 }
 
+const char* checksum_configuration_error() noexcept
+{
+    return (checksum_state() & CHECKSUM_INVALID)
+        ? "RUMI_VERIFY must be 0, 1, false, true, off, on, no, or yes"
+        : nullptr;
+}
+
 
 Executor::Executor(ThreadPool* pool) noexcept : pool_(pool) {}
-
-bool Executor::run(const Plan& plan) const
-{
-    return run(plan.tasks, plan.spec, plan.transport);
-}
 
 bool Executor::run(std::span<const FrameTask> tasks,
                    const FrameSpec& spec,

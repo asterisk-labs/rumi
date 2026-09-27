@@ -74,21 +74,21 @@ RUMI_API uint64_t rumi_get_max_frame_bytes(void);
 
 // Threads.
 
-// Process-wide read thread count, clamped to 1..1024. RUMI_NUM_THREADS may be
-// an integer or ALL_CPUS. The first parallel read fixes the pool size; later
-// calls cannot resize it. A forked child starts with its own setting. Both
-// functions return the effective count.
-RUMI_API int rumi_set_num_threads(int n);
-RUMI_API int rumi_get_num_threads(void);
+// Process-wide read thread count in 1..1024. RUMI_NUM_THREADS may be an integer
+// in that range or ALL_CPUS; any other value is an error. The first parallel
+// read fixes the pool size; later calls cannot resize it. A forked child starts
+// with its own setting.
+RUMI_API rumi_status rumi_set_num_threads(int n);
+RUMI_API rumi_status rumi_get_num_threads(int* out);
 
 
 // Checksums.
 
-// Process-wide OpenZL checksum verification. RUMI_VERIFY accepts 1, true, on,
-// or yes. The first decoded frame pins the setting. Both functions return the
-// effective value.
-RUMI_API int rumi_set_checksum_verification(int on);
-RUMI_API int rumi_get_checksum_verification(void);
+// Process-wide OpenZL checksum verification. RUMI_VERIFY accepts 0/1,
+// false/true, off/on, or no/yes; any other value is an error. The first decoded
+// frame pins the setting. on must be 0 or 1.
+RUMI_API rumi_status rumi_set_checksum_verification(int on);
+RUMI_API rumi_status rumi_get_checksum_verification(int* out);
 
 
 // Dtypes and external-header fields.
@@ -119,9 +119,11 @@ typedef struct {
     const char* numpy;
 } rumi_dtype_info;
 
-// Return the process-lifetime registry and its native row size. If out is not
-// NULL, it receives the registry. The caller owns neither.
+// Return the native registry-row size.
 RUMI_API size_t rumi_dtype_info_size(void);
+
+// Return the process-lifetime registry length. If out is not NULL, it receives
+// the registry. The caller does not own it.
 RUMI_API size_t rumi_dtype_registry(const rumi_dtype_info** out);
 
 // Parsed fields from an external header. dtype is the canonical rumi type;
@@ -243,10 +245,6 @@ rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype);
 RUMI_API rumi_status
 rumi_unit_from_name(const char* name, uint16_t bands, uint32_t times,
                     uint8_t* out);
-
-// Return non-zero when the frame index, rather than the frame, carries band.
-RUMI_API int rumi_unit_indexes_bands(uint8_t unit, uint16_t bands,
-                                     uint32_t times);
 
 // Location and decoded shape of one frame. row, col, band, and time are
 // zero-based; h and w are the edge-aware frame dimensions.
