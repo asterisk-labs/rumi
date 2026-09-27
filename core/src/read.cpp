@@ -554,8 +554,8 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
     std::unique_ptr<karu_batch, KaruBatchFree> batch(raw_batch);
 
     // Submit the entire remote workload before doing any decoding. Karu keeps
-    // its full opportunity to group and coalesce ranges while its I/O thread
-    // progresses independently of local reads and CPU decode.
+    // its full opportunity to group and coalesce ranges while its I/O threads
+    // progress independently of local reads and CPU decode.
     if (auto decoded = decode_tasks(executor, plan, local_tasks); !decoded)
         return decoded;
 
@@ -613,7 +613,7 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
         }
 
         // Decode every completion already available as one wave. While this
-        // call uses the Rumi workers, Karu's I/O thread keeps filling the next
+        // call uses the Rumi workers, Karu's I/O threads keep filling the next
         // wave in the background.
         if (auto decoded = decode_tasks(executor, plan, ready); !decoded)
             return decoded;

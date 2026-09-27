@@ -79,7 +79,7 @@ in the Python API. The full list is `extern/karu/CONFIGURATION.md`.
 | Hugging Face | `HF_TOKEN`, `HF_TOKEN_PATH`, `HF_HOME`, `HF_ENDPOINT`; the token saved by `hf auth login` is found automatically |
 | Source Cooperative | none for public data; `SOURCE_PROFILE`, `SOURCE_ACCESS_KEY_ID`, `SOURCE_SECRET_ACCESS_KEY`, `SOURCE_NO_SIGN_REQUEST` |
 | HTTP | `KARU_HTTP_HEADERS`, `KARU_HTTP_CA_BUNDLE` (or `CURL_CA_BUNDLE`, `SSL_CERT_FILE`), `KARU_HTTP_PROXY` |
-| Transport | `KARU_CONCURRENCY` (64), `KARU_COALESCE_GAP` (1 MiB), `KARU_MAX_ATTEMPTS` (3), `KARU_REQUEST_TIMEOUT` (120 s), `KARU_CONNECT_TIMEOUT` (30 s) |
+| Transport | `KARU_CONCURRENCY` (64), `KARU_IO_THREADS` (4), `KARU_COALESCE_GAP` (1 MiB), `KARU_MAX_ATTEMPTS` (8), `KARU_REQUEST_TIMEOUT` (120 s), `KARU_CONNECT_TIMEOUT` (30 s) |
 
 An S3-compatible endpoint, here Source Cooperative's public one:
 

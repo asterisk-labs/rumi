@@ -361,7 +361,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
           <p>For remote work, Rumi creates one <code>karu_req</code> per frame and stores <code>&amp;task</code> in its caller-controlled tag. It submits the complete remote workload before decoding local tasks. Seeing every range at once lets Karu schedule and coalesce compatible requests while Rumi’s CPU workers remain busy.</p>
 
-          <p><code>karu_batch_next()</code> returns completions as they become ready. Rumi checks the Karu status and exact byte count, recovers the <code>FrameTask</code> from the tag, attaches the compressed buffer, and sends the ready tasks to the decoder in waves. Karu’s I/O thread continues filling the next wave while Rumi decodes the current one.</p>
+          <p><code>karu_batch_next()</code> returns completions as they become ready. Rumi checks the Karu status and exact byte count, recovers the <code>FrameTask</code> from the tag, attaches the compressed buffer, and sends the ready tasks to the decoder in waves. Karu’s I/O threads continue filling the next wave while Rumi decodes the current one.</p>
 
           <div class="choice-grid">
             <div><b>Karu knows</b><p>The locator, byte offset, byte count, destination or returned buffer, status, and caller tag.</p></div>
@@ -412,15 +412,15 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
               <g class="figure-card"><rect x="464" y="255" width="166" height="48" rx="5"/><text x="547" y="274">file workers</text><text class="sub" x="547" y="290">local Karu reads</text></g>
               <text class="figure-note" x="422" y="335">The Python caller sees one blocking function; these lanes can overlap inside it.</text>
             </svg>
-            <figcaption>Remote requests are submitted first. While Karu’s I/O thread progresses them, <code>decode_tasks(local_tasks)</code> uses the Rumi pool. Ready remote frames are then decoded in waves while Karu keeps filling the next wave.</figcaption>
+            <figcaption>Remote requests are submitted first. While Karu’s I/O threads progress them, <code>decode_tasks(local_tasks)</code> uses the Rumi pool. Ready remote frames are then decoded in waves while Karu keeps filling the next wave.</figcaption>
           </figure>
 
           <h3>Which thread owns what?</h3>
           <div class="definition-grid">
             <div><b>Calling thread</b><p>Builds the plan, submits the remote batch, waits for Karu completions, groups currently ready frames, and returns the final result.</p></div>
-            <div><b>Karu I/O thread</b><p>Owns active remote transfers, connection reuse, retries, and completion delivery. It continues running while Rumi decodes.</p></div>
+            <div><b>Karu I/O threads</b><p>Own active remote transfers, connection reuse, retries, and completion delivery, four per client by default (<code>KARU_IO_THREADS</code>). They keep running while Rumi decodes.</p></div>
             <div><b>Rumi worker pool</b><p>When enabled, runs <code>execute_task()</code>: positional local or memory reads when needed, OpenZL decompression, validation, and output placement.</p></div>
-            <div><b>Karu helper workers</b><p>Keep blocking local-file and cloud-credential preparation away from the remote event loop.</p></div>
+            <div><b>Karu helper workers</b><p>Keep blocking local-file and cloud-credential preparation away from the remote event loops.</p></div>
           </div>
 
           <p><code>karu_batch_next(batch, -1)</code> blocks the coordinator until the first completion is available. Rumi then calls <code>karu_batch_next(batch, 0)</code> repeatedly to drain everything already ready without waiting. That group becomes one decoder wave. The loop repeats until Karu reports the batch ended.</p>
@@ -581,7 +581,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/source.cpp"><code>core/src/source.cpp</code></a></td><td>Memory sources, Karu locator resolution, and transport sessions</td><td><code>MemorySource</code>, <code>TransportSource</code>, <code>TransportSession</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/src/plan.cpp"><code>core/src/plan.cpp</code></a></td><td>Worker-local OpenZL context, GeoZL decoder registration, frame validation, and placement</td><td><code>WorkerState</code>, <code>execute_task</code>, <code>copy_rect</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/rumi/blob/main/core/include/rumi/thread_pool.hpp"><code>core/include/rumi/thread_pool.hpp</code></a></td><td>Process-wide workers and operation-scoped batches</td><td><code>ThreadPool</code>, <code>ThreadPool::Batch</code></td></tr>
-                <tr><td><a href="https://github.com/asterisk-labs/karu/blob/main/src/runtime/engine.cpp"><code>karu/src/runtime/engine.cpp</code></a></td><td>Remote event loop, local-file workers, credential workers, and completion queues</td><td><code>Engine::submit</code>, <code>io_loop</code>, <code>file_loop</code>, <code>credential_loop</code></td></tr>
+                <tr><td><a href="https://github.com/asterisk-labs/karu/blob/main/src/runtime/engine.cpp"><code>karu/src/runtime/engine.cpp</code></a></td><td>Remote event loops, local-file workers, credential workers, and completion queues</td><td><code>Engine::submit</code>, <code>io_loop</code>, <code>file_loop</code>, <code>credential_loop</code></td></tr>
                 <tr><td><a href="https://github.com/asterisk-labs/geozl/blob/main/core/src/decoder_registry.c"><code>geozl/core/src/decoder_registry.c</code></a></td><td>Registration of GeoZL’s raster codecs into an OpenZL decoder context</td><td><code>geozl_register_decoders</code>, <code>geozl_owns_ctid</code></td></tr>
                 <tr><td><a href="https://github.com/facebook/openzl/blob/dev/src/openzl/decompress/decompress2.c"><code>openzl/decompress/decompress2.c</code></a></td><td>OpenZL graph decompression reached through its public decoder API</td><td><code>ZL_DCtx_decompressTyped</code></td></tr>
               </tbody>

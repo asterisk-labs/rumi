@@ -29,7 +29,8 @@ Notable user-visible changes are recorded here.
 - File paths must be `str` or path-like objects returning `str`. `write` no
   longer accepts a `bytes` path; bytes-like sources are file contents.
 - Updated to [Karu 0.4.0], inheriting parallel I/O threads, reads that resume
-  on the same object version, and eight attempts per request by default.
+  on the same object version, eight attempts per request by default, and
+  strong ETags for anonymous and SAS Azure reads.
 
 ### Added
 
