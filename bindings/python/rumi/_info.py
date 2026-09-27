@@ -3,15 +3,15 @@ from dataclasses import dataclass, fields
 import numpy as np
 
 from ._dtype import DType, dtype_info
-from ._ffi import PathLike, _check, _Source, ffi, lib
+from ._ffi import _check, ffi, lib
+from ._native import Header, ReadSource, _Source
 from ._pattern import index_axes, layout_name
 from ._repr import _human, meta_html, meta_text
 from ._time import INSTANT, INTERVAL, from_seconds_axis
 
 _MAX_CELLS = 24  # the drawn face bins past this, one cell per block
 
-Header = bytes | bytearray | memoryview
-InfoSource = PathLike | bytes | bytearray | memoryview
+InfoSource = ReadSource
 
 
 @dataclass(repr=False)

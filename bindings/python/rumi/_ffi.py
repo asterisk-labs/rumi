@@ -278,8 +278,6 @@ ffi.cdef(_CDEF)
 
 _LIB_GLOBS = ("*.so", "*.so.*", "*.dylib", "*.dll")
 
-PathLike = str | bytes | os.PathLike
-
 
 def _bundled_lib():
     lib_dir = Path(__file__).parent / "_lib"
@@ -347,46 +345,3 @@ def _check(rc):
     msg = (ffi.string(err).decode("utf-8", errors="replace")
            if err != ffi.NULL else "(no error message)")
     raise _STATUS_TO_EXC.get(rc, RuntimeError)(msg)
-
-
-def _enc(path: PathLike) -> bytes:
-    return path.encode("utf-8") if isinstance(path, str) else os.fsencode(path)
-
-
-class _Source:
-    """Where rumi reads bytes from: a path, URI, or caller-owned buffer."""
-
-    __slots__ = ("handle", "_keep")
-    _keep: object
-
-    def __init__(self, target) -> None:
-        out = ffi.new("rumi_source**")
-        if isinstance(target, (bytes, bytearray, memoryview)):
-            buffer = ffi.from_buffer(target)
-            # The native memory source borrows this export for its lifetime.
-            self._keep = buffer
-            _check(lib.rumi_source_memory(buffer, len(buffer), out))
-        else:
-            self._keep = None
-            _check(lib.rumi_source_file(_enc(target), out))
-        self.handle = ffi.gc(out[0], lib.rumi_source_free)
-
-class _Spec:
-    """Parsed header and its C handle."""
-
-    __slots__ = ("handle", "fields")
-
-    def __init__(self, header: bytes | bytearray | memoryview) -> None:
-        if not isinstance(header, (bytes, bytearray, memoryview)):
-            raise TypeError(
-                f"header must be bytes-like, got {type(header).__name__}")
-
-        buf = ffi.from_buffer("unsigned char[]", header)
-        out = ffi.new("rumi_spec**")
-        _check(lib.rumi_spec_parse(buf, len(header), out))
-        # Register ownership before another native call can fail.
-        self.handle = ffi.gc(out[0], lib.rumi_spec_destroy)
-
-        fields = ffi.new("rumi_header*")
-        _check(lib.rumi_spec_header(self.handle, fields))
-        self.fields = fields

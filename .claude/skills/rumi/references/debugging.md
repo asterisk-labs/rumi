@@ -145,7 +145,8 @@ print(lib.rumi_openzl_format_version(), lib.rumi_get_max_frame_bytes())   # 24 1
   (`c-api.md` section 4). From Python it is reachable only through the private cffi layer:
 
 ```python
-from rumi._ffi import _Spec, ffi, lib
+from rumi._ffi import ffi, lib
+from rumi._native import _Spec
 
 spec = _Spec(header)
 out, count = ffi.new("rumi_range**"), ffi.new("size_t*")

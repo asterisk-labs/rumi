@@ -7,7 +7,8 @@ import pytest
 import rumi
 import rumi._read as read_module
 from _labels import labels
-from rumi._ffi import _Spec, ffi, lib
+from rumi._ffi import ffi, lib
+from rumi._native import _Spec
 
 geozl = pytest.importorskip("geozl")
 

@@ -8,12 +8,12 @@ import numpy as np
 
 from ._dtype import dtype_info
 from ._dtype import name as dtype_name
-from ._ffi import PathLike, _check, _Source, _Spec, ffi, lib
+from ._ffi import _check, ffi, lib
+from ._native import Header, ReadSource, _Source, _Spec
 
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
-Header = bytes | bytearray | memoryview
-_ReadSource = PathLike | bytearray | memoryview
+_ReadSource = ReadSource
 
 
 _pyapi = ctypes.pythonapi

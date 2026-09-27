@@ -8,7 +8,7 @@ import pytest
 import rumi
 from _labels import labels
 from rumi import FrameTable
-from rumi._ffi import _Spec
+from rumi._native import _Spec
 from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
@@ -35,6 +35,12 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
     tf = FrameTable.from_array(arr, pattern, tile_size)
     tf["compressed"] = [bytes([i % 251]) * (7 + 3 * i) for i in range(len(tf))]
     return tf
+
+
+def test_write_path_is_text_or_pathlike():
+    tf = make_frame(shape=(1, 16, 16), tile_size=16)
+    with pytest.raises(TypeError, match="path must be str or path-like returning str"):
+        rumi.write(b"scene.rumi", tf, **labels(tf))
 
 
 @pytest.mark.parametrize("tile_size", [16.5, "16"])

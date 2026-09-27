@@ -11,7 +11,7 @@ import rumi
 from _labels import labels
 from rumi import FrameTable
 from rumi._dtype import _DTYPES
-from rumi._ffi import _Spec
+from rumi._native import _Spec
 from rumi._write import header_bytes, write_frames
 
 SHORT, LONG, LONG8, DOUBLE, ASCII = 3, 4, 16, 12, 2
@@ -904,7 +904,8 @@ def blob(width, length, tile, bands=1, steps=1, unit=0, count_min=1, bits=16):
 
 def test_a_window_wider_than_the_reader_will_hold_is_refused():
     """Reject range plans that exceed the configured resource limit."""
-    from rumi._ffi import _Spec, ffi, lib
+    from rumi._ffi import ffi, lib
+    from rumi._native import _Spec
     spec = _Spec(blob(60000, 60000, 1))
     out = ffi.new("rumi_range**")
     count = ffi.new("size_t*")
@@ -916,7 +917,8 @@ def test_a_window_wider_than_the_reader_will_hold_is_refused():
 
 def test_a_window_the_reader_can_hold_is_still_planned():
     """Resource limits do not reject plans that fit within the limit."""
-    from rumi._ffi import _Spec, ffi, lib
+    from rumi._ffi import ffi, lib
+    from rumi._native import _Spec
     spec = _Spec(blob(64, 64, 16))
     out = ffi.new("rumi_range**")
     count = ffi.new("size_t*")
@@ -930,7 +932,8 @@ def test_many_bands_do_not_make_planning_quadratic():
     """Range planning scales linearly with the number of returned frames."""
     import time
 
-    from rumi._ffi import _Spec, ffi, lib
+    from rumi._ffi import ffi, lib
+    from rumi._native import _Spec
     spec = _Spec(blob(16, 272, 32, bands=63745))
     out = ffi.new("rumi_range**")
     count = ffi.new("size_t*")
@@ -1022,7 +1025,7 @@ def test_the_blob_a_writer_returns_is_the_one_the_file_yields(tmp_path):
 
 def test_a_frame_size_that_wraps_uint64_is_refused():
     """Reject a decoded frame size whose factors multiply to 2**64."""
-    from rumi._ffi import _Spec
+    from rumi._native import _Spec
     raw = struct.pack("<IHIIIHHHBBBIB", 0x45564F4C, 1, 65535, 65535, 32768,
                       32768, 32768, 32768, 128, 6, 3, 1, 0)
     assert 32768 * 32768 * 16 * 32768 * 32768 == 2 ** 64
@@ -1032,7 +1035,8 @@ def test_a_frame_size_that_wraps_uint64_is_refused():
 
 def test_more_steps_than_a_read_can_name_are_refused():
     """Require an explicit selection when time_count exceeds int indexing."""
-    from rumi._ffi import _Spec, ffi, lib
+    from rumi._ffi import ffi, lib
+    from rumi._native import _Spec
     # Keep frame allocation small while time_count exceeds the int index range.
     spec = _Spec(blob(1, 1, 1, steps=1 << 30, unit=1, bits=8))
     out = ffi.new("rumi_range**")

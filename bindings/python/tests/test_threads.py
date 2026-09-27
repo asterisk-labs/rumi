@@ -191,7 +191,8 @@ def test_one_batched_c_call_releases_the_gil(image):
     """A binding must not move CPU concurrency back behind Python's GIL."""
     assert run(image, """
         import threading
-        from rumi._ffi import _Source, _Spec, ffi, lib
+        from rumi._ffi import ffi, lib
+        from rumi._native import _Source, _Spec
 
         source = _Source(PATH)
         spec = _Spec(HDR)

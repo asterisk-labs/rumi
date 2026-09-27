@@ -267,7 +267,8 @@ def test_a_cell_value_reaches_every_frame_of_its_cell(tmp_path):
                                          ("tile_tb", ("t", "b"))])
 def test_planned_ranges_come_in_frame_index_order(name, order, tmp_path):
     """Planned ranges follow frame-index order for units 0 and 9."""
-    from rumi._ffi import _Spec, ffi, lib
+    from rumi._ffi import ffi, lib
+    from rumi._native import _Spec
     tf, _path, header = store(tmp_path, name)
     assert rumi.info(header=header).index_order == order
 
@@ -290,7 +291,8 @@ def test_planned_ranges_come_in_frame_index_order(name, order, tmp_path):
 
 def test_planned_ranges_do_not_follow_the_selection(tmp_path):
     """Range order and uniqueness do not depend on selection order."""
-    from rumi._ffi import _Spec, ffi, lib
+    from rumi._ffi import ffi, lib
+    from rumi._native import _Spec
     _tf, _path, header = store(tmp_path, "tile_bt")
     spec = _Spec(header)
     out = ffi.new("rumi_range**")

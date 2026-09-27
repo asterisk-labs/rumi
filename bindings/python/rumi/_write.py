@@ -2,7 +2,8 @@ from collections.abc import Iterable, Set
 from itertools import islice
 
 from ._dtype import dtype_code
-from ._ffi import PathLike, _check, _enc, ffi, lib
+from ._ffi import _check, ffi, lib
+from ._native import FilePath, encode_path
 from ._time import compile_axis
 
 
@@ -119,7 +120,7 @@ def header_bytes(tf, *, transform=None, crs=None,
     return int(out[0])
 
 
-def write_frames(path: PathLike, frames: Iterable[bytes], tf, *, bands, time,
+def write_frames(path: FilePath, frames: Iterable[bytes], tf, *, bands, time,
                  transform=None, crs=None, pixel_is_point=False) -> bytes:
     """Write compressed frames and return the binary header."""
     frames = [ffi.from_buffer(f) for f in frames]
@@ -131,7 +132,7 @@ def write_frames(path: PathLike, frames: Iterable[bytes], tf, *, bands, time,
 
     out = ffi.new("unsigned char**")
     size = ffi.new("size_t*")
-    _check(lib.rumi_write(_enc(path), d, ptrs, sizes, len(frames), out, size))
+    _check(lib.rumi_write(encode_path(path), d, ptrs, sizes, len(frames), out, size))
     del keep
     try:
         return bytes(ffi.buffer(out[0], size[0]))

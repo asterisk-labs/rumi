@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 import rumi
 from _labels import labels
-from rumi._ffi import _Spec, ffi, lib
+from rumi._ffi import ffi, lib
+from rumi._native import _Spec
 from rumi._write import write_frames
 
 PATTERNS = {"tile": "b (row h) (col w) -> row col b (h w)",
