@@ -36,7 +36,7 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 | --- | --- | --- |
 | GeoZL | 0.18.0 | `extern/geozl` submodule; `geozl>=0.18.0,<0.19` in the package dependencies |
 | OpenZL | 0.2.0 | through GeoZL's submodule |
-| Karu | 0.2.2 | `extern/karu` submodule; named in `NOTICE` |
+| Karu | 0.4.0 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |
 
 - `tools/check_release.py` fails when the dependencies do not read

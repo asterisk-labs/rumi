@@ -28,6 +28,8 @@ Notable user-visible changes are recorded here.
 - The Python binding loads only `RUMI_LIB` or its bundled library.
 - File paths must be `str` or path-like objects returning `str`. `write` no
   longer accepts a `bytes` path; bytes-like sources are file contents.
+- Updated to [Karu 0.4.0], inheriting parallel I/O threads, reads that resume
+  on the same object version, and eight attempts per request by default.
 
 ### Added
 
@@ -531,3 +533,4 @@ Notable user-visible changes are recorded here.
 [0.13.0]: https://github.com/asterisk-labs/rumi/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/asterisk-labs/rumi/releases/tag/v0.12.0
 [Karu 0.2.2]: https://github.com/asterisk-labs/karu/releases/tag/v0.2.2
+[Karu 0.4.0]: https://github.com/asterisk-labs/karu/releases/tag/v0.4.0
