@@ -59,7 +59,7 @@ Reads accept:
 | `"dlpack"` | one-shot `RumiArray` DLPack producer |
 
 The NumPy compatibility check happens after parsing the external header but
-before opening the source or decoding a frame. Use Torch to cast a shell dtype
+before opening the source or decoding a frame. Use Torch to cast such a dtype
 for training; for example, unsigned tensors have limited operator coverage even
 though their DLPack import is exact.
 

@@ -1083,7 +1083,7 @@ def test_a_decoded_bool_frame_contains_only_zero_or_one(tmp_path):
         if ok:
             assert np.unique(rumi.read(path, header)) == [True]
         else:
-            with pytest.raises(OSError, match="neither 0 nor 1|bits set above"):
+            with pytest.raises(OSError, match="neither 0 nor 1"):
                 rumi.read(path, header)
 
 
@@ -1187,9 +1187,8 @@ def test_a_rejected_capsule_keeps_the_consumer_error(tmp_path):
                     if dtype.name == "bfloat16")
     path, header, _raw = make_dtype_file(tmp_path, bfloat16)
     result = rumi.read(path, header, framework="dlpack")
-    with pytest.raises((BufferError, RuntimeError, TypeError, ValueError)) as caught:
+    with pytest.raises((BufferError, RuntimeError, TypeError, ValueError)):
         np.from_dlpack(result)
-    assert not isinstance(caught.value, SystemError)
 
 
 @pytest.mark.parametrize("dtype, component", [(np.complex128, np.float64),

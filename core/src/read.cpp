@@ -205,21 +205,19 @@ FrameSpec make_frame_spec(const Header& h) noexcept
 {
     std::size_t count = 0;
     const rumi_dtype_info* rows = dtype_table(&count);
-    std::uint8_t component_bytes = static_cast<std::uint8_t>(h.bytes_per_sample);
     for (std::size_t i = 0; i < count; ++i) {
         if (rows[i].code == static_cast<std::uint8_t>(h.dtype)) {
-            component_bytes = rows[i].component_bytes;
-            break;
+            return FrameSpec{
+                h.tile_width,
+                h.tile_length,
+                static_cast<std::uint8_t>(h.bytes_per_sample),
+                rows[i].component_bytes,
+                h.bits_per_sample,
+                h.max_frame_size,
+            };
         }
     }
-    return FrameSpec{
-        h.tile_width,
-        h.tile_length,
-        static_cast<std::uint8_t>(h.bytes_per_sample),
-        component_bytes,
-        h.bits_per_sample,
-        h.max_frame_size,
-    };
+    std::unreachable();
 }
 
 template<class T>

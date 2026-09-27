@@ -293,13 +293,13 @@ def test_public_c_types_match_the_recorded_layouts():
 def test_binding_refuses_a_different_c_interface():
     from rumi._ffi import _check_native_abi
 
-    class OldLibrary:
+    class WrongInterface:
         @staticmethod
         def rumi_api_version():
             return 1
 
     with pytest.raises(ImportError, match="C interface does not match"):
-        _check_native_abi(OldLibrary())
+        _check_native_abi(WrongInterface())
 
 
 def test_binding_refuses_a_different_dtype_row_size():

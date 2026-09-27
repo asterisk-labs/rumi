@@ -569,9 +569,8 @@ For complex formats, <code>bits_per_sample</code> is their combined width.</p>
 </table>
 <p>A reader MUST reject any pair not listed above.</p>
 <p>The pairs <code>(1, 2)</code>, <code>(1, 4)</code>, <code>(2, 2)</code>, <code>(2, 4)</code>, <code>(5, 32)</code>, <code>(5, 64)</code>,
-<code>(104, 6)</code>, <code>(105, 6)</code>, and <code>(106, 4)</code> appeared in development releases but are
-not valid in this specification. Those exact pairs, and the <code>sample_format</code>
-values <code>5</code>, <code>104</code>, <code>105</code>, and <code>106</code>, remain reserved and MUST NOT be assigned
+<code>(104, 6)</code>, <code>(105, 6)</code>, and <code>(106, 4)</code> are reserved. The <code>sample_format</code>
+values <code>5</code>, <code>104</code>, <code>105</code>, and <code>106</code> are also reserved and MUST NOT be assigned
 another meaning.</p>
 <p><code>bfloat16</code> has one sign bit, eight exponent bits, and seven fraction bits, with
 the exponent and special values of IEEE binary32. <code>E4M3FN</code>, <code>E4M3FNUZ</code>,
@@ -600,19 +599,57 @@ following <code>(code, bits, lanes)</code> values. Every tensor is native-endian
 and one tensor element corresponds to one rumi sample. The float8 codes require
 DLPack 1.1 or newer.</p>
 <table>
-<thead><tr><th>encoding</th><th>DLPack <code>(code, bits, lanes)</code></th></tr></thead>
+<thead>
+<tr>
+<th>encoding</th>
+<th>DLPack <code>(code, bits, lanes)</code></th>
+</tr>
+</thead>
 <tbody>
-<tr><td>signed integers</td><td><code>(kDLInt=0, bits_per_sample, 1)</code></td></tr>
-<tr><td>unsigned integers</td><td><code>(kDLUInt=1, bits_per_sample, 1)</code></td></tr>
-<tr><td>boolean</td><td><code>(kDLBool=6, 8, 1)</code></td></tr>
-<tr><td>IEEE floats</td><td><code>(kDLFloat=2, bits_per_sample, 1)</code></td></tr>
-<tr><td>complex IEEE floats</td><td><code>(kDLComplex=5, bits_per_sample, 1)</code></td></tr>
-<tr><td>bfloat16</td><td><code>(kDLBfloat=4, 16, 1)</code></td></tr>
-<tr><td>float8 E4M3FN</td><td><code>(kDLFloat8_e4m3fn=10, 8, 1)</code></td></tr>
-<tr><td>float8 E4M3FNUZ</td><td><code>(kDLFloat8_e4m3fnuz=11, 8, 1)</code></td></tr>
-<tr><td>float8 E5M2</td><td><code>(kDLFloat8_e5m2=12, 8, 1)</code></td></tr>
-<tr><td>float8 E5M2FNUZ</td><td><code>(kDLFloat8_e5m2fnuz=13, 8, 1)</code></td></tr>
-<tr><td>float8 E8M0FNU</td><td><code>(kDLFloat8_e8m0fnu=14, 8, 1)</code></td></tr>
+<tr>
+<td>signed integers</td>
+<td><code>(kDLInt=0, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>unsigned integers</td>
+<td><code>(kDLUInt=1, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>boolean</td>
+<td><code>(kDLBool=6, 8, 1)</code></td>
+</tr>
+<tr>
+<td>IEEE floats</td>
+<td><code>(kDLFloat=2, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>complex IEEE floats</td>
+<td><code>(kDLComplex=5, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>bfloat16</td>
+<td><code>(kDLBfloat=4, 16, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E4M3FN</td>
+<td><code>(kDLFloat8_e4m3fn=10, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E4M3FNUZ</td>
+<td><code>(kDLFloat8_e4m3fnuz=11, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E5M2</td>
+<td><code>(kDLFloat8_e5m2=12, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E5M2FNUZ</td>
+<td><code>(kDLFloat8_e5m2fnuz=13, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E8M0FNU</td>
+<td><code>(kDLFloat8_e8m0fnu=14, 8, 1)</code></td>
+</tr>
 </tbody>
 </table>
 <p>The file's logical width and DLPack's element width differ for boolean data;

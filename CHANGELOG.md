@@ -6,13 +6,13 @@ Notable user-visible changes are recorded here.
 
 ### Changed
 
-- The sample registry is now the exact CPU DLPack subset that PyTorch imports
+- The sample registry is the exact CPU DLPack subset that PyTorch imports
   without changing dtype. Other file encodings are reserved and rejected.
 - Python reads accept `framework="numpy"`, `"torch"` or `"dlpack"`; the last
   returns `RumiArray`. NumPy fails before opening or decoding a file whose dtype
   it cannot represent.
-- `Metadata.dtype` is a `rumi.DType` descriptor instead of a NumPy scalar.
-  `DType.numpy_dtype` is `None` for Torch-only types.
+- `Metadata.dtype` is a `rumi.DType` descriptor. `DType.numpy_dtype` is `None`
+  for Torch-only types.
 - Public dtype names and C symbols use `complex32/64/128`, `bool`, and
   `float8_e8m0fnu`.
 - `rumi_dtype_info` and `rumi_dtype_registry` expose logical bits, decoded
@@ -30,8 +30,8 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
-- Dtype validation no longer truncates integer values above 255, and DLPack
-  metadata allocation failures report `RUMI_ERR_OOM`.
+- Dtype validation rejects integer values above 255, and DLPack metadata
+  allocation failures report `RUMI_ERR_OOM`.
 
 ## [0.25.0] - 2026-09-24
 
