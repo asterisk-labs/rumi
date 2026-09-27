@@ -128,7 +128,7 @@ print(ffi.string(lib.rumi_version_string()).decode(), lib.rumi_api_version())
 print(lib.rumi_openzl_format_version(), lib.rumi_get_max_frame_bytes())   # 24 1073741824
 ```
 
-- The library is found through `RUMI_LIB`, then `rumi/_lib/`, then the system search.
+- The library is found through `RUMI_LIB`, then `rumi/_lib/`.
 - `python tools/check_editable.py` checks that a checkout's editable install loads the
   checkout's module and a native library with the same version.
 - For C applications link `core/build/librumi` (`c-api.md` section 2), not the renamed
