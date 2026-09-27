@@ -64,6 +64,27 @@ def test_framework_none_is_invalid(image):
         rumi.read(path, header, framework=None)
 
 
+@pytest.mark.parametrize("selection", [
+    {"bands": [1.5]},
+    {"bands": ["1"]},
+    {"bands": (0.0, 2)},
+])
+def test_axis_indices_are_integers(image, selection):
+    path, header, _data = image
+    with pytest.raises(TypeError, match="integer"):
+        rumi.read(path, header, **selection)
+
+
+def test_dlpack_copy_is_not_silently_ignored(image):
+    path, header, _data = image
+    result = rumi.read(path, header, framework="dlpack")
+    with pytest.raises(BufferError, match="copied"):
+        result.__dlpack__(copy=True)
+    assert result._tensor is not None
+    with pytest.raises(TypeError, match="copy must be a bool"):
+        result.__dlpack__(copy=1)
+
+
 def test_dlpack_capsule_failure_restores_versioned_owner(image, monkeypatch):
     path, header, data = image
     result = rumi.read(path, header, framework="dlpack")
@@ -175,7 +196,7 @@ def test_read_accepts_exactly_one_source_and_header(image):
     path, header, _data = image
     with pytest.raises(TypeError, match="one bytes-like header"):
         rumi.read(path, [header])
-    with pytest.raises(TypeError, match="read takes one source"):
+    with pytest.raises(TypeError, match="path-like or bytes-like"):
         rumi.read([path], header)
 
 

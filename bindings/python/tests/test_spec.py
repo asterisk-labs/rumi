@@ -2,6 +2,8 @@
 
 import datetime as dt
 import struct
+import sys
+import types
 
 import numpy as np
 import pytest
@@ -1113,8 +1115,8 @@ def test_every_registered_dtype_reaches_torch_exactly(tmp_path, dtype):
         assert rumi.read(path, header).dtype.type is dtype.numpy_dtype
 
 
-_TORCH_ONLY_DTYPES = [dtype for dtype in _DTYPES.values()
-                      if dtype.numpy_dtype is None]
+_NON_NUMPY_DTYPES = [dtype for dtype in _DTYPES.values()
+                     if dtype.numpy_dtype is None]
 
 
 def make_dtype_file(tmp_path, dtype, name=None):
@@ -1132,40 +1134,39 @@ def make_dtype_file(tmp_path, dtype, name=None):
     return path, rumi.info(source=path).header, raw
 
 
-@pytest.fixture(params=_TORCH_ONLY_DTYPES, ids=lambda dtype: dtype.name)
-def torch_only_file(request, tmp_path):
+@pytest.fixture(params=_NON_NUMPY_DTYPES, ids=lambda dtype: dtype.name)
+def non_numpy_file(request, tmp_path):
     dtype = request.param
     path, header, raw = make_dtype_file(tmp_path, dtype)
     return path, header, dtype, raw
 
 
-def test_numpy_refuses_a_torch_only_dtype_before_opening_the_source(
-        torch_only_file):
-    _path, header, dtype, _raw = torch_only_file
-    with pytest.raises(TypeError, match=(
-            rf"NumPy cannot represent rumi dtype {dtype.name}; "
-            r"use framework='torch' or framework='dlpack'")):
+def test_numpy_refuses_an_unsupported_dtype_before_opening_the_source(
+        non_numpy_file):
+    _path, header, dtype, _raw = non_numpy_file
+    with pytest.raises(
+            TypeError, match=rf"NumPy cannot represent rumi dtype {dtype.name}"):
         rumi.read("does-not-exist.rumi", header)
 
 
 def test_numpy_checks_every_batch_dtype_before_opening_sources(
-        tmp_path, torch_only_file):
-    _path, torch_header, torch_dtype, _raw = torch_only_file
+        tmp_path, non_numpy_file):
+    _path, non_numpy_header, non_numpy_dtype, _raw = non_numpy_file
     ordinary = _DTYPES[3]
     _ordinary_path, ordinary_header, _raw = make_dtype_file(
         tmp_path, ordinary, "ordinary")
     with pytest.raises(
-            TypeError, match=rf"NumPy cannot represent.*{torch_dtype.name}"):
+            TypeError, match=rf"NumPy cannot represent.*{non_numpy_dtype.name}"):
         rumi.read_many(
             ["missing-one.rumi", "missing-two.rumi"],
-            [ordinary_header, torch_header],
+            [ordinary_header, non_numpy_header],
             windows=[(0, 0, 4, 4), (0, 0, 4, 4)],
         )
 
 
-def test_a_torch_only_dlpack_result_survives_a_numpy_refusal(torch_only_file):
+def test_a_non_numpy_dlpack_result_survives_a_numpy_refusal(non_numpy_file):
     torch = pytest.importorskip("torch")
-    path, header, dtype, raw = torch_only_file
+    path, header, dtype, raw = non_numpy_file
     result = rumi.read(path, header, framework="dlpack")
     with pytest.raises(TypeError, match="NumPy cannot represent"):
         result.numpy()
@@ -1174,16 +1175,130 @@ def test_a_torch_only_dlpack_result_survives_a_numpy_refusal(torch_only_file):
     assert np.array_equal(tensor.view(torch.uint8).numpy().reshape(-1), raw)
 
 
-def test_a_torch_only_dtype_reaches_torch_byte_for_byte(torch_only_file):
+def test_a_non_numpy_dtype_reaches_torch_byte_for_byte(non_numpy_file):
     torch = pytest.importorskip("torch")
-    path, header, dtype, raw = torch_only_file
+    path, header, dtype, raw = non_numpy_file
     tensor = rumi.read(path, header, framework="torch")
     assert tensor.dtype == getattr(torch, dtype.name)
     assert np.array_equal(tensor.view(torch.uint8).numpy().reshape(-1), raw)
 
 
+def test_jax_receives_the_dlpack_producer(tmp_path, monkeypatch):
+    dtype = _DTYPES[3]
+    path, header, _raw = make_dtype_file(tmp_path, dtype, "jax-producer")
+
+    def consume(value):
+        assert isinstance(value, rumi.RumiArray)
+        return types.SimpleNamespace(dtype=types.SimpleNamespace(name="uint16"))
+
+    fake = types.SimpleNamespace(
+        config=types.SimpleNamespace(x64_enabled=False),
+        dlpack=types.SimpleNamespace(from_dlpack=consume),
+    )
+    monkeypatch.setitem(sys.modules, "jax", fake)
+    result = rumi.read(path, header, framework="jax")
+    assert result.dtype.name == "uint16"
+
+
+def test_tensorflow_receives_a_legacy_capsule(tmp_path, monkeypatch):
+    dtype = _DTYPES[3]
+    path, header, _raw = make_dtype_file(tmp_path, dtype, "tensorflow-capsule")
+
+    def consume(value):
+        assert type(value).__name__ == "PyCapsule"
+        return types.SimpleNamespace(dtype=types.SimpleNamespace(name="uint16"))
+
+    fake = types.SimpleNamespace(experimental=types.SimpleNamespace(
+        dlpack=types.SimpleNamespace(from_dlpack=consume)))
+    monkeypatch.setitem(sys.modules, "tensorflow", fake)
+    result = rumi.read(path, header, framework="tensorflow")
+    assert result.dtype.name == "uint16"
+
+
+@pytest.mark.parametrize("framework,dtype_name", [
+    ("jax", "complex32"),
+    ("tensorflow", "float8_e4m3fn"),
+])
+def test_framework_dtype_refusal_precedes_source_opening(
+        tmp_path, monkeypatch, framework, dtype_name):
+    dtype = next(value for value in _DTYPES.values()
+                 if value.name == dtype_name)
+    _path, header, _raw = make_dtype_file(tmp_path, dtype, framework)
+    if framework == "jax":
+        fake = types.SimpleNamespace(
+            config=types.SimpleNamespace(x64_enabled=False))
+    else:
+        fake = types.SimpleNamespace()
+    monkeypatch.setitem(sys.modules, framework, fake)
+    with pytest.raises(TypeError, match=rf"cannot represent.*{dtype_name}"):
+        rumi.read("does-not-exist.rumi", header, framework=framework)
+
+
+def test_jax_x64_is_an_explicit_requirement(tmp_path, monkeypatch):
+    dtype = _DTYPES[7]
+    _path, header, _raw = make_dtype_file(tmp_path, dtype, "jax-x64")
+    fake = types.SimpleNamespace(
+        config=types.SimpleNamespace(x64_enabled=False))
+    monkeypatch.setitem(sys.modules, "jax", fake)
+    with pytest.raises(TypeError, match="jax_enable_x64 is disabled"):
+        rumi.read("does-not-exist.rumi", header, framework="jax")
+
+
+_JAX_INTEGRATION_DTYPES = [
+    dtype for dtype in _DTYPES.values()
+    if dtype.name in {
+        "uint8", "uint16", "uint32", "int8", "int16", "int32",
+        "uint64", "int64", "float16", "float32", "float64", "complex64",
+        "complex128", "bfloat16", "bool",
+    }
+]
+_TENSORFLOW_INTEGRATION_DTYPES = [
+    dtype for dtype in _DTYPES.values()
+    if dtype.name in {
+        "uint8", "uint16", "uint32", "uint64", "int8", "int16", "int32",
+        "int64", "float16", "float32", "float64", "complex64", "complex128",
+        "bfloat16", "bool",
+    }
+]
+
+
+def make_zero_dtype_file(tmp_path, dtype, name):
+    geozl = pytest.importorskip("geozl")
+    raw = np.zeros((1, 16 * dtype.itemsize // dtype.component_size),
+                   dtype=f"u{dtype.component_size}")
+    payload = geozl.compress(raw, graph=geozl.graph(raw, "id>zstd"))
+    entries = spec_entries(4, 4, 4, 1, [payload], bits=dtype.bits,
+                           fmt=dtype.sample_format, unit=0, time=1)
+    path = tmp_path / f"{name}-{dtype.name}.rumi"
+    path.write_bytes(build_tiff(entries, [payload]))
+    return path, rumi.info(source=path).header
+
+
+@pytest.mark.parametrize("dtype", _JAX_INTEGRATION_DTYPES,
+                         ids=lambda dtype: dtype.name)
+def test_jax_integration(tmp_path, dtype):
+    jax = pytest.importorskip("jax")
+    if dtype.name in {"uint64", "int64", "float64", "complex128"} \
+            and not jax.config.x64_enabled:
+        pytest.skip("JAX x64 is disabled")
+    path, header = make_zero_dtype_file(tmp_path, dtype, "jax")
+    result = rumi.read(path, header, framework="jax")
+    assert isinstance(result, jax.Array)
+    assert result.dtype.name == dtype.name
+
+
+@pytest.mark.parametrize("dtype", _TENSORFLOW_INTEGRATION_DTYPES,
+                         ids=lambda dtype: dtype.name)
+def test_tensorflow_integration(tmp_path, dtype):
+    tf = pytest.importorskip("tensorflow")
+    path, header = make_zero_dtype_file(tmp_path, dtype, "tensorflow")
+    result = rumi.read(path, header, framework="tensorflow")
+    assert isinstance(result, tf.Tensor)
+    assert result.dtype.name == dtype.name
+
+
 def test_a_rejected_capsule_keeps_the_consumer_error(tmp_path):
-    bfloat16 = next(dtype for dtype in _TORCH_ONLY_DTYPES
+    bfloat16 = next(dtype for dtype in _NON_NUMPY_DTYPES
                     if dtype.name == "bfloat16")
     path, header, _raw = make_dtype_file(tmp_path, bfloat16)
     result = rumi.read(path, header, framework="dlpack")

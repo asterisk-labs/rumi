@@ -26,7 +26,10 @@ _LEGACY_NAME = b"dltensor"
 
 
 def _address(function) -> int:
-    return ctypes.cast(function, ctypes.c_void_p).value or 0
+    value = ctypes.cast(function, ctypes.c_void_p).value
+    if value is None:
+        raise RuntimeError("could not resolve a Python capsule function")
+    return value
 
 
 # Capsule destruction must not re-enter Python while a consumer's exception is
@@ -61,6 +64,10 @@ class RumiArray:
             if dl_device is not None and tuple(dl_device) != (1, 0):
                 raise BufferError(
                     f"rumi decodes on the CPU, not device {dl_device}")
+            if copy is not None and not isinstance(copy, bool):
+                raise TypeError("copy must be a bool or None")
+            if copy is True:
+                raise BufferError("rumi cannot export a copied DLPack tensor")
 
             owner = self._tensor
             tensor, name = owner, _VERSIONED_NAME
@@ -88,15 +95,35 @@ class RumiArray:
         """Transfer the decoded samples to an exact NumPy dtype."""
         info = dtype_info(self._dtype_code)
         if info.numpy_dtype is None:
+            raise _unsupported("NumPy", info.name)
+        value = np.from_dlpack(self)
+        if value.dtype.type is not info.numpy_dtype:
             raise TypeError(
-                f"NumPy cannot represent rumi dtype {info.name}; "
-                "use torch() or consume this object through DLPack")
-        return np.from_dlpack(self)
+                f"NumPy imported rumi dtype {info.name} as {value.dtype}")
+        return value
 
     def torch(self):
         """Transfer the decoded samples to a PyTorch tensor."""
         import torch
-        return torch.from_dlpack(self)
+        value = torch.from_dlpack(self)
+        _check_result_dtype(value, self._dtype_code, "PyTorch")
+        return value
+
+    def jax(self):
+        """Transfer the decoded samples to a JAX array."""
+        _check_framework(self._dtype_code, "jax")
+        import jax
+        value = jax.dlpack.from_dlpack(self)
+        _check_result_dtype(value, self._dtype_code, "JAX")
+        return value
+
+    def tensorflow(self):
+        """Transfer the decoded samples to a TensorFlow tensor."""
+        _check_framework(self._dtype_code, "tensorflow")
+        import tensorflow as tf
+        value = tf.experimental.dlpack.from_dlpack(self.__dlpack__())
+        _check_result_dtype(value, self._dtype_code, "TensorFlow")
+        return value
 
     def __del__(self):
         tensor = self._tensor
@@ -112,15 +139,53 @@ class RumiArray:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
 
 
+_FRAMEWORKS = ("numpy", "torch", "jax", "tensorflow", "dlpack")
+_JAX_DTYPES = frozenset({
+    "uint8", "uint16", "uint32", "int8", "int16", "int32",
+    "float16", "float32", "complex64", "bfloat16", "bool",
+})
+_JAX_X64_DTYPES = frozenset({"uint64", "int64", "float64", "complex128"})
+_TENSORFLOW_DTYPES = frozenset({
+    "uint8", "uint16", "uint32", "uint64", "int8", "int16", "int32",
+    "int64", "float16", "float32", "float64", "complex64", "complex128",
+    "bfloat16", "bool",
+})
+
+
+def _unsupported(framework: str, name: str) -> TypeError:
+    return TypeError(f"{framework} cannot represent rumi dtype {name}")
+
+
+def _check_result_dtype(value, dtype_code: int, framework: str) -> None:
+    expected = dtype_info(dtype_code).name
+    actual = getattr(value.dtype, "name", str(value.dtype))
+    actual = actual.removeprefix("torch.")
+    if actual != expected:
+        raise TypeError(f"{framework} imported rumi dtype {expected} as {actual}")
+
+
 def _check_framework(dtype_code: int, framework: str) -> None:
-    if framework not in ("numpy", "torch", "dlpack"):
-        raise ValueError(
-            f"unknown framework {framework!r}; expected 'numpy', 'torch', or 'dlpack'")
+    if framework not in _FRAMEWORKS:
+        choices = ", ".join(repr(value) for value in _FRAMEWORKS)
+        raise ValueError(f"unknown framework {framework!r}; expected {choices}")
     info = dtype_info(dtype_code)
     if framework == "numpy" and info.numpy_dtype is None:
-        raise TypeError(
-            f"NumPy cannot represent rumi dtype {info.name}; "
-            "use framework='torch' or framework='dlpack'")
+        raise _unsupported("NumPy", info.name)
+    if framework == "torch":
+        import torch  # noqa: F401
+    if framework == "jax":
+        import jax
+        if info.name in _JAX_X64_DTYPES:
+            if not jax.config.x64_enabled:
+                raise TypeError(
+                    f"JAX cannot represent rumi dtype {info.name} while "
+                    "jax_enable_x64 is disabled")
+        elif info.name not in _JAX_DTYPES:
+            raise _unsupported("JAX", info.name)
+    if framework == "tensorflow":
+        import tensorflow  # noqa: F401
+        if info.name not in _TENSORFLOW_DTYPES:
+            raise _unsupported("TensorFlow", info.name)
 
 
 def _to_framework(arr: RumiArray, framework: str):
@@ -130,8 +195,11 @@ def _to_framework(arr: RumiArray, framework: str):
         return arr.numpy()
     if framework == "torch":
         return arr.torch()
-    raise ValueError(
-        f"unknown framework {framework!r}; expected 'numpy', 'torch', or 'dlpack'")
+    if framework == "jax":
+        return arr.jax()
+    if framework == "tensorflow":
+        return arr.tensorflow()
+    raise RuntimeError("framework validation and dispatch disagree")
 
 
 # Convert Python indices to the C API's 1-based convention. NULL/0 means all.
@@ -141,12 +209,18 @@ def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     if isinstance(sel, tuple):
         if len(sel) != 2:
             raise ValueError(f"{name}: tuple must be (start, stop)")
-        start, stop = sel
+        try:
+            start, stop = map(operator.index, sel)
+        except TypeError:
+            raise TypeError(f"{name}: start and stop must be integers") from None
         if not (0 <= start < stop <= total):
             raise ValueError(f"{name}: slice ({start}, {stop}) out of [0, {total}]")
         return list(range(start + 1, stop + 1))
     if isinstance(sel, list):
-        out = [int(i) + 1 for i in sel]
+        try:
+            out = [operator.index(i) + 1 for i in sel]
+        except TypeError:
+            raise TypeError(f"{name}: every index must be an integer") from None
         for x in out:
             if not (1 <= x <= total):
                 raise ValueError(f"{name}: index {x - 1} out of [0, {total})")
@@ -301,14 +375,15 @@ def read(source: _ReadSource, header: Header, *,
     ``(start, stop)`` range. ``window`` is ``(row, column, height, width)``.
     Indices are zero-based. ``pattern`` controls the output axis order.
 
-    ``framework`` selects ``"numpy"``, ``"torch"``, or ``"dlpack"``. The last
-    returns a RumiArray implementing the DLPack protocol. Reads use the
+    ``framework`` selects ``"numpy"``, ``"torch"``, ``"jax"``,
+    ``"tensorflow"``, or ``"dlpack"``. The last returns a RumiArray
+    implementing the DLPack protocol. Reads use the
     process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
     if not isinstance(source, (str, os.PathLike,
                                bytes, bytearray, memoryview)):
-        raise TypeError("read takes one source; use read_many for multiple sources")
+        raise TypeError("source must be path-like or bytes-like")
     if not isinstance(header, (bytes, bytearray, memoryview)):
         raise TypeError("read needs one bytes-like header")
     spec = _Spec(header)
