@@ -29,8 +29,9 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
-- `rumi.header_size(shape, pattern, tile_size)` returns the exact file header
-  size without materializing an array or any frames.
+- `rumi.frame_start(shape, pattern, tile_size)` and the C function
+  `rumi_frame_start` return the byte offset of the first frame without
+  materializing an array or any frames.
 - Boolean data exports as `(kDLBool, 8, 1)` and reads directly into
   `torch.bool`, while retaining its one-bit logical file encoding and one-byte
   decoded storage.

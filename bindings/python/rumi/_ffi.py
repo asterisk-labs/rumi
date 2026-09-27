@@ -273,7 +273,7 @@ rumi_status
 rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 
 rumi_status
-rumi_header_size(uint32_t samples_per_pixel, uint64_t frame_count,
+rumi_frame_start(uint32_t samples_per_pixel, uint64_t frame_count,
                  uint64_t* out);
 """
 

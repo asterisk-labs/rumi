@@ -46,13 +46,13 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
     ((4, 3, 40, 70), CUBE, 16, 632),
     ((4, 3, 40, 70), CUBE_TILES, 16, 2612),
 ])
-def test_header_size_needs_no_array_or_frames(shape, pattern, tile, expected):
-    assert rumi.header_size(shape, pattern, tile) == expected
+def test_frame_start_needs_no_array_or_frames(shape, pattern, tile, expected):
+    assert rumi.frame_start(shape, pattern, tile) == expected
 
 
-def test_header_size_matches_the_writer_layout():
+def test_frame_start_matches_the_writer_layout():
     tf = make_frame()
-    assert rumi.header_size((2, 40, 70), TILE, 16) == header_bytes(tf)
+    assert rumi.frame_start((2, 40, 70), TILE, 16) == header_bytes(tf)
 
 
 @pytest.mark.parametrize("shape, pattern, tile, error, message", [
@@ -61,9 +61,9 @@ def test_header_size_matches_the_writer_layout():
     ((2, 40.5, 70), TILE, 16, TypeError, "shape must contain integers"),
     ((2, 40, 70), TILE, 0, ValueError, "tile_size must be in"),
 ])
-def test_header_size_validates_geometry(shape, pattern, tile, error, message):
+def test_frame_start_validates_geometry(shape, pattern, tile, error, message):
     with pytest.raises(error, match=message):
-        rumi.header_size(shape, pattern, tile)
+        rumi.frame_start(shape, pattern, tile)
 
 
 def test_write_path_is_text_or_pathlike():

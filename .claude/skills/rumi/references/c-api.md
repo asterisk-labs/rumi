@@ -202,7 +202,7 @@ first frame at byte 500
 | Planning without I/O | `rumi_plan_ranges` (unique ranges in frame-index order) |
 | Reading | `rumi_read`, `rumi_read_dlpack`, `rumi_read_many`, `rumi_read_many_dlpack`, `rumi_dlpack_free`, `rumi_dlpack_legacy`, `rumi_dlpack_legacy_free` |
 | Python capsule support | `rumi_dlpack_capsule_api`, `rumi_dlpack_capsule_destructor` |
-| Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_geokeys` |
+| Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_frame_start`, `rumi_geokeys` |
 
 `rumi_read_many` takes an array of `rumi_read_item { source, spec, y_off, x_off }` plus
 one shared `y_size` and `x_size`. Its default pattern keeps `n`, and a custom pattern

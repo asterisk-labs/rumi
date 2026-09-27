@@ -92,7 +92,7 @@ rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
                        const size_t* sizes, size_t frame_count,
                        unsigned char** out_blob, size_t* out_size);
 rumi_status rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
-rumi_status rumi_header_size(uint32_t samples_per_pixel, uint64_t frame_count,
+rumi_status rumi_frame_start(uint32_t samples_per_pixel, uint64_t frame_count,
                              uint64_t* out);
 const char* rumi_axis_name(uint8_t axis);
 rumi_status rumi_check_samples(const void* data, size_t n_bytes,

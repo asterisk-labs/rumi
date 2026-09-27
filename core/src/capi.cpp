@@ -1278,12 +1278,12 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
 }
 
 extern "C" rumi_status
-rumi_header_size(uint32_t samples_per_pixel, uint64_t frame_count,
+rumi_frame_start(uint32_t samples_per_pixel, uint64_t frame_count,
                  uint64_t* out)
 {
     return capi_call([&]() -> rumi_status {
         if (!out) {
-            set_error("rumi_header_size: out is null");
+            set_error("rumi_frame_start: out is null");
             return RUMI_ERR_INVALID;
         }
         if (samples_per_pixel == 0

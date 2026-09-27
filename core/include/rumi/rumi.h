@@ -493,10 +493,10 @@ rumi_write(const char*                 path,
 RUMI_API rumi_status
 rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
 
-// Return the byte size of the file header, which is also the first frame
-// offset. No frame payloads are needed.
+// Return the byte offset of the first frame, which is also the size of
+// everything before it. No frame payloads are needed.
 RUMI_API rumi_status
-rumi_header_size(uint32_t samples_per_pixel, uint64_t frame_count,
+rumi_frame_start(uint32_t samples_per_pixel, uint64_t frame_count,
                  uint64_t* out);
 
 

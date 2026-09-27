@@ -122,14 +122,15 @@ def header_bytes(tf, *, transform=None, crs=None,
     return int(out[0])
 
 
-def header_size(shape, pattern, tile_size=512) -> int:
-    """Return the file header size without materializing any frames.
+def frame_start(shape, pattern, tile_size=512) -> int:
+    """Return the byte offset of the first frame without materializing frames.
 
     ``shape`` gives the raster dimensions in the axis order named by
     ``pattern``. ``tile_size`` is the nominal height and width of a square
     tile, from 1 to 65535.
 
-    The result is the exact byte offset at which the first frame would begin.
+    The result is also the size of everything the file stores before its
+    first frame.
     """
     p = compile_pattern(pattern)
     try:
@@ -164,7 +165,7 @@ def header_size(shape, pattern, tile_size=512) -> int:
     unit = p.frame_unit(bands, times)
     count = frame_count(unit, width, length, tile, bands, times)[2]
     out = ffi.new("uint64_t*")
-    _check(lib.rumi_header_size(bands, count, out))
+    _check(lib.rumi_frame_start(bands, count, out))
     return int(out[0])
 
 
