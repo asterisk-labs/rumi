@@ -5,7 +5,7 @@ import threading
 import numpy as np
 import pytest
 import rumi
-import rumi._read as read_module
+import rumi._dlpack as dlpack_module
 from _labels import labels
 from rumi._ffi import ffi, lib
 from rumi._native import _Spec
@@ -13,10 +13,6 @@ from rumi._native import _Spec
 geozl = pytest.importorskip("geozl")
 
 GRAPH = "planar>zigzag>zstd"
-
-
-def test_rumi_array_is_public():
-    assert rumi.RumiArray.__module__ == "rumi._read"
 
 
 PATTERNS = {"tile": "b (row h) (col w) -> row col b (h w)",
@@ -95,7 +91,7 @@ def test_dlpack_capsule_failure_restores_versioned_owner(image, monkeypatch):
         raise MemoryError("capsule failed")
 
     with monkeypatch.context() as patch:
-        patch.setattr(read_module, "_PyCapsule_New", fail_capsule)
+        patch.setattr(dlpack_module, "_PyCapsule_New", fail_capsule)
         with pytest.raises(MemoryError, match="capsule failed"):
             result.__dlpack__(max_version=(1, 0))
     assert result._tensor is not None
