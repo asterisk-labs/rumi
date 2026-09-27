@@ -100,7 +100,8 @@ TransportSource::~TransportSource()
 
 std::size_t
 TransportSource::read(TransportSession& transport, std::uint64_t offset,
-                      std::size_t count, void* buffer) noexcept
+                      std::size_t count, void* buffer,
+                      const char* if_match) noexcept
 {
     if (count == 0) return 0;
     karu_client* client = transport.client();
@@ -108,7 +109,7 @@ TransportSource::read(TransportSession& transport, std::uint64_t offset,
 
     const karu_req request{
         locator_, offset, static_cast<std::uint64_t>(count), buffer,
-        nullptr, nullptr,
+        nullptr, if_match,
     };
     return karu_client_fetch(client, &request, 1) == KARU_OK ? count : 0;
 }
@@ -131,6 +132,28 @@ TransportSource::size(TransportSession& transport) const
     return result;
 }
 
+std::expected<SourceEnds, std::string>
+TransportSource::read_ends(TransportSession& transport,
+                           std::span<std::byte> head,
+                           std::span<std::byte> tail) const
+{
+    karu_client* client = transport.client();
+    if (!client) {
+        return transport_error("could not initialize transport for",
+                               karu_locator_uri(locator_), transport.status());
+    }
+
+    karu_object_info info = KARU_OBJECT_INFO_INIT;
+    const karu_status status = karu_client_read_ends(
+        client, locator_, head.data(), head.size(), tail.data(), tail.size(),
+        &info);
+    if (status != KARU_OK) {
+        return transport_error("could not open", karu_locator_uri(locator_),
+                               status);
+    }
+    return SourceEnds{info.size, info.etag};
+}
+
 const karu_locator* TransportSource::remote_locator() const noexcept
 {
     return remote_ ? locator_ : nullptr;
@@ -139,12 +162,23 @@ const karu_locator* TransportSource::remote_locator() const noexcept
 
 std::size_t
 MemorySource::read(TransportSession&, std::uint64_t offset,
-                   std::size_t count, void* buffer) noexcept
+                   std::size_t count, void* buffer, const char*) noexcept
 {
     if (offset >= size_) return 0;
     const std::size_t n = std::min<std::uint64_t>(count, size_ - offset);
     std::memcpy(buffer, data_ + offset, n);
     return n;
+}
+
+std::expected<SourceEnds, std::string>
+MemorySource::read_ends(TransportSession&, std::span<std::byte> head,
+                        std::span<std::byte> tail) const
+{
+    const std::size_t head_n = std::min<std::uint64_t>(head.size(), size_);
+    const std::size_t tail_n = std::min<std::uint64_t>(tail.size(), size_);
+    std::memcpy(head.data(), data_, head_n);
+    std::memcpy(tail.data(), data_ + (size_ - tail_n), tail_n);
+    return SourceEnds{size_, {}};
 }
 
 }  // namespace rumi

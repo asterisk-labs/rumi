@@ -1,5 +1,6 @@
 #include "rumi/rumi.hpp"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
@@ -24,16 +25,81 @@ std::unexpected<Error> bad(const char* fmt, ...)
     return std::unexpected(Error{RUMI_ERR_FORMAT, std::move(message)});
 }
 
-// Crossing the advertised end is malformed data, not a short transport read.
-std::expected<void, Error>
-read_at(Source& source, TransportSession& transport, std::uint64_t size,
-        std::uint64_t off, void* dst, std::size_t n, const char* what)
-{
-    if (source.read(transport, off, n, dst) == n) return {};
-    const bool past_end = off > size || n > size - off;
-    return failf(past_end ? RUMI_ERR_FORMAT : RUMI_ERR_IO, "could not read %s",
-                 what);
-}
+// A file keeps its header, IFD and frame index at the start and its trailer at
+// the end, so one read of each end usually holds every metadata byte.
+constexpr std::size_t END_BYTES = 16u << 10;
+
+// Metadata reads served from both ends of a source. Bytes between them come
+// from the source, pinned to the version the ends came from.
+struct Ends {
+    Source&                source;
+    TransportSession&      transport;
+    std::vector<std::byte> head{};
+    std::vector<std::byte> tail{};
+    std::uint64_t          size = 0;
+    std::string            version{};
+
+    std::expected<void, Error> open()
+    {
+        head.resize(END_BYTES);
+        tail.resize(END_BYTES);
+        auto found = source.read_ends(transport, head, tail);
+        if (!found) return fail(RUMI_ERR_IO, std::move(found.error()));
+        size    = found->size;
+        version = std::move(found->version);
+        const auto got =
+            static_cast<std::size_t>(std::min<std::uint64_t>(END_BYTES, size));
+        head.resize(got);
+        tail.resize(got);
+        return {};
+    }
+
+    std::expected<void, Error>
+    read(std::uint64_t off, void* dst, std::size_t n, const char* what)
+    {
+        // Crossing the end is malformed data, not a short transport read.
+        if (off > size || n > size - off) {
+            return failf(RUMI_ERR_FORMAT, "could not read %s", what);
+        }
+        auto* out = static_cast<std::byte*>(dst);
+        const std::uint64_t end        = off + n;
+        const std::uint64_t tail_start = size - tail.size();
+        // [off, in_head) is in the head and [in_tail, end) in the tail.
+        const std::uint64_t in_head = off < head.size()
+            ? std::min<std::uint64_t>(end, head.size()) : off;
+        const std::uint64_t in_tail = end > tail_start
+            ? std::max(in_head, tail_start) : end;
+        if (in_head > off) {
+            std::memcpy(out, head.data() + off, in_head - off);
+        }
+        if (end > in_tail) {
+            std::memcpy(out + (in_tail - off), tail.data() + (in_tail - tail_start),
+                        end - in_tail);
+        }
+        const auto middle = static_cast<std::size_t>(in_tail - in_head);
+        if (middle > 0
+            && source.read(transport, in_head, middle, out + (in_head - off),
+                           version.empty() ? nullptr : version.c_str())
+                != middle) {
+            return failf(RUMI_ERR_IO, "could not read %s", what);
+        }
+        return {};
+    }
+
+    // Grows the head to `end` bytes with at most one request.
+    std::expected<void, Error> extend_head(std::uint64_t end)
+    {
+        if (end <= head.size()) return {};
+        std::vector<std::byte> rest(static_cast<std::size_t>(end - head.size()));
+        if (auto r = read(head.size(), rest.data(), rest.size(),
+                          "the external IFD values");
+            !r) {
+            return r;
+        }
+        head.insert(head.end(), rest.begin(), rest.end());
+        return {};
+    }
+};
 
 // Parsed IFD entry. Values up to eight bytes are inline.
 struct Entry {
@@ -57,12 +123,12 @@ std::expected<std::vector<std::byte>, Error>
 build_blob_from_source(Source& source, FileGeo* geo, Trailer* trailer) noexcept
 try {
     TransportSession transport;
-    auto source_size = source.size(transport);
-    if (!source_size) return fail(RUMI_ERR_IO, std::move(source_size.error()));
-    const std::uint64_t on_disk = *source_size;
+    Ends ends{source, transport};
+    if (auto opened = ends.open(); !opened) return std::unexpected(opened.error());
+    const std::uint64_t on_disk = ends.size;
     const auto read = [&](std::uint64_t off, void* dst, std::size_t n,
                           const char* what) {
-        return read_at(source, transport, on_disk, off, dst, n, what);
+        return ends.read(off, dst, n, what);
     };
 
     // Read and validate the fixed 16-byte file header.
@@ -209,6 +275,12 @@ try {
             return bad("external value offsets overflow uint64");
         }
         cursor += padded;
+    }
+
+    // One request brings external values past the first read. Larger claims
+    // fail below with their own message.
+    if (cursor <= on_disk && cursor <= max_frame_bytes()) {
+        if (auto r = ends.extend_head(cursor); !r) return std::unexpected(r.error());
     }
 
     if (find(TAG_MODEL_TRANSFORMATION)->count != 16

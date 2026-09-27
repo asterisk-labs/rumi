@@ -1,5 +1,8 @@
 import datetime as dt
+import re
+import threading
 from dataclasses import fields
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 import pytest
@@ -42,6 +45,103 @@ def test_source_returns_complete_metadata(tmp_path):
     assert metadata.transform == TRANSFORM
     assert metadata.crs == 32718
     assert metadata.pixel_is_point is False
+
+
+def many_frames(tmp_path):
+    # 2000 frames need a 24452-byte header region, past the 16 KiB first read.
+    data = np.zeros((1, 640, 800), dtype=np.uint16)
+    table = rumi.frames(
+        data, "b (row h) (col w) -> row col b (h w)", tile_size=16)
+    graph = geozl.graph(table[0].data, "planar>zigzag>zstd")
+    for frame in table:
+        frame.compressed = geozl.compress(frame.data, graph=graph)
+    return rumi.write(tmp_path / "many.rumi", table, bands=["red"],
+                      time=["2024-08-25"])
+
+
+@pytest.fixture
+def served():
+    """Serve files over HTTP ranges and record each request.
+
+    With suffix=False the server answers a suffix range with the whole object,
+    as Azure does.
+    """
+    objects = {}
+    requests = []
+    options = {"suffix": True}
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self):
+            payload = objects[self.path]
+            spec = self.headers.get("Range", "")
+            requests.append((spec, self.headers.get("If-Match")))
+            suffix = re.fullmatch(r"bytes=-(\d+)", spec)
+            status, first, last = 206, 0, len(payload) - 1
+            if suffix and options["suffix"]:
+                first = max(0, len(payload) - int(suffix.group(1)))
+            elif suffix:
+                status = 200
+            else:
+                bounds = re.fullmatch(r"bytes=(\d+)-(\d+)", spec)
+                first = int(bounds.group(1))
+                last = min(int(bounds.group(2)), last)
+            body = payload[first:last + 1]
+            self.send_response(status)
+            if status == 206:
+                self.send_header("Content-Range",
+                                 f"bytes {first}-{last}/{len(payload)}")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("ETag", '"v1"')
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def log_message(self, _format, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+
+    def serve(path, suffix=True):
+        objects["/" + path.name] = path.read_bytes()
+        options["suffix"] = suffix
+        requests.clear()
+        return f"http://127.0.0.1:{server.server_port}/{path.name}", requests
+
+    yield serve
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+def test_remote_source_reads_both_ends_at_once(tmp_path, served):
+    path, header = stored(tmp_path)
+    url, requests = served(path)
+    assert rumi.info(source=url).header == header
+    assert sorted(requests) == [("bytes=-16384", None), ("bytes=0-16383", None)]
+
+
+def test_a_long_header_region_takes_one_more_request(tmp_path, served):
+    path, header = many_frames(tmp_path)
+    url, requests = served(path)
+    assert rumi.info(source=url).header == header
+    assert sorted(requests[:2]) == [("bytes=-16384", None),
+                                    ("bytes=0-16383", None)]
+    assert requests[2:] == [("bytes=16384-24451", '"v1"')]
+
+
+def test_a_server_without_suffix_ranges_gets_the_tail_by_offset(
+        tmp_path, served):
+    path, header = many_frames(tmp_path)
+    size = path.stat().st_size
+    url, requests = served(path, suffix=False)
+    assert rumi.info(source=url).header == header
+    assert (f"bytes={size - 16384}-{size - 1}", '"v1"') in requests
 
 
 def test_header_returns_only_metadata_the_header_contains(tmp_path):

@@ -10,6 +10,7 @@
 #include <cstring>
 #include <new>
 #include <random>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -1823,6 +1824,103 @@ void test_info_c_api()
     rumi_metadata_free(nullptr);
 }
 
+// Serves a file from memory and counts how the builder reaches it.
+class CountingSource final : public rumi::Source {
+public:
+    explicit CountingSource(std::vector<std::byte> bytes)
+        : bytes_(std::move(bytes)), memory_(bytes_.data(), bytes_.size()) {}
+
+    std::size_t read(rumi::TransportSession& transport, std::uint64_t offset,
+                     std::size_t count, void* buffer,
+                     const char* if_match) noexcept override
+    {
+        ++reads;
+        return memory_.read(transport, offset, count, buffer, if_match);
+    }
+
+    std::expected<std::uint64_t, std::string>
+    size(rumi::TransportSession& transport) const override
+    {
+        ++sizes;
+        return memory_.size(transport);
+    }
+
+    std::expected<rumi::SourceEnds, std::string>
+    read_ends(rumi::TransportSession& transport, std::span<std::byte> head,
+              std::span<std::byte> tail) const override
+    {
+        ++ends;
+        return memory_.read_ends(transport, head, tail);
+    }
+
+    int         reads = 0;
+    mutable int sizes = 0;
+    mutable int ends  = 0;
+
+private:
+    std::vector<std::byte> bytes_;
+    rumi::MemorySource     memory_;
+};
+
+void test_metadata_from_both_ends()
+{
+    CASE("metadata comes from both ends, with one request per part past them")
+    struct Layout {
+        const char*   name;
+        std::uint32_t width;
+        std::uint32_t length;
+        std::size_t   payload;
+        std::size_t   text;
+        int           reads;
+    };
+    // 50 by 40 tiles of 16 pixels need a 24452-byte header region, and a
+    // 20000-byte band text a longer trailer than the 16 KiB each end holds.
+    const Layout layouts[] = {
+        {"a small file", 32, 32, 100, 6, 0},
+        {"a small file with a long trailer", 32, 32, 100, 20000, 0},
+        {"a long header region", 800, 640, 40, 6, 1},
+        {"a long trailer", 32, 32, 5000, 20000, 1},
+        {"a long header region and trailer", 800, 640, 40, 20000, 2},
+    };
+    for (const Layout& layout : layouts) {
+        current = layout.name;
+        rumi::WriteDesc d = desc_of(layout.width, layout.length, 16, 1,
+                                    nullptr, 0);
+        label(d);
+        d.trailer.bands[0] = std::string(layout.text, 'b');
+        const std::size_t n = tiles_of(layout.width, layout.length, 16, 1);
+        std::vector<std::vector<unsigned char>> payload(
+            n, std::vector<unsigned char>(layout.payload, 7));
+        std::vector<const unsigned char*> ptrs(n);
+        std::vector<std::size_t> sizes(n, layout.payload);
+        for (std::size_t i = 0; i < n; ++i) ptrs[i] = payload[i].data();
+
+        const std::string path = "/tmp/rumi_ends_"
+                               + std::to_string(std::random_device{}()) + ".rumi";
+        auto written = rumi::write_file(path.c_str(), d, ptrs.data(),
+                                        sizes.data(), n);
+        std::vector<std::byte> bytes;
+        if (std::FILE* f = std::fopen(path.c_str(), "rb")) {
+            for (int c; (c = std::fgetc(f)) != EOF;) {
+                bytes.push_back(static_cast<std::byte>(c));
+            }
+            std::fclose(f);
+        }
+        std::remove(path.c_str());
+        OK(written.has_value());
+        if (!written) continue;
+
+        CountingSource source(std::move(bytes));
+        rumi::Trailer trailer;
+        auto rebuilt = rumi::build_blob_from_source(source, nullptr, &trailer);
+        OK(rebuilt.has_value() && *rebuilt == *written);
+        OK(trailer.bands.size() == 1 && trailer.bands[0].size() == layout.text);
+        EQ(source.ends, 1);
+        EQ(source.sizes, 0);
+        EQ(source.reads, layout.reads);
+    }
+}
+
 void test_write_c_api_band_texts()
 {
     CASE("the write C API stores every band text and info returns them")
@@ -2057,6 +2155,7 @@ int main()
     test_plan_ranges_c_api_rejects_invalid_requests();
     test_read_c_api_rejects_invalid_requests();
     test_info_c_api();
+    test_metadata_from_both_ends();
     test_write_c_api_band_texts();
     test_read_many_c_api();
     test_dtype_table();

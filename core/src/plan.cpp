@@ -211,7 +211,8 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
 
         // Local and memory sources read positionally in the decode worker.
         const std::size_t got = t.source->read(
-            *transport, t.offset, t.compressed_size, ws.compressed.data());
+            *transport, t.offset, t.compressed_size, ws.compressed.data(),
+            nullptr);
         if (got != t.compressed_size) {
             say(msg, "rumi: short read at %llu: %llu of %llu%s",
                 static_cast<unsigned long long>(t.offset),

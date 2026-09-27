@@ -49,6 +49,10 @@ Notable user-visible changes are recorded here.
 
 - DLPack read buffers are 256-byte aligned so JAX can import them without an
   alignment copy.
+- `rumi.info(source=...)` reads the first and last 16 KiB of a file together,
+  which hold the metadata of most files: two requests to a remote object
+  instead of one per metadata field. A longer header region or trailer takes
+  one more request each, pinned to the same object version.
 
 ### Fixed
 

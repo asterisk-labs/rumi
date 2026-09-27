@@ -574,19 +574,34 @@ private:
     bool         initialized_{};
 };
 
+// Size and version of a source, as read_ends found them.
+struct SourceEnds {
+    std::uint64_t size = 0;
+    // Strong ETag of a remote object, or empty.
+    std::string   version;
+};
+
 // Concurrent positional byte source.
 class Source {
 public:
     virtual ~Source() = default;
 
+    // if_match, when not null, is the version the bytes must come from.
     [[nodiscard]] virtual std::size_t
     read(TransportSession& transport, std::uint64_t offset,
-         std::size_t count, void* buffer) noexcept = 0;
+         std::size_t count, void* buffer, const char* if_match) noexcept = 0;
 
     // Exact addressable size. Remote implementations may perform one explicit
     // metadata request; normal reads avoid this through remote_locator().
     [[nodiscard]] virtual std::expected<std::uint64_t, std::string>
     size(TransportSession& transport) const = 0;
+
+    // The first head.size() and the last tail.size() bytes with the exact
+    // size, in one round trip for a remote source. Each span receives
+    // min(span.size(), size) bytes.
+    [[nodiscard]] virtual std::expected<SourceEnds, std::string>
+    read_ends(TransportSession& transport, std::span<std::byte> head,
+              std::span<std::byte> tail) const = 0;
 
     // Remote transport sources expose their resolved Karu locator so an entire
     // decode plan can be fetched as one request batch.
@@ -605,10 +620,14 @@ public:
 
     [[nodiscard]] std::size_t
     read(TransportSession& transport, std::uint64_t offset,
-         std::size_t count, void* buffer) noexcept override;
+         std::size_t count, void* buffer, const char* if_match) noexcept override;
 
     [[nodiscard]] std::expected<std::uint64_t, std::string>
     size(TransportSession& transport) const override;
+
+    [[nodiscard]] std::expected<SourceEnds, std::string>
+    read_ends(TransportSession& transport, std::span<std::byte> head,
+              std::span<std::byte> tail) const override;
 
     [[nodiscard]] const karu_locator*
     remote_locator() const noexcept override;
@@ -627,10 +646,14 @@ public:
 
     [[nodiscard]] std::size_t
     read(TransportSession& transport, std::uint64_t offset,
-         std::size_t count, void* buffer) noexcept override;
+         std::size_t count, void* buffer, const char* if_match) noexcept override;
 
     [[nodiscard]] std::expected<std::uint64_t, std::string>
     size(TransportSession&) const override { return size_; }
+
+    [[nodiscard]] std::expected<SourceEnds, std::string>
+    read_ends(TransportSession& transport, std::span<std::byte> head,
+              std::span<std::byte> tail) const override;
 
 private:
     const std::byte* data_;

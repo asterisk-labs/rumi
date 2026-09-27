@@ -42,8 +42,10 @@ go through Rumi's internal transport, Karu.
 - `/vsizip/`, `/vsigzip/` and `*_streaming` handlers are refused: `could not resolve
   /vsizip/x.zip/a.rumi: unsupported virtual filesystem '/vsizip/'; ...`.
 - With a header, a remote read sends only range requests: no size, HEAD or listing
-  request. `rumi.info(source=uri)` reads the file's structure first, so rebuild headers
-  once, when building a catalog.
+  request. `rumi.info(source=uri)` asks for the first and last 16 KiB of the file at once,
+  the tail as a suffix range (on Azure, after the head). That holds the metadata of most
+  files; a header region or trailer past 16 KiB takes one more request each. Rebuild
+  headers once, when building a catalog.
 
 ```python
 from urllib.request import Request, urlopen
