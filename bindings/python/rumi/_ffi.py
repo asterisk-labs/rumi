@@ -16,6 +16,7 @@ typedef enum {
     RUMI_ERR_DECODE      = 5,
     RUMI_ERR_OOM         = 6,
     RUMI_ERR_UNSUPPORTED = 7,
+    RUMI_ERR_STATE       = 8,
     RUMI_ERR_INTERNAL    = 99
 } rumi_status;
 
@@ -334,6 +335,7 @@ _STATUS_TO_EXC = {
     lib.RUMI_ERR_DECODE:      IOError,
     lib.RUMI_ERR_OOM:         MemoryError,
     lib.RUMI_ERR_UNSUPPORTED: NotImplementedError,
+    lib.RUMI_ERR_STATE:       RuntimeError,
     lib.RUMI_ERR_INTERNAL:    RuntimeError,
 }
 

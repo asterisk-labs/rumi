@@ -180,7 +180,7 @@ extern "C" rumi_status rumi_set_num_threads(int n)
         if (effective != n) {
             set_error("thread count is pinned at " + std::to_string(effective)
                       + ", not " + std::to_string(n));
-            return RUMI_ERR_INVALID;
+            return RUMI_ERR_STATE;
         }
         return RUMI_OK;
     });
@@ -216,7 +216,7 @@ extern "C" rumi_status rumi_set_checksum_verification(int on)
             set_error("checksum verification is pinned at "
                       + std::to_string(effective ? 1 : 0) + ", not "
                       + std::to_string(on));
-            return RUMI_ERR_INVALID;
+            return RUMI_ERR_STATE;
         }
         return RUMI_OK;
     });

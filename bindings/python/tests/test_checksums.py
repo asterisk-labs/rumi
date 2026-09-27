@@ -116,7 +116,7 @@ def test_a_read_pins_the_setting_and_rejects_a_later_change(image):
         rumi.read(PATH, HDR)
         try:
             rumi.set_checksum_verification(True)
-        except ValueError as error:
+        except RuntimeError as error:
             print(error)
     """) == "checksum verification is pinned at 0, not 1"
 

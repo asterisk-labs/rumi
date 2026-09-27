@@ -105,7 +105,8 @@ _PUBLIC_TYPES = r"""
 typedef enum {
     RUMI_OK = 0, RUMI_ERR_INVALID = 1, RUMI_ERR_IO = 2,
     RUMI_ERR_PARSE = 3, RUMI_ERR_FORMAT = 4, RUMI_ERR_DECODE = 5,
-    RUMI_ERR_OOM = 6, RUMI_ERR_UNSUPPORTED = 7, RUMI_ERR_INTERNAL = 99
+    RUMI_ERR_OOM = 6, RUMI_ERR_UNSUPPORTED = 7, RUMI_ERR_STATE = 8,
+    RUMI_ERR_INTERNAL = 99
 } rumi_status;
 typedef struct {
     uint8_t code; uint8_t sample_format; uint8_t bits; uint8_t storage_bytes;

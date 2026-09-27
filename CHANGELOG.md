@@ -21,7 +21,8 @@ Notable user-visible changes are recorded here.
   at 1; C applications must be recompiled.
 - Thread and checksum setters in the C API return `rumi_status`; their getters
   write through an output pointer. Changing a setting after it is pinned is an
-  error instead of a silently ignored request.
+  `RUMI_ERR_STATE` error (`RuntimeError` in Python) instead of a silently
+  ignored request.
 - The frame-pattern C API exposes indexed axes through
   `rumi_unit_index_axes`, which rejects invalid frame units.
 - The Python binding loads only `RUMI_LIB` or its bundled library.

@@ -47,6 +47,7 @@ typedef enum {
     RUMI_ERR_DECODE      = 5,
     RUMI_ERR_OOM         = 6,
     RUMI_ERR_UNSUPPORTED = 7,
+    RUMI_ERR_STATE       = 8,
     RUMI_ERR_INTERNAL    = 99
 } rumi_status;
 
@@ -76,8 +77,8 @@ RUMI_API uint64_t rumi_get_max_frame_bytes(void);
 
 // Process-wide read thread count in 1..1024. RUMI_NUM_THREADS may be an integer
 // in that range or ALL_CPUS; any other value is an error. The first parallel
-// read fixes the pool size; later calls cannot resize it. A forked child starts
-// with its own setting.
+// read fixes the pool size; changing it later returns RUMI_ERR_STATE. A forked
+// child starts with its own setting.
 RUMI_API rumi_status rumi_set_num_threads(int n);
 RUMI_API rumi_status rumi_get_num_threads(int* out);
 
@@ -86,7 +87,8 @@ RUMI_API rumi_status rumi_get_num_threads(int* out);
 
 // Process-wide OpenZL checksum verification. RUMI_VERIFY accepts 0/1,
 // false/true, off/on, or no/yes; any other value is an error. The first decoded
-// frame pins the setting. on must be 0 or 1.
+// frame pins the setting; changing it later returns RUMI_ERR_STATE. on must be
+// 0 or 1.
 RUMI_API rumi_status rumi_set_checksum_verification(int on);
 RUMI_API rumi_status rumi_get_checksum_verification(int* out);
 

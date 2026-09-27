@@ -1093,6 +1093,19 @@ void test_concurrent_global_pool_construction()
     EQ(rumi::set_num_threads(2), 4);
 }
 
+void test_pinned_configuration_status()
+{
+    CASE("pinned configuration has a distinct C status")
+    int threads = 0;
+    EQ(rumi_get_num_threads(&threads), RUMI_OK);
+    EQ(rumi_set_num_threads(threads == 1 ? 2 : 1), RUMI_ERR_STATE);
+
+    int checksums = 0;
+    EQ(rumi_get_checksum_verification(&checksums), RUMI_OK);
+    EQ(rumi_set_checksum_verification(checksums == 0 ? 1 : 0),
+       RUMI_ERR_STATE);
+}
+
 void test_thread_pool_batches()
 {
     CASE("a batch owns its submitted jobs until they finish")
@@ -2037,6 +2050,7 @@ int main()
     test_thread_count();
     // Run pool construction last because it pins process-wide thread state.
     test_concurrent_global_pool_construction();
+    test_pinned_configuration_status();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;

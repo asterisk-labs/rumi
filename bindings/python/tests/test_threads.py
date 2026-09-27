@@ -129,7 +129,7 @@ def test_the_pool_pins_the_count_and_rejects_a_later_change(image):
         rumi.read(PATH, HDR)
         try:
             rumi.set_num_threads(2)
-        except ValueError as error:
+        except RuntimeError as error:
             print(error)
     """) == "thread count is pinned at 4, not 2"
 

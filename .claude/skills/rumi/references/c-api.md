@@ -248,7 +248,7 @@ and binding do not share the same C interface. The unstable API and SONAME remai
   `rumi_get_num_threads(&out)` writes the configured count.
 - The process-wide pool is sized by `rumi_set_num_threads` or `RUMI_NUM_THREADS` before
   the first parallel read; the first parallel read fixes it. A different later value
-  returns `RUMI_ERR_INVALID`. A forked child starts with its own setting.
+  returns `RUMI_ERR_STATE`. A forked child starts with its own setting.
 
 ## 9. Checksums
 
@@ -260,4 +260,4 @@ and binding do not share the same C interface. The unstable API and SONAME remai
 - The setter accepts only 0 or 1 and returns `rumi_status`;
   `rumi_get_checksum_verification(&out)` writes the setting.
 - Set it before the first read. The first decoded frame pins the value. A different
-  later value returns `RUMI_ERR_INVALID`, and a forked child inherits it.
+  later value returns `RUMI_ERR_STATE`, and a forked child inherits it.

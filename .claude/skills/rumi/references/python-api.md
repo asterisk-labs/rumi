@@ -206,7 +206,7 @@ rumi.get_num_threads()
 - One process-wide pool serves every read. The default is 1, or `RUMI_NUM_THREADS` (an
   integer in `[1, 1024]` or `ALL_CPUS`; invalid values are errors).
 - The first read that uses more than one thread pins the count. A later
-  `set_num_threads` with another value raises `ValueError`.
+  `set_num_threads` with another value raises `RuntimeError`.
 - `set_num_threads` accepts integers in `[1, 1024]`; `0` raises `ValueError`, `1.5` and
   `"4"` raise `TypeError`.
 - A forked child starts from its own environment (1 unless `RUMI_NUM_THREADS` is set) and
@@ -224,7 +224,7 @@ rumi.get_checksum_verification()
 - The default is `False`. `RUMI_VERIFY` accepts `1`, `true`, `on`, `yes`, `0`,
   `false`, `off`, or `no`; any other value is an error.
 - The first decoded frame pins the setting. A later `set_checksum_verification` with
-  another value raises `ValueError`. The setter accepts only `bool`.
+  another value raises `RuntimeError`. The setter accepts only `bool`.
 - A forked child inherits the setting, pinned state included.
 
 ## 10. Exceptions
@@ -238,6 +238,7 @@ text.
 | `RUMI_ERR_IO`, `RUMI_ERR_DECODE` | `OSError` | missing files, transport failures, OpenZL decode failures |
 | `RUMI_ERR_OOM` | `MemoryError` | allocations |
 | `RUMI_ERR_UNSUPPORTED` | `NotImplementedError` | a frame codec the reader does not know |
+| `RUMI_ERR_STATE` | `RuntimeError` | changing process configuration after it is pinned |
 | `RUMI_ERR_INTERNAL` | `RuntimeError` | bugs |
 
 Pattern errors raise `rumi._pattern.PatternError`, a `ValueError` subclass. The Python

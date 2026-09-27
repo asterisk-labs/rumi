@@ -98,7 +98,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: info needs source, header, or both` | no argument | pass `source=` or `header=` |
 | `TypeError: header must be bytes-like, got str` | text header | bytes |
 | `ValueError: external header does not match source` | stale or foreign header | rebuild it from the source |
-| `ValueError: thread count is pinned at 4, not 8` | pool already started | configure before the first parallel read, or use a new process |
+| `RuntimeError: thread count is pinned at 4, not 8` | pool already started | configure before the first parallel read, or use a new process |
 | `ValueError: num_threads must be in [1, 1024], got 0` / `TypeError: num_threads must be an integer, got 1.5` | bad count | an `int` in range |
 | `ValueError: that window reaches N frames, past the N bytes of ranges this reader will allocate` | a huge window of tile frames | smaller reads, or raise `rumi_set_max_frame_bytes` |
 | `ValueError: a decoded frame is past the size limit for this reader` | a frame above 1 GiB decoded | smaller tiles, or raise the limit from C |
