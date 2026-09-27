@@ -2,8 +2,9 @@ import operator
 import os
 from collections.abc import Sequence
 
-from ._dlpack import RumiArray, check_framework, to_framework
+from ._dlpack import RumiArray
 from ._ffi import _check, ffi, lib
+from ._framework import resolve_framework
 from ._native import Header, ReadSource, _Source, _Spec
 
 Axis = tuple[int, int] | list[int] | None
@@ -196,9 +197,9 @@ def read(source: _ReadSource, header: Header, *,
     if not isinstance(header, (bytes, bytearray, memoryview)):
         raise TypeError("read needs one bytes-like header")
     spec = _Spec(header)
-    check_framework(spec.fields.dtype, framework)
+    consumer = resolve_framework(framework, spec.fields.dtype)
     arr = _read_one(_Source(source), spec, pattern, time, bands, window)
-    return to_framework(arr, framework)
+    return consumer.convert(arr)
 
 
 def read_many(sources: Sequence[_ReadSource],
@@ -236,8 +237,8 @@ def read_many(sources: Sequence[_ReadSource],
     raw_headers = list(headers)
 
     specs = [_Spec(raw) for raw in raw_headers]
-    for spec in specs:
-        check_framework(spec.fields.dtype, framework)
+    consumers = [resolve_framework(framework, spec.fields.dtype)
+                 for spec in specs]
     arr = _read_many([_Source(s) for s in sources], specs, windows, pattern,
                      time, bands)
-    return to_framework(arr, framework)
+    return consumers[0].convert(arr)

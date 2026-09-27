@@ -1,9 +1,6 @@
 import ctypes
 import threading
 
-import numpy as np
-
-from ._dtype import dtype_info
 from ._dtype import name as dtype_name
 from ._ffi import ffi, lib
 
@@ -84,37 +81,24 @@ class RumiArray:
 
     def numpy(self):
         """Transfer the decoded samples to an exact NumPy dtype."""
-        info = dtype_info(self._dtype_code)
-        if info.numpy_dtype is None:
-            raise _unsupported("NumPy", info.name)
-        value = np.from_dlpack(self)
-        if value.dtype.type is not info.numpy_dtype:
-            raise TypeError(
-                f"NumPy imported rumi dtype {info.name} as {value.dtype}")
-        return value
+        return self._convert("numpy")
 
     def torch(self):
         """Transfer the decoded samples to a PyTorch tensor."""
-        import torch
-        value = torch.from_dlpack(self)
-        _check_result_dtype(value, self._dtype_code, "PyTorch")
-        return value
+        return self._convert("torch")
 
     def jax(self):
         """Transfer the decoded samples to a JAX array."""
-        check_framework(self._dtype_code, "jax")
-        import jax
-        value = jax.dlpack.from_dlpack(self)
-        _check_result_dtype(value, self._dtype_code, "JAX")
-        return value
+        return self._convert("jax")
 
     def tensorflow(self):
         """Transfer the decoded samples to a TensorFlow tensor."""
-        check_framework(self._dtype_code, "tensorflow")
-        import tensorflow as tf
-        value = tf.experimental.dlpack.from_dlpack(self.__dlpack__())
-        _check_result_dtype(value, self._dtype_code, "TensorFlow")
-        return value
+        return self._convert("tensorflow")
+
+    def _convert(self, framework: str):
+        from ._framework import resolve_framework
+
+        return resolve_framework(framework, self._dtype_code).convert(self)
 
     def __del__(self):
         tensor = self._tensor
@@ -128,66 +112,3 @@ class RumiArray:
 
     def __repr__(self) -> str:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
-
-
-_FRAMEWORKS = ("numpy", "torch", "jax", "tensorflow", "dlpack")
-_JAX_DTYPES = frozenset({
-    "uint8", "uint16", "uint32", "int8", "int16", "int32",
-    "float16", "float32", "complex64", "bfloat16", "bool",
-})
-_JAX_X64_DTYPES = frozenset({"uint64", "int64", "float64", "complex128"})
-_TENSORFLOW_DTYPES = frozenset({
-    "uint8", "uint16", "uint32", "uint64", "int8", "int16", "int32",
-    "int64", "float16", "float32", "float64", "complex64", "complex128",
-    "bfloat16", "bool",
-})
-
-
-def _unsupported(framework: str, name: str) -> TypeError:
-    return TypeError(f"{framework} cannot represent rumi dtype {name}")
-
-
-def _check_result_dtype(value, dtype_code: int, framework: str) -> None:
-    expected = dtype_info(dtype_code).name
-    actual = getattr(value.dtype, "name", str(value.dtype))
-    actual = actual.removeprefix("torch.")
-    if actual != expected:
-        raise TypeError(f"{framework} imported rumi dtype {expected} as {actual}")
-
-
-def check_framework(dtype_code: int, framework: str) -> None:
-    if framework not in _FRAMEWORKS:
-        choices = ", ".join(repr(value) for value in _FRAMEWORKS)
-        raise ValueError(f"unknown framework {framework!r}; expected {choices}")
-    info = dtype_info(dtype_code)
-    if framework == "numpy" and info.numpy_dtype is None:
-        raise _unsupported("NumPy", info.name)
-    if framework == "torch":
-        import torch  # noqa: F401
-    if framework == "jax":
-        import jax
-        if info.name in _JAX_X64_DTYPES:
-            if not jax.config.x64_enabled:
-                raise TypeError(
-                    f"JAX cannot represent rumi dtype {info.name} while "
-                    "jax_enable_x64 is disabled")
-        elif info.name not in _JAX_DTYPES:
-            raise _unsupported("JAX", info.name)
-    if framework == "tensorflow":
-        import tensorflow  # noqa: F401
-        if info.name not in _TENSORFLOW_DTYPES:
-            raise _unsupported("TensorFlow", info.name)
-
-
-def to_framework(arr: RumiArray, framework: str):
-    if framework == "dlpack":
-        return arr
-    if framework == "numpy":
-        return arr.numpy()
-    if framework == "torch":
-        return arr.torch()
-    if framework == "jax":
-        return arr.jax()
-    if framework == "tensorflow":
-        return arr.tensorflow()
-    raise RuntimeError("framework validation and dispatch disagree")
