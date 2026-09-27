@@ -26,8 +26,8 @@ class DType:
 
 
 def _load_registry() -> dict[int, DType]:
-    out = ffi.new("const rumi_dtype_info**")
-    count = lib.rumi_dtype_table(out)
+    out = ffi.new("const rumi_dtype_info_full**")
+    count = lib.rumi_dtype_table_full(out)
     registry = {}
     for i in range(count):
         row = out[0][i]
@@ -67,8 +67,6 @@ def dtype_code(dtype) -> int:
     resolved = np.dtype(dtype)
     for code, info in _DTYPES.items():
         if info.numpy_dtype is resolved.type:
-            return code
-        if resolved.name == info.name and resolved.itemsize == info.itemsize:
             return code
     raise TypeError(f"dtype {resolved} is not supported by rumi's NumPy writer")
 

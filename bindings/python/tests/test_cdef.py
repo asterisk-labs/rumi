@@ -41,6 +41,8 @@ int rumi_get_num_threads(void);
 int rumi_set_checksum_verification(int on);
 int rumi_get_checksum_verification(void);
 size_t rumi_dtype_table(const rumi_dtype_info** out);
+size_t rumi_dtype_info_full_size(void);
+size_t rumi_dtype_table_full(const rumi_dtype_info_full** out);
 rumi_status rumi_compile_layout(const char* pattern, int64_t n, int64_t t,
                                 int64_t b, int64_t y, int64_t x,
                                 rumi_layout* out);
@@ -107,10 +109,14 @@ typedef enum {
     RUMI_ERR_OOM = 6, RUMI_ERR_UNSUPPORTED = 7, RUMI_ERR_INTERNAL = 99
 } rumi_status;
 typedef struct {
+    uint8_t code; uint8_t sample_format; uint8_t bits; uint8_t dl_code;
+    uint8_t dl_bits; const char* name; const char* scalar;
+} rumi_dtype_info;
+typedef struct {
     uint8_t code; uint8_t sample_format; uint8_t bits; uint8_t storage_bytes;
     uint8_t component_bytes; uint8_t dl_code; uint8_t dl_bits;
     uint16_t dl_lanes; const char* name; const char* numpy;
-} rumi_dtype_info;
+} rumi_dtype_info_full;
 typedef struct {
     uint32_t image_width; uint32_t image_length; uint32_t time_count;
     uint16_t tile_width;
@@ -151,6 +157,7 @@ _DTYPE_CODES = {
     "BOOL": 24, "FLOAT8_E8M0FNU": 25,
     "FLOAT8_E4M3FNUZ": 29, "FLOAT8_E5M2FNUZ": 30,
 }
+_RETIRED_DTYPE_CODES = {12, 13, 20, 21, 22, 23, 26, 27, 28}
 
 
 def _strip_comments(text: str) -> str:
@@ -261,7 +268,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 35
+    assert len(baseline) == 37
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)
@@ -273,7 +280,7 @@ def test_public_c_api_matches_the_recorded_signatures(c_declarations):
 def test_public_c_types_match_the_recorded_layouts():
     baseline = _typedef_blocks(_PUBLIC_TYPES)
     current = _typedef_blocks(_HEADER.read_text())
-    assert len(baseline) == 8
+    assert len(baseline) == 9
     drift = [
         f"{name}: expected {signature}, found {current.get(name)}"
         for name, signature in baseline.items()
@@ -285,7 +292,35 @@ def test_public_c_types_match_the_recorded_layouts():
     from rumi._ffi import API_VERSION
     api_version = re.search(r"^#define RUMI_API_VERSION\s+(\d+)$",
                             _HEADER.read_text(), re.MULTILINE)
-    assert api_version and int(api_version[1]) == API_VERSION == 2
+    assert api_version and int(api_version[1]) == API_VERSION == 1
+
+
+def test_binding_refuses_a_library_without_the_full_dtype_layout():
+    from rumi._ffi import _check_native_abi
+
+    class OldLibrary:
+        @staticmethod
+        def rumi_api_version():
+            return 1
+
+    with pytest.raises(ImportError, match="too old"):
+        _check_native_abi(OldLibrary())
+
+
+def test_binding_refuses_a_different_full_dtype_row_size():
+    from rumi._ffi import _check_native_abi, ffi
+
+    class WrongLayout:
+        @staticmethod
+        def rumi_api_version():
+            return 1
+
+        @staticmethod
+        def rumi_dtype_info_full_size():
+            return ffi.sizeof("rumi_dtype_info_full") + 1
+
+    with pytest.raises(ImportError, match="layout is incompatible"):
+        _check_native_abi(WrongLayout())
 
 
 def test_dtype_codes_match_the_torch_dlpack_registry():
@@ -301,6 +336,7 @@ def test_dtype_codes_match_the_torch_dlpack_registry():
     }
     assert not drift, f"dtype codes changed: {drift}"
     assert current == _DTYPE_CODES
+    assert _RETIRED_DTYPE_CODES.isdisjoint(current.values())
 
 
 def test_the_parser_sees_a_planted_change(c_declarations):

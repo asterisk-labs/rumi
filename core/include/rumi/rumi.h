@@ -27,7 +27,7 @@ extern "C" {
 // Version.
 
 // C API compatibility version.
-#define RUMI_API_VERSION 2
+#define RUMI_API_VERSION 1
 
 RUMI_API int         rumi_api_version(void);
 RUMI_API const char* rumi_version_string(void);
@@ -102,7 +102,20 @@ typedef enum {
 #undef RUMI_DTYPE
 } rumi_dtype;
 
-// One dtype-registry entry. bits describes the file encoding; storage_bytes
+// Legacy registry view retained so pre-1.0 bindings never misread a changed
+// row stride. scalar is NULL when NumPy has no exact scalar for the type.
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    const char* name;
+    const char* scalar;
+} rumi_dtype_info;
+
+// Complete registry view. Its layout is fixed; extend through a new named view.
+// bits describes the file encoding; storage_bytes
 // describes one decoded sample. component_bytes is smaller only for complex
 // samples that OpenZL may decode as a stream of components. numpy is NULL when
 // NumPy has no exact scalar for the type.
@@ -117,11 +130,17 @@ typedef struct {
     uint16_t    dl_lanes;
     const char* name;
     const char* numpy;
-} rumi_dtype_info;
+} rumi_dtype_info_full;
 
-// Return the number of rows in the process-lifetime dtype table. If out is not
-// NULL, *out receives the table. The caller does not own it.
+// Return the number of legacy process-lifetime rows. If out is not NULL, it
+// receives the table. The caller does not own it.
 RUMI_API size_t rumi_dtype_table(const rumi_dtype_info** out);
+
+// Return the complete process-lifetime table and its native row size. If out is
+// not NULL, it receives the table. Bindings must compare the size before reading
+// rows. The caller owns neither.
+RUMI_API size_t rumi_dtype_info_full_size(void);
+RUMI_API size_t rumi_dtype_table_full(const rumi_dtype_info_full** out);
 
 // Parsed fields from an external header. dtype is the canonical rumi type;
 // sample_format and bits_per_sample expose its on-disk encoding.

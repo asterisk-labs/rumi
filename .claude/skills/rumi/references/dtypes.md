@@ -2,7 +2,8 @@
 
 Sources: `core/include/rumi/rumi_dtypes.def`, `bindings/python/rumi/_dtype.py`,
 `bindings/python/rumi/_read.py`, `core/src/plan.cpp`, and Sample encodings in
-`SPEC.md`. The registry is tested with PyTorch 2.11 on CPU.
+`SPEC.md`. The complete registry is supported and tested with PyTorch 2.11 or
+newer on CPU.
 
 ## The contract
 
@@ -63,9 +64,9 @@ before opening the source or decoding a frame. Use Torch to cast a shell dtype
 for training; for example, unsigned tensors have limited operator coverage even
 though their DLPack import is exact.
 
-The Python writer remains array-oriented. Standard NumPy dtypes and `bool` are
-always writable. An installed extension dtype with the exact registered name
-and storage width can also be written, but `ml_dtypes` is not a Rumi dependency.
+The Python writer remains array-oriented and accepts standard NumPy dtypes and
+`bool`. Torch-only types enter the reader as decoded bytes described by the file
+encoding; the writer does not accept NumPy extension dtypes as substitutes.
 
 ## Complex frames
 
@@ -80,3 +81,11 @@ frame.compressed = geozl.compress(parts, graph=geozl.graph(parts, "id>zstd"))
 
 The registry's `component_bytes` field supplies this rule; the reader does not
 infer it from `sample_format`.
+
+Complex integer samples have no exact PyTorch DLPack dtype and are not stored as
+one Rumi sample. For Sentinel-1 SLC and similar I/Q sources, store the real and
+imaginary `int16` components as two bands. This preserves every source bit and
+the original four decoded bytes per pixel; cast both bands to `float32` and use
+`torch.complex` after reading. `complex32` is not an exact substitute because a
+float16 component represents every integer only through 2048, while
+`complex64` doubles decoded storage to eight bytes per pixel.

@@ -5,7 +5,7 @@ from pathlib import Path
 from cffi import FFI
 
 # ABI version transcribed by the CFFI declarations below.
-API_VERSION = 2
+API_VERSION = 1
 
 _CDEF = """
 typedef enum {
@@ -26,6 +26,16 @@ typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
     uint8_t     bits;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    const char* name;
+    const char* scalar;
+} rumi_dtype_info;
+
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
     uint8_t     storage_bytes;
     uint8_t     component_bytes;
     uint8_t     dl_code;
@@ -33,7 +43,7 @@ typedef struct {
     uint16_t    dl_lanes;
     const char* name;
     const char* numpy;
-} rumi_dtype_info;
+} rumi_dtype_info_full;
 
 typedef struct {
     uint32_t image_width;
@@ -76,6 +86,8 @@ int rumi_set_checksum_verification(int on);
 int rumi_get_checksum_verification(void);
 
 size_t rumi_dtype_table(const rumi_dtype_info** out);
+size_t rumi_dtype_info_full_size(void);
+size_t rumi_dtype_table_full(const rumi_dtype_info_full** out);
 
 typedef struct {
     uint8_t input[4];
@@ -306,13 +318,30 @@ def _load_lib():
         ) from exc
 
 
+def _check_native_abi(native) -> None:
+    native_api_version = native.rumi_api_version()
+    if native_api_version != API_VERSION:
+        raise ImportError(
+            f"librumi C API {native_api_version} is incompatible with this "
+            f"binding, which requires C API {API_VERSION}"
+        )
+    try:
+        native_dtype_info_size = native.rumi_dtype_info_full_size()
+    except AttributeError:
+        raise ImportError(
+            "librumi is too old for this binding; rebuild or reinstall rumi"
+        ) from None
+    binding_dtype_info_size = ffi.sizeof("rumi_dtype_info_full")
+    if native_dtype_info_size != binding_dtype_info_size:
+        raise ImportError(
+            "librumi dtype registry layout is incompatible with this binding: "
+            f"native row size {native_dtype_info_size}, "
+            f"binding row size {binding_dtype_info_size}"
+        )
+
+
 lib = _load_lib()
-_native_api_version = lib.rumi_api_version()
-if _native_api_version != API_VERSION:
-    raise ImportError(
-        f"librumi C API {_native_api_version} is incompatible with this "
-        f"binding, which requires C API {API_VERSION}"
-    )
+_check_native_abi(lib)
 
 
 _STATUS_TO_EXC = {

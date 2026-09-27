@@ -74,15 +74,19 @@ extern "C" rumi_status
 rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype)
 {
     return capi_call([&]() -> rumi_status {
+        // C callers may pass any int representation, including non-enum values.
+        int dtype_value = 0;
+        static_assert(sizeof dtype_value == sizeof dtype);
+        std::memcpy(&dtype_value, &dtype, sizeof dtype_value);
         if (!data && n_bytes) {
             set_error("rumi_check_samples: null argument");
             return RUMI_ERR_INVALID;
         }
-        const rumi_dtype_info* table = nullptr;
-        const size_t rows = rumi_dtype_table(&table);
+        const rumi_dtype_info_full* table = nullptr;
+        const size_t rows = rumi_dtype_table_full(&table);
         bool known = false;
         for (size_t i = 0; i < rows; ++i) {
-            if (table[i].code == static_cast<uint8_t>(dtype)) {
+            if (table[i].code == dtype_value) {
                 known = true;
                 break;
             }
@@ -91,7 +95,7 @@ rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype)
             set_error("rumi_check_samples: unknown dtype");
             return RUMI_ERR_INVALID;
         }
-        if (dtype != RUMI_DT_BOOL) return RUMI_OK;
+        if (dtype_value != RUMI_DT_BOOL) return RUMI_OK;
         const auto* p = static_cast<const unsigned char*>(data);
         for (size_t i = 0; i < n_bytes; ++i) {
             if (p[i] > 1) {
@@ -116,8 +120,26 @@ extern "C" int rumi_openzl_format_version(void)
 
 extern "C" size_t rumi_dtype_table(const rumi_dtype_info** out)
 {
+    static const rumi_dtype_info rows[] = {
+#define RUMI_DTYPE(code, sym, name, sf, bits, store, comp, dlcode, dlbits, lanes, numpy) \
+        { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
+          static_cast<std::uint8_t>(dlbits), name, numpy },
+#include "rumi/rumi_dtypes.def"
+#undef RUMI_DTYPE
+    };
+    if (out) *out = rows;
+    return sizeof(rows) / sizeof(rows[0]);
+}
+
+extern "C" size_t rumi_dtype_info_full_size(void)
+{
+    return sizeof(rumi_dtype_info_full);
+}
+
+extern "C" size_t rumi_dtype_table_full(const rumi_dtype_info_full** out)
+{
     std::size_t n = 0;
-    const rumi_dtype_info* t = rumi::dtype_table(&n);
+    const rumi_dtype_info_full* t = rumi::dtype_table(&n);
     if (out) *out = t;
     return n;
 }
@@ -885,9 +907,10 @@ finish_dlpack(std::byte* buffer,
         buffer, h.dtype, plan.shape.data(),
         static_cast<int>(plan.shape.size()));
     if (!t) {
+        // Parsed headers always carry a registered DLPack dtype.
         std::free(buffer);
-        set_error("dtype has no DLPack representation");
-        return RUMI_ERR_UNSUPPORTED;
+        set_error("out of memory allocating DLPack metadata");
+        return RUMI_ERR_OOM;
     }
     *out = t;
     return RUMI_OK;

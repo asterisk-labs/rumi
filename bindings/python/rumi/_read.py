@@ -113,6 +113,10 @@ class RumiArray:
 
 
 def _check_framework(dtype_code: int, framework: str | None) -> None:
+    if framework is None:
+        raise ValueError(
+            "framework=None was removed; use framework='dlpack' for a "
+            "RumiArray")
     if framework not in ("numpy", "torch", "dlpack"):
         raise ValueError(
             f"unknown framework {framework!r}; expected 'numpy', 'torch', or 'dlpack'")

@@ -789,7 +789,7 @@ void test_dtype_table()
 {
     CASE("every dtype round trips through its sample encoding")
     std::size_t n = 0;
-    const rumi_dtype_info* rows = rumi::dtype_table(&n);
+    const rumi_dtype_info_full* rows = rumi::dtype_table(&n);
     OK(n > 0);
     for (std::size_t i = 0; i < n; ++i) {
         const auto back = rumi::sample_to_dtype(rows[i].sample_format,
@@ -811,6 +811,23 @@ void test_dtype_table()
     OK(rumi::sample_to_dtype(99, 8) == RUMI_DT_UNKNOWN);
     EQ(rumi::dtype_size(RUMI_DT_BOOL), std::size_t(1));
 
+    CASE("the legacy registry keeps its row layout and values")
+    const rumi_dtype_info* legacy = nullptr;
+    const std::size_t legacy_n = rumi_dtype_table(&legacy);
+    EQ(legacy_n, n);
+    EQ(rumi_dtype_info_full_size(), sizeof(rumi_dtype_info_full));
+    for (std::size_t i = 0; i < n; ++i) {
+        EQ(legacy[i].code, rows[i].code);
+        EQ(legacy[i].sample_format, rows[i].sample_format);
+        EQ(legacy[i].bits, rows[i].bits);
+        EQ(legacy[i].dl_code, rows[i].dl_code);
+        EQ(legacy[i].dl_bits, rows[i].dl_bits);
+        OK(std::strcmp(legacy[i].name, rows[i].name) == 0);
+        OK((legacy[i].scalar == nullptr && rows[i].numpy == nullptr) ||
+           (legacy[i].scalar != nullptr && rows[i].numpy != nullptr &&
+            std::strcmp(legacy[i].scalar, rows[i].numpy) == 0));
+    }
+
     CASE("sample validation is specific to boolean bytes")
     const std::uint8_t booleans[] = {0, 1};
     const std::uint8_t invalid[]  = {2};
@@ -821,6 +838,12 @@ void test_dtype_table()
     EQ(rumi_check_samples(ordinary, sizeof ordinary, RUMI_DT_UINT8), RUMI_OK);
     EQ(rumi_check_samples(ordinary, sizeof ordinary, RUMI_DT_UNKNOWN),
        RUMI_ERR_INVALID);
+    EQ(rumi_check_samples(invalid, sizeof invalid,
+                          static_cast<rumi_dtype>(257)), RUMI_ERR_INVALID);
+    EQ(rumi_check_samples(invalid, sizeof invalid,
+                          static_cast<rumi_dtype>(280)), RUMI_ERR_INVALID);
+    EQ(rumi_check_samples(invalid, sizeof invalid,
+                          static_cast<rumi_dtype>(-1)), RUMI_ERR_INVALID);
 }
 
 void test_dlpack_wrappers()

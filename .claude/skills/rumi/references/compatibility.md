@@ -23,8 +23,11 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
   writes. A Rumi file that cannot be read from the specification is a specification bug.
 - **Headers are derived.** Every file rebuilds its header (`rumi.info(source=...).header`
   or `rumi_info`), so a lost or stale header is recoverable.
-- **C.** No stable source API or ABI before 1.0. The development API and SONAME are 2;
-  recompile C applications after every update.
+- **C.** No stable source API or ABI before 1.0. The development API and SONAME remain
+  at 1 even when layouts change; recompile C applications after every update. Starting
+  with Rumi 1.0, incompatible ABI changes increment them. Python checks the complete
+  dtype-row size before reading the registry, while the original table keeps its legacy
+  row layout for older bindings.
 - **Python** follows semantic versioning, but before 1.0 a minor release may break the
   API; the changelog calls it out.
 

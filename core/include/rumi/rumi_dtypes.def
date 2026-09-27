@@ -1,6 +1,7 @@
 /* Rumi sample types. Every row has an exact CPU DLPack representation that
  * PyTorch imports without changing the dtype. NUMPY is NULL when NumPy has no
- * scalar for the type. Existing file encodings are never reused. */
+ * scalar for the type. Retired codes 12, 13, 20-23, and 26-28, and their file
+ * encodings, are reserved and never reused. */
 
 /*         CODE ENUM              NAME                 SF BITS STORE COMP DLCODE                 DLBITS LANES NUMPY */
 RUMI_DTYPE(  1, UINT8,            "uint8",               1,   8,  1, 1, kDLUInt,                  8, 1, "uint8" )

@@ -20,8 +20,9 @@ the development build described here.
 
 ## 1. Stability
 
-- `RUMI_API_VERSION` is 2. Neither the source API nor the ABI is stable before 1.0;
-  recompile after every update.
+- `RUMI_API_VERSION` and the SONAME remain 1 throughout the unstable pre-1.0 period,
+  even when layouts change. Neither the source API nor the ABI is stable; recompile
+  after every update. Starting with Rumi 1.0, incompatible ABI changes increment them.
 - The C header is the surface for future R and Julia bindings; `test_c_header.c` keeps it
   valid C11.
 - 0.20.0 removed `rumi_read_stack`, `rumi_read_stack_dlpack`, `rumi_index_file`,
@@ -41,9 +42,9 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 - `librumi` links GeoZL, OpenZL and Karu statically and exports only `RUMI_API`
   symbols. Building needs CMake 3.21, a C++23 compiler, Ninja by default, and libcurl
   7.83 or newer with OpenSSL 3 for Karu.
-- The library's install name is `@rpath/librumi.2.dylib` on macOS (`librumi.so.2` on
+- The library's install name is `@rpath/librumi.1.dylib` on macOS (`librumi.so.1` on
   Linux). The renamed copy in `bindings/python/rumi/_lib/` cannot satisfy that name at
-  run time (`Library not loaded: @rpath/librumi.2.dylib`); link against `core/build` or an
+  run time (`Library not loaded: @rpath/librumi.1.dylib`); link against `core/build` or an
   installed prefix.
 
 ## 3. Conventions
@@ -65,7 +66,7 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 | `rumi_plan_ranges`, `rumi_write` blob, `rumi_geokeys` directory | `rumi_free` |
 | `rumi_read_dlpack`, `rumi_read_many_dlpack` | the tensor's deleter or `rumi_dlpack_free` |
 | `rumi_dlpack_legacy` | `rumi_dlpack_legacy_free` (the wrapper owns the versioned tensor) |
-| `rumi_dtype_table`, `rumi_default_pattern`, `rumi_axis_name`, `rumi_version_string` | static; never freed |
+| `rumi_dtype_table`, `rumi_dtype_table_full`, `rumi_default_pattern`, `rumi_axis_name`, `rumi_version_string` | static; never freed |
 
 ## 4. Example: read a window
 
@@ -193,7 +194,7 @@ first frame at byte 500
 | --- | --- |
 | Versions | `rumi_api_version`, `rumi_version_string`, `rumi_openzl_format_version` |
 | Limits, threads and checksums | `rumi_set_max_frame_bytes`, `rumi_get_max_frame_bytes` (0 restores 1 GiB), `rumi_set_num_threads`, `rumi_get_num_threads`, `rumi_set_checksum_verification`, `rumi_get_checksum_verification` |
-| Sample types | `rumi_dtype` (`RUMI_DT_*`), `rumi_dtype_table`, `rumi_check_samples` |
+| Sample types | `rumi_dtype` (`RUMI_DT_*`), `rumi_dtype_table` (legacy layout), `rumi_dtype_info_full_size`, `rumi_dtype_table_full`, `rumi_check_samples` |
 | Frame patterns | `rumi_compile_frame_pattern`, `rumi_frame_unit`, `rumi_unit_name`, `rumi_unit_from_name`, `rumi_unit_index_axes`, `rumi_unit_indexes_bands`, `rumi_axis_name`, `rumi_frame_count`, `rumi_frame_locate` |
 | Output layouts | `rumi_default_pattern`, `rumi_compile_layout` (shape, and strides indexed by `RUMI_OUT_N` to `RUMI_OUT_X`) |
 | Headers and metadata | `rumi_spec_parse`, `rumi_spec_header`, `rumi_spec_destroy`, `rumi_info`, `rumi_metadata_free` |
@@ -218,6 +219,13 @@ because CPython may destroy a rejected capsule while the consumer has an excepti
 pending. Calling back into Python at that point can replace the useful exception and
 leave the tensor allocated. A consumer that accepts the capsule renames it, so the
 destructor leaves accepted tensors alone.
+
+`rumi_dtype_table` retains its original pre-1.0 row layout so an older binding cannot
+walk a table with the wrong stride. New bindings use `rumi_dtype_table_full` and compare
+`rumi_dtype_info_full_size()` with their local structure before reading any row. A
+missing size symbol or a mismatch is an incompatible library, even though the unstable
+API and SONAME remain 1. Neither public row layout changes again; a future extension
+uses another named structure and entry point.
 
 ## 7. Writing from C
 

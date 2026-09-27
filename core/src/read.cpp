@@ -204,7 +204,7 @@ namespace {
 FrameSpec make_frame_spec(const Header& h) noexcept
 {
     std::size_t count = 0;
-    const rumi_dtype_info* rows = dtype_table(&count);
+    const rumi_dtype_info_full* rows = dtype_table(&count);
     std::uint8_t component_bytes = static_cast<std::uint8_t>(h.bytes_per_sample);
     for (std::size_t i = 0; i < count; ++i) {
         if (rows[i].code == static_cast<std::uint8_t>(h.dtype)) {

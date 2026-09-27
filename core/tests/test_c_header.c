@@ -1,6 +1,6 @@
 #include "rumi/rumi.h"
 
-_Static_assert(RUMI_API_VERSION == 2, "unexpected C API version");
+_Static_assert(RUMI_API_VERSION == 1, "unexpected C API version");
 _Static_assert(sizeof(rumi_range) == 2 * sizeof(uint64_t),
                "rumi_range must remain an offset-length pair");
 

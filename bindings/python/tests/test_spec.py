@@ -1113,6 +1113,84 @@ def test_every_registered_dtype_reaches_torch_exactly(tmp_path, dtype):
         assert rumi.read(path, header).dtype.type is dtype.numpy_dtype
 
 
+_TORCH_ONLY_DTYPES = [dtype for dtype in _DTYPES.values()
+                      if dtype.numpy_dtype is None]
+
+
+def make_dtype_file(tmp_path, dtype, name=None):
+    """Build a dtype fixture from its file encoding, without a NumPy shim."""
+    geozl = pytest.importorskip("geozl")
+    rng = np.random.default_rng(7)
+    raw = rng.integers(0, 256, 16 * dtype.itemsize, dtype=np.uint8)
+    components = raw.view(f"u{dtype.component_size}").reshape(1, -1)
+    payload = geozl.compress(
+        components, graph=geozl.graph(components, "id>zstd"))
+    entries = spec_entries(4, 4, 4, 1, [payload], bits=dtype.bits,
+                           fmt=dtype.sample_format, unit=0, time=1)
+    path = tmp_path / f"{name or dtype.name}.rumi"
+    path.write_bytes(build_tiff(entries, [payload]))
+    return path, rumi.info(source=path).header, raw
+
+
+@pytest.fixture(params=_TORCH_ONLY_DTYPES, ids=lambda dtype: dtype.name)
+def torch_only_file(request, tmp_path):
+    dtype = request.param
+    path, header, raw = make_dtype_file(tmp_path, dtype)
+    return path, header, dtype, raw
+
+
+def test_numpy_refuses_a_torch_only_dtype_before_opening_the_source(
+        torch_only_file):
+    _path, header, dtype, _raw = torch_only_file
+    with pytest.raises(TypeError, match=(
+            rf"NumPy cannot represent rumi dtype {dtype.name}; "
+            r"use framework='torch' or framework='dlpack'")):
+        rumi.read("does-not-exist.rumi", header)
+
+
+def test_numpy_checks_every_batch_dtype_before_opening_sources(
+        tmp_path, torch_only_file):
+    _path, torch_header, torch_dtype, _raw = torch_only_file
+    ordinary = _DTYPES[3]
+    _ordinary_path, ordinary_header, _raw = make_dtype_file(
+        tmp_path, ordinary, "ordinary")
+    with pytest.raises(
+            TypeError, match=rf"NumPy cannot represent.*{torch_dtype.name}"):
+        rumi.read_many(
+            ["missing-one.rumi", "missing-two.rumi"],
+            [ordinary_header, torch_header],
+            windows=[(0, 0, 4, 4), (0, 0, 4, 4)],
+        )
+
+
+def test_a_torch_only_dlpack_result_survives_a_numpy_refusal(torch_only_file):
+    torch = pytest.importorskip("torch")
+    path, header, dtype, raw = torch_only_file
+    result = rumi.read(path, header, framework="dlpack")
+    with pytest.raises(TypeError, match="NumPy cannot represent"):
+        result.numpy()
+    tensor = result.torch()
+    assert tensor.dtype == getattr(torch, dtype.name)
+    assert np.array_equal(tensor.view(torch.uint8).numpy().reshape(-1), raw)
+
+
+def test_a_torch_only_dtype_reaches_torch_byte_for_byte(torch_only_file):
+    torch = pytest.importorskip("torch")
+    path, header, dtype, raw = torch_only_file
+    tensor = rumi.read(path, header, framework="torch")
+    assert tensor.dtype == getattr(torch, dtype.name)
+    assert np.array_equal(tensor.view(torch.uint8).numpy().reshape(-1), raw)
+
+
+def test_a_rejected_capsule_keeps_the_consumer_error(tmp_path):
+    bfloat16 = next(dtype for dtype in _TORCH_ONLY_DTYPES
+                    if dtype.name == "bfloat16")
+    path, header, _raw = make_dtype_file(tmp_path, bfloat16)
+    result = rumi.read(path, header, framework="dlpack")
+    with pytest.raises(RuntimeError, match="Unsupported dtype in DLTensor"):
+        np.from_dlpack(result)
+
+
 @pytest.mark.parametrize("dtype, component", [(np.complex128, np.float64),
                                               (np.complex64, np.float32)])
 @pytest.mark.parametrize("pattern", ["b (row h) (col w) -> row col b (h w)",

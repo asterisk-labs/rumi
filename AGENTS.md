@@ -11,12 +11,17 @@ transport from the submodules in `extern/`.
   Python tests, and the fuzz seeds together, and is recorded in `CHANGELOG.md`.
 - Keep format decisions and validation in `core/`. Bindings only convert language
   values, selections and array views.
-- Registries are append-only. Never renumber `rumi_dtypes.def` codes or `frame_unit`
-  values.
+- Never renumber retained `rumi_dtypes.def` codes or reuse retired codes or file
+  encodings. `frame_unit` values are append-only.
 - Readers process untrusted headers, files and frames. Check sizes, counts, offsets and
   arithmetic before allocating or copying, and fail before exceeding resource limits.
 - Keep `rumi.h` valid C11, and keep the cdef in `bindings/python/rumi/_ffi.py` and the
   signatures recorded in `test_cdef.py` in step with it.
+- Do not change the layout of an existing public dtype-table row. Add a new named
+  structure and entry point when the registry needs more fields.
+- Keep `RUMI_API_VERSION` and the shared-library SONAME at 1 throughout the unstable
+  pre-1.0 period, even when the C API or ABI changes. Starting with Rumi 1.0,
+  incompatible ABI changes increment them.
 - Treat `extern/geozl` and `extern/karu` as upstream submodules. Move their pinned
   revisions only when the task requires an upgrade, together with the Python
   dependencies, `NOTICE` and the changelog; `tools/check_release.py` checks them.

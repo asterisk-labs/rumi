@@ -291,8 +291,9 @@ A reader MUST reject any pair not listed above.
 
 The pairs `(1, 2)`, `(1, 4)`, `(2, 2)`, `(2, 4)`, `(5, 32)`, `(5, 64)`,
 `(104, 6)`, `(105, 6)`, and `(106, 4)` appeared in development releases but are
-not valid in this specification. Their numeric values remain reserved and MUST
-NOT be assigned another meaning.
+not valid in this specification. Those exact pairs, and the `sample_format`
+values `5`, `104`, `105`, and `106`, remain reserved and MUST NOT be assigned
+another meaning.
 
 `bfloat16` has one sign bit, eight exponent bits, and seven fraction bits, with
 the exponent and special values of IEEE binary32. `E4M3FN`, `E4M3FNUZ`,
@@ -326,21 +327,22 @@ applies to `decoded_frame_bytes`.
 
 An implementation that exports decoded samples through DLPack MUST use the
 following `(code, bits, lanes)` values. Every tensor is native-endian CPU memory
-and one tensor element corresponds to one rumi sample.
+and one tensor element corresponds to one rumi sample. The float8 codes require
+DLPack 1.1 or newer.
 
 | encoding | DLPack `(code, bits, lanes)` |
 | -------- | ---------------------------- |
-| signed integers | `(kDLInt, bits_per_sample, 1)` |
-| unsigned integers | `(kDLUInt, bits_per_sample, 1)` |
-| boolean | `(kDLBool, 8, 1)` |
-| IEEE floats | `(kDLFloat, bits_per_sample, 1)` |
-| complex IEEE floats | `(kDLComplex, bits_per_sample, 1)` |
-| bfloat16 | `(kDLBfloat, 16, 1)` |
-| float8 E4M3FN | `(kDLFloat8_e4m3fn, 8, 1)` |
-| float8 E4M3FNUZ | `(kDLFloat8_e4m3fnuz, 8, 1)` |
-| float8 E5M2 | `(kDLFloat8_e5m2, 8, 1)` |
-| float8 E5M2FNUZ | `(kDLFloat8_e5m2fnuz, 8, 1)` |
-| float8 E8M0FNU | `(kDLFloat8_e8m0fnu, 8, 1)` |
+| signed integers | `(kDLInt=0, bits_per_sample, 1)` |
+| unsigned integers | `(kDLUInt=1, bits_per_sample, 1)` |
+| boolean | `(kDLBool=6, 8, 1)` |
+| IEEE floats | `(kDLFloat=2, bits_per_sample, 1)` |
+| complex IEEE floats | `(kDLComplex=5, bits_per_sample, 1)` |
+| bfloat16 | `(kDLBfloat=4, 16, 1)` |
+| float8 E4M3FN | `(kDLFloat8_e4m3fn=10, 8, 1)` |
+| float8 E4M3FNUZ | `(kDLFloat8_e4m3fnuz=11, 8, 1)` |
+| float8 E5M2 | `(kDLFloat8_e5m2=12, 8, 1)` |
+| float8 E5M2FNUZ | `(kDLFloat8_e5m2fnuz=13, 8, 1)` |
+| float8 E8M0FNU | `(kDLFloat8_e8m0fnu=14, 8, 1)` |
 
 The file's logical width and DLPack's element width differ for boolean data;
 the decoded storage width connects them. A reader MUST NOT silently cast,
