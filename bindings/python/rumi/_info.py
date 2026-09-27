@@ -117,15 +117,19 @@ def info(*, source: InfoSource | None = None,
          header: Header | None = None) -> Metadata:
     """Inspect a source or header, validating their match when both are given.
 
-    Source metadata includes georeferencing, band texts and time. An external
-    header alone contains only the fields needed for reading, so its
-    ``bands``, ``time``, ``transform`` and ``pixel_is_point`` values are
-    ``None``. ``shape`` follows ``(B, Y, X)`` or ``(T, B, Y, X)``, and
-    ``tile`` is ``(height, width)``. When ``source`` is given,
-    ``Metadata.header`` contains its canonical external header.
-    ``index_order`` contains the band and time axes walked by the frame index,
-    outermost first. Its text and notebook representations list every
-    attribute.
+    ``source`` may be a local path, remote URI or the file's bytes. Rumi reads
+    its index, georeferencing and trailer, including band texts and time, and
+    rebuilds its canonical external header.
+
+    ``header`` is the bytes returned by ``write`` or an earlier source
+    inspection. A header alone opens no source and contains only the fields
+    required for reading. When both arguments are given, Rumi verifies that
+    the rebuilt header matches ``header``.
+
+    Returns ``Metadata``. Its ``shape`` follows ``(B, Y, X)`` or
+    ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. Without ``source``,
+    the ``bands``, ``time``, ``time_kind``, ``transform``, ``crs`` and
+    ``pixel_is_point`` fields are ``None``.
     """
     result = _native_info(source=source, header=header)
     try:

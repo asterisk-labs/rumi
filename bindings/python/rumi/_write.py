@@ -144,20 +144,32 @@ def write(path, tf, *, bands, time, transform=None, crs=None,
           pixel_is_point=False):
     """Write a compressed FrameTable to a rumi file.
 
-    Returns ``(path, header)``. Pass the header to ``read`` or store it in a
-    catalog.
+    ``path`` is a local filesystem path. It must be text or a path-like object
+    returning text.
 
-    tf              a FrameTable with every frame compressed.
-    bands           one text per band, in band order, such as
-                    "B4, Red, 664.5nm (S2A) / 665nm (S2B)". No two are equal.
-    time            one entry per time step: a date, datetime or ISO string
-                    for an instant, or a (start, end) pair for an interval.
-    transform       affine coefficients (x_res, row_rot, x_origin, col_rot,
-                    y_res, y_origin); pairs with crs.
-    crs             EPSG code, as an int, "EPSG:32718", or any object with
-                    a to_epsg(); pairs with transform.
-    pixel_is_point  anchor the pixel at its center (PixelIsPoint) rather than
-                    its top-left corner (PixelIsArea, the default).
+    ``tf`` is a ``FrameTable`` with a non-empty compressed payload assigned to
+    every frame. Rumi stores those payloads without decoding or recompressing
+    them.
+
+    ``bands`` contains one non-empty, unique text per band, in band order. A
+    useful label includes the name, description and wavelength, such as
+    ``"B4, Red, 665nm"``.
+
+    ``time`` contains one entry per time step. An instant may be a date,
+    datetime, ISO string or ``numpy.datetime64``. An interval is a
+    ``(start, end)`` pair using the same value types.
+
+    ``transform`` contains six affine coefficients in rasterio order:
+    ``(x_res, row_rot, x_origin, col_rot, y_res, y_origin)``. It must be given
+    together with ``crs``, an EPSG integer, an ``"EPSG:32718"`` string or an
+    object implementing ``to_epsg()``.
+
+    ``pixel_is_point`` records whether coordinates refer to pixel centres.
+    The default records PixelIsArea, whose coordinates refer to pixel corners.
+
+    Returns ``(path, header)`` with ``path`` unchanged and ``header`` as the
+    external bytes needed by ``read`` and ``read_many``. A failure after the
+    file is opened removes the incomplete output.
     """
     frames = tf["compressed"]
     missing = [i for i, f in enumerate(frames) if f is None]

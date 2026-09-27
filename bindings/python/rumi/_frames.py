@@ -197,7 +197,16 @@ class FrameTable:
     def from_array(cls, arr, pattern, tile_size=512):
         """Split an array into frames, clipping those at the image edges.
 
-        The pattern names the input's axes, so it need not arrive as (B, Y, X).
+        ``arr`` is converted to a NumPy array. Its axes may appear in any order
+        named by ``pattern``; it need not arrive as ``(B, Y, X)``.
+
+        ``pattern`` names every input axis on its left side and the axes stored
+        together in one frame on its right side. ``tile_size`` is the nominal
+        height and width of a square tile, from 1 to 65535. Frames at the image
+        edges are clipped to the remaining rows and columns.
+
+        Returns a ``FrameTable`` whose frames are C-contiguous and follow the
+        stored axis order.
         """
         p = pattern if not isinstance(pattern, str) else compile_pattern(pattern)
         arr = np.asarray(arr)
@@ -298,8 +307,14 @@ class FrameTable:
     def attach(self, name, values):
         """Attach values per frame or per grid position.
 
-        Per-position values are repeated for every frame in that cell. Attached
-        columns are not written to the rumi file.
+        ``name`` must be a Python identifier that does not conflict with a
+        built-in frame attribute or column.
+
+        ``values`` contains either one value per frame or one value per grid
+        cell. Per-cell values are repeated for every frame in that cell.
+        Attached columns are not written to the rumi file.
+
+        Returns this ``FrameTable`` so attachments may be chained.
         """
         if not isinstance(name, str) or not name.isidentifier():
             raise ValueError(f"name must be an identifier, got {name!r}")
@@ -381,7 +396,12 @@ class FrameTable:
         return f"{walked}.{self._row[i]}.{self._col[i]}"
 
     def to_pandas(self):
-        """Return scalar metadata columns as a DataFrame."""
+        """Return scalar frame metadata as a pandas DataFrame.
+
+        The result contains frame and cell labels, indexed axes, grid
+        positions, compressed byte counts and attached columns. Decoded and
+        compressed payloads are omitted. This method requires pandas.
+        """
         import pandas as pd
         cols = {}
         if self._walked:
@@ -453,14 +473,23 @@ def _frame_bytes(v, i):
 def frames(arr, pattern, tile_size=512):
     """Split an array into a FrameTable.
 
-    The left side of the pattern names the input axes. A pair such as ``(row h)``
-    splits an image axis into a grid coordinate and a frame-local axis. The
-    parenthesized group on the right lists the axes stored together in each frame.
+    ``arr`` is converted to a NumPy array. Its axes may appear in any order
+    named by ``pattern``.
+
+    ``pattern`` names every input axis on its left side. A pair such as
+    ``(row h)`` splits an image axis into a grid coordinate and a frame-local
+    axis. The parenthesized group on the right lists the axes stored together
+    in each frame. For example:
 
         "b (row h) (col w) -> row col (b h w)"    every band, band planar
         "b (row h) (col w) -> row col (h w b)"    every band, interleaved
         "b (row h) (col w) -> row col b (h w)"    one band per frame
 
     Only ``b`` and ``t`` are reserved; spatial split names are user-defined.
+    ``tile_size`` is the nominal height and width of a square tile, from 1 to
+    65535. Frames at the image edges are clipped.
+
+    Returns a ``FrameTable`` in file order. Each frame is C-contiguous and
+    follows the stored axis order selected by ``pattern``.
     """
     return FrameTable.from_array(arr, pattern, tile_size)

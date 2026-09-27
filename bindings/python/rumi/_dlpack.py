@@ -42,10 +42,21 @@ class RumiArray:
         return self._shape
 
     def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple for Rumi's CPU output."""
         return (1, 0)
 
     def __dlpack__(self, *, stream=None, max_version=None,
                    dl_device=None, copy=None):
+        """Transfer ownership of the decoded samples through DLPack.
+
+        ``max_version`` selects a versioned capsule when it is at least
+        ``(1, 0)``; omitting it returns a legacy capsule. ``dl_device`` may be
+        omitted or request CPU device ``(1, 0)``. ``copy`` may be ``None`` or
+        ``False`` because Rumi transfers its existing allocation.
+
+        Returns a DLPack capsule and consumes this ``RumiArray``. A later
+        export raises ``RuntimeError``.
+        """
         with self._export_lock:
             if self._tensor is None:
                 raise RuntimeError("this RumiArray was already exported")
@@ -80,19 +91,35 @@ class RumiArray:
                 raise
 
     def numpy(self):
-        """Transfer the decoded samples to an exact NumPy dtype."""
+        """Return the decoded samples as a NumPy array.
+
+        A successful transfer preserves the exact dtype and consumes this
+        ``RumiArray``.
+        """
         return self._convert("numpy")
 
     def torch(self):
-        """Transfer the decoded samples to a PyTorch tensor."""
+        """Return the decoded samples as a PyTorch tensor.
+
+        A successful transfer preserves the exact dtype and consumes this
+        ``RumiArray``.
+        """
         return self._convert("torch")
 
     def jax(self):
-        """Transfer the decoded samples to a JAX array."""
+        """Return the decoded samples as a JAX array.
+
+        A successful transfer preserves the exact dtype and consumes this
+        ``RumiArray``. JAX must have 64-bit types enabled when required.
+        """
         return self._convert("jax")
 
     def tensorflow(self):
-        """Transfer the decoded samples to a TensorFlow tensor."""
+        """Return the decoded samples as a TensorFlow tensor.
+
+        A successful transfer preserves the exact dtype and consumes this
+        ``RumiArray``.
+        """
         return self._convert("tensorflow")
 
     def _convert(self, framework: str):
