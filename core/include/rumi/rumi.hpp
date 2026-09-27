@@ -537,7 +537,7 @@ struct Header {
 parse_blob(std::span<const std::byte> blob);
 
 // Return the dtype registry generated from rumi_dtypes.def.
-[[nodiscard]] const rumi_dtype_info_full*
+[[nodiscard]] const rumi_dtype_info*
 dtype_table(std::size_t* count) noexcept;
 
 // Resolve a sample encoding, or return RUMI_DT_UNKNOWN.

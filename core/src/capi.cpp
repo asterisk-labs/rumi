@@ -82,8 +82,8 @@ rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype)
             set_error("rumi_check_samples: null argument");
             return RUMI_ERR_INVALID;
         }
-        const rumi_dtype_info_full* table = nullptr;
-        const size_t rows = rumi_dtype_table_full(&table);
+        const rumi_dtype_info* table = nullptr;
+        const size_t rows = rumi_dtype_registry(&table);
         bool known = false;
         for (size_t i = 0; i < rows; ++i) {
             if (table[i].code == dtype_value) {
@@ -118,28 +118,15 @@ extern "C" int rumi_openzl_format_version(void)
     return rumi::openzl_format_version();
 }
 
-extern "C" size_t rumi_dtype_table(const rumi_dtype_info** out)
+extern "C" size_t rumi_dtype_info_size(void)
 {
-    static const rumi_dtype_info rows[] = {
-#define RUMI_DTYPE(code, sym, name, sf, bits, store, comp, dlcode, dlbits, lanes, numpy) \
-        { code, sf, bits, static_cast<std::uint8_t>(dlcode), \
-          static_cast<std::uint8_t>(dlbits), name, numpy },
-#include "rumi/rumi_dtypes.def"
-#undef RUMI_DTYPE
-    };
-    if (out) *out = rows;
-    return sizeof(rows) / sizeof(rows[0]);
+    return sizeof(rumi_dtype_info);
 }
 
-extern "C" size_t rumi_dtype_info_full_size(void)
-{
-    return sizeof(rumi_dtype_info_full);
-}
-
-extern "C" size_t rumi_dtype_table_full(const rumi_dtype_info_full** out)
+extern "C" size_t rumi_dtype_registry(const rumi_dtype_info** out)
 {
     std::size_t n = 0;
-    const rumi_dtype_info_full* t = rumi::dtype_table(&n);
+    const rumi_dtype_info* t = rumi::dtype_table(&n);
     if (out) *out = t;
     return n;
 }

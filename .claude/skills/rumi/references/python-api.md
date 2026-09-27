@@ -29,8 +29,8 @@ pip install rumi-eo
   distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, then the copy bundled under `rumi/_lib/`,
-  then `ctypes.util.find_library("rumi")`. Import fails when the library's C API version
-  is not 2.
+  then `ctypes.util.find_library("rumi")`. Import fails when the native C interface
+  does not match the binding. The pre-1.0 API version remains 1.
 - Public names: `frames`, `FrameTable`, `Frame`, `write`, `read`, `read_many`,
   `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`,
   `set_checksum_verification`, `get_checksum_verification`, `__version__`.

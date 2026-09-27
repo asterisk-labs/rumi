@@ -2,8 +2,7 @@
 
 Sources: `core/include/rumi/rumi_dtypes.def`, `bindings/python/rumi/_dtype.py`,
 `bindings/python/rumi/_read.py`, `core/src/plan.cpp`, and Sample encodings in
-`SPEC.md`. The complete registry is supported and tested with PyTorch 2.11 or
-newer on CPU.
+`SPEC.md`. The complete registry is tested with PyTorch 2.11 on CPU.
 
 ## The contract
 
@@ -39,9 +38,9 @@ The DLPack mapping uses one lane for every type. Boolean is the important
 exception to deriving DLPack width from the file: it exports as
 `(kDLBool, 8, 1)` because each decoded value is a byte.
 
-Codes and file pairs removed during development remain reserved: complex
-integers, padded 2- and 4-bit integers, float6, and padded float4. A reader
-rejects them rather than assigning the numbers another meaning. Packed float4
+The codes and file pairs for complex integers, padded 2- and 4-bit integers,
+float6, and padded float4 are reserved. A reader rejects them rather than
+assigning the numbers another meaning. Packed float4
 would require a separate storage and indexing design because Torch represents
 two values in one byte; it is not part of this registry.
 

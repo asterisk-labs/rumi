@@ -290,9 +290,8 @@ Only the following pairs are valid:
 A reader MUST reject any pair not listed above.
 
 The pairs `(1, 2)`, `(1, 4)`, `(2, 2)`, `(2, 4)`, `(5, 32)`, `(5, 64)`,
-`(104, 6)`, `(105, 6)`, and `(106, 4)` appeared in development releases but are
-not valid in this specification. Those exact pairs, and the `sample_format`
-values `5`, `104`, `105`, and `106`, remain reserved and MUST NOT be assigned
+`(104, 6)`, `(105, 6)`, and `(106, 4)` are reserved. The `sample_format`
+values `5`, `104`, `105`, and `106` are also reserved and MUST NOT be assigned
 another meaning.
 
 `bfloat16` has one sign bit, eight exponent bits, and seven fraction bits, with
@@ -937,6 +936,6 @@ allocation or decode. This does not make the rumi file invalid.
 ## Changelog
 
 - 0.2.0. The sample registry is limited to exact PyTorch CPU DLPack types;
-  boolean storage and every DLPack mapping are explicit, and retired development
-  encodings are reserved.
+  boolean storage and every DLPack mapping are explicit, and unused encodings
+  are reserved.
 - 0.1.0. Initial draft.

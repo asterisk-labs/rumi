@@ -78,7 +78,7 @@ constexpr DLDataType dt(unsigned code, unsigned bits, unsigned lanes) noexcept
 DLDataType dtype_to_dlpack(rumi_dtype d) noexcept
 {
     std::size_t n = 0;
-    const rumi_dtype_info_full* t = dtype_table(&n);
+    const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (t[i].code == static_cast<std::uint8_t>(d)) {
             return dt(t[i].dl_code, t[i].dl_bits, t[i].dl_lanes);

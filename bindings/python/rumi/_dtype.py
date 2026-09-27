@@ -26,8 +26,8 @@ class DType:
 
 
 def _load_registry() -> dict[int, DType]:
-    out = ffi.new("const rumi_dtype_info_full**")
-    count = lib.rumi_dtype_table_full(out)
+    out = ffi.new("const rumi_dtype_info**")
+    count = lib.rumi_dtype_registry(out)
     registry = {}
     for i in range(count):
         row = out[0][i]
@@ -59,8 +59,7 @@ def dtype_info(code: int) -> DType:
 
 
 def name(code: int) -> str:
-    info = _DTYPES.get(code)
-    return info.name if info is not None else f"rumi_dtype({code})"
+    return dtype_info(code).name
 
 
 def dtype_code(dtype) -> int:
@@ -72,8 +71,8 @@ def dtype_code(dtype) -> int:
 
 
 def needs_sample_validation(code: int) -> bool:
-    info = _DTYPES.get(code)
-    return info is not None and info.bits < info.itemsize * 8
+    info = dtype_info(code)
+    return info.bits < info.itemsize * 8
 
 
 def check_samples(arr, code: int) -> None:

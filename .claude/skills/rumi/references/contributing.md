@@ -153,7 +153,7 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
 - **C API function:** declare it in `rumi.h` with `RUMI_API` and a short comment,
   implement it in `capi.cpp`, add it to the cdef in `_ffi.py` and to `_PUBLIC_API` in
   `test_cdef.py`, then wrap and test it in Python.
-- **Sample type:** add a row to `rumi_dtypes.def` without reusing a retired file pair,
+- **Sample type:** add a row to `rumi_dtypes.def` without reusing a reserved file pair,
   extend the Sample encodings table in `SPEC.md`, and prove exact PyTorch DLPack import
   in `test_spec.py`.
 - **EPSG table:** `python tools/gen_epsg_kinds.py > core/include/rumi/epsg_kinds.def`

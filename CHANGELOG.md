@@ -4,32 +4,21 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
-### Breaking
+### Changed
 
 - The sample registry is now the exact CPU DLPack subset that PyTorch imports
-  without changing dtype. Complex integers, padded 2- and 4-bit integers,
-  float6 and padded float4 are removed. Their file encodings remain reserved
-  and are rejected rather than reassigned.
-- Python reads accept `framework="numpy"`, `"torch"` or `"dlpack"`. The last
-  returns `RumiArray`; `None`, JAX and TensorFlow adapters are removed. NumPy
-  now fails before opening or decoding a file whose dtype it cannot represent,
-  rather than returning an `ml_dtypes` view.
+  without changing dtype. Other file encodings are reserved and rejected.
+- Python reads accept `framework="numpy"`, `"torch"` or `"dlpack"`; the last
+  returns `RumiArray`. NumPy fails before opening or decoding a file whose dtype
+  it cannot represent.
 - `Metadata.dtype` is a `rumi.DType` descriptor instead of a NumPy scalar.
-  `DType.numpy_dtype` is `None` for Torch-only types. `ml_dtypes` is no longer
-  a runtime dependency.
-- The dtype names and C symbols are now `complex32/64/128` instead of
-  `cfloat16/32/64`, `bool` instead of `binary`, and `float8_e8m0fnu` instead of
-  `float8_e8m0`. `RUMI_DL_NONE` is removed.
-- The new `rumi_dtype_info_full` and `rumi_dtype_table_full` distinguish logical
-  bits, decoded storage bytes, complex component width and all three DLPack
-  dtype fields; their NumPy field is named `numpy`, not `scalar`. The original
-  table retains its legacy row layout to prevent old bindings from walking it
-  with the wrong stride. The unstable C API and shared-library SONAME remain at
-  1; C applications must be recompiled.
-- Files written by development builds with retired integer or float encodings
-  must be rewritten. Store padded `uint2`/`uint4` as `uint8`, padded
-  `int2`/`int4` as `int8`, and complex integers as separate signed I/Q bands or
-  as a floating-point complex type.
+  `DType.numpy_dtype` is `None` for Torch-only types.
+- Public dtype names and C symbols use `complex32/64/128`, `bool`, and
+  `float8_e8m0fnu`.
+- `rumi_dtype_info` and `rumi_dtype_registry` expose logical bits, decoded
+  storage bytes, complex component width, the NumPy scalar when one exists,
+  and all three DLPack dtype fields. The C API and shared-library SONAME remain
+  at 1; C applications must be recompiled.
 
 ### Added
 
@@ -41,12 +30,8 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
-- Python rejects an old or mismatched dtype-registry layout with `ImportError`
-  instead of reading invalid pointers. Dtype validation no longer truncates
-  enum values above 255, and DLPack metadata allocation failures report
-  `RUMI_ERR_OOM`.
-- `framework=None` now points callers to `framework="dlpack"` instead of
-  reporting it as an unknown framework.
+- Dtype validation no longer truncates integer values above 255, and DLPack
+  metadata allocation failures report `RUMI_ERR_OOM`.
 
 ## [0.25.0] - 2026-09-24
 

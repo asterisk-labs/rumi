@@ -110,7 +110,7 @@ void pack_counts(std::span<const std::uint32_t> counts,
 }
 
 // Expanded once from the dtype registry.
-static const rumi_dtype_info_full k_dtype_table[] = {
+static const rumi_dtype_info k_dtype_table[] = {
 #define RUMI_DTYPE(code, sym, name, sf, bits, store, comp, dlcode, dlbits, lanes, numpy) \
     { code, sf, bits, store, comp, static_cast<std::uint8_t>(dlcode), \
       static_cast<std::uint8_t>(dlbits), lanes, name, numpy },
@@ -118,7 +118,7 @@ static const rumi_dtype_info_full k_dtype_table[] = {
 #undef RUMI_DTYPE
 };
 
-const rumi_dtype_info_full* dtype_table(std::size_t* count) noexcept
+const rumi_dtype_info* dtype_table(std::size_t* count) noexcept
 {
     if (count) *count = sizeof(k_dtype_table) / sizeof(k_dtype_table[0]);
     return k_dtype_table;
@@ -129,7 +129,7 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
                            std::uint8_t bits) noexcept
 {
     std::size_t n = 0;
-    const rumi_dtype_info_full* t = dtype_table(&n);
+    const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (t[i].sample_format == sample_format && t[i].bits == bits) {
             return static_cast<rumi_dtype>(t[i].code);
@@ -142,7 +142,7 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
     std::size_t n = 0;
-    const rumi_dtype_info_full* t = dtype_table(&n);
+    const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (t[i].code == static_cast<std::uint8_t>(dt)) {
             return t[i].storage_bytes;

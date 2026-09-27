@@ -26,16 +26,6 @@ typedef struct {
     uint8_t     code;
     uint8_t     sample_format;
     uint8_t     bits;
-    uint8_t     dl_code;
-    uint8_t     dl_bits;
-    const char* name;
-    const char* scalar;
-} rumi_dtype_info;
-
-typedef struct {
-    uint8_t     code;
-    uint8_t     sample_format;
-    uint8_t     bits;
     uint8_t     storage_bytes;
     uint8_t     component_bytes;
     uint8_t     dl_code;
@@ -43,7 +33,7 @@ typedef struct {
     uint16_t    dl_lanes;
     const char* name;
     const char* numpy;
-} rumi_dtype_info_full;
+} rumi_dtype_info;
 
 typedef struct {
     uint32_t image_width;
@@ -85,9 +75,8 @@ int rumi_get_num_threads(void);
 int rumi_set_checksum_verification(int on);
 int rumi_get_checksum_verification(void);
 
-size_t rumi_dtype_table(const rumi_dtype_info** out);
-size_t rumi_dtype_info_full_size(void);
-size_t rumi_dtype_table_full(const rumi_dtype_info_full** out);
+size_t rumi_dtype_info_size(void);
+size_t rumi_dtype_registry(const rumi_dtype_info** out);
 
 typedef struct {
     uint8_t input[4];
@@ -326,17 +315,15 @@ def _check_native_abi(native) -> None:
             f"binding, which requires C API {API_VERSION}"
         )
     try:
-        native_dtype_info_size = native.rumi_dtype_info_full_size()
+        native_dtype_info_size = native.rumi_dtype_info_size()
     except AttributeError:
         raise ImportError(
-            "librumi is too old for this binding; rebuild or reinstall rumi"
+            "librumi C interface does not match this binding"
         ) from None
-    binding_dtype_info_size = ffi.sizeof("rumi_dtype_info_full")
+    binding_dtype_info_size = ffi.sizeof("rumi_dtype_info")
     if native_dtype_info_size != binding_dtype_info_size:
         raise ImportError(
-            "librumi dtype registry layout is incompatible with this binding: "
-            f"native row size {native_dtype_info_size}, "
-            f"binding row size {binding_dtype_info_size}"
+            "librumi C interface does not match this binding"
         )
 
 

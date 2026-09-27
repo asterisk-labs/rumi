@@ -66,7 +66,7 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 | `rumi_plan_ranges`, `rumi_write` blob, `rumi_geokeys` directory | `rumi_free` |
 | `rumi_read_dlpack`, `rumi_read_many_dlpack` | the tensor's deleter or `rumi_dlpack_free` |
 | `rumi_dlpack_legacy` | `rumi_dlpack_legacy_free` (the wrapper owns the versioned tensor) |
-| `rumi_dtype_table`, `rumi_dtype_table_full`, `rumi_default_pattern`, `rumi_axis_name`, `rumi_version_string` | static; never freed |
+| `rumi_dtype_registry`, `rumi_default_pattern`, `rumi_axis_name`, `rumi_version_string` | static; never freed |
 
 ## 4. Example: read a window
 
@@ -194,7 +194,7 @@ first frame at byte 500
 | --- | --- |
 | Versions | `rumi_api_version`, `rumi_version_string`, `rumi_openzl_format_version` |
 | Limits, threads and checksums | `rumi_set_max_frame_bytes`, `rumi_get_max_frame_bytes` (0 restores 1 GiB), `rumi_set_num_threads`, `rumi_get_num_threads`, `rumi_set_checksum_verification`, `rumi_get_checksum_verification` |
-| Sample types | `rumi_dtype` (`RUMI_DT_*`), `rumi_dtype_table` (legacy layout), `rumi_dtype_info_full_size`, `rumi_dtype_table_full`, `rumi_check_samples` |
+| Sample types | `rumi_dtype` (`RUMI_DT_*`), `rumi_dtype_info_size`, `rumi_dtype_registry`, `rumi_check_samples` |
 | Frame patterns | `rumi_compile_frame_pattern`, `rumi_frame_unit`, `rumi_unit_name`, `rumi_unit_from_name`, `rumi_unit_index_axes`, `rumi_unit_indexes_bands`, `rumi_axis_name`, `rumi_frame_count`, `rumi_frame_locate` |
 | Output layouts | `rumi_default_pattern`, `rumi_compile_layout` (shape, and strides indexed by `RUMI_OUT_N` to `RUMI_OUT_X`) |
 | Headers and metadata | `rumi_spec_parse`, `rumi_spec_header`, `rumi_spec_destroy`, `rumi_info`, `rumi_metadata_free` |
@@ -220,12 +220,9 @@ pending. Calling back into Python at that point can replace the useful exception
 leave the tensor allocated. A consumer that accepts the capsule renames it, so the
 destructor leaves accepted tensors alone.
 
-`rumi_dtype_table` retains its original pre-1.0 row layout so an older binding cannot
-walk a table with the wrong stride. New bindings use `rumi_dtype_table_full` and compare
-`rumi_dtype_info_full_size()` with their local structure before reading any row. A
-missing size symbol or a mismatch is an incompatible library, even though the unstable
-API and SONAME remain 1. Neither public row layout changes again; a future extension
-uses another named structure and entry point.
+Bindings compare `rumi_dtype_info_size()` with their local structure before reading
+`rumi_dtype_registry()`. A missing symbol or a size mismatch means the native library
+and binding do not share the same C interface. The unstable API and SONAME remain 1.
 
 ## 7. Writing from C
 

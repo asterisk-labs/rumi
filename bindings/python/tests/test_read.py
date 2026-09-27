@@ -58,10 +58,9 @@ def test_path_round_trip(image):
     assert np.array_equal(rumi.read(path, header), data)
 
 
-def test_framework_none_names_its_replacement(image):
+def test_framework_none_is_invalid(image):
     path, header, _data = image
-    with pytest.raises(ValueError, match=(
-            r"framework=None was removed; use framework='dlpack'")):
+    with pytest.raises(ValueError, match=r"unknown framework None"):
         rumi.read(path, header, framework=None)
 
 

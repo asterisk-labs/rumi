@@ -112,11 +112,7 @@ class RumiArray:
         return f"<rumi.RumiArray {self._shape} {dtype_name(self._dtype_code)}>"
 
 
-def _check_framework(dtype_code: int, framework: str | None) -> None:
-    if framework is None:
-        raise ValueError(
-            "framework=None was removed; use framework='dlpack' for a "
-            "RumiArray")
+def _check_framework(dtype_code: int, framework: str) -> None:
     if framework not in ("numpy", "torch", "dlpack"):
         raise ValueError(
             f"unknown framework {framework!r}; expected 'numpy', 'torch', or 'dlpack'")
@@ -130,7 +126,12 @@ def _check_framework(dtype_code: int, framework: str | None) -> None:
 def _to_framework(arr: RumiArray, framework: str):
     if framework == "dlpack":
         return arr
-    return arr.numpy() if framework == "numpy" else arr.torch()
+    if framework == "numpy":
+        return arr.numpy()
+    if framework == "torch":
+        return arr.torch()
+    raise ValueError(
+        f"unknown framework {framework!r}; expected 'numpy', 'torch', or 'dlpack'")
 
 
 # Convert Python indices to the C API's 1-based convention. NULL/0 means all.

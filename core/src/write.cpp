@@ -59,7 +59,7 @@ Entry adopt(std::uint16_t tag, std::uint16_t type,
 bool sample_encoding(rumi_dtype dt, std::uint8_t* sf, std::uint8_t* bits) noexcept
 {
     std::size_t n = 0;
-    const rumi_dtype_info_full* rows = dtype_table(&n);
+    const rumi_dtype_info* rows = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
         if (rows[i].code == dt) {
             *sf   = rows[i].sample_format;

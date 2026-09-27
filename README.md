@@ -91,7 +91,7 @@ Reads return NumPy by default. Use `framework="torch"` for a CPU tensor or
 `framework="dlpack"` for a `RumiArray` implementing `__dlpack__`. Every stored
 dtype has an exact PyTorch DLPack representation; when NumPy has no exact dtype,
 the default read fails before opening the source and names the two supported
-alternatives. The complete dtype registry is tested with PyTorch 2.11 or newer.
+alternatives. The complete dtype registry is tested with PyTorch 2.11.
 
 ## Cloud sources
 

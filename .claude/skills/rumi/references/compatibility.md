@@ -13,10 +13,10 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 1. The policy
 
-- **Files.** The development reader keeps 0.25 encodings with an exact PyTorch CPU
-  DLPack representation and rejects retired sample encodings. Earlier files are
-  unsupported. The format may still change before 1.0, and any break is recorded in
-  `CHANGELOG.md`.
+- **Files.** Valid sample encodings are listed in `SPEC.md`; every other pair is
+  rejected. Reserved encoding numbers are never assigned another meaning. Earlier
+  files are unsupported. The format may still change before 1.0, and any break is
+  recorded in `CHANGELOG.md`.
 - **Writers.** The guarantee covers files written by `rumi.write` and `rumi_write`. The
   reader may accept files from other writers, but they are outside the policy.
 - **Independent readers** are supported: `SPEC.md` must be enough to read any file Rumi
@@ -25,9 +25,8 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
   or `rumi_info`), so a lost or stale header is recoverable.
 - **C.** No stable source API or ABI before 1.0. The development API and SONAME remain
   at 1 even when layouts change; recompile C applications after every update. Starting
-  with Rumi 1.0, incompatible ABI changes increment them. Python checks the complete
-  dtype-row size before reading the registry, while the original table keeps its legacy
-  row layout for older bindings.
+  with Rumi 1.0, incompatible ABI changes increment them. Python checks the dtype-row
+  size before reading the registry.
 - **Python** follows semantic versioning, but before 1.0 a minor release may break the
   API; the changelog calls it out.
 
@@ -84,8 +83,8 @@ A format change (file header, IFD, header blob, trailer, a registry):
 - Fuzz seeds: `python tools/make_fuzz_seeds.py` regenerates `fuzz/replay/`.
 - `CHANGELOG.md` under `### Breaking`, `COMPATIBILITY.md` when the baseline moves, and
   `references/format.md` in this skill.
-- Retained dtype codes and every file encoding keep their meaning. Removed development
-  encodings remain reserved. `frame_unit` values stay append-only.
+- Dtype codes and file encodings keep their meaning. Reserved values are never reused.
+  `frame_unit` values stay append-only.
 
 A C API change: `rumi.h`, `capi.cpp`, the cdef in `_ffi.py`, and the `_PUBLIC_API`
 signatures recorded in `test_cdef.py` ("update this list only for an intentional API

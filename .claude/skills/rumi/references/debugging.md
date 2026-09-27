@@ -20,7 +20,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | Message (excerpt) | Cause | Fix |
 | --- | --- | --- |
 | `OSError: librumi not found. Install it or set RUMI_LIB to its path.` | no bundled or system library | `pip install rumi-eo`, or `make python` in a checkout |
-| `ImportError: librumi is too old for this binding` / `dtype registry layout is incompatible` | `RUMI_LIB` or a stale library from another checkout | unset `RUMI_LIB`, rebuild with `make python` |
+| `ImportError: librumi C interface does not match this binding` | `RUMI_LIB` or a stale library from another checkout | unset `RUMI_LIB`, rebuild with `make python` |
 | `editable install check failed: import rumi loaded ..., expected ...` | another `rumi` distribution shadows the checkout | uninstall it, rerun `make python` |
 | `editable install check failed: native library is 0.21.2, expected 0.21.3` | staged library older than `VERSION` | `make python` |
 
@@ -63,7 +63,6 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: window: requested window is out of image bounds` | window past the edge | clamp the window |
 | `ValueError: b > 1 needs b in the pattern` | output pattern drops an axis longer than one | select one position or keep the axis |
 | `ValueError: unknown framework 'cupy'; expected 'numpy', 'torch', or 'dlpack'` | unsupported framework | choose one of those three values |
-| `ValueError: framework=None was removed` | the old raw-DLPack spelling | use `framework="dlpack"` |
 | `RuntimeError: this RumiArray was already exported` | second export of one result | keep the first array or tensor |
 | `TypeError: NumPy cannot represent rumi dtype ...` | a Torch-only dtype with the default framework | use `framework="torch"` or `framework="dlpack"` |
 
