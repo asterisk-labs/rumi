@@ -1277,6 +1277,39 @@ rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out)
     });
 }
 
+extern "C" rumi_status
+rumi_header_size(uint32_t samples_per_pixel, uint64_t frame_count,
+                 uint64_t* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_header_size: out is null");
+            return RUMI_ERR_INVALID;
+        }
+        if (samples_per_pixel == 0
+            || samples_per_pixel > std::numeric_limits<std::uint16_t>::max()) {
+            set_error("samples_per_pixel must be in [1, 65535]");
+            return RUMI_ERR_INVALID;
+        }
+        if (frame_count == 0
+            || frame_count > std::numeric_limits<std::uint32_t>::max()) {
+            set_error("frame_count must be in [1, 4294967295]");
+            return RUMI_ERR_INVALID;
+        }
+
+        const std::uint64_t size = rumi::derived_base_offset(
+            samples_per_pixel, frame_count);
+        if (size > std::numeric_limits<std::uint32_t>::max()) {
+            set_error(rumi::format_message(
+                "the header would be %llu bytes, past what this writer builds",
+                static_cast<unsigned long long>(size)));
+            return RUMI_ERR_INVALID;
+        }
+        *out = size;
+        return RUMI_OK;
+    });
+}
+
 
 // Geo keys.
 

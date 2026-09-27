@@ -1,9 +1,11 @@
+import operator
 from collections.abc import Iterable, Set
 from itertools import islice
 
 from ._dtype import dtype_code
 from ._ffi import _check, ffi, lib
 from ._native import FilePath, encode_path
+from ._pattern import compile_pattern, frame_count
 from ._time import compile_axis
 
 
@@ -117,6 +119,52 @@ def header_bytes(tf, *, transform=None, crs=None,
     d, _keep = _desc(tf, transform, crs, pixel_is_point)
     out = ffi.new("uint64_t*")
     _check(lib.rumi_write_base_offset(d, out))
+    return int(out[0])
+
+
+def header_size(shape, pattern, tile_size=512) -> int:
+    """Return the file header size without materializing any frames.
+
+    ``shape`` gives the raster dimensions in the axis order named by
+    ``pattern``. ``tile_size`` is the nominal height and width of a square
+    tile, from 1 to 65535.
+
+    The result is the exact byte offset at which the first frame would begin.
+    """
+    p = compile_pattern(pattern)
+    try:
+        dims = tuple(operator.index(value) for value in shape)
+    except TypeError:
+        raise TypeError("shape must contain integers") from None
+    if len(dims) != len(p.input_axes):
+        raise ValueError(
+            f"the pattern names {len(p.input_axes)} axes "
+            f"({' '.join(p.input_axes)}), got shape {dims}")
+    if any(value <= 0 for value in dims):
+        raise ValueError(f"shape dimensions must be positive, got {dims}")
+
+    try:
+        tile = operator.index(tile_size)
+    except TypeError:
+        raise TypeError("tile_size must be an integer") from None
+    if not 1 <= tile <= 65535:
+        raise ValueError(f"tile_size must be in [1, 65535], got {tile_size}")
+
+    extents = dict(zip(p.input_axes, dims, strict=True))
+    bands = extents.get("b", 1)
+    times = extents.get("t", 1)
+    length = extents["y"]
+    width = extents["x"]
+    if bands > 65535:
+        raise ValueError(f"band count must be in [1, 65535], got {bands}")
+    for name, value in (("time", times), ("height", length), ("width", width)):
+        if value > 0xFFFFFFFF:
+            raise ValueError(f"{name} must be in [1, 4294967295], got {value}")
+
+    unit = p.frame_unit(bands, times)
+    count = frame_count(unit, width, length, tile, bands, times)[2]
+    out = ffi.new("uint64_t*")
+    _check(lib.rumi_header_size(bands, count, out))
     return int(out[0])
 
 

@@ -32,9 +32,10 @@ pip install rumi-eo
 - The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.
   Import fails when neither exists or when the native C interface
   does not match the binding. The pre-1.0 API version remains 1.
-- Public names: `frames`, `FrameTable`, `Frame`, `write`, `read`, `read_many`,
-  `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`,
-  `set_checksum_verification`, `get_checksum_verification`, `__version__`.
+- Public names: `frames`, `FrameTable`, `Frame`, `header_size`, `write`, `read`,
+  `read_many`, `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`,
+  `get_num_threads`, `set_checksum_verification`, `get_checksum_verification`,
+  `__version__`.
   Everything under `rumi._*` is private.
 
 ## 2. `frames`, `FrameTable` and `Frame`
@@ -90,6 +91,15 @@ empty payload `ValueError: frame 0 is empty`. `attach` refuses reserved names
 (`ValueError: 'row' is already a Frame attribute`) and wrong lengths.
 
 ## 3. `write`
+
+```text
+rumi.header_size(shape, pattern, tile_size=512) -> int
+```
+
+Returns the exact number of bytes before the first frame without allocating an array or
+building a `FrameTable`. `shape` follows the input-axis order named by `pattern`; Rumi
+derives the band count, grid and number of frames. This is the file header size, not the
+external header returned by `write`.
 
 ```text
 rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=False)

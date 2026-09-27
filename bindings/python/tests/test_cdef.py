@@ -92,6 +92,8 @@ rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
                        const size_t* sizes, size_t frame_count,
                        unsigned char** out_blob, size_t* out_size);
 rumi_status rumi_write_base_offset(const rumi_write_desc* desc, uint64_t* out);
+rumi_status rumi_header_size(uint32_t samples_per_pixel, uint64_t frame_count,
+                             uint64_t* out);
 const char* rumi_axis_name(uint8_t axis);
 rumi_status rumi_check_samples(const void* data, size_t n_bytes,
                                rumi_dtype dtype);
@@ -264,7 +266,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 36
+    assert len(baseline) == 37
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

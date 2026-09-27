@@ -15,6 +15,7 @@ PUBLIC = (
     "frames",
     "get_checksum_verification",
     "get_num_threads",
+    "header_size",
     "info",
     "read",
     "read_many",
@@ -46,6 +47,7 @@ def test_public_function_parameters_stay_stable():
         "frames": ("arr", "pattern", "tile_size"),
         "get_checksum_verification": (),
         "get_num_threads": (),
+        "header_size": ("shape", "pattern", "tile_size"),
         "info": ("source", "header"),
         "read": ("source", "header", "framework", "pattern", "time", "bands", "window"),
         "read_many": (

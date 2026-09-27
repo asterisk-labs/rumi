@@ -19,6 +19,8 @@ TILE_OFFSETS, TILE_BYTE_COUNTS = 324, 325
 TILE = "b (row h) (col w) -> row col b (h w)"
 CELL = "b (row h) (col w) -> row col (b h w)"
 CHUNKY = "b (row h) (col w) -> row col (h w b)"
+CUBE = "t b (row h) (col w) -> row col (t b h w)"
+CUBE_TILES = "t b (row h) (col w) -> row col b t (h w)"
 
 UTM18S = 32718
 # The writer reads transform as rasterio's Affine order, (xres, rowrot,
@@ -35,6 +37,33 @@ def make_frame(shape=(2, 40, 70), tile_size=16, dtype=np.uint16,
     tf = FrameTable.from_array(arr, pattern, tile_size)
     tf["compressed"] = [bytes([i % 251]) * (7 + 3 * i) for i in range(len(tf))]
     return tf
+
+
+@pytest.mark.parametrize("shape, pattern, tile, expected", [
+    ((2, 40, 70), TILE, 16, 812),
+    ((2, 40, 70), CELL, 16, 632),
+    ((40, 70, 5), "(row h) (col w) b -> row col (b h w)", 16, 652),
+    ((4, 3, 40, 70), CUBE, 16, 632),
+    ((4, 3, 40, 70), CUBE_TILES, 16, 2612),
+])
+def test_header_size_needs_no_array_or_frames(shape, pattern, tile, expected):
+    assert rumi.header_size(shape, pattern, tile) == expected
+
+
+def test_header_size_matches_the_writer_layout():
+    tf = make_frame()
+    assert rumi.header_size((2, 40, 70), TILE, 16) == header_bytes(tf)
+
+
+@pytest.mark.parametrize("shape, pattern, tile, error, message", [
+    ((2, 40), TILE, 16, ValueError, "pattern names 3 axes"),
+    ((2, 0, 70), TILE, 16, ValueError, "must be positive"),
+    ((2, 40.5, 70), TILE, 16, TypeError, "shape must contain integers"),
+    ((2, 40, 70), TILE, 0, ValueError, "tile_size must be in"),
+])
+def test_header_size_validates_geometry(shape, pattern, tile, error, message):
+    with pytest.raises(error, match=message):
+        rumi.header_size(shape, pattern, tile)
 
 
 def test_write_path_is_text_or_pathlike():

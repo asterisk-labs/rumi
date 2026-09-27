@@ -183,6 +183,25 @@ void test_base_offset_matches_the_spec()
     }
 }
 
+void test_header_size_without_frames()
+{
+    CASE("header_size needs only bands and the derived frame count")
+    struct Row { std::uint32_t bands; std::uint64_t frames; };
+    const Row rows[] = {{1, 1}, {2, 30}, {5, 15}, {13, 180}};
+    for (const Row& r : rows) {
+        std::uint64_t got = 0;
+        EQ(rumi_header_size(r.bands, r.frames, &got), RUMI_OK);
+        EQ(got, derived_base(r.bands, r.frames));
+    }
+
+    std::uint64_t unchanged = 99;
+    EQ(rumi_header_size(0, 1, &unchanged), RUMI_ERR_INVALID);
+    EQ(unchanged, 99u);
+    EQ(rumi_header_size(1, 0, &unchanged), RUMI_ERR_INVALID);
+    EQ(unchanged, 99u);
+    EQ(rumi_header_size(1, 1, nullptr), RUMI_ERR_INVALID);
+}
+
 void test_georeferencing_does_not_change_the_size()
 {
     CASE("georeferencing changes what the header says, never how long it is")
@@ -2026,6 +2045,7 @@ int main()
     test_trailer_budgets();
     test_c_api_metadata();
     test_base_offset_matches_the_spec();
+    test_header_size_without_frames();
     test_georeferencing_does_not_change_the_size();
     test_base_offset_accepts_valid_tile_sizes();
     test_writer_rejects_a_noncanonical_frame_unit();
