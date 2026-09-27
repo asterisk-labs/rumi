@@ -26,6 +26,8 @@ Notable user-visible changes are recorded here.
 - The frame-pattern C API exposes indexed axes through
   `rumi_unit_index_axes`, which rejects invalid frame units.
 - The Python binding loads only `RUMI_LIB` or its bundled library.
+- File paths must be `str` or path-like objects returning `str`. `write` no
+  longer accepts a `bytes` path; bytes-like sources are file contents.
 
 ### Added
 
