@@ -51,8 +51,7 @@ def test_the_quick_start_writes_a_file_that_reads_back(tmp_path, monkeypatch):
 
     scene = tmp_path / "scene.rumi"
     assert scene.is_file()
-    assert np.array_equal(env["result"], env["image"])
-    assert np.asarray(env["chip"]).shape == (2, 512, 512)
+    assert np.array_equal(env["chip"], env["image"][[2, 3], :256, :256])
 
     rebuilt = rumi.info(source=scene).header
     assert np.array_equal(rumi.read(str(scene), rebuilt), env["image"])

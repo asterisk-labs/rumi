@@ -180,6 +180,11 @@ frame contains one tile for one band and one time step. Every other unit places
 one cell in each frame, allowing OpenZL to model correlation between bands,
 time steps, or both.
 
+A frame is the smallest unit a reader decodes, so the order of samples inside
+it changes only compression. A frame is a tile or a whole cell, never an
+intermediate group, and the index order of units `0` and `9` decides which
+tiles sit next to each other.
+
 An axis before `h w` is stored as contiguous planes. An axis after `h w` is
 interleaved within each pixel. When both axes precede `h w`, the axis next to
 `h w` varies between adjacent planes.

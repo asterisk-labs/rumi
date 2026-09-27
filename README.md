@@ -11,22 +11,33 @@
 
 <p align="center"><i>rumi is the Quechua word for stone.</i></p>
 
-Rumi is stateless raster storage for AI4EO. One file holds a single image `(B, Y, X)` or
-temporal cube `(T, B, Y, X)`, split into frames. A small external header locates every
-frame, so a read decodes only the frames its window, bands and time steps touch.
+Rumi is stateless raster storage for AI4EO. It cuts an Image or a Cube into independently
+compressed frames and keeps their index in a tiny external header, so every read fetches
+only the frames it needs.
 
-> [!WARNING]
-> Rumi is not stable yet. The format and APIs may change before 1.0. It currently
-> supports Linux and macOS only; Windows support depends on GeoZL supporting
-> Windows.
+## Features
 
-## Install
-
-```bash
-pip install rumi-eo
-```
-
-Python 3.11 or newer is required.
+- **The GDAL raster model, extended with time**, so one file carries an Image `(B, Y, X)`
+  or a Cube `(T, B, Y, X)` along with its affine transform, CRS, band descriptions and
+  dates.
+- **The tile `(H, W)` is the smallest unit**, and bands and dates are ordered around it,
+  either one per frame or all together in one frame.
+- **Patterns in einops notation**, such as `b (row h) (col w) -> row col (b h w)` to store
+  every band of a tile together, or `y x b` to read channels last.
+- **GeoZL is the only supported codec**, lossless or lossy, and each frame can use a
+  different compression graph.
+- **Minibatches in one call**, with `read_many` fetching windows from many files
+  concurrently, ideal for training data loaders.
+- **Multithreaded decoding** that overlaps with downloads, set with
+  `rumi.set_num_threads`.
+- **Zero-copy arrays** for NumPy, PyTorch, JAX and TensorFlow, shared through DLPack,
+  with 21 dtypes including bfloat16, float8 and complex.
+- **Reads from anywhere** through [Karu](https://github.com/asterisk-labs/karu), whether
+  the file sits on a local disk, behind HTTP, in S3, GCS, Azure, Hugging Face or Source
+  Cooperative, or inside another file with `/vsisubfile/`.
+- **A predictable header**, so `rumi.frame_start` knows where the frames begin before
+  anything is compressed.
+- **A C API** in `rumi.h`, so other languages can bind the same core.
 
 ## Quick start
 
@@ -35,151 +46,36 @@ import geozl
 import numpy as np
 import rumi
 
-image = np.random.default_rng(0).integers(
-    0, 4096, size=(4, 1024, 1024), dtype=np.uint16
-)
-
-frames = rumi.frames(
-    image,
-    "b (row h) (col w) -> row col (b h w)",
-    tile_size=512,
-)
-
+image = np.random.default_rng(0).integers(0, 4096, (4, 1024, 1024), dtype=np.uint16)
+frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
 for frame in frames:
     graph = geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = geozl.compress(frame.data, graph=graph)
 
-path, header = rumi.write(
-    "scene.rumi",
-    frames,
-    bands=[
-        "B2, Blue, 496.6nm (S2A) / 492.1nm (S2B)",
-        "B3, Green, 560nm (S2A) / 559nm (S2B)",
-        "B4, Red, 664.5nm (S2A) / 665nm (S2B)",
-        "B8, NIR, 835.1nm (S2A) / 833nm (S2B)",
-    ],
-    time=["2024-08-25"],
-)
-
-result = rumi.read(path, header)
-chip = rumi.read(
-    path,
-    header,
-    bands=[0, 3],
-    window=(0, 0, 512, 512),
-)
+path, header = rumi.write("scene.rumi", frames, bands=["B2", "B3", "B4", "B8"],
+                          time=["2024-08-25"])
+chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256))
 ```
 
-Every file names each band and dates each time step. A step without a single
-instant, such as a composite, takes a `(start, end)` pair.
+## Installation
 
-Selections are zero-based. A window is
-`(row, column, height, width)`.
-
-Use `read_many` when each source needs its own window:
-
-```python
-batch = rumi.read_many(
-    paths,
-    headers,
-    windows=[(row, column, 256, 256) for row, column in positions],
-    framework="torch",
-)
+```bash
+pip install rumi-eo
 ```
 
-Reads return NumPy by default. `framework="torch"`, `"jax"`, and
-`"tensorflow"` transfer the decoded CPU allocation through DLPack;
-`framework="dlpack"` returns the one-shot `RumiArray` producer itself. Every
-stored dtype has an exact PyTorch DLPack representation. Each other framework
-accepts only its exact subset, checked before the source is opened, and Rumi
-never casts to make a dtype fit. JAX 64-bit dtypes require `jax_enable_x64`.
-
-## Cloud sources
-
-Rumi accepts remote URIs and GDAL VSI paths:
-
-| Storage | URI | VSI path |
-|---|---|---|
-| Amazon S3 | `s3://bucket/key` | `/vsis3/bucket/key` |
-| Google Cloud Storage | `gs://bucket/key` | `/vsigs/bucket/key` |
-| Azure Blob Storage | `az://container/key` | `/vsiaz/container/key` |
-| Azure Data Lake | `abfs://container/key` | `/vsiadls/container/key` |
-| Hugging Face | `hf://datasets/org/repo/path` | `/vsihf/datasets/org/repo/path` |
-| Source Cooperative | `source://account/product/key` | `/vsisource/account/product/key` |
-
-Credentials and transport options follow [Karu's configuration](https://github.com/asterisk-labs/karu/blob/main/CONFIGURATION.md).
-
-```python
-import os
-import rumi
-
-# Amazon S3
-os.environ["AWS_PROFILE"] = "training"
-s3 = rumi.read("s3://bucket/scene.rumi", header, window=(0, 0, 256, 256))
-
-# Google Cloud Storage
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/path/service-account.json"
-gcs = rumi.read("gs://bucket/scene.rumi", header, window=(0, 0, 256, 256))
-
-# Azure Blob Storage
-os.environ["AZURE_STORAGE_CONNECTION_STRING"] = "your-connection-string"
-azure = rumi.read(
-    "az://container/scene.rumi", header, window=(0, 0, 256, 256)
-)
-
-# Azure Data Lake
-adls = rumi.read(
-    "abfs://container/scene.rumi", header, window=(0, 0, 256, 256)
-)
-
-# Hugging Face
-os.environ["HF_TOKEN"] = "your-token"
-hf = rumi.read(
-    "hf://datasets/org/repo/scene.rumi", header, window=(0, 0, 256, 256)
-)
-
-# Source Cooperative public data
-source = rumi.read(
-    "source://account/product/scene.rumi", header, window=(0, 0, 256, 256)
-)
-```
-
-## Metadata
-
-`info` is the only metadata entry point:
-
-```python
-metadata = rumi.info(source="scene.rumi")
-metadata = rumi.info(header=header)
-metadata = rumi.info(source="scene.rumi", header=header)
-```
-
-`Metadata` displays every attribute it carries. Notebooks show a table and tile
-grid; `repr()` and `print()` use aligned text.
-
-`info(source=...).header` rebuilds the external header for an existing file.
-Passing both validates that the external header matches the canonical index
-reconstructed from the source. The check validates the index, not payload
-identity.
+Wheels are available for Linux x86-64 and macOS arm64 on Python 3.11 or newer. Rumi is
+not stable yet, and the format may still change before 1.0.
 
 ## Documentation
 
-- [Format specification](SPEC.md)
-- [Compatibility policy](COMPATIBILITY.md)
-- [Changelog](CHANGELOG.md)
-- [Security policy](SECURITY.md)
+[Guide](https://asterisk.coop/rumi/) · [Specification](SPEC.md) ·
+[Compatibility](COMPATIBILITY.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 
-## AI agent skill
-
-Install the [Rumi skill](https://github.com/asterisk-labs/rumi/blob/main/.claude/skills/rumi/SKILL.md) so coding agents know its frame layouts, selection rules and file format.
-
-```bash
-npx skills add asterisk-labs/rumi
-```
+Coding agents can install the Rumi skill with `npx skills add asterisk-labs/rumi`.
 
 ## License
 
-GPL-3.0
+GPL-3.0. See [`LICENSE`](LICENSE).
 
 <div align="center">
   <br>

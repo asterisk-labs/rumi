@@ -349,6 +349,10 @@ the number of frames <code>N</code>; it does not otherwise change the file struc
 frame contains one tile for one band and one time step. Every other unit places
 one cell in each frame, allowing OpenZL to model correlation between bands,
 time steps, or both.</p>
+<p>A frame is the smallest unit a reader decodes, so the order of samples inside
+it changes only compression. A frame is a tile or a whole cell, never an
+intermediate group, and the index order of units <code>0</code> and <code>9</code> decides which
+tiles sit next to each other.</p>
 <p>An axis before <code>h w</code> is stored as contiguous planes. An axis after <code>h w</code> is
 interleaved within each pixel. When both axes precede <code>h w</code>, the axis next to
 <code>h w</code> varies between adjacent planes.</p>
