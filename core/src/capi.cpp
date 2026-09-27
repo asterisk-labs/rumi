@@ -25,6 +25,8 @@ struct FreeDeleter {
     void operator()(void* ptr) const noexcept { std::free(ptr); }
 };
 
+// DLPack documents 256-byte aligned data pointers; JAX copies CPU buffers
+// that are not 64-byte aligned.
 constexpr std::size_t DLPACK_BUFFER_ALIGNMENT = 256;
 
 std::byte* allocate_dlpack_buffer(std::size_t size) noexcept
