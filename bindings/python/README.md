@@ -13,7 +13,6 @@ format and APIs may change before 1.0. See the
 [format specification](https://github.com/asterisk-labs/rumi/blob/main/SPEC.md)
 for the wire format.
 
-Reads return NumPy by default, a CPU PyTorch tensor with
-`framework="torch"`, or a one-shot DLPack producer with
-`framework="dlpack"`. Torch-only dtypes fail explicitly on the NumPy path; Rumi
-never casts them to make them fit.
+Reads return NumPy by default. PyTorch, JAX and TensorFlow results use DLPack;
+`framework="dlpack"` returns the one-shot producer itself. Compatibility is
+checked before opening the source, and Rumi never casts a dtype to make it fit.

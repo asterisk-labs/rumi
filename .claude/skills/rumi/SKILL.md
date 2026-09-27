@@ -103,14 +103,15 @@ band or time selection. Measure compression when more than one layout fits the r
   count, dtype, time count and which of band and time a frame holds. Extents may differ,
   and the `n` axis stays for one item.
 - **Threads** are process-wide: `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS` before
-  the first parallel read; later changes warn and are ignored. A forked worker starts at 1
+  the first parallel read; a different value after pinning is an error. A forked worker starts at 1
   unless its environment sets `RUMI_NUM_THREADS`.
 - **Checksums are off**: decoded type and byte count are still checked.
   `rumi.set_checksum_verification(True)` or `RUMI_VERIFY=1` enables OpenZL checksums.
-  Set it before the first read; later changes warn and are ignored.
+  Set it before the first read; a different value after pinning is an error.
 - **Framework exports.** Every dtype has an exact CPU DLPack form accepted by PyTorch.
-  A `RumiArray` from `framework="dlpack"` exports once. NumPy is the default but fails
-  before I/O for Torch-only types such as float8, bfloat16 and complex32.
+  NumPy, JAX and TensorFlow accept their exact subsets; JAX needs `jax_enable_x64` for
+  64-bit types. Compatibility is checked before I/O. A `RumiArray` from
+  `framework="dlpack"` exports once.
 - **`transform` uses rasterio `Affine` order** `(x_res, row_rot, x_origin, col_rot, y_res,
   y_origin)`, not a GDAL geotransform, and needs an EPSG `crs`. `time` takes one entry per
   step, in whole UTC seconds; a step without a single instant, such as a DEM or an annual

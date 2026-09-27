@@ -35,7 +35,7 @@
           <li><a href="#selection"><i>05</i><span><b>Select samples</b>Time, bands, window</span></a></li>
           <li><a href="#sources"><i>06</i><span><b>Change the source</b>Source, HF, S3, local</span></a></li>
           <li><a href="#batch"><i>07</i><span><b>Build a batch</b>Training windows</span></a></li>
-          <li><a href="#frameworks"><i>08</i><span><b>Return a tensor</b>NumPy, Torch, DLPack</span></a></li>
+          <li><a href="#frameworks"><i>08</i><span><b>Return a tensor</b>NumPy, Torch, JAX, TensorFlow</span></a></li>
           <li><a href="#metadata"><i>09</i><span><b>Inspect metadata</b>Recover the header</span></a></li>
         </ol>
         <div class="nav-note"><b>Two tracks</b>Use 01–04 to create data. Start at 05 when a catalogue already gives you a source and its Rumi header.</div>
@@ -389,6 +389,12 @@ assert batch.shape == (3, 4, 128, 128)</code></pre>
 torch_chip = rumi.read(
     cube_path, cube_header, framework="torch"
 )
+jax_chip = rumi.read(
+    cube_path, cube_header, framework="jax"
+)
+tensorflow_chip = rumi.read(
+    cube_path, cube_header, framework="tensorflow"
+)
 dlpack_chip = rumi.read(
     cube_path, cube_header, framework="dlpack"
 )</code></pre>
@@ -406,11 +412,13 @@ dlpack_chip = rumi.read(
               <tbody>
                 <tr><td><code>"numpy"</code></td><td>NumPy array; the default</td></tr>
                 <tr><td><code>"torch"</code></td><td>PyTorch tensor</td></tr>
+                <tr><td><code>"jax"</code></td><td>JAX array; 64-bit dtypes require <code>jax_enable_x64</code></td></tr>
+                <tr><td><code>"tensorflow"</code></td><td>TensorFlow tensor</td></tr>
                 <tr><td><code>"dlpack"</code></td><td><code>RumiArray</code>, a one-shot DLPack producer</td></tr>
               </tbody>
             </table>
           </div>
-          <p>Every Rumi dtype maps exactly to a CPU dtype accepted by PyTorch. NumPy reads are available only when NumPy has the same dtype; Rumi raises before reading data instead of casting or returning a byte view.</p>
+          <p>Every Rumi dtype maps exactly to a CPU dtype accepted by PyTorch. NumPy, JAX and TensorFlow accept exact subsets. Rumi checks compatibility before opening the source and never casts or returns a byte view.</p>
         </section>
 
         <section class="guide-section" id="metadata">

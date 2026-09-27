@@ -173,7 +173,7 @@
                 <tr><td><code>time</code>, <code>bands</code></td><td>Zero-based lists or half-open <code>(start, stop)</code> ranges; <code>None</code> means all</td><td>Validates them and converts them to the C API’s one-based indices</td></tr>
                 <tr><td><code>window</code></td><td><code>(row, column, height, width)</code>; <code>None</code> means the whole image</td><td>Checks bounds and converts it to offsets plus sizes</td></tr>
                 <tr><td><code>pattern</code></td><td>The order of output axes such as band, time, row, and column</td><td>Compiles shape and byte strides before any frame runs</td></tr>
-                <tr><td><code>framework</code></td><td><code>numpy</code>, <code>torch</code>, or <code>dlpack</code></td><td>Chooses an exact consumer; <code>dlpack</code> leaves a <code>RumiArray</code></td></tr>
+                <tr><td><code>framework</code></td><td><code>numpy</code>, <code>torch</code>, <code>jax</code>, <code>tensorflow</code>, or <code>dlpack</code></td><td>Chooses an exact consumer; <code>dlpack</code> leaves a <code>RumiArray</code></td></tr>
               </tbody>
             </table>
           </div>
@@ -515,7 +515,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
           <p><code>rumi_read_dlpack()</code> allocates the exact output size before calling the core. <code>finish_dlpack()</code> wraps that allocation in a versioned DLPack tensor. DLPack is a small ownership-and-metadata protocol shared by array libraries: it describes the address, shape, strides, dtype, and device without copying the decoded array into a second framework-owned buffer.</p>
 
-          <p>Python wraps the native tensor in <code>RumiArray</code>. Calling <code>numpy()</code> or <code>torch()</code> transfers that allocation through DLPack. <code>RumiArray.__dlpack__()</code> permits the transfer exactly once; if no consumer takes it, the wrapper frees the native tensor itself. NumPy compatibility is checked before any source is opened.</p>
+          <p>Python wraps the native tensor in <code>RumiArray</code>. Calling <code>numpy()</code>, <code>torch()</code>, <code>jax()</code>, or <code>tensorflow()</code> transfers that allocation through DLPack. <code>RumiArray.__dlpack__()</code> permits the transfer exactly once; if no consumer takes it, the wrapper frees the native tensor itself. Framework compatibility is checked before any source is opened.</p>
 
           <div class="callout">
             <span>Why completions may arrive out of order</span>

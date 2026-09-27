@@ -28,8 +28,8 @@ pip install rumi-eo
   `geozl>=0.18.0,<0.19`. The import name is `rumi`, the
   distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
-- The binding loads `librumi` from `RUMI_LIB`, then the copy bundled under `rumi/_lib/`,
-  then `ctypes.util.find_library("rumi")`. Import fails when the native C interface
+- The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.
+  Import fails when neither exists or when the native C interface
   does not match the binding. The pre-1.0 API version remains 1.
 - Public names: `frames`, `FrameTable`, `Frame`, `write`, `read`, `read_many`,
   `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`, `get_num_threads`,
@@ -101,7 +101,7 @@ rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=Fa
 | `tf` | a `FrameTable` with every payload assigned |
 | `bands` | required; one `str` per band, in band order, non-empty, unique and free of NUL (`writing.md`) |
 | `time` | required; one entry per time step: date, datetime, ISO string or `numpy.datetime64` for instants, `(start, end)` pairs for intervals (`writing.md`) |
-| `transform` | six affine coefficients `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`; a rasterio `Affine` works (extra values are ignored) |
+| `transform` | six affine coefficients `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`, or a nine-value affine matrix ending in `(0, 0, 1)` |
 | `crs` | EPSG code as `int`, `"EPSG:32718"`, `"32718"`, or any object with `to_epsg()` (rasterio and pyproj CRS) |
 | `pixel_is_point` | `True` anchors pixels at their centre; recorded even without a CRS |
 
@@ -111,8 +111,7 @@ rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=Fa
   compress every frame before writing` before anything is opened.
 - `header` is `bytes`: 32 bytes plus the packed frame sizes (37 bytes for the 4-frame
   Image in the canonical example). It carries no band texts, time or georeferencing.
-- The writer opens `path` with truncation. A failure after that removes the file, and
-  the returned header is rebuilt from the file just written.
+- The writer opens `path` with truncation. A failure after that removes the file.
 
 ## 4. `read`
 
@@ -128,7 +127,7 @@ rumi.read(source, header, *, framework="numpy", pattern=None, time=None, bands=N
 | `time`, `bands` | `None` (all, file order), a list of zero-based positions (any order, repeats allowed), or a half-open `(start, stop)` tuple |
 | `window` | `None` (whole image) or a tuple `(row, column, height, width)` of integers |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
-| `framework` | `"numpy"` (default), `"torch"`, or `"dlpack"` for a `RumiArray` |
+| `framework` | `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `"dlpack"` for a `RumiArray` |
 
 ```python
 cube = rumi.read(path, header)                                    # (3, 4, 300, 260)
@@ -177,7 +176,7 @@ bytes.
 | `index_order` | band and time axes the index walks, outermost first, such as `("b", "t")`; `()` for cell frames | same |
 | `frames` | frame count | same |
 | `bands` | one text per band, in band order | `None` |
-| `time` | a list of `date` (whole days) or UTC `datetime`; `(start, end)` tuples for intervals | `None` |
+| `time` | one uniform list: all `date` when every coordinate is a whole day, otherwise all UTC `datetime`; `(start, end)` tuples for intervals | `None` |
 | `time_kind` | `"instant"` or `"interval"` | `None` |
 | `transform` | six floats, or `None` without a CRS | `None` |
 | `crs` | EPSG code or `None` | `None` |
@@ -190,11 +189,12 @@ bytes.
 Returned by `read` and `read_many` with `framework="dlpack"`.
 
 - `shape`; `__dlpack__` and `__dlpack_device__` (always CPU, `(1, 0)`).
-- `numpy()` and `torch()` import from DLPack without copying. The
+- `numpy()`, `torch()`, `jax()` and `tensorflow()` import from DLPack without copying. The
   storage moves to the first consumer; a second export raises `RuntimeError: this
   RumiArray was already exported`.
-- `numpy()` raises without consuming the result when the dtype has no exact NumPy
-  representation. `torch()` accepts every registered dtype, including `bool`.
+- Framework compatibility is checked before opening the source. `torch()` accepts
+  every registered dtype; the other consumers accept their exact subsets. JAX 64-bit
+  dtypes require `jax_enable_x64`.
 
 ## 8. Threads
 
@@ -204,10 +204,9 @@ rumi.get_num_threads()
 ```
 
 - One process-wide pool serves every read. The default is 1, or `RUMI_NUM_THREADS` (an
-  integer or `ALL_CPUS`; invalid values mean 1, values above 1024 are clamped).
+  integer in `[1, 1024]` or `ALL_CPUS`; invalid values are errors).
 - The first read that uses more than one thread pins the count. A later
-  `set_num_threads` with another value returns the pinned count and warns
-  `RuntimeWarning: rumi's thread count is pinned at 4; the request for 8 was ignored.`
+  `set_num_threads` with another value raises `ValueError`.
 - `set_num_threads` accepts integers in `[1, 1024]`; `0` raises `ValueError`, `1.5` and
   `"4"` raise `TypeError`.
 - A forked child starts from its own environment (1 unless `RUMI_NUM_THREADS` is set) and
@@ -222,11 +221,10 @@ rumi.get_checksum_verification()
 
 - Decode skips OpenZL checksums by default. Decoded type and byte count are still
   checked.
-- The default is `False`, or `True` when `RUMI_VERIFY` is `1`, `true`, `on` or `yes`;
-  any other value leaves it off.
+- The default is `False`. `RUMI_VERIFY` accepts `1`, `true`, `on`, `yes`, `0`,
+  `false`, `off`, or `no`; any other value is an error.
 - The first decoded frame pins the setting. A later `set_checksum_verification` with
-  another value returns the pinned one and warns `RuntimeWarning: rumi's checksum
-  verification is pinned at False; the request for True was ignored.`
+  another value raises `ValueError`. The setter accepts only `bool`.
 - A forked child inherits the setting, pinned state included.
 
 ## 10. Exceptions

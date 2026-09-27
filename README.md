@@ -87,11 +87,12 @@ batch = rumi.read_many(
 )
 ```
 
-Reads return NumPy by default. Use `framework="torch"` for a CPU tensor or
-`framework="dlpack"` for a `RumiArray` implementing `__dlpack__`. Every stored
-dtype has an exact PyTorch DLPack representation; when NumPy has no exact dtype,
-the default read fails before opening the source and names the two supported
-alternatives. The complete dtype registry is tested with PyTorch 2.11.
+Reads return NumPy by default. `framework="torch"`, `"jax"`, and
+`"tensorflow"` transfer the decoded CPU allocation through DLPack;
+`framework="dlpack"` returns the one-shot `RumiArray` producer itself. Every
+stored dtype has an exact PyTorch DLPack representation. Each other framework
+accepts only its exact subset, checked before the source is opened, and Rumi
+never casts to make a dtype fit. JAX 64-bit dtypes require `jax_enable_x64`.
 
 ## Cloud sources
 

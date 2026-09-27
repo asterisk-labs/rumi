@@ -8,17 +8,23 @@ Notable user-visible changes are recorded here.
 
 - The sample registry is the exact CPU DLPack subset that PyTorch imports
   without changing dtype. Other file encodings are reserved and rejected.
-- Python reads accept `framework="numpy"`, `"torch"` or `"dlpack"`; the last
-  returns `RumiArray`. NumPy fails before opening or decoding a file whose dtype
-  it cannot represent.
+- Python reads accept `framework="numpy"`, `"torch"`, `"jax"`, `"tensorflow"`
+  or `"dlpack"`; the last returns `RumiArray`. Framework compatibility is
+  checked before opening or decoding the source, and reads never cast a dtype.
 - `Metadata.dtype` is a `rumi.DType` descriptor. `DType.numpy_dtype` is `None`
-  for Torch-only types.
+  for types NumPy cannot represent.
 - Public dtype names and C symbols use `complex32/64/128`, `bool`, and
   `float8_e8m0fnu`.
 - `rumi_dtype_info` and `rumi_dtype_registry` expose logical bits, decoded
   storage bytes, complex component width, the NumPy scalar when one exists,
   and all three DLPack dtype fields. The C API and shared-library SONAME remain
   at 1; C applications must be recompiled.
+- Thread and checksum setters in the C API return `rumi_status`; their getters
+  write through an output pointer. Changing a setting after it is pinned is an
+  error instead of a silently ignored request.
+- The frame-pattern C API exposes indexed axes through
+  `rumi_unit_index_axes`, which rejects invalid frame units.
+- The Python binding loads only `RUMI_LIB` or its bundled library.
 
 ### Added
 
@@ -27,11 +33,19 @@ Notable user-visible changes are recorded here.
   decoded storage.
 - Added float8 E4M3FNUZ and E5M2FNUZ sample encodings. Every registered type is
   tested through `torch.from_dlpack` on CPU.
+- `RumiArray` can transfer directly to JAX and TensorFlow. JAX requires
+  `jax_enable_x64` for 64-bit dtypes; framework-specific unsupported dtypes
+  fail explicitly.
 
 ### Fixed
 
 - Dtype validation rejects integer values above 255, and DLPack metadata
   allocation failures report `RUMI_ERR_OOM`.
+- Axis selections, frame dimensions, tile sizes, checksum settings, affine
+  transforms, writer frame units and C writer time arrays reject invalid input
+  instead of coercing or normalizing it.
+- Metadata returns one Python time type for an entire axis: dates when every
+  coordinate is a whole day, otherwise timezone-aware UTC datetimes.
 
 ## [0.25.0] - 2026-09-24
 

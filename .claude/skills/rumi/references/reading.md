@@ -188,18 +188,21 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 | --- | --- |
 | `"numpy"` (default) | `numpy.ndarray` |
 | `"torch"` | `torch.Tensor` on the CPU |
-| `"dlpack"` | `RumiArray`, exported later with `numpy()`, `torch()` or `__dlpack__` |
+| `"jax"` | JAX array on the CPU |
+| `"tensorflow"` | TensorFlow tensor on the CPU |
+| `"dlpack"` | `RumiArray`, exported later with a framework method or `__dlpack__` |
 
 - Results decode on the CPU and move to the framework through DLPack without a copy.
   A `RumiArray` exports once; a second export raises `RuntimeError: this RumiArray was
   already exported`.
-- Every registered dtype is an exact PyTorch CPU DLPack dtype. NumPy-incompatible
-  dtypes fail before the source is opened and suggest `"torch"` or `"dlpack"`.
+- Every registered dtype is an exact PyTorch CPU DLPack dtype. NumPy, JAX and
+  TensorFlow accept exact subsets; incompatible dtypes fail before the source is opened.
+  JAX 64-bit dtypes require `jax_enable_x64`.
 - `bool` has a one-bit logical file width, one decoded byte per sample and exports as
   DLPack `(kDLBool, 8, 1)`.
 - PyTorch's unsigned 16, 32 and 64-bit tensors support few operations; cast before
   training.
-- An unknown name raises a `ValueError` listing the three choices; a missing package raises
+- An unknown name raises a `ValueError` listing the five choices; a missing package raises
   its `ModuleNotFoundError` at read time.
 
 ## 8. Threads, concurrency and fork

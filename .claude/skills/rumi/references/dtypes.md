@@ -2,7 +2,9 @@
 
 Sources: `core/include/rumi/rumi_dtypes.def`, `bindings/python/rumi/_dtype.py`,
 `bindings/python/rumi/_read.py`, `core/src/plan.cpp`, and Sample encodings in
-`SPEC.md`. The complete registry is tested with PyTorch 2.11 on CPU.
+`SPEC.md`. CI tests the complete registry with PyTorch 2.11, the supported JAX
+subset with JAX 0.11.2, and the supported TensorFlow subset with TensorFlow 2.21
+on CPU. These are tested versions, not declared minimums.
 
 ## The contract
 
@@ -19,20 +21,24 @@ count before assigning shape, strides, and DLPack metadata.
 
 ## Registry
 
-| Name | File `(sample_format, bits)` | Decoded bytes | NumPy | PyTorch |
-| --- | --- | ---: | --- | --- |
-| `uint8`, `uint16`, `uint32`, `uint64` | `(1, 8/16/32/64)` | 1/2/4/8 | exact | exact |
-| `int8`, `int16`, `int32`, `int64` | `(2, 8/16/32/64)` | 1/2/4/8 | exact | exact |
-| `float16`, `float32`, `float64` | `(3, 16/32/64)` | 2/4/8 | exact | exact |
-| `complex32` | `(6, 32)` | 4 | no | `torch.complex32` |
-| `complex64`, `complex128` | `(6, 64/128)` | 8/16 | exact | exact |
-| `float8_e4m3fn` | `(100, 8)` | 1 | no | exact |
-| `float8_e5m2` | `(101, 8)` | 1 | no | exact |
-| `bfloat16` | `(102, 16)` | 2 | no | exact |
-| `float8_e8m0fnu` | `(103, 8)` | 1 | no | exact |
-| `bool` | `(1, 1)` | 1 | exact | `torch.bool` |
-| `float8_e4m3fnuz` | `(107, 8)` | 1 | no | exact |
-| `float8_e5m2fnuz` | `(108, 8)` | 1 | no | exact |
+| Name | File `(sample_format, bits)` | Bytes | NumPy | PyTorch | JAX | TensorFlow |
+| --- | --- | ---: | --- | --- | --- | --- |
+| `uint8`, `uint16`, `uint32` | `(1, 8/16/32)` | 1/2/4 | exact | exact | exact | exact |
+| `uint64` | `(1, 64)` | 8 | exact | exact | x64 | exact |
+| `int8`, `int16`, `int32` | `(2, 8/16/32)` | 1/2/4 | exact | exact | exact | exact |
+| `int64` | `(2, 64)` | 8 | exact | exact | x64 | exact |
+| `float16`, `float32` | `(3, 16/32)` | 2/4 | exact | exact | exact | exact |
+| `float64` | `(3, 64)` | 8 | exact | exact | x64 | exact |
+| `complex32` | `(6, 32)` | 4 | no | exact | no | no |
+| `complex64` | `(6, 64)` | 8 | exact | exact | exact | exact |
+| `complex128` | `(6, 128)` | 16 | exact | exact | x64 | exact |
+| `float8_e4m3fn`, `float8_e5m2` | `(100/101, 8)` | 1 | no | exact | no | no |
+| `bfloat16` | `(102, 16)` | 2 | no | exact | exact | exact |
+| `float8_e8m0fnu` | `(103, 8)` | 1 | no | exact | no | no |
+| `bool` | `(1, 1)` | 1 | exact | exact | exact | exact |
+| `float8_e4m3fnuz`, `float8_e5m2fnuz` | `(107/108, 8)` | 1 | no | exact | no | no |
+
+`x64` means exact only while JAX's `jax_enable_x64` setting is enabled.
 
 The DLPack mapping uses one lane for every type. Boolean is the important
 exception to deriving DLPack width from the file: it exports as
@@ -48,7 +54,7 @@ two values in one byte; it is not part of this registry.
 
 `rumi.info(...).dtype` is a `rumi.DType`. It exposes `name`, `itemsize`,
 `component_size`, `sample_format`, `bits`, `dlpack`, and `numpy_dtype`. The last
-value is `None` for Torch-only types.
+value is `None` for types NumPy cannot represent.
 
 Reads accept:
 
@@ -56,15 +62,17 @@ Reads accept:
 | --- | --- |
 | `"numpy"` | default; exact `numpy.ndarray`, or an early `TypeError` |
 | `"torch"` | exact CPU `torch.Tensor` through DLPack |
+| `"jax"` | exact CPU JAX array through DLPack |
+| `"tensorflow"` | exact CPU TensorFlow tensor through DLPack |
 | `"dlpack"` | one-shot `RumiArray` DLPack producer |
 
-The NumPy compatibility check happens after parsing the external header but
-before opening the source or decoding a frame. Use Torch to cast such a dtype
-for training; for example, unsigned tensors have limited operator coverage even
-though their DLPack import is exact.
+Compatibility checks happen after parsing the external header but before
+opening the source or decoding a frame. PyTorch defines the full registry;
+NumPy, JAX and TensorFlow expose exact subsets. Unsupported pairs fail instead
+of widening or casting.
 
 The Python writer remains array-oriented and accepts standard NumPy dtypes and
-`bool`. Torch-only types enter the reader as decoded bytes described by the file
+`bool`. Types outside NumPy enter the reader as decoded bytes described by the file
 encoding; the writer does not accept NumPy extension dtypes as substitutes.
 
 ## Complex frames

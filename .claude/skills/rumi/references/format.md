@@ -247,9 +247,8 @@ def read_trailer(data, h):
 
 ## 9. Versions
 
-- `SPEC.md` declares specification 0.2.0, status Draft. The file header, header blob and
+- `SPEC.md` declares specification 0.1.0, status Draft. The file header, header blob and
   trailer are each version 1.
-- The development reader keeps 0.25 encodings that remain in the sample registry
+- The development reader accepts exactly the sample encodings listed in `SPEC.md`
   (`compatibility.md`).
-- `frame_unit` is append-only. Removed sample encodings stay reserved and are never
-  reassigned.
+- `frame_unit` is append-only. Reserved sample encodings are never reassigned.

@@ -19,7 +19,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 
 | Message (excerpt) | Cause | Fix |
 | --- | --- | --- |
-| `OSError: librumi not found. Install it or set RUMI_LIB to its path.` | no bundled or system library | `pip install rumi-eo`, or `make python` in a checkout |
+| `OSError: librumi is not bundled; set RUMI_LIB to its path` | no bundled library and no explicit `RUMI_LIB` | `pip install rumi-eo`, run `make python`, or set `RUMI_LIB` |
 | `ImportError: librumi C interface does not match this binding` | `RUMI_LIB` or a stale library from another checkout | unset `RUMI_LIB`, rebuild with `make python` |
 | `editable install check failed: import rumi loaded ..., expected ...` | another `rumi` distribution shadows the checkout | uninstall it, rerun `make python` |
 | `editable install check failed: native library is 0.21.2, expected 0.21.3` | staged library older than `VERSION` | `make python` |
@@ -46,7 +46,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 
 | Message (excerpt) | Cause | Fix |
 | --- | --- | --- |
-| `TypeError: read takes one source; use read_many for multiple sources` | a list passed to `read` | `read_many` |
+| `TypeError: source must be path-like or bytes-like` | unsupported source object | pass one path, URI, or bytes-like object; use `read_many` for a sequence |
 | `TypeError: read needs one bytes-like header` | missing or `str` header | pass the header bytes |
 | `ValueError: bad magic` / `ValueError: blob size does not match frame count` | not a header blob, or a truncated one | rebuild with `rumi.info(source=...).header` |
 | `ValueError: frame data needs 544743 bytes, source has 490914` | header of another file, or a truncated file | pair the right header; check the download |
@@ -62,9 +62,10 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `TypeError: window: expected (row, column, height, width) tuple` | a list window | a tuple |
 | `ValueError: window: requested window is out of image bounds` | window past the edge | clamp the window |
 | `ValueError: b > 1 needs b in the pattern` | output pattern drops an axis longer than one | select one position or keep the axis |
-| `ValueError: unknown framework 'cupy'; expected 'numpy', 'torch', or 'dlpack'` | unsupported framework | choose one of those three values |
+| `ValueError: unknown framework 'cupy'; expected ...` | unsupported framework | choose `numpy`, `torch`, `jax`, `tensorflow`, or `dlpack` |
 | `RuntimeError: this RumiArray was already exported` | second export of one result | keep the first array or tensor |
-| `TypeError: NumPy cannot represent rumi dtype ...` | a Torch-only dtype with the default framework | use `framework="torch"` or `framework="dlpack"` |
+| `TypeError: FRAMEWORK cannot represent rumi dtype ...` | dtype outside that framework's exact subset | choose a compatible framework or consume `dlpack` yourself |
+| `TypeError: JAX cannot represent ... while jax_enable_x64 is disabled` | a 64-bit dtype under JAX's default configuration | enable JAX x64 before the read |
 
 ### Batches
 
@@ -97,7 +98,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: info needs source, header, or both` | no argument | pass `source=` or `header=` |
 | `TypeError: header must be bytes-like, got str` | text header | bytes |
 | `ValueError: external header does not match source` | stale or foreign header | rebuild it from the source |
-| `RuntimeWarning: rumi's thread count is pinned at 4; the request for 8 was ignored. ...` | pool already started | configure before the first parallel read, or use a new process |
+| `ValueError: thread count is pinned at 4, not 8` | pool already started | configure before the first parallel read, or use a new process |
 | `ValueError: num_threads must be in [1, 1024], got 0` / `TypeError: num_threads must be an integer, got 1.5` | bad count | an `int` in range |
 | `ValueError: that window reaches N frames, past the N bytes of ranges this reader will allocate` | a huge window of tile frames | smaller reads, or raise `rumi_set_max_frame_bytes` |
 | `ValueError: a decoded frame is past the size limit for this reader` | a frame above 1 GiB decoded | smaller tiles, or raise the limit from C |

@@ -195,7 +195,7 @@ first frame at byte 500
 | Versions | `rumi_api_version`, `rumi_version_string`, `rumi_openzl_format_version` |
 | Limits, threads and checksums | `rumi_set_max_frame_bytes`, `rumi_get_max_frame_bytes` (0 restores 1 GiB), `rumi_set_num_threads`, `rumi_get_num_threads`, `rumi_set_checksum_verification`, `rumi_get_checksum_verification` |
 | Sample types | `rumi_dtype` (`RUMI_DT_*`), `rumi_dtype_info_size`, `rumi_dtype_registry`, `rumi_check_samples` |
-| Frame patterns | `rumi_compile_frame_pattern`, `rumi_frame_unit`, `rumi_unit_name`, `rumi_unit_from_name`, `rumi_unit_index_axes`, `rumi_unit_indexes_bands`, `rumi_axis_name`, `rumi_frame_count`, `rumi_frame_locate` |
+| Frame patterns | `rumi_compile_frame_pattern`, `rumi_frame_unit`, `rumi_unit_name`, `rumi_unit_from_name`, `rumi_unit_index_axes`, `rumi_axis_name`, `rumi_frame_count`, `rumi_frame_locate` |
 | Output layouts | `rumi_default_pattern`, `rumi_compile_layout` (shape, and strides indexed by `RUMI_OUT_N` to `RUMI_OUT_X`) |
 | Headers and metadata | `rumi_spec_parse`, `rumi_spec_header`, `rumi_spec_destroy`, `rumi_info`, `rumi_metadata_free` |
 | Sources | `rumi_source_file`, `rumi_source_memory`, `rumi_source_free` |
@@ -244,15 +244,20 @@ and binding do not share the same C interface. The unstable API and SONAME remai
 
 - All read entry points may run concurrently and share parsed specs and sources.
   Destination buffers must not overlap, and borrowed memory must outlive the call.
+- `rumi_set_num_threads(n)` returns `rumi_status`.
+  `rumi_get_num_threads(&out)` writes the configured count.
 - The process-wide pool is sized by `rumi_set_num_threads` or `RUMI_NUM_THREADS` before
-  the first parallel read; the first parallel read fixes it. A forked child starts with
-  its own setting.
+  the first parallel read; the first parallel read fixes it. A different later value
+  returns `RUMI_ERR_INVALID`. A forked child starts with its own setting.
 
 ## 9. Checksums
 
 - Decode skips OpenZL checksums by default. Decoded type and byte count are still
   checked.
 - `rumi_set_checksum_verification(1)` or `RUMI_VERIFY=1` enables checksums for the
-  process. The environment variable also accepts `true`, `on`, and `yes`.
-- Set it before the first read. The first decoded frame pins the value. Later calls
-  return the pinned value, and a forked child inherits it.
+  process. The environment variable accepts `1`, `true`, `on`, `yes`, `0`,
+  `false`, `off`, and `no`.
+- The setter accepts only 0 or 1 and returns `rumi_status`;
+  `rumi_get_checksum_verification(&out)` writes the setting.
+- Set it before the first read. The first decoded frame pins the value. A different
+  later value returns `RUMI_ERR_INVALID`, and a forked child inherits it.
