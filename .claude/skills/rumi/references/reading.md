@@ -134,12 +134,14 @@ batch = rumi.read_many(
 )                                                    # (3, 3, 256, 256)
 ```
 
-- Windows share one height and width; each window is checked against its own image
+- Omit `windows` to read every image in full. The images must share a size
+  (`ValueError: item 2: image is 96x160, not 96x96`).
+- Explicit windows share one height and width. Each is checked against its own image
   (`ValueError: item 2: requested window out of bounds`).
 - Items must agree on tile size, band count, dtype, time count, and which of band and
   time a frame holds. `b h w` and `h w b` files batch together; `h w` and `b h w` do not
-  (`ValueError: item 2: frame layout mismatch, 'h w' against 'b h w'`). Image extents
-  may differ.
+  (`ValueError: item 2: frame layout mismatch, 'h w' against 'b h w'`). With explicit
+  windows, image extents may differ.
 - One call plans every item together, so remote waits and decoding overlap across items.
   Prefer it to a Python loop over `read`.
 - The same source may appear several times, for several windows of one scene.

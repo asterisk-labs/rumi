@@ -4,6 +4,13 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-09-29
+
+### Changed
+
+- `rumi.read_many` now reads each image in full when `windows` is omitted;
+  images in the batch must have the same dimensions.
+
 ## [0.26.0] - 2026-09-27
 
 ### Changed
@@ -519,7 +526,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.26.1...HEAD
+[0.26.1]: https://github.com/asterisk-labs/rumi/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/asterisk-labs/rumi/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/asterisk-labs/rumi/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/asterisk-labs/rumi/compare/v0.24.0...v0.24.1

@@ -81,6 +81,12 @@ class TestAgreement:
         assert np.array_equal(batch[0], data[:, 0:32, 0:32])
         assert np.array_equal(batch[1], data[:, 32:64, 32:64])
 
+    def test_without_windows_every_whole_image_is_read(self, square):
+        paths = [p for p, _h, _d in square]
+        headers = [h for _p, h, _d in square]
+        batch = rumi.read_many(paths, headers)
+        assert np.array_equal(batch, np.stack([d for _p, _h, d in square]))
+
     def test_one_item_keeps_the_batch_axis(self, square):
         path, header, data = square[0]
         batch = rumi.read_many([path], [header],
@@ -556,6 +562,14 @@ class TestRejections:
         _paths, _headers = pair
         with pytest.raises(ValueError, match="at least one"):
             rumi.read_many([], [], windows=[])
+        with pytest.raises(ValueError, match="at least one"):
+            rumi.read_many([], [])
+
+    def test_whole_images_must_share_a_size(self, scenes):
+        square_path, square_header, _d = scenes[0]
+        wide_path, wide_header, _w = scenes[4]
+        with pytest.raises(ValueError, match="item 2: image is 96x160, not 96x96"):
+            rumi.read_many([square_path, wide_path], [square_header, wide_header])
 
     @pytest.mark.parametrize(
         "window, message",

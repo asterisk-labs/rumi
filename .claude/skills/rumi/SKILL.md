@@ -18,10 +18,9 @@ each frame may use its own compression graph. A small external header locates ev
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 
-This skill describes **rumi 0.26.0** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.4.0).
-It includes the unreleased dtype changes in this checkout. Check
-`rumi.__version__`. If it differs, trust the installed source, `SPEC.md` and
-`CHANGELOG.md` over this file.
+This skill describes **rumi 0.26.1** (GeoZL 0.18.x, OpenZL 0.2.0, Karu 0.4.0).
+Check `rumi.__version__`. If it differs, trust the installed source, `SPEC.md`
+and `CHANGELOG.md` over this file.
 
 ## Mental model
 
@@ -99,9 +98,10 @@ band or time selection. Measure compression when more than one layout fits the r
   tuples. NumPy arrays and empty lists are refused; `window` must be a tuple.
 - **The file decides which output axes exist.** `time=[2]` on a Cube still returns
   `(1, B, h, w)`; drop an axis with `pattern="b y x"` only when its extent is one.
-- **`read_many`** needs equal window sizes and sources that agree on tile size, band
-  count, dtype, time count and which of band and time a frame holds. Extents may differ,
-  and the `n` axis stays for one item.
+- **`read_many`** reads each source in full unless `windows` is given. Full images must
+  share a size; explicit windows must share a size but may come from images with
+  different extents. Sources must also agree on tile size, band count, dtype, time count
+  and which of band and time a frame holds. The `n` axis stays for one item.
 - **Threads** are process-wide: `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS` before
   the first parallel read; a different value after pinning is an error. A forked worker starts at 1
   unless its environment sets `RUMI_NUM_THREADS`.

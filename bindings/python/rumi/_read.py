@@ -133,6 +133,19 @@ def _resolve_windows(windows, specs: Sequence[_Spec]) \
     return rows, cols, size[0], size[1]
 
 
+def _whole_images(specs: Sequence[_Spec]) -> list[tuple[int, int, int, int]]:
+    """One window per item covering its image; the images must share a size."""
+    height, width = specs[0].fields.image_length, specs[0].fields.image_width
+    for i, spec in enumerate(specs):
+        size = (spec.fields.image_length, spec.fields.image_width)
+        if size != (height, width):
+            raise ValueError(
+                f"item {i + 1}: image is {size[0]}x{size[1]}, not "
+                f"{height}x{width}; "
+                "pass windows to read images of different sizes")
+    return [(0, 0, height, width)] * len(specs)
+
+
 def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
                y_offs: list[int], x_offs: list[int],
                y_size: int, x_size: int,
@@ -199,23 +212,24 @@ def read(source: _ReadSource, header: Header, *,
 
 def read_many(sources: Sequence[_ReadSource],
               headers: Sequence[Header], *,
-              windows: Sequence[tuple[int, int, int, int]],
+              windows: Sequence[tuple[int, int, int, int]] | None = None,
               framework: str = "numpy", pattern: str | None = None,
               time: Axis = None, bands: Axis = None):
-    """Read one fixed-size window per source.
+    """Read one fixed-size window per source, or every whole image.
 
     ``windows[i]`` is the ``(row, column, height, width)`` read from
     ``sources[i]``. Every window must be the same size, because the result is
-    one array with a leading ``n`` axis; only the position may differ. Items
-    come back in the order given, along the ``n`` axis, including a one-item
-    call.
+    one array with a leading ``n`` axis; only the position may differ. Without
+    ``windows``, each whole image is read, and the images must share a size.
+    Items come back in the order given, along the ``n`` axis, including a
+    one-item call.
 
-    ``read_many`` pairs each source with its own window and executes every
-    item as one plan. To use one shared window, repeat it once per source.
+    ``read_many`` executes every item as one plan. To read one shared window,
+    repeat it once per source.
 
     Sources must agree on tile size, band count, dtype, time step count, and
-    which of band and time a frame holds. Image dimensions may differ, so a
-    call may draw from scenes of different extents.
+    which of band and time a frame holds. When ``windows`` is given, image
+    dimensions may differ.
 
     Reads use rumi's process-wide thread pool. Call ``set_num_threads`` before
     the first parallel read to set its size.
@@ -230,7 +244,7 @@ def read_many(sources: Sequence[_ReadSource],
     if headers is None or isinstance(headers, (bytes, bytearray, memoryview)):
         raise TypeError("read_many needs one header per source")
     raw_headers = list(headers)
-    raw_windows = list(windows)
+    raw_windows = None if windows is None else list(windows)
 
     if not sources:
         raise ValueError("read_many requires at least one item")
@@ -238,7 +252,7 @@ def read_many(sources: Sequence[_ReadSource],
         raise ValueError(
             f"sources and headers length mismatch: "
             f"{len(sources)} vs {len(raw_headers)}")
-    if len(raw_windows) != len(sources):
+    if raw_windows is not None and len(raw_windows) != len(sources):
         raise ValueError(
             f"sources and windows length mismatch: "
             f"{len(sources)} vs {len(raw_windows)}")
@@ -251,6 +265,8 @@ def read_many(sources: Sequence[_ReadSource],
     fields = specs[0].fields
     times = _resolve_axis(time, "time", fields.time_count)
     picked_bands = _resolve_axis(bands, "bands", fields.samples_per_pixel)
+    if raw_windows is None:
+        raw_windows = _whole_images(specs)
     y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows, specs)
     output_pattern = _resolve_pattern(pattern)
 

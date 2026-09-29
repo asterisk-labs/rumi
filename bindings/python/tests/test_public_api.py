@@ -69,6 +69,5 @@ def test_read_defaults_stay_stable():
 
     many = inspect.signature(rumi.read_many).parameters
     assert many["headers"].default is inspect.Parameter.empty
-    assert many["windows"].default is inspect.Parameter.empty
     assert many["framework"].default == "numpy"
-    assert all(many[name].default is None for name in ("pattern", "time", "bands"))
+    assert all(many[name].default is None for name in ("windows", "pattern", "time", "bands"))

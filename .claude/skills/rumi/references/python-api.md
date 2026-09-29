@@ -1,6 +1,6 @@
 # Python API
 
-Everything here describes `rumi` 0.26.0, as implemented in `bindings/python/rumi/`
+Everything here describes `rumi` 0.26.1, as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_config.py`, `_dlpack.py`,
 `_framework.py`, `_native.py`, and `_ffi.py`). The examples and messages come from
 that release.
@@ -152,16 +152,17 @@ multiple sources`. Selection errors are listed in `debugging.md`.
 ## 5. `read_many`
 
 ```text
-rumi.read_many(sources, headers, *, windows, framework="numpy", pattern=None, time=None,
-               bands=None)
+rumi.read_many(sources, headers, *, windows=None, framework="numpy", pattern=None,
+               time=None, bands=None)
 ```
 
-`windows[i]` is read from `sources[i]` with `headers[i]`. Every window has the same
-height and width; positions differ. The result has a leading `n` axis in the order given
-(`n b y x`, or `n t b y x` for Cubes), also for one item. `time`, `bands` and `pattern`
-apply to every item, and a custom pattern must contain `n` when there is more than one
-item. Sources may repeat and may mix paths, URIs and bytes. See `reading.md` for the
-compatibility rules and a DataLoader recipe.
+Without `windows`, `read_many` reads every image in full, so the images must share a
+size. When windows are given, `windows[i]` is read from `sources[i]`; their positions may
+differ, but their height and width must match. The result has a leading `n` axis in the
+order given (`n b y x`, or `n t b y x` for Cubes), also for one item. `time`, `bands`
+and `pattern` apply to every item, and a custom pattern must contain `n` when there is
+more than one item. Sources may repeat and may mix paths, URIs and bytes. See
+`reading.md` for the compatibility rules and a DataLoader recipe.
 
 ## 6. `info` and `Metadata`
 

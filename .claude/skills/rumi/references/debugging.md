@@ -1,6 +1,6 @@
 # Debugging
 
-Messages below describe rumi 0.26.0 (GeoZL 0.18.0, NumPy 2.4, PyTorch 2.11).
+Messages below describe rumi 0.26.1 (GeoZL 0.18.0, NumPy 2.4, PyTorch 2.11).
 Numeric values inside them vary; match on the text. Pattern messages are in
 `patterns.md` section 7 and `time=` messages in `writing.md` section 6.
 

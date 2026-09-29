@@ -527,8 +527,8 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
         <section class="guide-section" id="many">
           <div class="section-label"><span>09</span><small>Read a batch</small></div>
-          <h2>Reuse the same engine for many windows</h2>
-          <p class="section-intro"><code>read_many()</code> does not loop over <code>read()</code>. It turns every source, header, and window into a <code>ReadItem</code>, then sends all items through one <code>read_items()</code> call and one execution plan.</p>
+          <h2>Read several images in one plan</h2>
+          <p class="section-intro"><code>read_many()</code> does not loop over <code>read()</code>. It pairs each source with its header and, when supplied, its window, then sends the whole batch through one <code>read_items()</code> call and one execution plan. Without windows, it reads every image in full.</p>
 
           <pre><code>batch = rumi.read_many(
     ["north.rumi", "south.rumi"],
@@ -541,9 +541,9 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
           <figure class="story-figure">
             <svg viewBox="0 0 760 220" role="img" aria-labelledby="many-title many-desc">
               <title id="many-title">The read_many call path</title>
-              <desc id="many-desc">Python pairs sources, specs, and windows. prepare_many validates the common output. The core creates ReadItems, builds one Plan of FrameTasks, uses one Karu batch and Rumi worker pool, and writes results under a leading n axis.</desc>
+              <desc id="many-desc">Python pairs sources with specs and resolves either explicit windows or whole images. prepare_many validates the common output. The core creates ReadItems, builds one Plan of FrameTasks, uses one Karu batch and Rumi worker pool, and writes results under a leading n axis.</desc>
               <defs><marker id="arrow-many" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
-              <g class="figure-card"><rect x="16" y="68" width="135" height="82" rx="6"/><text x="83" y="91">Python items</text><text class="sub" x="83" y="110">source[i] + header[i]</text><text class="sub" x="83" y="125">window[i]</text><text class="sub" x="83" y="140">equal output size</text></g>
+              <g class="figure-card"><rect x="16" y="68" width="135" height="82" rx="6"/><text x="83" y="91">Python items</text><text class="sub" x="83" y="110">source[i] + header[i]</text><text class="sub" x="83" y="125">window / full image</text><text class="sub" x="83" y="140">equal output size</text></g>
               <path class="figure-arrow" marker-end="url(#arrow-many)" d="M151 109H174"/>
               <g class="figure-card accent"><rect x="178" y="68" width="135" height="82" rx="6"/><text x="245" y="91">prepare_many()</text><text class="sub" x="245" y="110">prepare_selection()</text><text class="sub" x="245" y="125">collect native handles</text><text class="sub" x="245" y="140">leading n axis</text></g>
               <path class="figure-arrow" marker-end="url(#arrow-many)" d="M313 109H336"/>
@@ -557,7 +557,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
             <figcaption>Each item receives a fixed destination at <code>k * n_stride</code>. The final tensor preserves input order even though its frames may complete in another order.</figcaption>
           </figure>
 
-          <p><code>compatible_headers()</code> requires the same tile size, band count, dtype, time count, and frame-axis behavior. Image dimensions may differ. Python requires equal window height and width because all items must fit one rectangular output tensor.</p>
+          <p><code>compatible_headers()</code> requires the same tile size, band count, dtype, time count, and frame-axis behavior. A batch without windows also requires equal image dimensions. With explicit windows, the source images may differ in size, but every window must have the same height and width so the results fit one rectangular tensor.</p>
 
           <p>The combined plan is the performance feature. Remote frame requests from every item are visible to one Karu submission, local and memory work share the same Rumi pool, and every ready frame can decode without waiting for earlier items to finish.</p>
         </section>
