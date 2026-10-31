@@ -5,10 +5,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from _labels import labels
-
 import rumi
 import rumi._dlpack as dlpack_module
+from _labels import labels
 from rumi._ffi import ffi, lib
 from rumi._native import _Spec
 

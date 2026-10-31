@@ -274,10 +274,11 @@ sync:
 	@printf '%s' "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$$' \
 	  || { echo "VERSION '$(VERSION)' is not X.Y.Z[-prerelease]"; exit 1; }
 	@set -e; if [ -f $(R_DIR)/DESCRIPTION ]; then \
-	  sed -i.bak -E 's/^Version:.*/Version: $(VERSION)/' $(R_DIR)/DESCRIPTION; \
+	  r_version=$$($(PYTHON) tools/check_release.py --print-r-version); \
+	  sed -i.bak -E "s/^Version:.*/Version: $$r_version/" $(R_DIR)/DESCRIPTION; \
 	  rm -f $(R_DIR)/DESCRIPTION.bak; \
 	  v=$$(grep -E '^Version:' $(R_DIR)/DESCRIPTION | sed 's/Version:[[:space:]]*//'); \
-	  [ "$$v" = "$(VERSION)" ] || { echo "sync check: DESCRIPTION=$$v != $(VERSION)"; exit 1; }; \
+	  [ "$$v" = "$$r_version" ] || { echo "sync check: DESCRIPTION=$$v != $$r_version"; exit 1; }; \
 	  echo "sync OK $(VERSION) (python dynamic, R DESCRIPTION written)"; \
 	else \
 	  echo "sync OK $(VERSION) (python dynamic, no R binding yet)"; \

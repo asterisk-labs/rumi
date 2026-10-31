@@ -1,8 +1,7 @@
 import numpy as np
 import pytest
-from _labels import labels
-
 import rumi
+from _labels import labels
 
 geozl = pytest.importorskip("geozl")
 torch = pytest.importorskip("torch")

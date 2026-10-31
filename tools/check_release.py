@@ -7,8 +7,9 @@ import argparse
 import json
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(
@@ -34,6 +35,31 @@ def read_version(path: Path, label: str) -> str:
 def next_minor_constraint(version: str) -> str:
     major, minor, _ = version.split(".", 2)
     return f"geozl>={version},<{major}.{int(minor) + 1}"
+
+
+def r_package_version(version: str, changelog: str) -> str:
+    """Map a prerelease to an R version after the latest stable release."""
+    base, separator, prerelease = version.partition("-")
+    if not separator:
+        return base
+    match = re.fullmatch(r"(alpha|beta|rc)\.(\d+)", prerelease)
+    if match is None:
+        fail(f"cannot map prerelease {version!r} to an R version")
+    target = tuple(map(int, base.split(".")))
+    releases = [
+        tuple(map(int, found.split(".")))
+        for found in re.findall(
+            r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$",
+            changelog,
+            re.MULTILINE,
+        )
+    ]
+    previous = max((item for item in releases if item < target), default=None)
+    if previous is None:
+        fail(f"cannot find a stable release before {version}")
+    phase = {"alpha": 0, "beta": 100, "rc": 200}[match.group(1)]
+    build = 9000 + phase + int(match.group(2))
+    return ".".join(map(str, (*previous, build)))
 
 
 def check(tag: str | None) -> tuple[str, str, str]:
@@ -88,9 +114,13 @@ def check(tag: str | None) -> tuple[str, str, str]:
 
     r_description = (ROOT / "bindings/r/DESCRIPTION").read_text()
     r_match = re.search(r"^Version:\s*(\S+)\s*$", r_description, re.MULTILINE)
-    if r_match is None or r_match.group(1) != rumi_version:
+    expected_r_version = r_package_version(rumi_version, changelog)
+    if r_match is None or r_match.group(1) != expected_r_version:
         found = None if r_match is None else r_match.group(1)
-        fail(f"R package version {found!r} does not match VERSION {rumi_version}")
+        fail(
+            f"R package version {found!r} does not match "
+            f"VERSION {rumi_version} ({expected_r_version})"
+        )
 
     julia_project_path = ROOT / "bindings/julia/Project.toml"
     with julia_project_path.open("rb") as stream:
@@ -132,6 +162,8 @@ def check(tag: str | None) -> tuple[str, str, str]:
             fail(f"missing release notice: {notice}")
 
     notice = (ROOT / "NOTICE").read_text()
+    if f"GeoZL {geozl_version}" not in notice:
+        fail(f"NOTICE does not name the pinned GeoZL version {geozl_version}")
     if f"Karu {karu_version}" not in notice:
         fail(f"NOTICE does not name the pinned Karu version {karu_version}")
 
@@ -141,7 +173,17 @@ def check(tag: str | None) -> tuple[str, str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", help="release tag or refs/tags/vX.Y.Z")
+    parser.add_argument("--print-r-version", action="store_true")
     args = parser.parse_args(argv)
+    if args.print_r_version:
+        try:
+            version = read_version(ROOT / "VERSION", "RUMI VERSION")
+            changelog = (ROOT / "CHANGELOG.md").read_text()
+            print(r_package_version(version, changelog))
+        except (OSError, ValueError) as exc:
+            print(f"release metadata error: {exc}", file=sys.stderr)
+            return 1
+        return 0
     try:
         rumi_version, geozl_version, karu_version = check(args.tag)
     except (KeyError, OSError, tomllib.TOMLDecodeError, ValueError) as exc:
