@@ -1,6 +1,6 @@
 {
   "name": "@asterisk-labs/rumi",
-  "version": "0.26.1",
+  "version": "0.27.0-alpha.1",
   "description": "Range-based Rumi Image and Cube reader for browsers and Node.js",
   "repository": {
     "type": "git",
@@ -31,7 +31,7 @@
     "playground": "node playground/server.mjs"
   },
   "dependencies": {
-    "@asterisk-labs/geozl": "^0.19.0"
+    "@asterisk-labs/geozl": "0.20.0-alpha.1"
   },
   "publishConfig": {
     "access": "public"
