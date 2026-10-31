@@ -533,4 +533,4 @@ jobs:
           if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$version" "$latest" | sort -V | tail -1)" != "$version" ]; then
             tag=next
           fi
-          npm publish npm-dist/*.tgz --access public --tag "$tag"
+          npm publish ./npm-dist/*.tgz --access public --tag "$tag"
