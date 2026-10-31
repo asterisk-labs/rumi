@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import operator
 import os
 from collections.abc import Sequence
+from typing import TypeAlias, cast
 
+from ._dataset import Dataset
 from ._dlpack import RumiArray
 from ._ffi import _check, ffi, lib
 from ._framework import resolve_framework
@@ -10,6 +14,8 @@ from ._native import Header, ReadSource, _Source, _Spec, normalize_source
 Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
 _ReadSource = ReadSource
+_ReadTarget: TypeAlias = ReadSource | Dataset
+_C_INT_MAX = (1 << 31) - 1
 
 
 # Convert Python indices to the C API's 1-based convention. NULL/0 means all.
@@ -25,6 +31,8 @@ def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
             raise TypeError(f"{name}: start and stop must be integers") from None
         if not (0 <= start < stop <= total):
             raise ValueError(f"{name}: slice ({start}, {stop}) out of [0, {total}]")
+        if stop > _C_INT_MAX:
+            raise ValueError(f"{name}: indices exceed the C API limit")
         return list(range(start + 1, stop + 1))
     if isinstance(sel, list):
         try:
@@ -34,6 +42,8 @@ def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
         for x in out:
             if not (1 <= x <= total):
                 raise ValueError(f"{name}: index {x - 1} out of [0, {total})")
+            if x > _C_INT_MAX:
+                raise ValueError(f"{name}: index {x - 1} exceeds the C API limit")
         return out
     raise TypeError(f"{name}: expected tuple or list, got {type(sel).__name__}")
 
@@ -54,6 +64,9 @@ def _resolve_window(window: Window, image_height: int, image_width: int) \
         raise ValueError(
             "window: row and column must be non-negative; height and width "
             "must be positive")
+    if row > _C_INT_MAX or column > _C_INT_MAX \
+            or height > _C_INT_MAX or width > _C_INT_MAX:
+        raise ValueError("window values exceed the C API limit")
     if row + height > image_height or column + width > image_width:
         raise ValueError("window: requested window is out of image bounds")
     return row, height, column, width
@@ -171,9 +184,10 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
     return RumiArray(out[0], _dlpack_shape(out[0]), specs[0].fields.dtype)
 
 
-def read(source: _ReadSource, header: Header, *,
+def read(source: _ReadTarget, header: Header | None = None, *,
          framework: str = "numpy", pattern: str | None = None,
-         time: Axis = None, bands: Axis = None, window: Window = None):
+         time: Axis = None, bands: Axis = None, window: Window = None,
+         device: str | None = None):
     """Read one rumi raster.
 
     ``source`` may be a local path, a remote URI, or the file's bytes. Use
@@ -188,14 +202,25 @@ def read(source: _ReadSource, header: Header, *,
 
     ``framework`` selects ``"numpy"``, ``"torch"``, ``"jax"``,
     ``"tensorflow"``, or ``"dlpack"``. The last returns a RumiArray
-    implementing the DLPack protocol. Reads use the
-    process-wide thread pool; call
-    ``set_num_threads`` before the first parallel read to set its size.
+    implementing the DLPack protocol. ``device="cuda:N"`` writes directly
+    into a PyTorch CUDA tensor and requires ``framework="torch"``. CPU reads
+    use the process-wide thread pool; call ``set_num_threads`` before the first
+    parallel read to set its size.
     """
-    source = normalize_source(source)
-    if not isinstance(header, (bytes, bytearray, memoryview)):
-        raise TypeError("read needs one bytes-like header")
-    spec = _Spec(header)
+    if isinstance(source, Dataset):
+        if header is not None:
+            raise TypeError("header is already carried by this Dataset")
+        source._check_open()
+        native_source = source._native_source
+        spec = source._spec
+    else:
+        source = normalize_source(source)
+        if header is None:
+            raise TypeError("read() missing required argument: 'header'")
+        if not isinstance(header, (bytes, bytearray, memoryview)):
+            raise TypeError("read needs one bytes-like header")
+        native_source = _Source(source)
+        spec = _Spec(header)
     consumer = resolve_framework(framework, spec.fields.dtype)
     fields = spec.fields
     times = _resolve_axis(time, "time", fields.time_count)
@@ -204,17 +229,28 @@ def read(source: _ReadSource, header: Header, *,
         window, fields.image_length, fields.image_width)
     output_pattern = _resolve_pattern(pattern)
 
-    arr = _read_one(
-        _Source(source), spec, times, picked_bands, resolved_window,
-        output_pattern)
+    if device not in (None, "cpu"):
+        if framework != "torch":
+            raise ValueError("device requires framework='torch'")
+        from ._gpu import read_one
+
+        times_c, n_times_c = _to_c(times)
+        bands_c, n_bands_c = _to_c(picked_bands)
+        return read_one(
+            native_source, spec, times_c, n_times_c, bands_c, n_bands_c,
+            resolved_window, output_pattern, consumer.dtype, device)
+
+    arr = _read_one(native_source, spec, times, picked_bands,
+                    resolved_window, output_pattern)
     return consumer.convert(arr)
 
 
-def read_many(sources: Sequence[_ReadSource],
-              headers: Sequence[Header], *,
+def read_many(sources: Sequence[_ReadTarget],
+              headers: Sequence[Header] | None = None, *,
               windows: Sequence[tuple[int, int, int, int]] | None = None,
               framework: str = "numpy", pattern: str | None = None,
-              time: Axis = None, bands: Axis = None):
+              time: Axis = None, bands: Axis = None,
+              device: str | None = None):
     """Read one fixed-size window per source, or every whole image.
 
     ``windows[i]`` is the ``(row, column, height, width)`` read from
@@ -236,29 +272,44 @@ def read_many(sources: Sequence[_ReadSource],
 
     ``headers[i]`` is the header returned with ``sources[i]`` by ``write``.
     For an existing file, use ``info(source=...).header`` to rebuild it.
+    ``framework="torch", device="cuda:N"`` returns the batch on that GPU.
     """
     if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
         raise TypeError("read_many takes a sequence of sources; use read for one")
     sources = list(sources)
-
-    if headers is None or isinstance(headers, (bytes, bytearray, memoryview)):
-        raise TypeError("read_many needs one header per source")
-    raw_headers = list(headers)
-    raw_windows = None if windows is None else list(windows)
-
     if not sources:
         raise ValueError("read_many requires at least one item")
-    if len(raw_headers) != len(sources):
-        raise ValueError(
-            f"sources and headers length mismatch: "
-            f"{len(sources)} vs {len(raw_headers)}")
+    raw_windows = None if windows is None else list(windows)
+
+    if all(isinstance(source, Dataset) for source in sources):
+        if headers is not None:
+            raise TypeError("headers are already carried by these Datasets")
+        datasets = cast(list[Dataset], sources)
+        for dataset in datasets:
+            dataset._check_open()
+        native_sources = [dataset._native_source for dataset in datasets]
+        specs = [dataset._spec for dataset in datasets]
+    elif any(isinstance(source, Dataset) for source in sources):
+        raise TypeError("read_many cannot mix Datasets and bare sources")
+    else:
+        raw_sources = cast(list[ReadSource], sources)
+        if headers is None:
+            raise TypeError("read_many() missing required argument: 'headers'")
+        if isinstance(headers, (bytes, bytearray, memoryview)):
+            raise TypeError("read_many needs one header per source")
+        raw_headers = list(headers)
+        if len(raw_headers) != len(raw_sources):
+            raise ValueError(
+                f"sources and headers length mismatch: "
+                f"{len(raw_sources)} vs {len(raw_headers)}")
+        native_sources = [_Source(normalize_source(source)) for source in raw_sources]
+        specs = [_Spec(raw) for raw in raw_headers]
+
     if raw_windows is not None and len(raw_windows) != len(sources):
         raise ValueError(
             f"sources and windows length mismatch: "
             f"{len(sources)} vs {len(raw_windows)}")
-    sources = [normalize_source(source) for source in sources]
 
-    specs = [_Spec(raw) for raw in raw_headers]
     consumer = resolve_framework(framework, specs[0].fields.dtype)
     for spec in specs[1:]:
         resolve_framework(framework, spec.fields.dtype)
@@ -270,7 +321,23 @@ def read_many(sources: Sequence[_ReadSource],
     y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows, specs)
     output_pattern = _resolve_pattern(pattern)
 
-    arr = _read_many(
-        [_Source(source) for source in sources], specs,
-        y_offs, x_offs, y_size, x_size, times, picked_bands, output_pattern)
+    if device not in (None, "cpu"):
+        if framework != "torch":
+            raise ValueError("device requires framework='torch'")
+        from ._gpu import read_many as read_many_gpu
+
+        items = ffi.new("rumi_read_item[]", [
+            (source.handle, spec.handle, y_off, x_off)
+            for source, spec, y_off, x_off
+            in zip(native_sources, specs, y_offs, x_offs, strict=True)
+        ])
+        times_c, n_times_c = _to_c(times)
+        bands_c, n_bands_c = _to_c(picked_bands)
+        return read_many_gpu(
+            items, len(specs), specs,
+            times_c, n_times_c, bands_c, n_bands_c,
+            y_size, x_size, output_pattern, consumer.dtype, device)
+
+    arr = _read_many(native_sources, specs, y_offs, x_offs, y_size, x_size,
+                     times, picked_bands, output_pattern)
     return consumer.convert(arr)

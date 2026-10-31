@@ -95,7 +95,7 @@ def _shown_step(step) -> str:
     return str(step)
 
 
-def _native_info(source=None, header: Header | None = None):
+def _native_info(source: _Source | None, header: Header | None = None):
     if source is None and header is None:
         raise ValueError("info needs source, header, or both")
     if header is not None and not isinstance(header, (bytes, bytearray,
@@ -103,35 +103,17 @@ def _native_info(source=None, header: Header | None = None):
         raise TypeError(
             f"header must be bytes-like, got {type(header).__name__}")
 
-    src = _Source(source) if source is not None else None
     header_buf = (ffi.from_buffer("unsigned char[]", header)
                   if header is not None else ffi.NULL)
     result = ffi.new("rumi_metadata*")
     _check(lib.rumi_info(
-        src.handle if src is not None else ffi.NULL,
+        source.handle if source is not None else ffi.NULL,
         header_buf, len(header) if header is not None else 0, result))
     return result
 
 
-def info(*, source: InfoSource | None = None,
-         header: Header | None = None) -> Metadata:
-    """Inspect a source or header, validating their match when both are given.
-
-    ``source`` may be a local path, remote URI or the file's bytes. Rumi reads
-    its index, georeferencing and trailer, including band texts and time, and
-    rebuilds its canonical external header.
-
-    ``header`` is the bytes returned by ``write`` or an earlier source
-    inspection. A header alone opens no source and contains only the fields
-    required for reading. When both arguments are given, Rumi verifies that
-    the rebuilt header matches ``header``.
-
-    Returns ``Metadata``. Its ``shape`` follows ``(B, Y, X)`` or
-    ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. Without ``source``,
-    the ``bands``, ``time``, ``time_kind``, ``transform``, ``crs`` and
-    ``pixel_is_point`` fields are ``None``.
-    """
-    result = _native_info(source=source, header=header)
+def _metadata(source: _Source | None, header: Header | None) -> Metadata:
+    result = _native_info(source, header)
     try:
         h = result.fields
         shape: tuple[int, ...] = (
@@ -192,3 +174,35 @@ def info(*, source: InfoSource | None = None,
         )
     finally:
         lib.rumi_metadata_free(result)
+
+
+def info(source: InfoSource | None = None, *,
+         header: Header | None = None) -> Metadata:
+    """Inspect a source or header, validating their match when both are given.
+
+    ``source`` may be a local path, remote URI or the file's bytes. Rumi reads
+    its index, georeferencing and trailer, including band texts and time, and
+    rebuilds its canonical external header.
+
+    ``header`` is the bytes returned by ``write`` or an earlier source
+    inspection. A header alone opens no source and contains only the fields
+    required for reading. When both arguments are given, Rumi verifies that
+    the rebuilt header matches ``header``.
+
+    Returns ``Metadata``. Its ``shape`` follows ``(B, Y, X)`` or
+    ``(T, B, Y, X)``, and ``tile`` is ``(height, width)``. Without ``source``,
+    the ``bands``, ``time``, ``time_kind``, ``transform``, ``crs`` and
+    ``pixel_is_point`` fields are ``None``.
+    """
+    from ._dataset import Dataset
+
+    if isinstance(source, Dataset):
+        if header is not None:
+            raise TypeError("header is already carried by this Dataset")
+        return source.metadata
+    native_source = _Source(source) if source is not None else None
+    try:
+        return _metadata(native_source, header)
+    finally:
+        if native_source is not None:
+            native_source.close()

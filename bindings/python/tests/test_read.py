@@ -5,9 +5,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from _labels import labels
+
 import rumi
 import rumi._dlpack as dlpack_module
-from _labels import labels
 from rumi._ffi import ffi, lib
 from rumi._native import _Spec
 
@@ -41,6 +42,17 @@ def image(tmp_path_factory):
 def test_path_round_trip(image):
     path, header, data = image
     assert np.array_equal(rumi.read(Path(path), header), data)
+
+
+def test_cpu_device_keeps_the_existing_path(image):
+    path, header, data = image
+    assert np.array_equal(rumi.read(path, header, device="cpu"), data)
+
+
+def test_cuda_device_requires_torch(image):
+    path, header, _data = image
+    with pytest.raises(ValueError, match="framework='torch'"):
+        rumi.read(path, header, device="cuda:0")
 
 
 def test_a_pathlike_must_resolve_to_text(image):

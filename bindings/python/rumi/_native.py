@@ -16,7 +16,7 @@ def normalize_source(source: ReadSource) -> ReadSource:
         raise TypeError("source must be path-like or bytes-like") from None
     if not isinstance(path, str):
         raise TypeError("path must be str or path-like returning str")
-    return path
+    return os.path.expanduser(path)
 
 
 def encode_path(path: FilePath) -> bytes:
@@ -44,6 +44,12 @@ class _Source:
             _check(lib.rumi_source_file(encode_path(target), out))
         self.handle = ffi.gc(out[0], lib.rumi_source_free)
 
+    def close(self) -> None:
+        if self.handle != ffi.NULL:
+            ffi.release(self.handle)
+            self.handle = ffi.NULL
+            self._keep = None
+
 
 class _Spec:
     """Parsed external header and its native handle."""
@@ -63,3 +69,8 @@ class _Spec:
         fields = ffi.new("rumi_header*")
         _check(lib.rumi_spec_header(self.handle, fields))
         self.fields = fields
+
+    def close(self) -> None:
+        if self.handle != ffi.NULL:
+            ffi.release(self.handle)
+            self.handle = ffi.NULL
