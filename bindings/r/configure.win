@@ -1,0 +1,5 @@
+#!/bin/sh
+RUMI_CMAKE_GENERATOR=${RUMI_CMAKE_GENERATOR:-"Unix Makefiles"} \
+RUMI_THREAD_LIBS=${RUMI_THREAD_LIBS-"-pthread -lws2_32"} \
+RUMI_PKG_CONFIG_STATIC=1 \
+    exec sh ./configure

@@ -1,0 +1,10 @@
+useDynLib(rumi, .registration = TRUE)
+
+export(rumi_close)
+export(rumi_info)
+export(rumi_open)
+export(rumi_read)
+export(rumi_read_many)
+
+S3method(print, rumi_dataset)
+S3method(print, rumi_metadata)

@@ -1,0 +1,139 @@
+#!/bin/sh
+set -eu
+
+: "${R_HOME:=$(R RHOME)}"
+R_BIN="${R_HOME}/bin/R"
+
+if [ -f ../../core/CMakeLists.txt ] && [ -f ../../extern/karu/CMakeLists.txt ]; then
+    CORE=../../../core
+    GEOZL=../../../extern/geozl
+    OPENZL=../../../extern/geozl/extern/openzl
+    KARU=../../../extern/karu
+elif [ -f src/ext/r/CMakeLists.txt ]; then
+    CORE=ext/r
+    GEOZL=ext/g
+    OPENZL=ext/z
+    KARU=ext/k
+else
+    echo "configure: no Rumi sources; run make r-vendor in the Rumi repository" >&2
+    exit 1
+fi
+
+CMAKE=${CMAKE:-}
+if [ -n "$CMAKE" ]; then
+    "$CMAKE" --version >/dev/null 2>&1 || {
+        echo "configure: CMAKE=$CMAKE does not run" >&2
+        exit 1
+    }
+else
+    for candidate in cmake /usr/bin/cmake /usr/local/bin/cmake \
+        /opt/homebrew/bin/cmake /Applications/CMake.app/Contents/bin/cmake; do
+        if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" --version >/dev/null 2>&1; then
+            CMAKE=$candidate
+            break
+        fi
+    done
+fi
+[ -n "$CMAKE" ] || { echo "configure: cmake 3.21 or newer is required" >&2; exit 1; }
+
+command -v pkg-config >/dev/null 2>&1 || {
+    echo "configure: pkg-config is required to find libcurl and OpenSSL" >&2
+    exit 1
+}
+PKG_CONFIG_FLAGS=
+CURL_USE_STATIC=FALSE
+if [ "${RUMI_PKG_CONFIG_STATIC:-0}" = 1 ]; then
+    PKG_CONFIG_FLAGS=--static
+    CURL_USE_STATIC=TRUE
+fi
+pkg-config $PKG_CONFIG_FLAGS --exists 'libcurl >= 7.83.0' 'openssl >= 3.0' || {
+    echo "configure: libcurl >= 7.83.0 and OpenSSL >= 3.0 are required" >&2
+    exit 1
+}
+
+program() { set -- $1; printf '%s' "$1"; }
+flags() { set -- $1; shift; printf '%s' "$*"; }
+deployment_target() {
+    set -- $1
+    while [ "$#" -gt 0 ]; do
+        case $1 in
+            -mmacosx-version-min=*) printf '%s' "${1#*=}"; return ;;
+            -mmacosx-version-min) [ "$#" -gt 1 ] && printf '%s' "$2"; return ;;
+        esac
+        shift
+    done
+}
+
+CC_LINE=$("$R_BIN" CMD config CC)
+CXX_LINE=$("$R_BIN" CMD config CXX23 2>/dev/null || true)
+[ -n "$CXX_LINE" ] || {
+    echo "configure: this R installation has no C++23 compiler" >&2
+    exit 1
+}
+R_CFLAGS=$("$R_BIN" CMD config CFLAGS)
+R_CXXFLAGS=$("$R_BIN" CMD config CXX23FLAGS)
+R_CPPFLAGS=$("$R_BIN" CMD config CPPFLAGS)
+R_LDFLAGS=$("$R_BIN" CMD config LDFLAGS)
+
+OSX_TARGET=${MACOSX_DEPLOYMENT_TARGET:-}
+if [ -z "$OSX_TARGET" ] && [ "$(uname -s)" = Darwin ]; then
+    OSX_TARGET=$(deployment_target "$CC_LINE $R_CFLAGS $R_CPPFLAGS $R_LDFLAGS")
+fi
+if [ -z "$OSX_TARGET" ] && [ "$(uname -s)" = Darwin ] && command -v otool >/dev/null 2>&1; then
+    OSX_TARGET=$(otool -l "$R_HOME/bin/exec/R" 2>/dev/null | awk '
+        /LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX/ { found = 1 }
+        found && ($1 == "minos" || $1 == "version") { print $2; exit }
+    ')
+fi
+OSX_FLAG=${OSX_TARGET:+-mmacosx-version-min=$OSX_TARGET}
+JOBS=${RUMI_BUILD_JOBS:-2}
+GENERATOR=${RUMI_CMAKE_GENERATOR:-}
+DEPENDENCY_LIBS=$(pkg-config $PKG_CONFIG_FLAGS --libs libcurl openssl)
+
+cd src
+CORE=$(cd "$CORE" && pwd)
+GEOZL=$(cd "$GEOZL" && pwd)
+OPENZL=$(cd "$OPENZL" && pwd)
+KARU=$(cd "$KARU" && pwd)
+"$CMAKE" -S "$CORE" -B build ${GENERATOR:+-G "$GENERATOR"} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="$(program "$CC_LINE")" \
+    -DCMAKE_C_FLAGS="$(flags "$CC_LINE") $R_CPPFLAGS $R_CFLAGS $OSX_FLAG" \
+    -DCMAKE_CXX_COMPILER="$(program "$CXX_LINE")" \
+    -DCMAKE_CXX_FLAGS="$(flags "$CXX_LINE") $R_CPPFLAGS $R_CXXFLAGS $OSX_FLAG" \
+    -DCMAKE_EXE_LINKER_FLAGS="$R_LDFLAGS" \
+    -DCMAKE_SHARED_LINKER_FLAGS="$R_LDFLAGS" \
+    -DCMAKE_MODULE_LINKER_FLAGS="$R_LDFLAGS" \
+    ${OSX_TARGET:+-DCMAKE_OSX_DEPLOYMENT_TARGET="$OSX_TARGET"} \
+    -DRUMI_BUILD_SHARED_LIB=OFF \
+    -DRUMI_BUILD_STATIC_LIB=ON \
+    -DRUMI_GEOZL_DIR="$GEOZL" \
+    -DGEOZL_OPENZL_DIR="$OPENZL" \
+    -DRUMI_KARU_DIR="$KARU" \
+    -DCURL_USE_STATIC_LIBS="$CURL_USE_STATIC" \
+    -DGEOZL_BUILD_KERNELS_SHARED=OFF
+"$CMAKE" --build build --target rumi --parallel "$JOBS"
+
+rm -rf lib gen
+mkdir -p lib gen/openzl
+for archive in librumi.a libgeozl.a libopenzl.a libzstd.a liblz4.a libkaru.a; do
+    source=$(find build -type f -name "$archive" -print | head -1)
+    [ -n "$source" ] || { echo "configure: CMake did not build $archive" >&2; exit 1; }
+    cp "$source" "lib/$archive"
+done
+config=$(find build -type f -path '*/openzl/zl_config.h' -print | head -1)
+[ -n "$config" ] || { echo "configure: OpenZL did not generate zl_config.h" >&2; exit 1; }
+cp "$config" gen/openzl/zl_config.h
+tr -d '\r' < gen/openzl/zl_config.h > gen/openzl/zl_config.h.lf
+mv gen/openzl/zl_config.h.lf gen/openzl/zl_config.h
+rm -rf build
+
+THREAD_LIBS=${RUMI_THREAD_LIBS--pthread}
+escaped_libs=$(printf '%s' "$DEPENDENCY_LIBS" | sed 's/[&|]/\\&/g')
+escaped_core=$(printf '%s' "$CORE" | sed 's/[&|]/\\&/g')
+sed -e "s|@CORE@|$escaped_core|g" \
+    -e "s|@DEPENDENCY_LIBS@|$escaped_libs|g" \
+    -e "s|@THREAD_LIBS@|$THREAD_LIBS|g" \
+    -e "s|@OSX_FLAG@|$OSX_FLAG|g" \
+    Makevars.in > Makevars

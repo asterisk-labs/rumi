@@ -1,0 +1,7 @@
+^src/Makevars$
+^src/Makevars\.win$
+^src/build$
+^src/lib$
+^src/gen$
+^src/.*\.(o|so|dll|dylib)$
+^config\.(log|status)$

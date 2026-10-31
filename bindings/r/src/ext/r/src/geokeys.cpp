@@ -1,0 +1,106 @@
+#include "rumi/rumi.hpp"
+
+#include <cstring>
+#include <string>
+#include <vector>
+
+namespace rumi {
+namespace {
+
+// EPSG code ranges do not reliably identify geographic versus projected CRSs.
+// tools/gen_epsg_kinds.py generates the classification table from the registry.
+struct CodeRange {
+    std::uint32_t lo;
+    std::uint32_t hi;
+};
+
+#define RUMI_EPSG_BEGIN(kind)          constexpr CodeRange kind##_RANGES[] = {
+#define RUMI_EPSG_RANGE(kind, lo, hi)      {lo, hi},
+#define RUMI_EPSG_END(kind)            };
+#include "rumi/epsg_kinds.def"
+#undef RUMI_EPSG_BEGIN
+#undef RUMI_EPSG_RANGE
+#undef RUMI_EPSG_END
+
+template <std::size_t N>
+bool in_table(const CodeRange (&t)[N], std::uint32_t epsg) noexcept
+{
+    std::size_t lo = 0, hi = N;
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        if (epsg < t[mid].lo)       hi = mid;
+        else if (epsg > t[mid].hi)  lo = mid + 1;
+        else                        return true;
+    }
+    return false;
+}
+
+bool is_geographic(std::uint32_t epsg) noexcept
+{
+    return in_table(GEOGRAPHIC_RANGES, epsg);
+}
+
+bool is_projected(std::uint32_t epsg) noexcept
+{
+    return in_table(PROJECTED_RANGES, epsg);
+}
+
+void put16(std::vector<std::byte>& out, std::uint16_t v)
+{
+    const std::size_t at = out.size();
+    out.resize(at + 2);
+    std::memcpy(out.data() + at, &v, 2);
+}
+
+}  // namespace
+
+
+std::uint16_t epsg_model_type(std::uint32_t epsg) noexcept
+{
+    if (epsg == 0) return MODEL_UNDEFINED;
+    if (is_geographic(epsg)) return MODEL_GEOGRAPHIC;
+    if (is_projected(epsg))  return MODEL_PROJECTED;
+    return MODEL_UNDEFINED;
+}
+
+std::expected<GeoKeys, std::string>
+build_geokeys(std::uint32_t epsg, bool pixel_is_point) noexcept
+try {
+    // EPSG 0 represents the undefined CRS in rumi's fixed GeoKey profile.
+    const bool undefined  = epsg == 0;
+    const bool geographic = !undefined && is_geographic(epsg);
+    if (!undefined && !geographic && !is_projected(epsg))
+        return errf("EPSG:%u is not a projected or geographic CRS", epsg);
+
+    std::uint16_t model = MODEL_UNDEFINED;
+    std::uint16_t crs_key = GEOGRAPHIC_TYPE;
+    if (!undefined) {
+        model   = geographic ? MODEL_GEOGRAPHIC : MODEL_PROJECTED;
+        crs_key = geographic ? GEOGRAPHIC_TYPE  : PROJECTED_TYPE;
+    }
+
+    // The fixed directory stores keys in ascending ID order.
+    const std::uint16_t keys[][4] = {
+        {GT_MODEL_TYPE,  0, 1, model},
+        {GT_RASTER_TYPE, 0, 1, pixel_is_point ? RASTER_POINT : RASTER_AREA},
+        {crs_key, 0, 1, static_cast<std::uint16_t>(epsg)},
+    };
+    constexpr std::size_t n = sizeof(keys) / sizeof(keys[0]);
+
+    GeoKeys out;
+    out.directory.reserve((4 + 4 * n) * 2);
+    put16(out.directory, 1);  // KeyDirectoryVersion
+    put16(out.directory, 1);  // KeyRevision
+    put16(out.directory, 0);  // MinorRevision
+    put16(out.directory, static_cast<std::uint16_t>(n));
+    for (const auto& k : keys)
+        for (std::uint16_t v : k) put16(out.directory, v);
+
+    // The EPSG code is inline, so companion parameter payloads remain empty.
+    return out;
+}
+catch (const std::exception& e) {
+    return errf("build_geokeys: %s", e.what());
+}
+
+}  // namespace rumi

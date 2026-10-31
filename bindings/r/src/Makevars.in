@@ -1,0 +1,8 @@
+CXX_STD = CXX23
+OBJECTS = rumi_r.o link.o
+
+PKG_CPPFLAGS = -Igen -I"@CORE@/include"
+PKG_CFLAGS = @OSX_FLAG@
+PKG_CXXFLAGS = @OSX_FLAG@
+PKG_LIBS = @OSX_FLAG@ lib/librumi.a lib/libgeozl.a lib/libopenzl.a \
+	lib/libzstd.a lib/liblz4.a lib/libkaru.a @DEPENDENCY_LIBS@ -lm @THREAD_LIBS@

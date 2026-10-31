@@ -1,0 +1,4 @@
+#!/bin/sh
+rm -rf src/build src/lib src/gen
+rm -f src/Makevars src/Makevars.win src/symbols.rds \
+    src/*.o src/*.so src/*.dll src/*.dylib config.log config.status
