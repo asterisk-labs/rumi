@@ -2,8 +2,8 @@
 
 Sources: `bindings/python/rumi/_write.py` and `_time.py`, `core/src/write.cpp`,
 `core/src/trailer.cpp`, `core/src/geokeys.cpp`, the Georeferencing, Trailer and Header
-blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against rumi 0.25.0
-with geozl 0.18.0.
+blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against rumi
+0.27.0-alpha.1 with geozl 0.20.0-alpha.1.
 
 ## Contents
 

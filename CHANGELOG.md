@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.27.0-alpha.1] - 2026-10-31
+
 ### Added
 
 - R and Julia readers with the same external-header, partial-read and batch API.
@@ -13,6 +15,11 @@ Notable user-visible changes are recorded here.
 - Python reads can write directly into a PyTorch CUDA tensor with
   `framework="torch", device="cuda:N"`. Partial reads and `read_many` use the
   active PyTorch stream and return the result on the selected GPU.
+
+### Changed
+
+- Updated to GeoZL 0.20.0-alpha.1. Python writers accept the prerelease, and
+  Linux Python wheels include its CUDA decoders.
 
 ### Fixed
 
@@ -540,7 +547,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.1...HEAD
+[0.27.0-alpha.1]: https://github.com/asterisk-labs/rumi/compare/v0.26.1...v0.27.0-alpha.1
 [0.26.1]: https://github.com/asterisk-labs/rumi/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/asterisk-labs/rumi/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/asterisk-labs/rumi/compare/v0.24.1...v0.25.0

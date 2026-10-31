@@ -1,6 +1,6 @@
 name = "Rumi"
 uuid = "e57b8a90-50c7-4f24-a2ed-d34f8b832d18"
-version = "0.26.1"
+version = "0.27.0-alpha.1"
 authors = ["Cesar Aybar <cesar@asterisk.coop>"]
 
 [deps]
