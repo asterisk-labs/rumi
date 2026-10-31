@@ -1,0 +1,49 @@
+{
+  "name": "@asterisk-labs/rumi",
+  "version": "0.26.1",
+  "description": "Range-based Rumi Image and Cube reader for browsers and Node.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asterisk-labs/rumi.git",
+    "directory": "bindings/javascript"
+  },
+  "homepage": "https://github.com/asterisk-labs/rumi/tree/main/bindings/javascript#readme",
+  "bugs": "https://github.com/asterisk-labs/rumi/issues",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "types": "./index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src",
+    "playground",
+    "!playground/*.rumi",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check playground/app.js && node --check playground/render.js && node --check playground/server.mjs",
+    "test": "npm run check && node --test test/*.test.js",
+    "playground": "node playground/server.mjs"
+  },
+  "dependencies": {
+    "@asterisk-labs/geozl": "^0.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "keywords": [
+    "earth-observation",
+    "geospatial",
+    "raster",
+    "rumi"
+  ],
+  "license": "GPL-3.0-only"
+}

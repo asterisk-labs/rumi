@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Open and inspect a Rumi image on a MapLibre map.">
+  <title>Rumi viewer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.9.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="https://asterisk.coop/rumi/" target="_blank" rel="noopener noreferrer" aria-label="Rumi home">
+      <img src="./rumi-mark.svg" alt="">
+      <span><strong>RUMI</strong><small>viewer</small></span>
+    </a>
+
+    <form id="url-form" class="source-picker">
+      <input id="rumi-url" type="text" placeholder="https://example.com/image.rumi" aria-label="Rumi file URL" spellcheck="false">
+      <button class="primary" type="submit">Open</button>
+      <label class="file-button" for="file-input">
+        Local file
+        <input id="file-input" type="file" accept=".rumi,application/octet-stream">
+      </label>
+    </form>
+
+    <div id="status" class="status ready" role="status"><i></i><span>Ready</span></div>
+  </header>
+
+  <main>
+    <div id="map" aria-label="Rumi image map"></div>
+    <div id="message" class="message" hidden></div>
+
+    <section id="controls" class="render-panel" aria-labelledby="render-title" hidden>
+      <header>
+        <div><p>Display</p><h2 id="render-title">Band composition</h2></div>
+        <button id="show-metadata" class="panel-link" type="button">Metadata</button>
+      </header>
+      <div class="source-summary">
+        <strong id="source-name"></strong>
+        <span id="source-info"></span>
+      </div>
+      <div id="time-field" class="field" hidden>
+        <label for="time">Time</label>
+        <select id="time"></select>
+      </div>
+      <div id="band-fields" class="band-grid">
+        <div class="field"><label for="red">Red</label><select id="red"></select></div>
+        <div class="field"><label for="green">Green</label><select id="green"></select></div>
+        <div class="field"><label for="blue">Blue</label><select id="blue"></select></div>
+      </div>
+      <div class="opacity-field">
+        <label for="opacity">Opacity</label>
+        <output id="opacity-value">90%</output>
+        <input id="opacity" type="range" min="0" max="100" value="90">
+      </div>
+      <button id="render" class="render-button" type="button">Render bands</button>
+    </section>
+
+    <aside id="metadata-panel" class="metadata-panel" aria-labelledby="metadata-title" aria-hidden="true" hidden>
+      <header>
+        <div><p>Rumi metadata</p><h2 id="metadata-title">Image</h2></div>
+        <button id="close" class="icon-button" type="button" aria-label="Close metadata">×</button>
+      </header>
+      <div id="metadata-body" class="metadata-body"></div>
+    </aside>
+
+    <div id="drop-zone" class="drop-overlay" hidden>
+      <img src="./rumi-mark.svg" alt="">
+      <strong>Drop a .rumi file</strong>
+      <span>It stays in this browser.</span>
+    </div>
+
+    <div id="busy" class="loading" hidden>
+      <div class="rumi-loader" aria-hidden="true">
+        <img src="./rumi-mark.svg" alt="">
+        <div><span>🛰️</span></div>
+      </div>
+      <strong>Reading Rumi</strong>
+    </div>
+
+    <footer class="colophon">
+      <span>Made with</span>
+      <span class="heart" aria-label="love" role="img">♥</span>
+      <span>by</span>
+      <a class="by" href="https://asterisk.coop" target="_blank" rel="noopener noreferrer" aria-label="Asterisk Labs">
+        <img src="./asterisk-mark.svg" alt="Asterisk Labs">
+      </a>
+    </footer>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "@asterisk-labs/geozl": "/geozl/geozl_api.js"
+      }
+    }
+  </script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
