@@ -70,6 +70,8 @@ gpu_chip = rumi.read(path, header, bands=[2, 3],
                      framework="torch", device="cuda:0")
 ```
 
+[Run the CUDA example in Colab](https://colab.research.google.com/github/asterisk-labs/rumi/blob/0.27/examples/rumi-gpu.ipynb).
+
 ## Installation
 
 ```bash
