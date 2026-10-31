@@ -937,6 +937,87 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
     });
 }
 
+struct rumi_gpu {
+    std::unique_ptr<rumi::GpuDecoder> impl;
+    explicit rumi_gpu(std::unique_ptr<rumi::GpuDecoder> p) noexcept
+        : impl(std::move(p)) {}
+};
+
+extern "C" int rumi_gpu_available(int device_type)
+{
+    return rumi::GpuDecoder::available(device_type) ? 1 : 0;
+}
+
+extern "C" rumi_status
+rumi_gpu_create(int device_type, int device, size_t threads,
+                size_t max_decoded_bytes, rumi_gpu** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_gpu_create: null output");
+            return RUMI_ERR_INVALID;
+        }
+        auto decoder = rumi::GpuDecoder::create(
+            device_type, device, threads, max_decoded_bytes);
+        if (!decoder) {
+            set_error(decoder.error().message);
+            return decoder.error().status;
+        }
+        *out = new rumi_gpu(std::move(*decoder));
+        return RUMI_OK;
+    });
+}
+
+extern "C" void rumi_gpu_destroy(rumi_gpu* gpu)
+{
+    delete gpu;
+}
+
+extern "C" rumi_status rumi_gpu_synchronize(rumi_gpu* gpu)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!gpu) {
+            set_error("rumi_gpu_synchronize: null context");
+            return RUMI_ERR_INVALID;
+        }
+        return finish_read(gpu->impl->synchronize());
+    });
+}
+
+extern "C" rumi_status
+rumi_read_gpu(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
+              const int* times, size_t n_times,
+              const int* bands, size_t n_bands,
+              int y_off, int y_size, int x_off, int x_size,
+              const char* pattern, void* dst, size_t dst_size, void* stream)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!gpu || !src || !spec || !dst) {
+            set_error("rumi_read_gpu: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        const auto& h = spec->h;
+        SelectionSetup setup;
+        if (const rumi_status status = prepare_selection(
+                h, 1, false, times, n_times, bands, n_bands,
+                y_size, x_size, pattern, &setup);
+            status != RUMI_OK) {
+            return status;
+        }
+        if (dst_size < setup.need) {
+            set_error("GPU destination is too small for the requested read");
+            return RUMI_ERR_INVALID;
+        }
+        auto result = rumi::read_window_gpu(
+            *gpu->impl, *src->impl, h,
+            std::span<const int>(setup.picked_t),
+            std::span<const int>(setup.picked_b),
+            y_off, y_size, x_off, x_size, setup.layout,
+            dst, dst_size, stream);
+        return finish_read(result);
+    });
+}
+
 static rumi_status
 finish_dlpack(std::byte* buffer,
               const std::expected<void, rumi::Error>& r,
@@ -1087,6 +1168,45 @@ rumi_read_many(const rumi_read_item* items, size_t n_items,
             y_size, x_size, setup.selection.layout,
             static_cast<std::byte*>(dst));
         return finish_read(r);
+    });
+}
+
+extern "C" rumi_status
+rumi_read_many_gpu(rumi_gpu* gpu,
+                   const rumi_read_item* items, size_t n_items,
+                   const int* times, size_t n_times,
+                   const int* bands, size_t n_bands,
+                   int y_size, int x_size,
+                   const char* pattern, void* dst, size_t dst_size,
+                   void* stream)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!gpu || !dst) {
+            set_error("rumi_read_many_gpu: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        ManySetup setup;
+        if (const rumi_status status = prepare_many(
+                items, n_items, times, n_times, bands, n_bands,
+                y_size, x_size, pattern, "rumi_read_many_gpu", &setup);
+            status != RUMI_OK) {
+            return status;
+        }
+        if (dst_size < setup.selection.need) {
+            set_error("GPU destination is too small for the requested read");
+            return RUMI_ERR_INVALID;
+        }
+        auto result = rumi::read_many_gpu(
+            *gpu->impl,
+            std::span<rumi::Source* const>(setup.srcs.data(), n_items),
+            std::span<const rumi::Header* const>(setup.headers.data(), n_items),
+            std::span<const int>(setup.y_offs),
+            std::span<const int>(setup.x_offs),
+            std::span<const int>(setup.selection.picked_t),
+            std::span<const int>(setup.selection.picked_b),
+            y_size, x_size, setup.selection.layout,
+            dst, dst_size, stream);
+        return finish_read(result);
     });
 }
 

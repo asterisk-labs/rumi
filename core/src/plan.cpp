@@ -65,7 +65,7 @@ std::uint32_t checksum_state() noexcept
     return state;
 }
 
-bool pin_checksum_verification() noexcept
+bool pin_checksum_setting() noexcept
 {
     std::uint32_t state = checksum_state();
     while (!(state & CHECKSUM_PINNED)) {
@@ -91,7 +91,7 @@ struct WorkerState {
             dctx = nullptr;
         }
         if (dctx) {
-            const ZL_TernaryParam check = pin_checksum_verification()
+            const ZL_TernaryParam check = pin_checksum_setting()
                 ? ZL_TernaryParam_enable : ZL_TernaryParam_disable;
             (void) ZL_DCtx_setParameter(dctx, ZL_DParam_stickyParameters, 1);
             (void) ZL_DCtx_setParameter(dctx, ZL_DParam_checkCompressedChecksum,
@@ -143,7 +143,7 @@ void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
 
 // Copy every selected plane from one decoded frame.
 void copy_rect(const FrameTask& t, const FrameSpec& spec,
-               const std::byte* frame) noexcept
+               const std::byte* frame, std::byte* output) noexcept
 {
     const std::size_t bps       = spec.bytes_per_sample;
     const std::size_t src_pitch = static_cast<std::size_t>(t.frame_width)
@@ -151,7 +151,7 @@ void copy_rect(const FrameTask& t, const FrameSpec& spec,
 
     for (std::size_t k = 0; k < t.plane_count; ++k) {
         copy_one_plane(t, bps, src_pitch, frame + t.src_offset[k],
-                       t.dst + t.dst_offset[k]);
+                       output + t.destination + t.dst_offset[k]);
     }
 }
 
@@ -183,6 +183,7 @@ void say(std::string& out, const char* fmt, ...) noexcept
 
 rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
                          TransportSession* transport,
+                         std::byte* output,
                          std::string& msg) noexcept
 {
     char item[32] = "";
@@ -224,8 +225,8 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
     }
 
     // Direct tasks decode into output; all others decode into scratch.
-    std::byte* frame = t.direct;
-    if (!frame) {
+    std::byte* frame = t.direct ? output + t.destination : nullptr;
+    if (!t.direct) {
         if (ws.scratch.size() < spec.frame_bytes) {
             try {
                 ws.scratch.resize(spec.frame_bytes);
@@ -290,7 +291,7 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         }
     }
 
-    if (!t.direct) copy_rect(t, spec, frame);
+    if (!t.direct) copy_rect(t, spec, frame, output);
     return RUMI_OK;
 }
 
@@ -323,6 +324,11 @@ bool checksum_verification() noexcept
     return (checksum_state() & CHECKSUM_ON) != 0;
 }
 
+bool pin_checksum_verification() noexcept
+{
+    return pin_checksum_setting();
+}
+
 const char* checksum_configuration_error() noexcept
 {
     return (checksum_state() & CHECKSUM_INVALID)
@@ -335,7 +341,8 @@ Executor::Executor(ThreadPool* pool) noexcept : pool_(pool) {}
 
 bool Executor::run(std::span<const FrameTask> tasks,
                    const FrameSpec& spec,
-                   TransportSession* transport) const
+                   TransportSession* transport,
+                   std::byte* output) const
 {
     status_ = RUMI_OK;
     error_.clear();
@@ -344,10 +351,10 @@ bool Executor::run(std::span<const FrameTask> tasks,
     std::atomic<int> st{RUMI_OK};
     std::mutex       first;
 
-    const auto run_one = [&st, &first, this, &spec, transport](const FrameTask& t) {
+    const auto run_one = [&st, &first, this, &spec, transport, output](const FrameTask& t) {
         if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
         std::string msg;
-        const rumi_status r = execute_task(t, spec, transport, msg);
+        const rumi_status r = execute_task(t, spec, transport, output, msg);
         if (r != RUMI_OK) {
             int expected = RUMI_OK;
             if (st.compare_exchange_strong(expected, r,

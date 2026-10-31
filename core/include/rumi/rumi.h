@@ -352,6 +352,20 @@ rumi_plan_ranges(const rumi_spec* spec,
 
 // Read.
 
+// Device types follow DLPack. CUDA is the first supported device backend.
+#define RUMI_DEVICE_CUDA 2
+
+typedef struct rumi_gpu rumi_gpu;
+
+// GPU contexts are not safe for concurrent calls. max_decoded_bytes bounds
+// decoded frame staging per batch and must be nonzero.
+RUMI_API int rumi_gpu_available(int device_type);
+RUMI_API rumi_status
+rumi_gpu_create(int device_type, int device, size_t threads,
+                size_t max_decoded_bytes, rumi_gpu** out);
+RUMI_API void rumi_gpu_destroy(rumi_gpu* gpu);
+RUMI_API rumi_status rumi_gpu_synchronize(rumi_gpu* gpu);
+
 // All read entry points may be called concurrently. Parsed specs and immutable
 // sources may be shared between calls; caller-owned destination buffers must
 // not overlap and borrowed source buffers must stay alive. Error text is
@@ -371,6 +385,20 @@ rumi_read(rumi_source*     src,
           int              x_off, int x_size,
           const char*      pattern,
           void*            dst,   size_t dst_size);
+
+// GPU form of rumi_read. dst is a device pointer and stream is the backend's
+// native stream handle. Work may still be pending on stream when this returns.
+RUMI_API rumi_status
+rumi_read_gpu(rumi_gpu*        gpu,
+              rumi_source*     src,
+              const rumi_spec* spec,
+              const int*       times, size_t n_times,
+              const int*       bands, size_t n_bands,
+              int              y_off, int y_size,
+              int              x_off, int x_size,
+              const char*      pattern,
+              void*            dst, size_t dst_size,
+              void*            stream);
 
 // DLPack form of rumi_read. It allocates the output instead of accepting dst.
 // On success, release *out with its deleter or rumi_dlpack_free.
@@ -409,6 +437,16 @@ rumi_read_many(const rumi_read_item* items, size_t n_items,
                int y_size, int x_size,
                const char* pattern,
                void* dst, size_t dst_size);
+
+RUMI_API rumi_status
+rumi_read_many_gpu(rumi_gpu* gpu,
+                   const rumi_read_item* items, size_t n_items,
+                   const int* times, size_t n_times,
+                   const int* bands, size_t n_bands,
+                   int y_size, int x_size,
+                   const char* pattern,
+                   void* dst, size_t dst_size,
+                   void* stream);
 
 // DLPack form of rumi_read_many. It allocates the output instead of accepting
 // dst; release *out with its deleter or rumi_dlpack_free.

@@ -685,8 +685,8 @@ struct FrameTask {
     std::uint32_t compressed_size;
     std::uint32_t frame_width;
     std::size_t   frame_bytes;
-    std::byte*    direct;
-    std::byte*    dst;
+    std::size_t   destination;
+    bool          direct;
     std::uint32_t src_x;
     std::uint32_t src_y;
     std::uint32_t w;
@@ -711,6 +711,9 @@ struct Plan {
     FrameSpec              spec;
     // Borrowed for the synchronous lifetime of Executor::run().
     TransportSession*      transport{};
+    // CPU reads provide the output base here. Device reads use destination
+    // offsets from FrameTask directly.
+    std::byte*             output{};
     // Backing storage for FrameTask plane offsets.
     std::vector<std::int64_t> src_offset;
     std::vector<std::int64_t> dst_offset;
@@ -731,7 +734,8 @@ public:
     explicit Executor(ThreadPool* pool) noexcept;
     [[nodiscard]] bool run(std::span<const FrameTask> tasks,
                            const FrameSpec& spec,
-                           TransportSession* transport) const;
+                           TransportSession* transport,
+                           std::byte* output) const;
 
     // Status of the most recent run. RUMI_OK when run() returned true.
     [[nodiscard]] rumi_status status() const noexcept;
@@ -830,6 +834,7 @@ int set_num_threads(int n) noexcept;
 // Process-wide OpenZL checksum verification. The first decoded frame pins it.
 bool set_checksum_verification(bool on) noexcept;
 [[nodiscard]] bool checksum_verification() noexcept;
+[[nodiscard]] bool pin_checksum_verification() noexcept;
 [[nodiscard]] const char* checksum_configuration_error() noexcept;
 
 
@@ -870,6 +875,46 @@ read_many(std::span<Source* const> sources,
           std::span<const int> times, std::span<const int> bands,
           int y_size, int x_size,
           const LayoutPlan& layout, std::byte* dst);
+
+class GpuDecoder {
+public:
+    static bool available(int device_type) noexcept;
+    static std::expected<std::unique_ptr<GpuDecoder>, Error>
+    create(int device_type, int device, std::size_t threads,
+           std::size_t max_decoded_bytes);
+
+    ~GpuDecoder();
+    GpuDecoder(const GpuDecoder&) = delete;
+    GpuDecoder& operator=(const GpuDecoder&) = delete;
+
+    [[nodiscard]] std::expected<void, Error> synchronize();
+    [[nodiscard]] std::size_t max_decoded_bytes() const noexcept;
+    [[nodiscard]] std::expected<void, Error>
+    decode(const Plan& plan, std::span<const FrameTask> tasks,
+           void* destination, std::size_t destination_bytes,
+           void* stream);
+
+private:
+    struct Impl;
+    explicit GpuDecoder(std::unique_ptr<Impl> impl) noexcept;
+    std::unique_ptr<Impl> impl_;
+};
+
+[[nodiscard]] std::expected<void, Error>
+read_window_gpu(GpuDecoder& gpu, Source& src, const Header& h,
+                std::span<const int> times, std::span<const int> bands,
+                int y_off, int y_size, int x_off, int x_size,
+                const LayoutPlan& layout, void* dst, std::size_t dst_size,
+                void* stream);
+
+[[nodiscard]] std::expected<void, Error>
+read_many_gpu(GpuDecoder& gpu,
+              std::span<Source* const> sources,
+              std::span<const Header* const> headers,
+              std::span<const int> y_offs, std::span<const int> x_offs,
+              std::span<const int> times, std::span<const int> bands,
+              int y_size, int x_size, const LayoutPlan& layout,
+              void* dst, std::size_t dst_size, void* stream);
 
 
 // Indexing.

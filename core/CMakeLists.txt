@@ -22,8 +22,10 @@ project(rumi
 )
 
 option(RUMI_BUILD_SHARED_LIB  "Build standalone librumi for direct link"          OFF)
+option(RUMI_BUILD_STATIC_LIB  "Build static librumi for embedding"                 OFF)
 option(RUMI_BUILD_TESTS       "Build the C++ component tests"                     OFF)
 option(RUMI_BUILD_FUZZERS     "Build libFuzzer harnesses (requires Clang)"         OFF)
+option(RUMI_BUILD_GPU         "Build CUDA decoding support"                        OFF)
 option(RUMI_WERROR            "Treat warnings in rumi C++ as errors"              OFF)
 
 # geozl supplies OpenZL transitively from the repository root.
@@ -63,6 +65,7 @@ include(GNUInstallDirs)
 # Link geozl and OpenZL statically into rumi without exporting their APIs.
 set(BUILD_SHARED_LIBS OFF)
 set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
+set(GEOZL_BUILD_GPU ${RUMI_BUILD_GPU} CACHE BOOL "" FORCE)
 add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
 target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
 
@@ -72,6 +75,9 @@ set(KARU_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(KARU_WERROR ${RUMI_WERROR} CACHE BOOL "" FORCE)
 set(KARU_SANITIZE "${RUMI_SANITIZE}" CACHE STRING "" FORCE)
 add_subdirectory(${RUMI_KARU_DIR} ${CMAKE_CURRENT_BINARY_DIR}/karu EXCLUDE_FROM_ALL)
+if(WIN32 AND CURL_USE_STATIC_LIBS)
+    target_compile_definitions(karu PRIVATE CURL_STATICLIB)
+endif()
 
 set(RUMI_SOURCES
     src/parser.cpp
@@ -82,6 +88,7 @@ set(RUMI_SOURCES
     src/plan.cpp
     src/source.cpp
     src/read.cpp
+    src/gpu.cpp
     src/pattern.cpp
     src/trailer.cpp
     src/capi.cpp
@@ -101,6 +108,7 @@ target_link_libraries(rumi_config INTERFACE
 target_compile_definitions(rumi_config INTERFACE
     RUMI_BUILD
     RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
+    RUMI_BUILD_GPU=$<BOOL:${RUMI_BUILD_GPU}>
 )
 # Warning flags for rumi sources only.
 target_compile_options(rumi_config INTERFACE
@@ -122,29 +130,53 @@ if(RUMI_SANITIZE)
         -fsanitize=${RUMI_SANITIZE})
 endif()
 
-if(RUMI_BUILD_SHARED_LIB)
-    add_library(rumi SHARED ${RUMI_SOURCES})
+if(RUMI_BUILD_SHARED_LIB AND RUMI_BUILD_STATIC_LIB)
+    message(FATAL_ERROR "choose either RUMI_BUILD_SHARED_LIB or RUMI_BUILD_STATIC_LIB")
+endif()
+
+if(RUMI_BUILD_SHARED_LIB OR RUMI_BUILD_STATIC_LIB)
+    if(RUMI_BUILD_SHARED_LIB)
+        set(RUMI_LIB_TYPE SHARED)
+    else()
+        set(RUMI_LIB_TYPE STATIC)
+    endif()
+    add_library(rumi ${RUMI_LIB_TYPE} ${RUMI_SOURCES})
     add_library(rumi::rumi ALIAS rumi)
     target_link_libraries(rumi PUBLIC rumi_config)
-    set_target_properties(rumi PROPERTIES
-        VERSION   ${PROJECT_VERSION}
-        SOVERSION ${RUMI_API_VERSION}
-    )
+    if(RUMI_BUILD_SHARED_LIB)
+        # Static dependencies are implementation details of the C API. Hiding
+        # their symbols avoids collisions when a host loads its own copy.
+        if(APPLE)
+            target_link_options(rumi PRIVATE "LINKER:-exported_symbol,_rumi_*")
+        elseif(UNIX)
+            target_link_options(rumi PRIVATE
+                "LINKER:--exclude-libs,ALL"
+                "LINKER:--version-script,${CMAKE_CURRENT_SOURCE_DIR}/rumi.map")
+            set_property(TARGET rumi APPEND PROPERTY
+                LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/rumi.map")
+        endif()
+        set_target_properties(rumi PROPERTIES
+            VERSION   ${PROJECT_VERSION}
+            SOVERSION ${RUMI_API_VERSION}
+        )
+    endif()
 
-    install(TARGETS rumi
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-    # Install the C ABI and its generated dtype and DLPack dependencies.
-    install(FILES
-        include/rumi/rumi.h
-        include/rumi/rumi_dtypes.def
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rumi
-    )
-    install(FILES include/dlpack/dlpack.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dlpack
-    )
+    if(RUMI_BUILD_SHARED_LIB)
+        install(TARGETS rumi
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+        # Install the C ABI and its generated dtype and DLPack dependencies.
+        install(FILES
+            include/rumi/rumi.h
+            include/rumi/rumi_dtypes.def
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rumi
+        )
+        install(FILES include/dlpack/dlpack.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dlpack
+        )
+    endif()
 endif()
 
 # Component tests compile internal sources directly.
@@ -196,8 +228,10 @@ message(STATUS "  geozl:          ${RUMI_GEOZL_DIR}")
 message(STATUS "  OpenZL:         via geozl")
 message(STATUS "  karu:           ${RUMI_KARU_DIR} (internal)")
 message(STATUS "  Standalone lib: ${RUMI_BUILD_SHARED_LIB}")
+message(STATUS "  Static lib:     ${RUMI_BUILD_STATIC_LIB}")
 message(STATUS "  Tests:          ${RUMI_BUILD_TESTS}")
 message(STATUS "  Fuzzers:        ${RUMI_BUILD_FUZZERS}")
+message(STATUS "  GPU:            ${RUMI_BUILD_GPU}")
 message(STATUS "  Warnings error: ${RUMI_WERROR}")
 message(STATUS "  Sanitize:       ${RUMI_SANITIZE}")
 message(STATUS "")

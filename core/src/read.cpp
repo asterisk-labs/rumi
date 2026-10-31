@@ -324,7 +324,7 @@ direct_origin(std::span<const std::int64_t> src,
 // Append one task per intersecting frame. Band/time pairs that share a frame
 // stay in the same task.
 void append_read_plan(Plan& plan, const Header& h, Source* source,
-                      const Window& win, std::byte* data,
+                      const Window& win, std::size_t data_offset,
                       std::span<const int> times, std::span<const int> bands,
                       const OutStrides& out, std::size_t item)
 {
@@ -412,8 +412,9 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                          static_cast<std::uint32_t>(tx), times, bands,
                          walks_t, walks_b, cell);
 
-            std::byte* base = data + (iy0 - win.y_off) * out.line
-                                   + (ix0 - win.x_off) * out.pixel;
+            const std::size_t base = data_offset
+                + static_cast<std::size_t>(iy0 - win.y_off) * out.line
+                + static_cast<std::size_t>(ix0 - win.x_off) * out.pixel;
 
             for (std::size_t g = 0; g < cell.index.size(); ++g) {
                 const auto idx = static_cast<std::uint32_t>(cell.index[g]);
@@ -450,9 +451,10 @@ void append_read_plan(Plan& plan, const Header& h, Source* source,
                         std::span(plan.dst_offset).subspan(at, planes.size()));
                 }
                 if (origin) {
-                    task.direct = base + *origin;
+                    task.direct = true;
+                    task.destination = base + static_cast<std::size_t>(*origin);
                 } else {
-                    task.dst              = base;
+                    task.destination      = base;
                     task.src_x            = static_cast<std::uint32_t>(ix0 - tile_px);
                     task.src_y            = static_cast<std::uint32_t>(iy0 - tile_py);
                     task.w                = static_cast<std::uint32_t>(ix1 - ix0);
@@ -503,7 +505,7 @@ std::expected<void, Error>
 decode_tasks(Executor& executor, const Plan& plan,
              std::span<const FrameTask> tasks)
 {
-    if (executor.run(tasks, plan.spec, plan.transport)) return {};
+    if (executor.run(tasks, plan.spec, plan.transport, plan.output)) return {};
     if (!executor.error().empty()) {
         return fail(executor.status(), executor.error());
     }
@@ -514,7 +516,7 @@ decode_tasks(Executor& executor, const Plan& plan,
 }
 
 std::expected<void, Error>
-execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
+execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
 {
     std::vector<karu_req> requests;
     std::vector<FrameTask> local_tasks;
@@ -536,8 +538,7 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
         }
     }
 
-    Executor executor(pool);
-    if (requests.empty()) return decode_tasks(executor, plan, plan.tasks);
+    if (requests.empty()) return decode(plan.tasks);
 
     karu_client* client = transport.client();
     if (!client) {
@@ -556,7 +557,7 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
     // Submit the entire remote workload before doing any decoding. Karu keeps
     // its full opportunity to group and coalesce ranges while its I/O threads
     // progress independently of local reads and CPU decode.
-    if (auto decoded = decode_tasks(executor, plan, local_tasks); !decoded)
+    if (auto decoded = decode(local_tasks); !decoded)
         return decoded;
 
     std::vector<KaruBuffer> buffers;
@@ -615,7 +616,7 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
         // Decode every completion already available as one wave. While this
         // call uses the Rumi workers, Karu's I/O threads keep filling the next
         // wave in the background.
-        if (auto decoded = decode_tasks(executor, plan, ready); !decoded)
+        if (auto decoded = decode(ready); !decoded)
             return decoded;
     }
     if (completed != requests.size()) {
@@ -623,6 +624,15 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
                      completed, requests.size());
     }
     return {};
+}
+
+std::expected<void, Error>
+execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
+{
+    Executor executor(pool);
+    return execute_plan_batches(plan, transport, [&](auto tasks) {
+        return decode_tasks(executor, plan, tasks);
+    });
 }
 
 std::expected<void, std::string>
@@ -663,15 +673,13 @@ compatible_headers(std::span<const Header* const> headers)
     return {};
 }
 
-std::expected<void, Error>
-read_items(std::span<const ReadItem> items,
-           std::span<const int> times, std::span<const int> bands,
-           int y_size, int x_size,
-           const LayoutPlan& layout, std::byte* dst,
-           const char* item_name)
+std::expected<Plan, Error>
+build_read_plan(std::span<const ReadItem> items,
+                std::span<const int> times, std::span<const int> bands,
+                int y_size, int x_size, const LayoutPlan& layout,
+                TransportSession& transport, std::byte* output,
+                const char* item_name)
 {
-    if (const char* error = thread_configuration_error())
-        return fail(RUMI_ERR_INVALID, error);
     if (const char* error = checksum_configuration_error())
         return fail(RUMI_ERR_INVALID, error);
     if (items.empty()) return fail(RUMI_ERR_INVALID, "a read needs at least one item");
@@ -700,10 +708,10 @@ read_items(std::span<const ReadItem> items,
     };
     const OutStrides strides{bytes(OUT_X), bytes(OUT_Y), bytes(OUT_B), bytes(OUT_T)};
 
-    TransportSession transport;
     Plan plan;
     plan.spec = make_frame_spec(ref);
     plan.transport = &transport;
+    plan.output = output;
     for (const ReadItem& item : items) {
         plan.spec.frame_bytes =
             std::max(plan.spec.frame_bytes, item.header->max_frame_size);
@@ -732,12 +740,51 @@ read_items(std::span<const ReadItem> items,
 
         append_read_plan(plan, h, item.source,
                          Window{item.x_off, item.y_off, x_size, y_size},
-                         dst + k * n_stride, times, bands, strides, item.label);
+                         k * n_stride, times, bands, strides, item.label);
     }
     bind_offsets(plan);
+    return plan;
+}
+
+std::expected<void, Error>
+read_items(std::span<const ReadItem> items,
+           std::span<const int> times, std::span<const int> bands,
+           int y_size, int x_size,
+           const LayoutPlan& layout, std::byte* dst,
+           const char* item_name)
+{
+    if (const char* error = thread_configuration_error())
+        return fail(RUMI_ERR_INVALID, error);
+
+    TransportSession transport;
+    auto built = build_read_plan(items, times, bands, y_size, x_size,
+                                 layout, transport, dst, item_name);
+    if (!built) return std::unexpected(std::move(built.error()));
+    Plan plan = std::move(*built);
 
     ThreadPool* pool = pool_for(plan.tasks.size());
     return execute_plan(plan, transport, pool);
+}
+
+std::expected<void, Error>
+read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
+               std::span<const int> times, std::span<const int> bands,
+               int y_size, int x_size, const LayoutPlan& layout,
+               void* dst, std::size_t dst_size, void* stream,
+               const char* item_name)
+{
+    TransportSession transport;
+    auto built = build_read_plan(items, times, bands, y_size, x_size,
+                                 layout, transport, nullptr, item_name);
+    if (!built) return std::unexpected(std::move(built.error()));
+    Plan plan = std::move(*built);
+    if (plan.spec.bits_per_sample == 1) {
+        return fail(RUMI_ERR_UNSUPPORTED,
+                    "GPU reads do not support boolean samples yet");
+    }
+    return execute_plan_batches(plan, transport, [&](auto tasks) {
+        return gpu.decode(plan, tasks, dst, dst_size, stream);
+    });
 }
 
 }  // namespace
@@ -899,6 +946,53 @@ read_many(std::span<Source* const> sources,
     }
     return read_items(items, times, bands, y_size, x_size,
                       layout, dst, "item");
+}
+
+
+std::expected<void, Error>
+read_window_gpu(GpuDecoder& gpu, Source& src, const Header& h,
+                std::span<const int> times, std::span<const int> bands,
+                int y_off, int y_size, int x_off, int x_size,
+                const LayoutPlan& layout, void* dst, std::size_t dst_size,
+                void* stream)
+{
+    const ReadItem item{&src, &h, y_off, x_off, 0};
+    return read_items_gpu(gpu, std::span<const ReadItem>(&item, 1),
+                          times, bands, y_size, x_size, layout,
+                          dst, dst_size, stream, nullptr);
+}
+
+
+std::expected<void, Error>
+read_many_gpu(GpuDecoder& gpu,
+              std::span<Source* const> sources,
+              std::span<const Header* const> headers,
+              std::span<const int> y_offs, std::span<const int> x_offs,
+              std::span<const int> times, std::span<const int> bands,
+              int y_size, int x_size, const LayoutPlan& layout,
+              void* dst, std::size_t dst_size, void* stream)
+{
+    const std::size_t n = sources.size();
+    if (n == 0) return fail(RUMI_ERR_INVALID, "read_many needs at least one item");
+    if (headers.size() != n || y_offs.size() != n || x_offs.size() != n) {
+        return fail(RUMI_ERR_INVALID,
+                    "sources, headers and offsets must all be the same length");
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!sources[i]) return failf(RUMI_ERR_INVALID, "null source at item %zu", i + 1);
+        if (!headers[i]) return failf(RUMI_ERR_INVALID, "null header at item %zu", i + 1);
+    }
+    if (auto ok = compatible_headers(headers); !ok) {
+        return fail(RUMI_ERR_INVALID, std::move(ok.error()));
+    }
+
+    std::vector<ReadItem> items;
+    items.reserve(n);
+    for (std::size_t k = 0; k < n; ++k) {
+        items.push_back({sources[k], headers[k], y_offs[k], x_offs[k], k + 1});
+    }
+    return read_items_gpu(gpu, items, times, bands, y_size, x_size,
+                          layout, dst, dst_size, stream, "item");
 }
 
 
