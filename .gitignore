@@ -7,6 +7,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .tox/
+node_modules/
 .coverage
 coverage.xml
 htmlcov/
@@ -16,6 +17,19 @@ htmlcov/
 build/
 build-*/
 cmake-build-*/
+# OpenZL uses these names for source directories copied into the R package.
+!bindings/r/src/ext/z/build/
+!bindings/r/src/ext/z/build/**
+!bindings/r/src/ext/z/build-scripts/
+!bindings/r/src/ext/z/build-scripts/**
+!bindings/r/src/ext/z/deps/lz4/build/
+!bindings/r/src/ext/z/deps/lz4/build/**
+!bindings/r/src/ext/z/deps/zstd/build/
+!bindings/r/src/ext/z/deps/zstd/build/**
+bindings/r/src/Makevars
+bindings/r/src/Makevars.win
+bindings/r/src/gen/
+bindings/r/src/lib/
 *.o
 *.obj
 *.so
@@ -71,3 +85,7 @@ core/tests/fixtures/data/
 /check.py
 *.rumi
 *.tif
+!bindings/r/tests/testthat/fixtures/*.rumi
+!bindings/julia/test/fixtures/*.rumi
+rumi_*.tar.gz
+rumi.Rcheck/

@@ -20,12 +20,16 @@ cleanup() {
 trap cleanup EXIT
 
 curl -fsSLo "$archive" "https://curl.se/download/curl-$curl_version.tar.xz"
-echo "$curl_sha256  $archive" | sha256sum --check --status
+if command -v sha256sum >/dev/null 2>&1; then
+  actual_sha256=$(sha256sum "$archive" | awk '{print $1}')
+else
+  actual_sha256=$(shasum -a 256 "$archive" | awk '{print $1}')
+fi
+[[ $actual_sha256 == "$curl_sha256" ]]
 tar -xf "$archive" -C "$work_dir"
 
-# Karu only needs HTTP(S). A small static libcurl keeps the Linux wheel's
-# transport implementation current without inheriting a distribution's old
-# libcurl or pulling unrelated protocol runtimes into the wheel.
+# Karu only needs HTTP(S). Keep libcurl and OpenSSL out of the runtime
+# dependencies without pulling unused protocol libraries into the package.
 cmake -S "$source_dir" -B "$work_dir/build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$install_prefix" \
@@ -39,6 +43,7 @@ cmake -S "$source_dir" -B "$work_dir/build" -G Ninja \
   -DBUILD_TESTING=OFF \
   -DHTTP_ONLY=ON \
   -DCURL_USE_OPENSSL=ON \
+  -DOPENSSL_USE_STATIC_LIBS=ON \
   -DCURL_ZLIB=OFF \
   -DCURL_BROTLI=OFF \
   -DCURL_ZSTD=OFF \

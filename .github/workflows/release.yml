@@ -36,6 +36,54 @@ jobs:
           python tools/check_release.py "${args[@]}"
           echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
 
+  build-npm:
+    name: npm package
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Test and pack
+        working-directory: bindings/javascript
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          mkdir -p "$GITHUB_WORKSPACE/npm-dist"
+          npm pack --pack-destination "$GITHUB_WORKSPACE/npm-dist"
+      - name: Test the packed package
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/npm-smoke"
+          cd "$RUNNER_TEMP/npm-smoke"
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE"/npm-dist/*.tgz
+          node --input-type=module -e \
+            "import { openRumi } from '@asterisk-labs/rumi'; if (typeof openRumi !== 'function') process.exit(1)"
+          test -f node_modules/@asterisk-labs/geozl/geozl_api.js
+          test ! -e node_modules/@asterisk-labs/rumi/node_modules/@asterisk-labs/geozl
+          PORT=4399 node node_modules/@asterisk-labs/rumi/playground/server.mjs >server.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for attempt in {1..20}; do
+            if curl -fs -o /dev/null http://127.0.0.1:4399/geozl/geozl_api.js; then
+              ready=yes
+              break
+            fi
+            sleep 0.25
+          done
+          test "${ready:-}" = yes || { cat server.log; exit 1; }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-package
+          path: npm-dist/*.tgz
+          if-no-files-found: error
+
   # Match GeoZL/OpenZL wheel support. Linux targets manylinux_2_28.
   build-lib-linux:
     name: librumi (linux-x86_64)
@@ -62,6 +110,7 @@ jobs:
             make
             libcurl=8.22.0
             openssl=3.6.4
+            libopenssl-static=3.6.4
       - name: Build pinned static libcurl
         shell: bash -el {0}
         run: bash tools/build_static_curl.sh "$RUNNER_TEMP/curl"
@@ -72,9 +121,17 @@ jobs:
           make stage-lib STAGE_DIR=staged \
             CMAKE_FLAGS="-DCURL_ROOT=$RUNNER_TEMP/curl \
             -DCURL_DIR=$RUNNER_TEMP/curl/lib/cmake/CURL \
-            -DOPENSSL_ROOT_DIR=$CONDA_PREFIX"
-          if readelf -d staged/librumi.so | grep -q 'libcurl'; then
-            echo '::error::Linux librumi must not depend on shared libcurl'
+            -DCURL_USE_STATIC_LIBS=TRUE \
+            -DOPENSSL_ROOT_DIR=$CONDA_PREFIX \
+            -DOPENSSL_USE_STATIC_LIBS=TRUE \
+            -DRUMI_BUILD_GPU=ON"
+          if readelf -d staged/librumi.so | grep -Eq 'lib(curl|ssl|crypto)'; then
+            echo '::error::Linux librumi has a shared transport dependency'
+            exit 1
+          fi
+          if nm -D --defined-only staged/librumi.so | awk '{print $3}' \
+              | grep -Ev '^rumi_'; then
+            echo '::error::Linux librumi exports a private dependency symbol'
             exit 1
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -109,12 +166,27 @@ jobs:
             make
             libcurl=8.22.0
             openssl=3.6.4
+            libopenssl-static=3.6.4
       - name: Build and stage library
         shell: bash -el {0}
-        run: >-
-          make stage-lib STAGE_DIR=staged
-          CMAKE_FLAGS="-DCURL_ROOT=$CONDA_PREFIX
-          -DOPENSSL_ROOT_DIR=$CONDA_PREFIX"
+        run: |
+          set -euo pipefail
+          bash tools/build_static_curl.sh "$RUNNER_TEMP/curl"
+          make stage-lib STAGE_DIR=staged \
+            CMAKE_FLAGS="-DCURL_ROOT=$RUNNER_TEMP/curl \
+            -DCURL_DIR=$RUNNER_TEMP/curl/lib/cmake/CURL \
+            -DCURL_USE_STATIC_LIBS=TRUE \
+            -DOPENSSL_ROOT_DIR=$CONDA_PREFIX \
+            -DOPENSSL_USE_STATIC_LIBS=TRUE"
+          if otool -L staged/librumi.dylib | grep -Eq 'lib(curl|ssl|crypto)'; then
+            echo '::error::macOS librumi has a shared transport dependency'
+            exit 1
+          fi
+          if nm -gU staged/librumi.dylib | awk '{print $3}' \
+              | grep -Ev '^_rumi_'; then
+            echo '::error::macOS librumi exports a private dependency symbol'
+            exit 1
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: librumi-macos-arm64
@@ -363,6 +435,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: librumi-*
@@ -372,6 +447,10 @@ jobs:
           pattern: wheel-*
           path: wheels/
           merge-multiple: true
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-name: release
+          create-args: julia=1.12
       - name: Re-pack versioned native archives
         run: |
           set -euo pipefail
@@ -383,6 +462,13 @@ jobs:
             (cd "$platform_dir" && tar czf "$OLDPWD/release-files/${package}.tar.gz" .)
           done
           ls -l release-files/ wheels/
+      - name: Write Julia artifact metadata
+        shell: bash -el {0}
+        run: |
+          julia bindings/julia/make-artifacts-toml.jl \
+            "${{ needs.validate.outputs.version }}" release-files \
+            > release-files/Artifacts.toml
+          cat release-files/Artifacts.toml
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
@@ -409,3 +495,42 @@ jobs:
           merge-multiple: true
       - run: ls -l dist/
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+
+  publish-npm:
+    name: Publish to npm
+    needs: [build-npm, gh-release, publish-pypi]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-package
+          path: npm-dist
+      - name: Publish
+        run: |
+          set -euo pipefail
+          package=$(node -p "require('./bindings/javascript/package.json').name")
+          version=$(node -p "require('./bindings/javascript/package.json').version")
+          if npm view "$package@$version" version >/dev/null 2>&1; then
+            echo "$package@$version is already published; skipping"
+            exit 0
+          fi
+          latest=$(npm view "$package" dist-tags.latest 2>/dev/null || true)
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$version" "$latest" | sort -V | tail -1)" != "$version" ]; then
+            tag=next
+          fi
+          npm publish npm-dist/*.tgz --access public --tag "$tag"

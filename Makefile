@@ -1,11 +1,20 @@
 # make            build, stage the lib, editable install, smoke load
 # make build      build librumi only
 # make lib        build and stage the shared lib next to the binding (CI entry)
-# make test       build, install, then pytest
+# make test       run the Python and JavaScript suites
+# make js-install install the locked JavaScript dependencies
+# make js-test    run the JavaScript reader suite
+# make playground serve the JavaScript MapLibre playground
 # make lint       run Ruff and mypy on the Python binding
 # make ctest      build and run the C++ component tests
-# make r          build the R binding (skips until bindings/r exists)
-# make sync       validate VERSION; write R DESCRIPTION if present
+# make r          build the R binding
+# make r-vendor   copy native sources into the R source package
+# make r-vendor-check verify that the copied R sources are current
+# make r-check    build and check the standalone R source package
+# make julia      load the Julia binding
+# make bindings-test test the R and Julia readers
+# make bindings-fixtures refresh the small package test fixtures
+# make sync       validate VERSION; update binding manifests
 # make install    cmake --install into PREFIX (/usr/local)
 # make docs       render SPEC.md into a deployable copy of docs/
 # make clean      remove all build output, caches and generated files
@@ -23,7 +32,9 @@ BUILD_DIR := core/build
 GEOZL     := extern/geozl
 KARU      := extern/karu
 PY_DIR    := bindings/python
+JS_DIR    := bindings/javascript
 R_DIR     := bindings/r
+JL_DIR    := bindings/julia
 PY_LIB_DIR := $(PY_DIR)/rumi/_lib
 STAGE_DIR ?= staged
 FUZZ_TIME ?= 60
@@ -48,7 +59,8 @@ CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
-.PHONY: all build configure lib stage-lib python test lint ctest docs r sync \
+.PHONY: all build configure lib stage-lib python test js-install js-test playground lint ctest docs \
+        r r-vendor r-vendor-check r-check julia bindings-test bindings-fixtures sync \
         fuzz-build fuzz-seed fuzz fuzz-report fuzz-check fuzz-replay clean-fuzz \
         install submodules clean help
 
@@ -95,13 +107,28 @@ python: lib
 	$(PYTHON) tools/check_editable.py
 
 # Python tests use geozl to create compressed frame payloads.
-test: python
+test: python js-test
 	@$(PYTHON) -c 'import pytest' 2>/dev/null || { echo "pytest not installed"; exit 1; }
 	@$(PYTHON) -c 'import geozl' 2>/dev/null \
 	  || echo "note: geozl not installed, write tests will skip"
 	@$(PYTHON) -m pytest -q $(PY_DIR); \
 	  rc=$$?; if [ $$rc -eq 5 ]; then echo "no tests collected"; \
 	  elif [ $$rc -ne 0 ]; then exit $$rc; fi
+
+js-install:
+	@command -v node >/dev/null || { echo "missing Node.js 24 or newer"; exit 1; }
+	@node -e 'const major = Number(process.versions.node.split(".")[0]); process.exit(major >= 24 ? 0 : 1)' \
+	  || { echo "Node.js 24 or newer is required"; exit 1; }
+	cd $(JS_DIR) && npm ci --ignore-scripts --no-audit --no-fund
+
+js-test:
+	@command -v node >/dev/null || { echo "missing Node.js 24 or newer"; exit 1; }
+	@node -e 'const major = Number(process.versions.node.split(".")[0]); process.exit(major >= 24 ? 0 : 1)' \
+	  || { echo "Node.js 24 or newer is required"; exit 1; }
+	cd $(JS_DIR) && npm test
+
+playground:
+	cd $(JS_DIR) && npm run playground
 
 lint:
 	@$(PYTHON) -c 'import ruff' 2>/dev/null \
@@ -206,22 +233,47 @@ clean-fuzz:
 docs:
 	$(PYTHON) tools/build_docs.py --output _site --clean
 
-# R binding. Skips cleanly until bindings/r exists.
-r:
-	@if [ ! -d $(R_DIR) ]; then \
-	  echo "no R binding yet ($(R_DIR) absent); skipping"; \
-	else \
-	  command -v R >/dev/null || { echo "missing R"; exit 1; }; \
-	  ( cd $(R_DIR) && Rscript -e 'if (requireNamespace("roxygen2", quietly=TRUE)) roxygen2::roxygenise()' ); \
-	  R CMD INSTALL $(R_DIR); \
-	  R CMD build $(R_DIR); \
-	fi
+r-vendor: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
+	$(PYTHON) tools/sync_r_vendor.py
 
-# Python and CMake read VERSION directly; update R's manifest when present.
+r-vendor-check: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
+	$(PYTHON) tools/sync_r_vendor.py --check
+
+bindings-fixtures: python
+	$(PYTHON) tools/make_binding_fixture.py \
+		$(R_DIR)/tests/testthat/fixtures $(JL_DIR)/test/fixtures
+
+r: r-vendor bindings-fixtures
+	@command -v R >/dev/null || { echo "missing R"; exit 1; }
+	cd $(R_DIR) && Rscript -e 'if (requireNamespace("roxygen2", quietly=TRUE)) roxygen2::roxygenise()'
+	R CMD build $(R_DIR)
+	R CMD INSTALL rumi_$(VERSION).tar.gz
+
+r-check: r-vendor-check bindings-fixtures
+	@command -v R >/dev/null || { echo "missing R"; exit 1; }
+	cd $(R_DIR) && Rscript -e 'if (requireNamespace("roxygen2", quietly=TRUE)) roxygen2::roxygenise()'
+	R CMD build $(R_DIR)
+	_R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_$(VERSION).tar.gz
+	@sh tools/r_check_status.sh rumi.Rcheck/00check.log
+
+julia: build
+	@command -v julia >/dev/null || { echo "missing Julia"; exit 1; }
+	RUMI_LIB=$(abspath $(BUILD_DIR)/$(LIBRUMI)) \
+		julia --startup-file=no --project=$(JL_DIR) -e 'using Rumi'
+
+bindings-test: python bindings-fixtures
+	@command -v R >/dev/null || { echo "missing R"; exit 1; }
+	@command -v julia >/dev/null || { echo "missing Julia"; exit 1; }
+	R CMD INSTALL $(R_DIR)
+	Rscript -e 'testthat::test_dir("$(R_DIR)/tests/testthat")'
+	RUMI_LIB=$(abspath $(BUILD_DIR)/$(LIBRUMI)) \
+		julia --startup-file=no --project=$(JL_DIR) $(JL_DIR)/test/runtests.jl
+
+# Python and CMake read VERSION directly; update binding manifests when present.
 sync:
 	@printf '%s' "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$$' \
 	  || { echo "VERSION '$(VERSION)' is not X.Y.Z[-prerelease]"; exit 1; }
-	@if [ -f $(R_DIR)/DESCRIPTION ]; then \
+	@set -e; if [ -f $(R_DIR)/DESCRIPTION ]; then \
 	  sed -i.bak -E 's/^Version:.*/Version: $(VERSION)/' $(R_DIR)/DESCRIPTION; \
 	  rm -f $(R_DIR)/DESCRIPTION.bak; \
 	  v=$$(grep -E '^Version:' $(R_DIR)/DESCRIPTION | sed 's/Version:[[:space:]]*//'); \
@@ -229,6 +281,20 @@ sync:
 	  echo "sync OK $(VERSION) (python dynamic, R DESCRIPTION written)"; \
 	else \
 	  echo "sync OK $(VERSION) (python dynamic, no R binding yet)"; \
+	fi
+	@set -e; if [ -f $(JL_DIR)/Project.toml ]; then \
+	  sed -i.bak -E 's/^version = .*/version = "$(VERSION)"/' $(JL_DIR)/Project.toml; \
+	  rm -f $(JL_DIR)/Project.toml.bak; \
+	  v=$$(grep -E '^version = ' $(JL_DIR)/Project.toml | sed -E 's/version = "([^"]+)"/\1/'); \
+	  [ "$$v" = "$(VERSION)" ] || { echo "sync check: Project.toml=$$v != $(VERSION)"; exit 1; }; \
+	  echo "sync OK $(VERSION) (Julia Project.toml written)"; \
+	fi
+	@set -e; if [ -f $(JS_DIR)/package.json ]; then \
+	  cd $(JS_DIR); \
+	  npm version "$(VERSION)" --no-git-tag-version --allow-same-version --ignore-scripts >/dev/null; \
+	  v=$$(node -p 'require("./package.json").version'); \
+	  [ "$$v" = "$(VERSION)" ] || { echo "sync check: package.json=$$v != $(VERSION)"; exit 1; }; \
+	  echo "sync OK $(VERSION) (JavaScript package.json written)"; \
 	fi
 
 install: build
@@ -245,14 +311,23 @@ help:
 	@echo "make            build, stage the lib, editable install, smoke load"
 	@echo "make build      build librumi only"
 	@echo "make lib        build and stage the shared lib next to the binding (CI entry)"
-	@echo "make test       build, install, then pytest"
+	@echo "make test       run the Python and JavaScript suites"
+	@echo "make js-install install the locked JavaScript dependencies"
+	@echo "make js-test    run the JavaScript reader suite"
+	@echo "make playground serve the JavaScript MapLibre playground"
 	@echo "make lint       run Ruff and mypy on the Python binding"
 	@echo "make ctest      build and run the C++ component tests"
 	@echo "make fuzz-check build and run the libFuzzer harnesses"
 	@echo "make fuzz-replay replay the versioned and cached fuzz inputs"
 	@echo "make docs       render SPEC.md into a deployable copy of docs/"
-	@echo "make r          build the R binding (skips until $(R_DIR) exists)"
-	@echo "make sync       validate VERSION; write R DESCRIPTION if present"
+	@echo "make r          build and install the standalone R source package"
+	@echo "make r-vendor   copy native sources into the R source package"
+	@echo "make r-vendor-check verify that the copied R sources are current"
+	@echo "make r-check    build and check the standalone R source package"
+	@echo "make julia      load the Julia binding against the local library"
+	@echo "make bindings-test test the R and Julia readers on one shared fixture"
+	@echo "make bindings-fixtures refresh the R and Julia package fixtures"
+	@echo "make sync       write package versions from VERSION"
 	@echo "make install    cmake --install into PREFIX ($(PREFIX))"
 	@echo "make clean      remove all build output, caches and generated files"
 	@echo "make submodules fetch or update GeoZL, Karu, and nested dependencies"

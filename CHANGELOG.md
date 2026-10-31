@@ -4,6 +4,20 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- R and Julia readers with the same external-header, partial-read and batch API.
+- A JavaScript reader for complete `.rumi` files, backed by GeoZL WebAssembly.
+- `rumi.open(source, header)` pairs a Python source with its header and metadata.
+- The R source package carries the native sources; Julia releases use artifacts.
+- Python reads can write directly into a PyTorch CUDA tensor with
+  `framework="torch", device="cuda:N"`. Partial reads and `read_many` use the
+  active PyTorch stream and return the result on the selected GPU.
+
+### Fixed
+
+- Release libraries no longer require external libcurl or OpenSSL libraries.
+
 ## [0.26.1] - 2026-09-29
 
 ### Changed

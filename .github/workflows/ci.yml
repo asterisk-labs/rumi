@@ -14,6 +14,152 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  javascript:
+    name: JavaScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Test
+        run: make js-install js-test
+      - name: Check package contents
+        working-directory: bindings/javascript
+        run: npm pack --dry-run
+
+  r-julia:
+    name: R and Julia (Julia ${{ matrix.julia }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        julia: ['1.10', '1.12']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Init OpenZL dependencies
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-name: bindings
+          create-args: >-
+            python=3.12
+            cmake
+            ninja
+            r-base=4.5
+            r-roxygen2
+            r-testthat
+            julia=${{ matrix.julia }}
+            libcurl=8.22.0
+            openssl=3.6.4
+            libopenssl-static=3.6.4
+      - name: Install Python fixture dependencies
+        shell: bash -el {0}
+        run: python -m pip install numpy cffi 'geozl>=0.19,<0.20'
+      - name: Test R and Julia readers
+        shell: bash -el {0}
+        run: make bindings-test
+      - name: Check R documentation
+        if: matrix.julia == '1.12'
+        shell: bash -el {0}
+        run: |
+          Rscript -e 'roxygen2::roxygenise("bindings/r")'
+          git diff --exit-code -- bindings/r/NAMESPACE bindings/r/man
+      - name: Check R source package
+        if: matrix.julia == '1.12'
+        shell: bash -el {0}
+        run: make r-check
+      - name: Test Julia artifact loading
+        if: matrix.julia == '1.12'
+        shell: bash -el {0}
+        run: |
+          set -euo pipefail
+          bash tools/build_static_curl.sh "$RUNNER_TEMP/curl"
+          build="$RUNNER_TEMP/rumi-release-build"
+          cmake -S core -B "$build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCURL_ROOT="$RUNNER_TEMP/curl" \
+            -DCURL_DIR="$RUNNER_TEMP/curl/lib/cmake/CURL" \
+            -DCURL_USE_STATIC_LIBS=TRUE \
+            -DOPENSSL_ROOT_DIR="$CONDA_PREFIX" \
+            -DOPENSSL_USE_STATIC_LIBS=TRUE \
+            -DRUMI_BUILD_SHARED_LIB=ON
+          cmake --build "$build" --target rumi --parallel 2
+          library="$build/librumi.so"
+          if readelf -d "$library" | grep -Eq 'lib(curl|ssl|crypto)'; then
+            echo '::error::Julia artifact has a shared transport dependency'
+            exit 1
+          fi
+          if nm -D --defined-only "$library" | awk '{print $3}' \
+              | grep -Ev '^rumi_'; then
+            echo '::error::Julia artifact exports a private dependency symbol'
+            exit 1
+          fi
+          version="$(tr -d '[:space:]' < VERSION)"
+          dist="$RUNNER_TEMP/rumi-artifact"
+          package="$RUNNER_TEMP/Rumi-release"
+          name="librumi-$version-linux-x86_64"
+          mkdir -p "$dist/$name"
+          cp -L "$library" "$dist/$name/"
+          cp LICENSE NOTICE "$dist/$name/"
+          tar -C "$dist" -czf "$dist/$name.tar.gz" "$name"
+          cp -R bindings/julia "$package"
+          export JULIA_DEPOT_PATH="$RUNNER_TEMP/rumi-julia-depot-${{ matrix.julia }}"
+          julia bindings/julia/make-artifacts-toml.jl \
+            "$version" "$dist" linux-x86_64 > "$package/Artifacts.toml"
+          unset RUMI_LIB
+          PACKAGE_PATH="$package" julia --startup-file=no --project="$package" -e '
+            using Rumi
+            root = ENV["PACKAGE_PATH"]
+            header = Base.read(joinpath(root, "test", "fixtures", "binding.header"))
+            file = Rumi.open(joinpath(root, "test", "fixtures", "binding.rumi"), header)
+            @assert size(Rumi.read(file)) == (8, 6, 3, 2)
+            @assert occursin("artifacts", Rumi._find_library())
+            close(file)
+          '
+
+  r-windows:
+    name: R (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          working-directory: bindings/r
+          extra-packages: any::roxygen2
+      - name: Check source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/sync_r_vendor.py --check
+          Rscript -e 'roxygen2::roxygenise("bindings/r")'
+          R CMD build bindings/r
+          if ! _R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_*.tar.gz; then
+            test ! -f rumi.Rcheck/00install.out || cat rumi.Rcheck/00install.out
+            exit 1
+          fi
+          sh tools/r_check_status.sh rumi.Rcheck/00check.log
+
   core:
     name: Core (${{ matrix.name }})
     runs-on: ubuntu-24.04

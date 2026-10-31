@@ -30,6 +30,9 @@ only the frames it needs.
   concurrently, ideal for training data loaders.
 - **Multithreaded decoding** that overlaps with downloads, set with
   `rumi.set_num_threads`.
+- **Direct CUDA reads for PyTorch** on Linux. Rumi resolves the header and
+  requested window on the CPU, then GeoZL writes the decoded samples into the
+  tensor on the active CUDA stream.
 - **Zero-copy arrays** for NumPy, PyTorch, JAX and TensorFlow, shared through DLPack,
   with 21 dtypes including bfloat16, float8 and complex.
 - **Reads from anywhere** through [Karu](https://github.com/asterisk-labs/karu), whether
@@ -38,6 +41,7 @@ only the frames it needs.
 - **A predictable header**, so `rumi.frame_start` knows where the frames begin before
   anything is compressed.
 - **A C API** in `rumi.h`, so other languages can bind the same core.
+- **A browser reader and MapLibre playground** for ranged URLs and local `.rumi` files.
 
 ## Quick start
 
@@ -54,17 +58,34 @@ for frame in frames:
 
 path, header = rumi.write("scene.rumi", frames, bands=["B2", "B3", "B4", "B8"],
                           time=["2024-08-25"])
-chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256))
+with rumi.open(path, header) as file:
+    chip = file.read(bands=[2, 3], window=(0, 0, 256, 256))
+```
+
+The Linux wheel can place the same partial read directly on a GPU:
+
+```python
+gpu_chip = rumi.read(path, header, bands=[2, 3],
+                     window=(0, 0, 256, 256),
+                     framework="torch", device="cuda:0")
 ```
 
 ## Installation
 
 ```bash
 pip install rumi-eo
+npm install @asterisk-labs/rumi
 ```
 
-Wheels are available for Linux x86-64 and macOS arm64 on Python 3.11 or newer. Rumi is
-not stable yet, and the format may still change before 1.0.
+The R and Julia readers live in `bindings/r` and `bindings/julia`. Python, R and
+Julia can open a source with its external header. JavaScript opens the complete
+`.rumi` file and reads only the required byte ranges. R and Julia use one-based
+indices and native `(X, Y, Band, Time)` arrays; Python and JavaScript use
+zero-based indices and `(Time, Band, Y, X)`.
+
+Wheels are available for Linux x86-64 and macOS arm64 on Python 3.11 or newer.
+Linux wheels include CUDA decoding but still work on machines without an NVIDIA
+driver. Rumi is not stable yet, and the format may still change before 1.0.
 
 ## Documentation
 

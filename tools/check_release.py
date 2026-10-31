@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tomllib
@@ -59,6 +60,46 @@ def check(tag: str | None) -> tuple[str, str, str]:
     project = pyproject["project"]
     if project.get("dynamic") != ["version"]:
         fail("Python version must remain dynamic and sourced from VERSION")
+
+    js_package_path = ROOT / "bindings/javascript/package.json"
+    try:
+        js_package = json.loads(js_package_path.read_text())
+    except json.JSONDecodeError as exc:
+        fail(f"invalid JavaScript package.json: {exc}")
+    if js_package.get("version") != rumi_version:
+        fail(
+            "JavaScript package version "
+            f"{js_package.get('version')!r} does not match VERSION {rumi_version}"
+        )
+    js_lock_path = ROOT / "bindings/javascript/package-lock.json"
+    try:
+        js_lock = json.loads(js_lock_path.read_text())
+    except json.JSONDecodeError as exc:
+        fail(f"invalid JavaScript package-lock.json: {exc}")
+    lock_versions = {
+        js_lock.get("version"),
+        js_lock.get("packages", {}).get("", {}).get("version"),
+    }
+    if lock_versions != {rumi_version}:
+        fail(
+            f"JavaScript package-lock versions {lock_versions!r} "
+            f"do not match VERSION {rumi_version}"
+        )
+
+    r_description = (ROOT / "bindings/r/DESCRIPTION").read_text()
+    r_match = re.search(r"^Version:\s*(\S+)\s*$", r_description, re.MULTILINE)
+    if r_match is None or r_match.group(1) != rumi_version:
+        found = None if r_match is None else r_match.group(1)
+        fail(f"R package version {found!r} does not match VERSION {rumi_version}")
+
+    julia_project_path = ROOT / "bindings/julia/Project.toml"
+    with julia_project_path.open("rb") as stream:
+        julia_project = tomllib.load(stream)
+    if julia_project.get("version") != rumi_version:
+        fail(
+            "Julia package version "
+            f"{julia_project.get('version')!r} does not match VERSION {rumi_version}"
+        )
 
     expected = next_minor_constraint(geozl_version)
     if expected not in project.get("dependencies", []):
