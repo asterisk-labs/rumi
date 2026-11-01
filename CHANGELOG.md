@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The JavaScript reader loads GeoZL only when data is first read and retries a
+  failed decoder initialization on the next read.
+
 ## [0.27.0-alpha.1] - 2026-10-31
 
 ### Added

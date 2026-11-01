@@ -146,12 +146,20 @@ function decoderFunction(decoder) {
 }
 
 function defaultDecoder(options) {
-  if (options !== undefined) {
-    return import("@asterisk-labs/geozl").then(({ createGeoZL }) => createGeoZL(options));
-  }
-  sharedDecoder ??= import("@asterisk-labs/geozl")
-    .then(({ createGeoZL }) => createGeoZL());
-  return sharedDecoder;
+  let decoder;
+  return () => {
+    if (options === undefined && sharedDecoder) return sharedDecoder;
+    if (decoder) return decoder;
+    const pending = import("@asterisk-labs/geozl")
+      .then(({ createGeoZL }) => createGeoZL(options));
+    decoder = pending;
+    if (options === undefined) sharedDecoder = pending;
+    pending.catch(() => {
+      if (decoder === pending) decoder = undefined;
+      if (sharedDecoder === pending) sharedDecoder = undefined;
+    });
+    return pending;
+  };
 }
 
 async function decodedBytes(decode, compressed, expected, verify) {
@@ -255,7 +263,7 @@ export class RumiDataset {
     }
     const output = new Uint8Array(outputBytes);
     const groups = frameGroups(this.header, request);
-    const decode = decoderFunction(await this.decoder);
+    const decode = decoderFunction(await this.decoder());
     const pixelStep = unitPixelStep(this.header);
     const bytesPerSample = this.header.dtype.bytes;
     const [windowY, windowX] = request.window;
@@ -355,6 +363,6 @@ export async function openRumi(value, options = {}) {
   const header = parseHeader(rebuilt.header, { maxFrameBytes });
   const decoder = options.decoder === undefined
     ? defaultDecoder(options.geozl)
-    : Promise.resolve(options.decoder);
+    : () => Promise.resolve(options.decoder);
   return new RumiDataset(source, header, decoder, maxOutputBytes, rebuilt.metadata);
 }

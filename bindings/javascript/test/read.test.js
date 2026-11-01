@@ -373,6 +373,41 @@ test("decodes a Rumi fixture with the GeoZL npm package", async () => {
   assert.deepEqual([...result.data], [0, 1, 2, 100, 101, 102]);
 });
 
+test("loads the default decoder only when a read needs it", async () => {
+  const fixture = makeFileRumi({ times: 1, frameUnit: 0 });
+  let loads = 0;
+  await openRumi(fixture.file, {
+    geozl: {
+      printErr() {},
+      locateFile() {
+        loads += 1;
+        return "file:///decoder-should-not-load.wasm";
+      },
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loads, 0);
+});
+
+test("retries a failed default decoder load", async () => {
+  const bytes = await readFile(new URL("../../r/tests/testthat/fixtures/binding.rumi", import.meta.url));
+  const wasm = new URL("../node_modules/@asterisk-labs/geozl/geozl.wasm", import.meta.url).href;
+  let loads = 0;
+  const dataset = await openRumi(bytes, {
+    geozl: {
+      printErr() {},
+      locateFile() {
+        loads += 1;
+        return loads === 1 ? "file:///missing-geozl.wasm" : wasm;
+      },
+    },
+  });
+  const selection = { time: [0], bands: [0], window: [0, 0, 2, 3] };
+  await assert.rejects(() => dataset.read(selection));
+  const result = await dataset.read(selection);
+  assert.deepEqual([...result.data], [0, 1, 2, 100, 101, 102]);
+});
+
 test("rejects wrong decoder output and oversized reads", async () => {
   const fixture = makeFileRumi({ frameUnit: 3 });
   const wrong = await openRumi(fixture.file, { decoder: () => new Uint8Array(1) });
