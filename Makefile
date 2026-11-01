@@ -253,7 +253,8 @@ r-check: r-vendor-check bindings-fixtures
 	@command -v R >/dev/null || { echo "missing R"; exit 1; }
 	cd $(R_DIR) && Rscript -e 'if (requireNamespace("roxygen2", quietly=TRUE)) roxygen2::roxygenise()'
 	R CMD build $(R_DIR)
-	_R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_$(VERSION).tar.gz
+	@r_version=$$($(PYTHON) tools/check_release.py --print-r-version); \
+		_R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual "rumi_$${r_version}.tar.gz"
 	@sh tools/r_check_status.sh rumi.Rcheck/00check.log
 
 julia: build

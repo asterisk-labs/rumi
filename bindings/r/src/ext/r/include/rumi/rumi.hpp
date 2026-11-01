@@ -19,7 +19,10 @@
 #include <utility>
 #include <vector>
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__MINGW32__) && defined(__GNUC__)
+#  define RUMI_PRINTF_LIKE(format_index, first_argument) \
+    [[gnu::format(gnu_printf, format_index, first_argument)]]
+#elif defined(__GNUC__) || defined(__clang__)
 #  define RUMI_PRINTF_LIKE(format_index, first_argument) \
     [[gnu::format(printf, format_index, first_argument)]]
 #else

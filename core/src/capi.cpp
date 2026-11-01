@@ -13,6 +13,9 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#  include <malloc.h>
+#endif
 
 // Error state.
 
@@ -25,17 +28,33 @@ struct FreeDeleter {
     void operator()(void* ptr) const noexcept { std::free(ptr); }
 };
 
+struct AlignedFreeDeleter {
+    void operator()(void* ptr) const noexcept
+    {
+#ifdef _WIN32
+        _aligned_free(ptr);
+#else
+        std::free(ptr);
+#endif
+    }
+};
+
 // DLPack documents 256-byte aligned data pointers; JAX copies CPU buffers
 // that are not 64-byte aligned.
 constexpr std::size_t DLPACK_BUFFER_ALIGNMENT = 256;
 
 std::byte* allocate_dlpack_buffer(std::size_t size) noexcept
 {
+#ifdef _WIN32
+    return static_cast<std::byte*>(
+        _aligned_malloc(size ? size : 1, DLPACK_BUFFER_ALIGNMENT));
+#else
     void* data = nullptr;
     if (::posix_memalign(&data, DLPACK_BUFFER_ALIGNMENT, size ? size : 1) != 0) {
         return nullptr;
     }
     return static_cast<std::byte*>(data);
+#endif
 }
 
 // Move assignment avoids a newer libstdc++ symbol required by assign().
@@ -1062,7 +1081,7 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
             return status;
         }
 
-        std::unique_ptr<std::byte, FreeDeleter> buffer(
+        std::unique_ptr<std::byte, AlignedFreeDeleter> buffer(
             allocate_dlpack_buffer(setup.need));
         if (!buffer) {
             set_error("could not allocate the read buffer");
@@ -1231,7 +1250,7 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
             return st;
         }
 
-        std::unique_ptr<std::byte, FreeDeleter> buffer(
+        std::unique_ptr<std::byte, AlignedFreeDeleter> buffer(
             allocate_dlpack_buffer(setup.selection.need));
         if (!buffer) {
             set_error("could not allocate the read buffer");
