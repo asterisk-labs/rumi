@@ -13,6 +13,8 @@ Notable user-visible changes are recorded here.
   setting instead of selecting its own count.
 - Updated to GeoZL 0.20.0-alpha.2, which bounds allocations from malformed
   PivCo and PFOR frame headers.
+- Windows releases transport clients at the end of each operation so an
+  embedding runtime can unload `librumi` without waiting on worker threads.
 
 ### Fixed
 

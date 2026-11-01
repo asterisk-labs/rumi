@@ -11,8 +11,12 @@ namespace rumi {
 namespace {
 
 // Each calling thread reuses its own connection pool. A configuration change
-// is noticed when the next TransportSession asks for the client.
+// is noticed when the next TransportSession asks for the client. On Windows a
+// client must die before its DLL is unloaded: its worker threads cannot be
+// joined safely from the loader lock.
+#ifndef _WIN32
 thread_local std::shared_ptr<karu_client> cached_transport_client;
+#endif
 
 std::unexpected<std::string>
 transport_error(std::string_view action, const char* uri,
@@ -43,6 +47,7 @@ karu_client* TransportSession::client() noexcept
     status_ = karu_config_create(&config);
     if (status_ != KARU_OK) return nullptr;
 
+#ifndef _WIN32
     if (cached_transport_client) {
         int matches = 0;
         status_ = karu_client_matches_config(cached_transport_client.get(),
@@ -57,6 +62,7 @@ karu_client* TransportSession::client() noexcept
             return client_.get();
         }
     }
+#endif
 
     karu_client* created = nullptr;
     status_ = karu_client_create(config, &created);
@@ -70,7 +76,9 @@ karu_client* TransportSession::client() noexcept
         status_ = KARU_ERR_NOMEM;
         return nullptr;
     }
+#ifndef _WIN32
     cached_transport_client = client_;
+#endif
     return client_.get();
 }
 
