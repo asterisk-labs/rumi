@@ -5,6 +5,7 @@ import os
 import threading
 from dataclasses import dataclass
 
+from ._config import get_num_threads
 from ._dtype import DType
 from ._ffi import _check, ffi, lib
 
@@ -53,7 +54,7 @@ def _context(index: int) -> _Context:
         if not lib.rumi_gpu_available(_CUDA):
             raise RuntimeError("this rumi build has no CUDA support")
         out = ffi.new("rumi_gpu**")
-        threads = min(os.cpu_count() or 1, 32)
+        threads = get_num_threads()
         _check(lib.rumi_gpu_create(_CUDA, index, threads, _BATCH_BYTES, out))
         context = _Context(out[0], threading.Lock())
         _contexts[index] = context

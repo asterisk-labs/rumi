@@ -25,4 +25,6 @@ chip = rumi.read(path, header, framework="torch", device="cuda:0",
 ```
 
 The header, byte ranges and copy plan stay on the CPU. Decoded samples remain on
-the selected GPU. R and Julia device arrays are not implemented yet.
+the selected GPU. GPU frame planning follows `rumi.set_num_threads` or
+`RUMI_NUM_THREADS`, set before the first read, and defaults to one thread per
+process. R and Julia device arrays are not implemented yet.

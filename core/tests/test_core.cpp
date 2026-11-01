@@ -1005,6 +1005,30 @@ void test_thread_count()
     EQ(value, 1);
 }
 
+#if !defined(_WIN32) && !defined(RUMI_TSAN)
+void test_gpu_thread_count()
+{
+    CASE("a GPU context pins the process-wide thread count")
+    const pid_t child = ::fork();
+    if (child == 0) {
+        const bool ok = rumi::set_num_threads(4) == 4
+                     && rumi::detail::pinned_thread_count() == 0
+                     && rumi::detail::pin_thread_count(4) == 4
+                     && rumi::detail::pinned_thread_count() == 4
+                     && rumi::detail::pin_thread_count(2) == 4
+                     && rumi::set_num_threads(2) == 4;
+        ::_exit(ok ? 0 : 1);
+    }
+    int status = 0;
+    OK(child > 0);
+    if (child > 0) {
+        OK(::waitpid(child, &status, 0) == child);
+        OK(WIFEXITED(status));
+        if (WIFEXITED(status)) EQ(WEXITSTATUS(status), 0);
+    }
+}
+#endif
+
 void test_failed_pool_construction_releases_the_count()
 {
     CASE("a failed pool construction releases its thread count")
@@ -2167,7 +2191,9 @@ int main()
     test_fork_ignores_an_inherited_construction_lock();
 #endif
     test_thread_count();
-    // Run pool construction last because it pins process-wide thread state.
+#if !defined(_WIN32) && !defined(RUMI_TSAN)
+    test_gpu_thread_count();
+#endif
     test_concurrent_global_pool_construction();
     test_pinned_configuration_status();
 

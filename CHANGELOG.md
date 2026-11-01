@@ -4,6 +4,12 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- CUDA frame planning now uses and pins the process-wide Rumi thread setting,
+  which defaults to one. `rumi_gpu_create(..., threads=0, ...)` uses the current
+  setting instead of selecting its own count.
+
 ### Fixed
 
 - The JavaScript reader loads GeoZL only when data is first read and retries a

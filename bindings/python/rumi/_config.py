@@ -7,8 +7,8 @@ def set_num_threads(n: int) -> int:
     """Set the process-wide default for reads.
 
     ``n`` is an integer from 1 to 1024. Set it before the first parallel read;
-    once the process-wide pool exists, changing its size raises
-    ``RuntimeError``.
+    once the process-wide pool or a GPU context exists, changing its size
+    raises ``RuntimeError``.
 
     ``RUMI_NUM_THREADS`` provides the initial value and also accepts
     ``ALL_CPUS``. A forked child reads the variable independently and defaults
@@ -29,8 +29,8 @@ def set_num_threads(n: int) -> int:
 def get_num_threads() -> int:
     """Return the process-wide read thread count.
 
-    The result is the configured count before the pool exists and its fixed
-    size afterwards. An invalid ``RUMI_NUM_THREADS`` value raises
+    The result is the configured count before the pool or a GPU context exists
+    and its fixed size afterwards. An invalid ``RUMI_NUM_THREADS`` value raises
     ``ValueError``.
     """
     out = ffi.new("int*")

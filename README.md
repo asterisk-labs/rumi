@@ -70,6 +70,10 @@ gpu_chip = rumi.read(path, header, bands=[2, 3],
                      framework="torch", device="cuda:0")
 ```
 
+GPU frame planning uses the same process-wide count as CPU reads. Set it before
+the first read with `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS`; each DDP
+rank has its own setting, which defaults to one.
+
 [Run the CUDA example in Colab](https://colab.research.google.com/github/asterisk-labs/rumi/blob/0.27/examples/rumi-gpu.ipynb).
 
 ## Installation

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import rumi
 from _labels import labels
+from rumi._ffi import ffi, lib
 
 geozl = pytest.importorskip("geozl")
 torch = pytest.importorskip("torch")
@@ -29,6 +30,31 @@ def scenes(tmp_path_factory):
             directory / f"scene-{i}.rumi", table, **labels(table))
         out.append((path, header, data))
     return out
+
+
+def test_gpu_context_uses_and_pins_the_read_thread_count(scenes):
+    configured = rumi.get_num_threads()
+    handle = ffi.new("rumi_gpu**")
+    rc = lib.rumi_gpu_create(2, 0, 0, 64 * 1024 * 1024, handle)
+    assert rc == lib.RUMI_OK
+    assert handle[0] != ffi.NULL
+    lib.rumi_gpu_destroy(handle[0])
+
+    handle[0] = ffi.NULL
+    assert lib.rumi_gpu_create(2, 0, 1025, 1, handle) == lib.RUMI_ERR_INVALID
+    assert handle[0] == ffi.NULL
+
+    other = 2 if configured == 1 else 1
+    assert lib.rumi_gpu_create(2, 0, other, 1, handle) == lib.RUMI_ERR_STATE
+    assert handle[0] == ffi.NULL
+
+    path, header, _ = scenes[0]
+    rumi.read(path, header, framework="torch", device="cuda:0",
+              window=(0, 0, 32, 32))
+
+    assert rumi.get_num_threads() == configured
+    with pytest.raises(RuntimeError, match="thread count is pinned"):
+        rumi.set_num_threads(other)
 
 
 def test_partial_read_writes_a_cuda_tensor(scenes):
