@@ -12,7 +12,9 @@ extern "C" {
 
 // Export only the public C ABI when symbol visibility is hidden.
 #if defined(_WIN32)
-#  if defined(RUMI_BUILD)
+#  if defined(RUMI_STATIC)
+#    define RUMI_API
+#  elif defined(RUMI_BUILD)
 #    define RUMI_API __declspec(dllexport)
 #  else
 #    define RUMI_API __declspec(dllimport)

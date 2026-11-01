@@ -106,7 +106,6 @@ target_link_libraries(rumi_config INTERFACE
     karu::internal
 )
 target_compile_definitions(rumi_config INTERFACE
-    RUMI_BUILD
     RUMI_VERSION_STRING="${RUMI_VERSION_FULL}"
     RUMI_BUILD_GPU=$<BOOL:${RUMI_BUILD_GPU}>
 )
@@ -144,6 +143,7 @@ if(RUMI_BUILD_SHARED_LIB OR RUMI_BUILD_STATIC_LIB)
     add_library(rumi::rumi ALIAS rumi)
     target_link_libraries(rumi PUBLIC rumi_config)
     if(RUMI_BUILD_SHARED_LIB)
+        target_compile_definitions(rumi PRIVATE RUMI_BUILD)
         # Static dependencies are implementation details of the C API. Hiding
         # their symbols avoids collisions when a host loads its own copy.
         if(APPLE)
@@ -159,6 +159,8 @@ if(RUMI_BUILD_SHARED_LIB OR RUMI_BUILD_STATIC_LIB)
             VERSION   ${PROJECT_VERSION}
             SOVERSION ${RUMI_API_VERSION}
         )
+    else()
+        target_compile_definitions(rumi PUBLIC RUMI_STATIC)
     endif()
 
     if(RUMI_BUILD_SHARED_LIB)
@@ -199,6 +201,7 @@ if(RUMI_BUILD_TESTS)
     add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})
     add_dependencies(rumi_tests rumi_c_header_check)
     target_link_libraries(rumi_tests PRIVATE rumi_config)
+    target_compile_definitions(rumi_tests PRIVATE RUMI_STATIC)
     if(RUMI_SANITIZE STREQUAL "thread")
         # TSAN cannot run the post-fork thread-creation test.
         target_compile_definitions(rumi_tests PRIVATE RUMI_TSAN)
@@ -215,6 +218,7 @@ if(RUMI_BUILD_FUZZERS)
             ${CMAKE_CURRENT_SOURCE_DIR}/../fuzz/${surface}_fuzzer.cpp
             ${RUMI_SOURCES})
         target_link_libraries(rumi_${surface}_fuzzer PRIVATE rumi_config)
+        target_compile_definitions(rumi_${surface}_fuzzer PRIVATE RUMI_STATIC)
         target_compile_options(rumi_${surface}_fuzzer PRIVATE
             -fsanitize=fuzzer-no-link)
         target_link_options(rumi_${surface}_fuzzer PRIVATE -fsanitize=fuzzer)
