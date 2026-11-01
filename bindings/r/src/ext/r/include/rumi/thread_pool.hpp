@@ -210,6 +210,8 @@ inline PoolSlot& process_pool_slot()
 
 // Implemented in read.cpp; declared here for deterministic pool tests.
 int reserve_thread_count(int requested) noexcept;
+int pin_thread_count(int requested) noexcept;
+int pinned_thread_count() noexcept;
 void rollback_thread_count(unsigned threads) noexcept;
 
 }  // namespace detail

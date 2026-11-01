@@ -7,6 +7,7 @@
 #include "openzl/zl_input.h"
 #include "openzl/zl_output.h"
 
+#include "common/decoder_limit.h"
 #include "common/endian.h"
 #include "pivco_lanes/pivco_lanes.h"
 
@@ -91,8 +92,9 @@ ZL_Report DI_geozl_planar_zigzag_transpose_pivco(ZL_Decoder *dictx,
   if (header.elementCount > (uint64_t)(SIZE_MAX / header.elementWidth))
     return ZL_returnError(ZL_ErrorCode_corruption);
 
-  // The output first, so the decompressed-size limit applies before scratch.
   const size_t n = (size_t)header.elementCount;
+  if (!geozl_decoder_size_fits_frame(dictx, n * header.elementWidth))
+    return ZL_returnError(ZL_ErrorCode_corruption);
   ZL_Output *out = ZL_Decoder_create1OutStream(dictx, n, header.elementWidth);
   ZL_ERR_IF_NULL(out, allocation);
   uint8_t *lanes = ZL_Decoder_getScratchSpace(dictx, n * header.elementWidth);

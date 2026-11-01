@@ -8,6 +8,7 @@
 #include "openzl/zl_input.h"
 #include "openzl/zl_output.h"
 
+#include "common/decoder_limit.h"
 #include "common/endian.h"
 
 #include <assert.h>
@@ -45,6 +46,8 @@ ZL_Report DI_geozl_pfor(ZL_Decoder *dictx, const ZL_Input *ins[]) {
       nbElts > (uint64_t)srcSize * GEOZL_PFOR_MAX_ELTS_PER_BYTE)
     return ZL_returnError(ZL_ErrorCode_corruption);
   if (nbElts > (uint64_t)(SIZE_MAX / eltWidth))
+    return ZL_returnError(ZL_ErrorCode_corruption);
+  if (!geozl_decoder_size_fits_frame(dictx, (size_t)nbElts * eltWidth))
     return ZL_returnError(ZL_ErrorCode_corruption);
 
   ZL_Output *out = ZL_Decoder_create1OutStream(dictx, (size_t)nbElts, eltWidth);

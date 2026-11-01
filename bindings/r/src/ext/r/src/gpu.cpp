@@ -1,4 +1,5 @@
 #include "rumi/rumi.hpp"
+#include "rumi/thread_pool.hpp"
 
 #if RUMI_BUILD_GPU
 #include "geozl/gpu.h"
@@ -43,11 +44,26 @@ GpuDecoder::create(int device_type, int device, std::size_t threads,
                    std::size_t max_decoded_bytes)
 {
 #if RUMI_BUILD_GPU
+    if (threads > 1024) {
+        return fail(RUMI_ERR_INVALID, "GPU thread count must not exceed 1024");
+    }
+    if (threads == 0) {
+        if (const char* error = thread_configuration_error()) {
+            return fail(RUMI_ERR_INVALID, error);
+        }
+    }
+    const int requested_threads = threads == 0
+        ? num_threads() : static_cast<int>(threads);
     if (max_decoded_bytes == 0) {
         return fail(RUMI_ERR_INVALID, "GPU decode budget must be positive");
     }
     if (const char* error = checksum_configuration_error()) {
         return fail(RUMI_ERR_INVALID, error);
+    }
+    const int pinned_threads = detail::pinned_thread_count();
+    if (pinned_threads != 0 && pinned_threads != requested_threads) {
+        return fail(RUMI_ERR_STATE,
+                    "GPU thread count differs from the process-wide read thread count");
     }
     if (pin_checksum_verification()) {
         return fail(RUMI_ERR_UNSUPPORTED,
@@ -56,11 +72,18 @@ GpuDecoder::create(int device_type, int device, std::size_t threads,
 
     std::array<char, 512> message{};
     GeozlGpu* handle = geozl_gpu_create(
-        device_type, device, threads, max_decoded_bytes, 0,
+        device_type, device, static_cast<std::size_t>(requested_threads),
+        max_decoded_bytes, 0,
         message.data(), message.size());
     if (!handle) {
         return fail(RUMI_ERR_UNSUPPORTED,
                     message[0] ? message.data() : "GPU device is unavailable");
+    }
+    const int effective_threads = detail::pin_thread_count(requested_threads);
+    if (effective_threads != requested_threads) {
+        geozl_gpu_destroy(handle);
+        return fail(RUMI_ERR_STATE,
+                    "GPU thread count differs from the process-wide read thread count");
     }
     auto impl = std::make_unique<Impl>();
     impl->gpu = handle;

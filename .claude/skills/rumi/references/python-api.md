@@ -1,6 +1,6 @@
 # Python API
 
-Everything here describes `rumi` 0.27.0-alpha.1, as implemented in `bindings/python/rumi/`
+Everything here describes `rumi` 0.27.0-alpha.2, as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_config.py`, `_dlpack.py`,
 `_framework.py`, `_native.py`, and `_ffi.py`). The examples and messages come from
 that release.
@@ -25,7 +25,7 @@ pip install rumi-eo
 ```
 
 - Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17` and
-  `geozl>=0.20.0-alpha.1,<0.21`. The import name is `rumi`, the
+  `geozl>=0.20.0-alpha.2,<0.21`. The import name is `rumi`, the
   distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.

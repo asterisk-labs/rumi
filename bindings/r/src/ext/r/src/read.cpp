@@ -123,8 +123,8 @@ std::uint64_t process_thread_state() noexcept
     return state;
 }
 
-// Pin the process-wide count on the first parallel read.
-int pin_num_threads(int requested) noexcept
+// Pin the process-wide count when an operation needs a fixed worker width.
+int pin_num_threads(int requested, bool pin_serial = false) noexcept
 {
     const std::uint32_t pid = pid_key();
     std::uint64_t state = process_thread_state();
@@ -138,7 +138,7 @@ int pin_num_threads(int requested) noexcept
         const int want = requested > 0
             ? clamp_threads(requested) : state_threads(state);
         // Serial reads do not create a pool or pin the thread count.
-        if (want <= 1) return want;
+        if (want <= 1 && !pin_serial) return want;
         const std::uint64_t pinned = pack_thread_state(pid, want, true);
         if (g_thread_state.compare_exchange_weak(
                 state, pinned, std::memory_order_acq_rel,
@@ -180,6 +180,17 @@ namespace detail {
 int reserve_thread_count(int requested) noexcept
 {
     return pin_num_threads(requested);
+}
+
+int pin_thread_count(int requested) noexcept
+{
+    return pin_num_threads(requested, true);
+}
+
+int pinned_thread_count() noexcept
+{
+    const std::uint64_t state = process_thread_state();
+    return state_pinned(state) ? state_threads(state) : 0;
 }
 
 void rollback_thread_count(unsigned threads) noexcept

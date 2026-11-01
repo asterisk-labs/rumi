@@ -357,7 +357,9 @@ rumi_plan_ranges(const rumi_spec* spec,
 
 typedef struct rumi_gpu rumi_gpu;
 
-// GPU contexts are not safe for concurrent calls. max_decoded_bytes bounds
+// GPU contexts are not safe for concurrent calls. threads sets and pins the
+// process-wide read thread count; zero uses its current value. A different
+// count after it is pinned returns RUMI_ERR_STATE. max_decoded_bytes bounds
 // decoded frame staging per batch and must be nonzero.
 RUMI_API int rumi_gpu_available(int device_type);
 RUMI_API rumi_status

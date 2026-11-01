@@ -4,11 +4,15 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.27.0-alpha.2] - 2026-11-01
+
 ### Changed
 
 - CUDA frame planning now uses and pins the process-wide Rumi thread setting,
   which defaults to one. `rumi_gpu_create(..., threads=0, ...)` uses the current
   setting instead of selecting its own count.
+- Updated to GeoZL 0.20.0-alpha.2, which bounds allocations from malformed
+  PivCo and PFOR frame headers.
 
 ### Fixed
 
@@ -558,7 +562,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.1...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.2...HEAD
+[0.27.0-alpha.2]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.1...v0.27.0-alpha.2
 [0.27.0-alpha.1]: https://github.com/asterisk-labs/rumi/compare/v0.26.1...v0.27.0-alpha.1
 [0.26.1]: https://github.com/asterisk-labs/rumi/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/asterisk-labs/rumi/compare/v0.25.0...v0.26.0
