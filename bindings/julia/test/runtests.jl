@@ -11,6 +11,7 @@ float_header_path = joinpath(@__DIR__, "fixtures", "binding-f64.header")
     @test Rumi.read !== Base.read
     @test :open ∉ names(Rumi)
     @test :read ∉ names(Rumi)
+    @test sizeof(Rumi.RumiBFloat16) == 2
 end
 
 @testset "fixture reads" begin

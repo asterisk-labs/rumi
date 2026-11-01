@@ -4,6 +4,12 @@ primitive type Float8E8M0FNU <: AbstractFloat 8 end
 primitive type Float8E4M3FNUZ <: AbstractFloat 8 end
 primitive type Float8E5M2FNUZ <: AbstractFloat 8 end
 
+@static if isdefined(Core, :BFloat16)
+    const RumiBFloat16 = Core.BFloat16
+else
+    primitive type RumiBFloat16 <: AbstractFloat 16 end
+end
+
 struct _Header
     image_width::UInt32
     image_length::UInt32
@@ -107,7 +113,7 @@ const _DTYPES = Dict{Int,Tuple{DataType,String}}(
     16 => (ComplexF64, "complex128"),
     17 => (Float8E4M3FN, "float8_e4m3fn"),
     18 => (Float8E5M2, "float8_e5m2"),
-    19 => (Core.BFloat16, "bfloat16"),
+    19 => (RumiBFloat16, "bfloat16"),
     24 => (Bool, "bool"),
     25 => (Float8E8M0FNU, "float8_e8m0fnu"),
     29 => (Float8E4M3FNUZ, "float8_e4m3fnuz"),
