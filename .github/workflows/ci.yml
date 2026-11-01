@@ -55,6 +55,7 @@ jobs:
             python=3.12
             cmake
             ninja
+            pkg-config
             r-base=4.5
             r-roxygen2
             r-testthat
