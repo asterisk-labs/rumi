@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        julia: ['1.10', '1.12']
+        julia: ['1.12']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -127,6 +127,36 @@ jobs:
             @assert occursin("artifacts", Rumi._find_library())
             close(file)
           '
+
+  julia-compat:
+    name: Julia 1.10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Init OpenZL dependencies
+        run: |
+          git -C extern/geozl submodule update --init extern/openzl
+          git -C extern/geozl/extern/openzl submodule update --init deps/zstd deps/lz4
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-name: julia
+          create-args: >-
+            cmake
+            ninja
+            julia=1.10
+            libcurl=8.22.0
+            openssl=3.6.4
+      - name: Test Julia reader
+        shell: bash -el {0}
+        run: |
+          make build
+          RUMI_LIB="$PWD/core/build/librumi.so" \
+            julia --startup-file=no --project=bindings/julia \
+              bindings/julia/test/runtests.jl
 
   r-windows:
     name: R (Windows x64)
