@@ -30,9 +30,9 @@ only the frames it needs.
   concurrently, ideal for training data loaders.
 - **Multithreaded decoding** that overlaps with downloads, set with
   `rumi.set_num_threads`.
-- **Direct CUDA reads for PyTorch** on Linux. Rumi resolves the header and
-  requested window on the CPU, then GeoZL writes the decoded samples into the
-  tensor on the active CUDA stream.
+- **Direct GPU reads for PyTorch** through CUDA on Linux and MPS on macOS. Rumi
+  resolves the header and requested window on the CPU, then GeoZL writes the
+  decoded samples into the device tensor.
 - **Zero-copy arrays** for NumPy, PyTorch, JAX and TensorFlow, shared through DLPack,
   with 21 dtypes including bfloat16, float8 and complex.
 - **Reads from anywhere** through [Karu](https://github.com/asterisk-labs/karu), whether
@@ -62,12 +62,17 @@ with rumi.open(path, header) as file:
     chip = file.read(bands=[2, 3], window=(0, 0, 256, 256))
 ```
 
-The Linux wheel can place the same partial read directly on a GPU:
+The wheels can place the same partial read directly on a GPU:
 
 ```python
 gpu_chip = rumi.read(path, header, bands=[2, 3],
                      window=(0, 0, 256, 256),
                      framework="torch", device="cuda:0")
+
+# On Apple Silicon:
+mps_chip = rumi.read(path, header, bands=[2, 3],
+                     window=(0, 0, 256, 256),
+                     framework="torch", device="mps")
 ```
 
 GPU frame planning uses the same process-wide count as CPU reads. Set it before
@@ -90,8 +95,8 @@ indices and native `(X, Y, Band, Time)` arrays; Python and JavaScript use
 zero-based indices and `(Time, Band, Y, X)`.
 
 Wheels are available for Linux x86-64 and macOS arm64 on Python 3.11 or newer.
-Linux wheels include CUDA decoding but still work on machines without an NVIDIA
-driver. Rumi is not stable yet, and the format may still change before 1.0.
+Linux wheels include CUDA decoding and macOS wheels include Metal decoding;
+both still work without an available GPU. The format may change before 1.0.
 
 ## Documentation
 

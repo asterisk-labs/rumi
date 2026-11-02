@@ -354,8 +354,9 @@ rumi_plan_ranges(const rumi_spec* spec,
 
 // Read.
 
-// Device types follow DLPack. CUDA is the first supported device backend.
+// Device types follow DLPack.
 #define RUMI_DEVICE_CUDA 2
+#define RUMI_DEVICE_METAL 8
 
 typedef struct rumi_gpu rumi_gpu;
 
@@ -390,8 +391,9 @@ rumi_read(rumi_source*     src,
           const char*      pattern,
           void*            dst,   size_t dst_size);
 
-// GPU form of rumi_read. dst is a device pointer and stream is the backend's
-// native stream handle. Work may still be pending on stream when this returns.
+// GPU form of rumi_read. dst is the backend's native destination: a CUDA
+// device pointer or a Metal MTLBuffer object. stream is the native CUDA stream;
+// pass NULL for Metal. Work may still be pending when this returns.
 RUMI_API rumi_status
 rumi_read_gpu(rumi_gpu*        gpu,
               rumi_source*     src,

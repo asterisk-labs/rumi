@@ -175,9 +175,9 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
   on 3.12 for the fork tests.
 - `fuzz.yml`: path-filtered pushes and pull requests plus a nightly run.
 - `release.yml` runs on `v*` tags (a manual run builds without publishing): validate
-  metadata against the tag, build `librumi` for linux-x86_64 (static curl) and
-  macos-arm64, build, repair and test wheels, read a remote fixture without a CA
-  override, check wheel tags, then create the GitHub Release and publish to PyPI.
+  metadata against the tag, build GPU-enabled `librumi` for linux-x86_64 (CUDA) and
+  macos-arm64 (Metal), build, repair and test wheels, read a remote fixture without a
+  CA override, check wheel tags, then create the GitHub Release and publish to PyPI.
 - Release steps: bump `VERSION`; add `## [X.Y.Z] - YYYY-MM-DD` and its compare link to
   `CHANGELOG.md`; update `This skill describes **rumi X.Y.Z**` in `SKILL.md`; run
   `python tools/check_release.py`; commit (`Prepare Rumi X.Y.Z`), tag `vX.Y.Z` and push the

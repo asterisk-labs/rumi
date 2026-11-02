@@ -202,10 +202,10 @@ def read(source: _ReadTarget, header: Header | None = None, *,
 
     ``framework`` selects ``"numpy"``, ``"torch"``, ``"jax"``,
     ``"tensorflow"``, or ``"dlpack"``. The last returns a RumiArray
-    implementing the DLPack protocol. ``device="cuda:N"`` writes directly
-    into a PyTorch CUDA tensor and requires ``framework="torch"``. CPU reads
-    use the process-wide thread pool; call ``set_num_threads`` before the first
-    parallel read to set its size.
+    implementing the DLPack protocol. ``device="cuda:N"`` or ``device="mps"``
+    writes directly into a PyTorch GPU tensor and requires
+    ``framework="torch"``. CPU reads use the process-wide thread pool; call
+    ``set_num_threads`` before the first parallel read to set its size.
     """
     if isinstance(source, Dataset):
         if header is not None:
@@ -272,7 +272,8 @@ def read_many(sources: Sequence[_ReadTarget],
 
     ``headers[i]`` is the header returned with ``sources[i]`` by ``write``.
     For an existing file, use ``info(source=...).header`` to rebuild it.
-    ``framework="torch", device="cuda:N"`` returns the batch on that GPU.
+    ``framework="torch"`` with ``device="cuda:N"`` or ``device="mps"`` returns
+    the batch on that GPU.
     """
     if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
         raise TypeError("read_many takes a sequence of sources; use read for one")

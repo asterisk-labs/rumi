@@ -17,11 +17,14 @@ Reads return NumPy by default. PyTorch, JAX and TensorFlow results use DLPack;
 `framework="dlpack"` returns the one-shot producer itself. Compatibility is
 checked before opening the source, and Rumi never casts a dtype to make it fit.
 
-On Linux, PyTorch can read straight into a CUDA tensor:
+PyTorch can read straight into a CUDA tensor on Linux or an MPS tensor on macOS:
 
 ```python
 chip = rumi.read(path, header, framework="torch", device="cuda:0",
                  window=(row, column, height, width))
+
+mps_chip = rumi.read(path, header, framework="torch", device="mps",
+                     window=(row, column, height, width))
 ```
 
 The header, byte ranges and copy plan stay on the CPU. Decoded samples remain on

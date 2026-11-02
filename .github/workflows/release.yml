@@ -177,7 +177,8 @@ jobs:
             -DCURL_DIR=$RUNNER_TEMP/curl/lib/cmake/CURL \
             -DCURL_USE_STATIC_LIBS=TRUE \
             -DOPENSSL_ROOT_DIR=$CONDA_PREFIX \
-            -DOPENSSL_USE_STATIC_LIBS=TRUE"
+            -DOPENSSL_USE_STATIC_LIBS=TRUE \
+            -DRUMI_BUILD_GPU=ON"
           if otool -L staged/librumi.dylib | grep -Eq 'lib(curl|ssl|crypto)'; then
             echo '::error::macOS librumi has a shared transport dependency'
             exit 1

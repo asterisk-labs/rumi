@@ -312,6 +312,18 @@ def test_public_c_types_match_the_recorded_layouts():
     assert api_version and int(api_version[1]) == API_VERSION == 1
 
 
+def test_device_codes_match_the_public_header():
+    from rumi._ffi import lib
+
+    header = _HEADER.read_text()
+    cuda = re.search(r"^#define RUMI_DEVICE_CUDA\s+(\d+)$",
+                     header, re.MULTILINE)
+    metal = re.search(r"^#define RUMI_DEVICE_METAL\s+(\d+)$",
+                      header, re.MULTILINE)
+    assert cuda and int(cuda[1]) == lib.RUMI_DEVICE_CUDA == 2
+    assert metal and int(metal[1]) == lib.RUMI_DEVICE_METAL == 8
+
+
 def test_binding_refuses_a_different_c_interface():
     from rumi._ffi import _check_native_abi
 

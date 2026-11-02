@@ -8,6 +8,9 @@ _pyapi = ctypes.pythonapi
 _PyCapsule_New = _pyapi.PyCapsule_New
 _PyCapsule_New.restype = ctypes.py_object
 _PyCapsule_New.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+_PyCapsule_GetPointer = _pyapi.PyCapsule_GetPointer
+_PyCapsule_GetPointer.restype = ctypes.c_void_p
+_PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
 
 _VERSIONED_NAME = b"dltensor_versioned"
 _LEGACY_NAME = b"dltensor"
@@ -26,6 +29,15 @@ lib.rumi_dlpack_capsule_api(
     ffi.cast("rumi_capsule_is_valid_fn", _address(_pyapi.PyCapsule_IsValid)),
     ffi.cast("rumi_capsule_pointer_fn", _address(_pyapi.PyCapsule_GetPointer)))
 _c_destructor = int(ffi.cast("uintptr_t", lib.rumi_dlpack_capsule_destructor))
+
+
+def _borrow_versioned(tensor):
+    """Borrow a versioned DLPack tensor while its capsule stays alive."""
+    capsule = tensor.__dlpack__(max_version=(1, 0))
+    pointer = _PyCapsule_GetPointer(capsule, _VERSIONED_NAME)
+    if pointer is None:
+        raise RuntimeError("could not read the DLPack capsule")
+    return capsule, ffi.cast("DLManagedTensorVersioned*", pointer)
 
 
 class RumiArray:

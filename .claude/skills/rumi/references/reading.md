@@ -192,14 +192,14 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 | `framework` | Result |
 | --- | --- |
 | `"numpy"` (default) | `numpy.ndarray` |
-| `"torch"` | `torch.Tensor` on the CPU |
+| `"torch"` | `torch.Tensor` on CPU by default, CUDA with `device="cuda:N"`, or Metal with `device="mps"` |
 | `"jax"` | JAX array on the CPU |
 | `"tensorflow"` | TensorFlow tensor on the CPU |
 | `"dlpack"` | `RumiArray`, exported later with a framework method or `__dlpack__` |
 
-- Results decode on the CPU and move to the framework through DLPack without a copy.
-  A `RumiArray` exports once; a second export raises `RuntimeError: this RumiArray was
-  already exported`.
+- CPU results move to the framework through DLPack without a copy. CUDA and Metal reads
+  decode directly into the PyTorch output tensor. A `RumiArray` exports once; a second
+  export raises `RuntimeError: this RumiArray was already exported`.
 - Every registered dtype is an exact PyTorch CPU DLPack dtype. NumPy, JAX and
   TensorFlow accept exact subsets; incompatible dtypes fail before the source is opened.
   JAX 64-bit dtypes require `jax_enable_x64`.

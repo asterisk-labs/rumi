@@ -61,7 +61,7 @@ Reads accept:
 | `framework` | Result |
 | --- | --- |
 | `"numpy"` | default; exact `numpy.ndarray`, or an early `TypeError` |
-| `"torch"` | exact CPU `torch.Tensor` through DLPack |
+| `"torch"` | exact CPU tensor through DLPack, or a direct CUDA/Metal tensor with `device=` |
 | `"jax"` | exact CPU JAX array through DLPack |
 | `"tensorflow"` | exact CPU TensorFlow tensor through DLPack |
 | `"dlpack"` | one-shot `RumiArray` DLPack producer |

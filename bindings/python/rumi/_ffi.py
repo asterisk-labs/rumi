@@ -203,6 +203,9 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
 
 typedef struct rumi_gpu rumi_gpu;
 
+#define RUMI_DEVICE_CUDA 2
+#define RUMI_DEVICE_METAL 8
+
 int rumi_gpu_available(int device_type);
 rumi_status rumi_gpu_create(int device_type, int device, size_t threads,
                             size_t max_decoded_bytes, rumi_gpu** out);

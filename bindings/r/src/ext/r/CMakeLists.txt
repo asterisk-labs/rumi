@@ -25,7 +25,7 @@ option(RUMI_BUILD_SHARED_LIB  "Build standalone librumi for direct link"        
 option(RUMI_BUILD_STATIC_LIB  "Build static librumi for embedding"                 OFF)
 option(RUMI_BUILD_TESTS       "Build the C++ component tests"                     OFF)
 option(RUMI_BUILD_FUZZERS     "Build libFuzzer harnesses (requires Clang)"         OFF)
-option(RUMI_BUILD_GPU         "Build CUDA decoding support"                        OFF)
+option(RUMI_BUILD_GPU         "Build GPU decoding support"                         OFF)
 option(RUMI_WERROR            "Treat warnings in rumi C++ as errors"              OFF)
 
 # geozl supplies OpenZL transitively from the repository root.
