@@ -12,7 +12,6 @@ Notable user-visible changes are recorded here.
   Metal queue, preventing recycled buffers from being overwritten later.
 - Metal reads release GeoZL's reference to the output tensor when the read
   finishes, and GPU contexts are not destroyed while another thread uses them.
-- Reads on separate CUDA devices no longer wait on each other's context lock.
 
 ## [0.27.0-alpha.3] - 2026-11-01
 

@@ -448,6 +448,7 @@ rumi_read_many(const rumi_read_item* items, size_t n_items,
                const char* pattern,
                void* dst, size_t dst_size);
 
+// GPU form of rumi_read_many. dst and stream follow the rumi_read_gpu contract.
 RUMI_API rumi_status
 rumi_read_many_gpu(rumi_gpu* gpu,
                    const rumi_read_item* items, size_t n_items,
