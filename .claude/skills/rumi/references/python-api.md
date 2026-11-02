@@ -1,6 +1,6 @@
 # Python API
 
-Everything here describes `rumi` 0.27.0-alpha.2, as implemented in `bindings/python/rumi/`
+Everything here describes `rumi` 0.27.0-alpha.3, as implemented in `bindings/python/rumi/`
 (`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_config.py`, `_dlpack.py`,
 `_framework.py`, `_native.py`, and `_ffi.py`). The examples and messages come from
 that release.
@@ -25,7 +25,7 @@ pip install rumi-eo
 ```
 
 - Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17` and
-  `geozl>=0.20.0-alpha.2,<0.21`. The import name is `rumi`, the
+  `geozl>=0.20.0,<0.21`. The import name is `rumi`, the
   distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.
@@ -127,7 +127,7 @@ rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=Fa
 
 ```text
 rumi.read(source, header, *, framework="numpy", pattern=None, time=None, bands=None,
-          window=None)
+          window=None, device=None)
 ```
 
 | Argument | Meaning |
@@ -138,6 +138,7 @@ rumi.read(source, header, *, framework="numpy", pattern=None, time=None, bands=N
 | `window` | `None` (whole image) or a tuple `(row, column, height, width)` of integers |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
 | `framework` | `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `"dlpack"` for a `RumiArray` |
+| `device` | `None` for CPU, `"cuda"`/`"cuda:N"` on Linux, or `"mps"` on macOS; GPU reads require `framework="torch"` |
 
 ```python
 cube = rumi.read(path, header)                                    # (3, 4, 300, 260)
@@ -153,7 +154,7 @@ multiple sources`. Selection errors are listed in `debugging.md`.
 
 ```text
 rumi.read_many(sources, headers, *, windows=None, framework="numpy", pattern=None,
-               time=None, bands=None)
+               time=None, bands=None, device=None)
 ```
 
 Without `windows`, `read_many` reads every image in full, so the images must share a
@@ -163,6 +164,9 @@ order given (`n b y x`, or `n t b y x` for Cubes), also for one item. `time`, `b
 and `pattern` apply to every item, and a custom pattern must contain `n` when there is
 more than one item. Sources may repeat and may mix paths, URIs and bytes. See
 `reading.md` for the compatibility rules and a DataLoader recipe.
+
+With `framework="torch"`, `device="cuda:N"` or `device="mps"` keeps the batch on that
+GPU; no decoded copy returns through CPU memory.
 
 ## 6. `info` and `Metadata`
 

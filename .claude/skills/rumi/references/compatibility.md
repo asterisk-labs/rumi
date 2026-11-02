@@ -32,9 +32,9 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.27.0-alpha.2 | Where it is pinned |
+| Component | Rumi 0.27.0-alpha.3 | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.20.0-alpha.2 | `extern/geozl` submodule; `geozl>=0.20.0-alpha.2,<0.21` in the package dependencies |
+| GeoZL | 0.20.0 | `extern/geozl` submodule; `geozl>=0.20.0,<0.21` in the package dependencies |
 | OpenZL | 0.3.0 | through GeoZL's submodule |
 | Karu | 0.4.0 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |

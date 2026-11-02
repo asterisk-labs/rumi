@@ -1,7 +1,6 @@
 #include "decode_transpose_pivco_binding.h"
 #include "decode_transpose_pivco_kernel.h"
 
-#include "common/decoder_limit.h"
 #include "common/endian.h"
 #include "pivco_lanes/pivco_lanes.h"
 
@@ -37,8 +36,6 @@ ZL_Report DI_geozl_transpose_pivco(ZL_Decoder *decoder,
   if (encodedCount > SIZE_MAX || encodedCount > SIZE_MAX / width)
     return ZL_returnError(ZL_ErrorCode_corruption);
   const size_t count = (size_t)encodedCount;
-  if (!geozl_decoder_size_fits_frame(decoder, count * width))
-    return ZL_returnError(ZL_ErrorCode_corruption);
   const size_t blockSize = geozl_ld_le32(headerBytes + 9);
   const uint8_t *weights = ZL_Input_ptr(weightsIn);
   const uint8_t *bits = ZL_Input_ptr(bitsIn);

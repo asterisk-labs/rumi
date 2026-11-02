@@ -34,6 +34,6 @@ contain a breaking change; it will be called out in the changelog.
 
 ## GeoZL and OpenZL
 
-Rumi 0.27.0-alpha.2 includes GeoZL 0.20.0-alpha.2 and OpenZL 0.3.0. Its Python
-package requires `geozl>=0.20.0-alpha.2,<0.21`. GeoZL 0.20 reads the older
+Rumi 0.27.0-alpha.3 includes GeoZL 0.20.0 and OpenZL 0.3.0. Its Python package requires
+`geozl>=0.20.0,<0.21`. GeoZL 0.20 reads the older
 frames used by Rumi, while byte-lane PivCo frames require a GeoZL 0.20 reader.

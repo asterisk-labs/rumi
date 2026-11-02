@@ -65,7 +65,7 @@ jobs:
             libopenssl-static=3.6.4
       - name: Install Python fixture dependencies
         shell: bash -el {0}
-        run: python -m pip install numpy cffi 'geozl>=0.20.0-alpha.2,<0.21'
+        run: python -m pip install numpy cffi 'geozl>=0.20.0,<0.21'
       - name: Test R and Julia readers
         shell: bash -el {0}
         run: make bindings-test
