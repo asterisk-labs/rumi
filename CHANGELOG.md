@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-02
+
 ### Fixed
 
 - PyTorch MPS reads wait on an event from the current stream instead of
@@ -600,7 +602,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/asterisk-labs/rumi/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.4...v0.27.0
 [0.27.0-alpha.4]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.3...v0.27.0-alpha.4
 [0.27.0-alpha.3]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.2...v0.27.0-alpha.3
