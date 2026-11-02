@@ -75,8 +75,7 @@ mps_chip = rumi.read(path, header, bands=[2, 3],
                      framework="torch", device="mps")
 ```
 
-MPS reads require PyTorch 2.10 or newer. Rumi waits for pending PyTorch MPS
-work before writing the result from its own Metal queue.
+MPS reads require PyTorch 2.10 or newer.
 
 GPU frame planning uses the same process-wide count as CPU reads. Set it before
 the first read with `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS`; each DDP

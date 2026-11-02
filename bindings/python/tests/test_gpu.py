@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
@@ -176,6 +177,27 @@ def test_mps_requires_versioned_dlpack(monkeypatch):
         _gpu._metal_target(object())
 
 
+def test_mps_wait_uses_an_event_not_a_device_synchronize(monkeypatch):
+    calls = []
+
+    class Event:
+        def record(self):
+            calls.append("record")
+
+        def synchronize(self):
+            calls.append("synchronize")
+
+    def device_synchronize():
+        raise AssertionError("device-wide MPS synchronization is not allowed")
+
+    monkeypatch.setattr(torch.mps.event, "Event", Event)
+    monkeypatch.setattr(torch.mps, "synchronize", device_synchronize)
+
+    _gpu._wait_for_mps()
+
+    assert calls == ["record", "synchronize"]
+
+
 def test_gpu_shutdown_waits_for_an_active_context(monkeypatch):
     started = threading.Event()
     closed = threading.Event()
@@ -308,6 +330,59 @@ def test_chunky_layout_and_nondefault_stream(scenes):
     expected = torch.from_numpy(
         np.moveaxis(data[:, :64, :64], 0, -1).copy()).cuda()
     assert torch.equal(result, expected)
+
+
+@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
+def test_cuda_result_can_move_between_streams_with_an_event(scenes):
+    path, header, data = scenes[0]
+    producer = torch.cuda.Stream(device=0)
+    consumer = torch.cuda.Stream(device=0)
+
+    with torch.cuda.stream(producer):
+        result = rumi.read(
+            path, header, framework="torch", device="cuda:0",
+            window=(5, 9, 48, 56))
+        ready = producer.record_event()
+
+    consumer.wait_event(ready)
+    with torch.cuda.stream(consumer):
+        result.record_stream(consumer)
+        observed = result.clone()
+    consumer.synchronize()
+
+    expected = data[:, 5:53, 9:65]
+    assert np.array_equal(observed.cpu().numpy(), expected)
+
+
+@pytest.mark.skipif(
+    not _CUDA_AVAILABLE or torch.cuda.device_count() < 2,
+    reason="two CUDA devices are not available")
+def test_reads_run_concurrently_on_two_cuda_devices(scenes):
+    barrier = threading.Barrier(2)
+
+    def read_on(device_index, scene):
+        path, header, data = scene
+        with torch.cuda.device(device_index):
+            stream = torch.cuda.Stream(device=device_index)
+            barrier.wait(timeout=10)
+            with torch.cuda.stream(stream):
+                result = rumi.read(
+                    path, header, framework="torch",
+                    device=f"cuda:{device_index}",
+                    window=(7, 11, 52, 61))
+            stream.synchronize()
+            observed = result.cpu().numpy()
+        return observed, data[:, 7:59, 11:72]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(read_on, 0, scenes[0]),
+            pool.submit(read_on, 1, scenes[1]),
+        ]
+        results = [future.result(timeout=30) for future in futures]
+
+    for observed, expected in results:
+        assert np.array_equal(observed, expected)
 
 
 @pytest.mark.parametrize(("device", "torch_type"), _TORCH_DEVICES)

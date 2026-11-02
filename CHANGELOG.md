@@ -4,6 +4,15 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- PyTorch MPS reads wait on an event from the current stream instead of
+  synchronizing the whole device.
+
+### Changed
+
+- Documented CUDA stream ownership and event handoff for direct GPU reads.
+
 ## [0.27.0] - 2026-11-02
 
 ### Fixed

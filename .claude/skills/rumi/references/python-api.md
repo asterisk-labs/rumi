@@ -166,7 +166,11 @@ more than one item. Sources may repeat and may mix paths, URIs and bytes. See
 `reading.md` for the compatibility rules and a DataLoader recipe.
 
 With `framework="torch"`, `device="cuda:N"` or `device="mps"` keeps the batch on that
-GPU; no decoded copy returns through CPU memory.
+GPU; no decoded copy returns through CPU memory. CUDA work is queued on the current
+PyTorch stream. Consume the result there, or record an event after the read and make
+another stream wait for it; call `result.record_stream(consumer)` when its lifetime may
+end before the consumer finishes. Metal waits on the current MPS stream before its own
+queue writes the result and finishes that write before returning.
 
 ## 6. `info` and `Metadata`
 

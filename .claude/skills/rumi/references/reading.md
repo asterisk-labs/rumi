@@ -201,6 +201,12 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
   one- and two-byte PFOR and PivCo frames decode on the device; other frames use CPU
   staging before the result is placed in the PyTorch tensor. A `RumiArray` exports once;
   a second export raises `RuntimeError: this RumiArray was already exported`.
+- CUDA reads enqueue work on the current PyTorch stream. Use the tensor on that stream,
+  or record an event after the read and make the consumer stream wait for it. Call
+  `tensor.record_stream(consumer)` when the tensor may be released before that stream
+  finishes. Rumi does not synchronize the CUDA device.
+- Metal waits for pending PyTorch work on the current MPS stream, then completes its own
+  Metal command buffer before returning. It does not synchronize unrelated MPS streams.
 - Every registered dtype is an exact PyTorch CPU DLPack dtype. NumPy, JAX and
   TensorFlow accept exact subsets; incompatible dtypes fail before the source is opened.
   JAX 64-bit dtypes require `jax_enable_x64`.

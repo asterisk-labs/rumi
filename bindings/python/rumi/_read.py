@@ -204,7 +204,9 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     ``"tensorflow"``, or ``"dlpack"``. The last returns a RumiArray
     implementing the DLPack protocol. ``device="cuda:N"`` or ``device="mps"``
     writes directly into a PyTorch GPU tensor and requires
-    ``framework="torch"``. CPU reads use the process-wide thread pool; call
+    ``framework="torch"``. CUDA work is enqueued on PyTorch's current stream;
+    use the result there, or make another stream wait on an event recorded
+    after the read. CPU reads use the process-wide thread pool; call
     ``set_num_threads`` before the first parallel read to set its size.
     """
     if isinstance(source, Dataset):
@@ -273,7 +275,9 @@ def read_many(sources: Sequence[_ReadTarget],
     ``headers[i]`` is the header returned with ``sources[i]`` by ``write``.
     For an existing file, use ``info(source=...).header`` to rebuild it.
     ``framework="torch"`` with ``device="cuda:N"`` or ``device="mps"`` returns
-    the batch on that GPU.
+    the batch on that GPU. CUDA work is enqueued on PyTorch's current stream;
+    transfer that dependency with an event before consuming the batch from a
+    different stream.
     """
     if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
         raise TypeError("read_many takes a sequence of sources; use read for one")

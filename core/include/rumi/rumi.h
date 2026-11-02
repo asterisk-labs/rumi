@@ -394,10 +394,12 @@ rumi_read(rumi_source*     src,
 
 // GPU form of rumi_read. dst is the backend's native destination: a CUDA
 // device pointer or a Metal MTLBuffer object. stream is the native CUDA stream;
-// pass NULL for Metal. CUDA work may still be pending when this returns. Metal
-// callers must finish earlier work touching dst before the call; this function
-// finishes its Metal work before returning and retains dst until synchronization,
-// the next read, or context destruction.
+// pass NULL for Metal. CUDA work may still be pending when this returns. Consume
+// dst on that stream, or make another stream wait on an event recorded after the
+// read. Keep dst alive until the consumer finishes. Metal callers must finish
+// earlier work touching dst before the call; this function finishes its Metal
+// work before returning and retains dst until synchronization, the next read,
+// or context destruction.
 RUMI_API rumi_status
 rumi_read_gpu(rumi_gpu*        gpu,
               rumi_source*     src,

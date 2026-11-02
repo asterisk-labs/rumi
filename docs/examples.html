@@ -382,7 +382,7 @@ assert batch.shape == (3, 4, 128, 128)</code></pre>
         <section class="guide-section" id="frameworks">
           <div class="section-label"><span>08</span><small>Frameworks</small></div>
           <h2>Return the tensor your pipeline expects</h2>
-          <p class="section-intro">Rumi decodes on the CPU. Select the destination at the read boundary so most results transfer through DLPack without an intermediate NumPy copy.</p>
+          <p class="section-intro">Select the destination at the read boundary. CPU results transfer through DLPack without an intermediate NumPy copy, while PyTorch can request direct CUDA or Metal reads.</p>
           <div class="code-group" data-code-group>
             <div data-language-panel="python">
               <pre><code>numpy_chip = rumi.read(cube_path, cube_header)
@@ -397,6 +397,10 @@ tensorflow_chip = rumi.read(
 )
 dlpack_chip = rumi.read(
     cube_path, cube_header, framework="dlpack"
+)
+cuda_chip = rumi.read(
+    cube_path, cube_header,
+    framework="torch", device="cuda:0"
 )</code></pre>
             </div>
             <div data-language-panel="r" data-coming-soon>
@@ -419,6 +423,7 @@ dlpack_chip = rumi.read(
             </table>
           </div>
           <p>Every Rumi dtype maps exactly to a CPU dtype accepted by PyTorch. NumPy, JAX and TensorFlow accept exact subsets. Rumi checks compatibility before opening the source and never casts or returns a byte view.</p>
+          <p>CUDA reads use PyTorch's current stream. Consume the tensor there, or record an event after the read and make another stream wait for it. Metal waits for pending work on the current MPS stream and finishes Rumi's own Metal write before returning.</p>
         </section>
 
         <section class="guide-section" id="metadata">
