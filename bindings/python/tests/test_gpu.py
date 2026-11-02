@@ -141,7 +141,7 @@ stop = threading.Event()
 
 def work():
     while not stop.is_set():
-        torch.nn.functional.max_pool2d(image, 2)
+        torch.nn.functional.max_pool2d(image, 2).sum().item()
 
 thread = threading.Thread(target=work)
 thread.start()
@@ -291,9 +291,8 @@ def test_partial_read_writes_a_gpu_tensor(
             bands=[3, 1], window=(7, 11, 63, 75))
 
     assert result.device.type == torch_type
-    expected = torch.from_numpy(
-        data[[3, 1], 7:70, 11:86].copy()).to(device)
-    assert torch.equal(result, expected)
+    expected = data[[3, 1], 7:70, 11:86]
+    assert np.array_equal(result.cpu().numpy(), expected)
 
 
 @pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
@@ -325,4 +324,19 @@ def test_read_many_preserves_item_order(
         for item, (row, col, height, width) in zip(scenes, windows, strict=True)
     ])
     assert result.device.type == torch_type
-    assert torch.equal(result, torch.from_numpy(expected.copy()).to(device))
+    assert np.array_equal(result.cpu().numpy(), expected)
+
+
+@pytest.mark.skipif(not _MPS_AVAILABLE, reason="Metal is not available")
+@pytest.mark.skipif(
+    not hasattr(torch.mps, "Stream"), reason="MPS streams are not available")
+def test_mps_read_from_a_nondefault_stream(scenes):
+    path, header, data = scenes[0]
+    stream = torch.mps.Stream()
+    with torch.mps.stream(stream):
+        result = rumi.read(
+            path, header, framework="torch", device="mps",
+            window=(0, 0, 32, 32))
+
+    stream.synchronize()
+    assert np.array_equal(result.cpu().numpy(), data[:, :32, :32])

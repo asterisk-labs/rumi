@@ -133,6 +133,10 @@ def _empty(dtype: DType, shape: tuple[int, ...], device: str):
 def _wait_for_mps() -> None:
     import torch
 
+    # Events cannot record non-default streams in the multi-stream MPS API.
+    if hasattr(torch.mps, "current_stream"):
+        torch.mps.synchronize()
+        return
     event = torch.mps.event.Event()
     event.record()
     event.synchronize()
