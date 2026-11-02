@@ -27,7 +27,9 @@ mps_chip = rumi.read(path, header, framework="torch", device="mps",
                      window=(row, column, height, width))
 ```
 
-The header, byte ranges and copy plan stay on the CPU. Decoded samples remain on
-the selected GPU. GPU frame planning follows `rumi.set_num_threads` or
+The header, byte ranges and copy plan stay on the CPU. PFOR and PivCo frames of
+one- and two-byte samples decode on the device; other frames use CPU staging
+before GeoZL writes the result to the selected GPU. MPS reads require PyTorch
+2.10 or newer. GPU frame planning follows `rumi.set_num_threads` or
 `RUMI_NUM_THREADS`, set before the first read, and defaults to one thread per
 process. R and Julia device arrays are not implemented yet.
