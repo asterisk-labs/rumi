@@ -4,6 +4,13 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-02
+
+### Fixed
+
+- Metal reads work from default and non-default PyTorch MPS streams across the
+  supported PyTorch versions.
+
 ## [0.27.0-alpha.4] - 2026-11-01
 
 ### Fixed
@@ -584,7 +591,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.4...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.4...v0.27.0
 [0.27.0-alpha.4]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.3...v0.27.0-alpha.4
 [0.27.0-alpha.3]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.2...v0.27.0-alpha.3
 [0.27.0-alpha.2]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.1...v0.27.0-alpha.2
