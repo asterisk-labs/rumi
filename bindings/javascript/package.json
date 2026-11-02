@@ -1,6 +1,6 @@
 {
   "name": "@asterisk-labs/rumi",
-  "version": "0.27.0-alpha.3",
+  "version": "0.27.0-alpha.4",
   "description": "Range-based Rumi Image and Cube reader for browsers and Node.js",
   "repository": {
     "type": "git",

@@ -4,12 +4,15 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.27.0-alpha.4] - 2026-11-01
+
 ### Fixed
 
 - PyTorch MPS reads wait for pending work before GeoZL writes through its own
   Metal queue, preventing recycled buffers from being overwritten later.
 - Metal reads release GeoZL's reference to the output tensor when the read
   finishes, and GPU contexts are not destroyed while another thread uses them.
+- Reads on separate CUDA devices no longer wait on each other's context lock.
 
 ## [0.27.0-alpha.3] - 2026-11-01
 
@@ -582,7 +585,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.3...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.4...HEAD
+[0.27.0-alpha.4]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.3...v0.27.0-alpha.4
 [0.27.0-alpha.3]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.2...v0.27.0-alpha.3
 [0.27.0-alpha.2]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.1...v0.27.0-alpha.2
 [0.27.0-alpha.1]: https://github.com/asterisk-labs/rumi/compare/v0.26.1...v0.27.0-alpha.1
