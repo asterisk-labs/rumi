@@ -369,6 +369,7 @@ RUMI_API rumi_status
 rumi_gpu_create(int device_type, int device, size_t threads,
                 size_t max_decoded_bytes, rumi_gpu** out);
 RUMI_API void rumi_gpu_destroy(rumi_gpu* gpu);
+// Wait for queued work and release any target retained by the context.
 RUMI_API rumi_status rumi_gpu_synchronize(rumi_gpu* gpu);
 
 // All read entry points may be called concurrently. Parsed specs and immutable
@@ -393,7 +394,10 @@ rumi_read(rumi_source*     src,
 
 // GPU form of rumi_read. dst is the backend's native destination: a CUDA
 // device pointer or a Metal MTLBuffer object. stream is the native CUDA stream;
-// pass NULL for Metal. Work may still be pending when this returns.
+// pass NULL for Metal. CUDA work may still be pending when this returns. Metal
+// callers must finish earlier work touching dst before the call; this function
+// finishes its Metal work before returning and retains dst until synchronization,
+// the next read, or context destruction.
 RUMI_API rumi_status
 rumi_read_gpu(rumi_gpu*        gpu,
               rumi_source*     src,

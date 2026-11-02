@@ -4,6 +4,13 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- PyTorch MPS reads wait for pending work before GeoZL writes through its own
+  Metal queue, preventing recycled buffers from being overwritten later.
+- Metal reads release GeoZL's reference to the output tensor when the read
+  finishes, and GPU contexts are not destroyed while another thread uses them.
+
 ## [0.27.0-alpha.3] - 2026-11-01
 
 ### Added

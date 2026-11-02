@@ -3,6 +3,7 @@ from __future__ import annotations
 import atexit
 import os
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ._config import get_num_threads
@@ -28,19 +29,26 @@ class _Context:
 
 _contexts: dict[tuple[int, int], _Context] = {}
 _contexts_lock = threading.Lock()
+_closing = False
 
 
 def _after_fork() -> None:
     # GPU contexts inherited through fork must not be touched by the child.
-    global _contexts_lock
+    global _closing, _contexts_lock
     _contexts.clear()
+    _closing = False
     _contexts_lock = threading.Lock()
 
 
 def _close_contexts() -> None:
-    for context in _contexts.values():
-        context.close()
-    _contexts.clear()
+    global _closing
+    with _contexts_lock:
+        _closing = True
+        contexts = list(_contexts.values())
+        _contexts.clear()
+    for context in contexts:
+        with context.lock:
+            context.close()
 
 
 if hasattr(os, "register_at_fork"):
@@ -48,22 +56,27 @@ if hasattr(os, "register_at_fork"):
 atexit.register(_close_contexts)
 
 
-def _context(device_type: int, index: int) -> _Context:
+@contextmanager
+def _context(device_type: int, index: int):
     key = device_type, index
     with _contexts_lock:
+        if _closing:
+            raise RuntimeError("GPU contexts are shutting down")
         context = _contexts.get(key)
-        if context is not None:
-            return context
-        if not lib.rumi_gpu_available(device_type):
-            backend = "CUDA" if device_type == _CUDA else "Metal"
-            raise RuntimeError(f"this rumi build has no {backend} support")
-        out = ffi.new("rumi_gpu**")
-        threads = get_num_threads()
-        _check(lib.rumi_gpu_create(
-            device_type, index, threads, _BATCH_BYTES, out))
-        context = _Context(out[0], threading.Lock())
-        _contexts[key] = context
-        return context
+        if context is None:
+            if not lib.rumi_gpu_available(device_type):
+                backend = "CUDA" if device_type == _CUDA else "Metal"
+                raise RuntimeError(f"this rumi build has no {backend} support")
+            out = ffi.new("rumi_gpu**")
+            threads = get_num_threads()
+            _check(lib.rumi_gpu_create(
+                device_type, index, threads, _BATCH_BYTES, out))
+            context = _Context(out[0], threading.Lock())
+            _contexts[key] = context
+    with context.lock:
+        if context.handle == ffi.NULL:
+            raise RuntimeError("GPU contexts are shutting down")
+        yield context
 
 
 def _torch_device(device: str):
@@ -117,8 +130,24 @@ def _empty(dtype: DType, shape: tuple[int, ...], device: str):
     return tensor, device_type, index
 
 
+def _wait_for_mps() -> None:
+    import torch
+
+    event = torch.mps.event.Event()
+    event.record()
+    event.synchronize()
+
+
 def _metal_target(tensor):
-    capsule, managed = _borrow_versioned(tensor)
+    # A recycled buffer may still be used by earlier PyTorch work.
+    _wait_for_mps()
+    try:
+        capsule, managed = _borrow_versioned(tensor)
+    except TypeError as exc:
+        if "max_version" not in str(exc):
+            raise
+        raise RuntimeError(
+            "MPS reads require PyTorch 2.10 or newer") from None
     if managed.version.major != 1:
         raise RuntimeError("PyTorch returned an unsupported DLPack version")
     if managed.flags & 1:
@@ -138,14 +167,13 @@ def read_one(source, spec, times, n_times, bands, n_bands,
                    n_bands or spec.fields.samples_per_pixel,
                    y_size, x_size, pattern, spec.fields.time_count)
     tensor, device_type, index = _empty(dtype, shape, device)
-    context = _context(device_type, index)
 
     import torch
 
-    if device_type == _CUDA:
-        with torch.cuda.device(index):
-            stream = torch.cuda.current_stream(index).cuda_stream
-            with context.lock:
+    with _context(device_type, index) as context:
+        if device_type == _CUDA:
+            with torch.cuda.device(index):
+                stream = torch.cuda.current_stream(index).cuda_stream
                 _check(lib.rumi_read_gpu(
                     context.handle, source.handle, spec.handle,
                     times, n_times, bands, n_bands,
@@ -154,16 +182,16 @@ def read_one(source, spec, times, n_times, bands, n_bands,
                     tensor.numel() * tensor.element_size(),
                     ffi.cast("void*", stream),
                 ))
-    else:
-        capsule, target = _metal_target(tensor)
-        with context.lock:
+        else:
+            capsule, target = _metal_target(tensor)
             _check(lib.rumi_read_gpu(
                 context.handle, source.handle, spec.handle,
                 times, n_times, bands, n_bands,
                 y_off, y_size, x_off, x_size, pattern,
                 target, tensor.numel() * tensor.element_size(), ffi.NULL,
             ))
-        del capsule
+            _check(lib.rumi_gpu_synchronize(context.handle))
+            del capsule
     return tensor
 
 
@@ -174,14 +202,13 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
                    n_bands or fields.samples_per_pixel,
                    y_size, x_size, pattern, fields.time_count)
     tensor, device_type, index = _empty(dtype, shape, device)
-    context = _context(device_type, index)
 
     import torch
 
-    if device_type == _CUDA:
-        with torch.cuda.device(index):
-            stream = torch.cuda.current_stream(index).cuda_stream
-            with context.lock:
+    with _context(device_type, index) as context:
+        if device_type == _CUDA:
+            with torch.cuda.device(index):
+                stream = torch.cuda.current_stream(index).cuda_stream
                 _check(lib.rumi_read_many_gpu(
                     context.handle, items, n_items,
                     times, n_times, bands, n_bands,
@@ -190,14 +217,14 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
                     tensor.numel() * tensor.element_size(),
                     ffi.cast("void*", stream),
                 ))
-    else:
-        capsule, target = _metal_target(tensor)
-        with context.lock:
+        else:
+            capsule, target = _metal_target(tensor)
             _check(lib.rumi_read_many_gpu(
                 context.handle, items, n_items,
                 times, n_times, bands, n_bands,
                 y_size, x_size, pattern,
                 target, tensor.numel() * tensor.element_size(), ffi.NULL,
             ))
-        del capsule
+            _check(lib.rumi_gpu_synchronize(context.handle))
+            del capsule
     return tensor

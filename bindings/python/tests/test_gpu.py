@@ -1,7 +1,13 @@
+import os
+import subprocess
+import sys
+import threading
+
 import numpy as np
 import pytest
 import rumi
 from _labels import labels
+from rumi import _gpu
 from rumi._ffi import ffi, lib
 
 geozl = pytest.importorskip("geozl")
@@ -12,6 +18,7 @@ _METAL = lib.RUMI_DEVICE_METAL
 _CUDA_AVAILABLE = torch.cuda.is_available() and bool(lib.rumi_gpu_available(_CUDA))
 _MPS_AVAILABLE = (torch.backends.mps.is_available()
                   and bool(lib.rumi_gpu_available(_METAL)))
+_METAL_VALIDATION = os.environ.get("MTL_DEBUG_LAYER") == "1"
 _DEVICES = [
     pytest.param(
         _CUDA, "cuda:0", "cuda",
@@ -55,10 +62,192 @@ def scenes(tmp_path_factory):
     return out
 
 
+@pytest.fixture(scope="module")
+def mps_scene(tmp_path_factory):
+    data = np.random.default_rng(7).integers(
+        0, 3000, (1, 256, 256), dtype=np.uint16)
+    table = rumi.frames(
+        data, "b (row h) (col w) -> row col b (h w)", tile_size=256)
+    for frame in table:
+        frame.compressed = geozl.compress(
+            frame.data,
+            graph=geozl.graph(
+                frame.data, "planar>zigzag>transpose>pivco"),
+        )
+    path, header = rumi.write(
+        tmp_path_factory.mktemp("mps") / "scene.rumi",
+        table, **labels(table))
+    return path, header, data
+
+
+def _pending_mps_write(image):
+    event = torch.mps.event.Event()
+    event.record()
+    event.synchronize()
+    output = torch.nn.functional.max_pool2d(image, 2)
+    del output
+
+
 def test_mps_rejects_a_nonzero_device(scenes):
     path, header, _ = scenes[0]
     with pytest.raises(ValueError, match="MPS exposes only device 0"):
         rumi.read(path, header, framework="torch", device="mps:1")
+
+
+@pytest.mark.skipif(not _MPS_AVAILABLE, reason="Metal is not available")
+@pytest.mark.skipif(
+    _METAL_VALIDATION, reason="PyTorch max_pool2d fails under Metal validation")
+def test_mps_read_waits_for_pending_torch_work(mps_scene):
+    path, header, expected = mps_scene
+    image = torch.rand((1, 2, 256, 256), device="mps")
+    for _ in range(5):
+        _pending_mps_write(image)
+        result = rumi.read(
+            path, header, framework="torch", device="mps")
+        assert np.array_equal(result.cpu().numpy(), expected)
+
+
+@pytest.mark.skipif(not _MPS_AVAILABLE, reason="Metal is not available")
+@pytest.mark.skipif(
+    _METAL_VALIDATION, reason="PyTorch max_pool2d fails under Metal validation")
+def test_mps_read_many_waits_for_pending_torch_work(mps_scene):
+    path, header, data = mps_scene
+    expected = np.stack([data, data])
+    image = torch.rand((1, 4, 256, 256), device="mps")
+    for _ in range(5):
+        _pending_mps_write(image)
+        result = rumi.read_many(
+            [path, path], [header, header],
+            framework="torch", device="mps")
+        assert np.array_equal(result.cpu().numpy(), expected)
+
+
+@pytest.mark.skipif(not _MPS_AVAILABLE, reason="Metal is not available")
+def test_mps_read_is_safe_while_another_thread_uses_torch(mps_scene):
+    path, header, _ = mps_scene
+    header_path = path.with_suffix(".header")
+    header_path.write_bytes(header)
+    src = """
+import sys
+import threading
+
+import rumi
+import torch
+
+path, header_path = sys.argv[1:]
+header = open(header_path, "rb").read()
+image = torch.rand((1, 2, 256, 256), device="mps")
+stop = threading.Event()
+
+def work():
+    while not stop.is_set():
+        torch.nn.functional.max_pool2d(image, 2)
+
+thread = threading.Thread(target=work)
+thread.start()
+try:
+    for _ in range(20):
+        rumi.read(path, header, framework="torch", device="mps")
+finally:
+    stop.set()
+    thread.join()
+"""
+    env = os.environ.copy()
+    for name in (
+        "MTL_DEBUG_LAYER", "MTL_DEBUG_LAYER_ERROR_MODE",
+        "MTL_SHADER_VALIDATION", "MTL_SHADER_VALIDATION_REPORT_TO_STDERR",
+    ):
+        env.pop(name, None)
+    done = subprocess.run(
+        [sys.executable, "-c", src, str(path), str(header_path)],
+        capture_output=True, text=True, timeout=30, env=env)
+    assert done.returncode == 0, done.stderr
+
+
+def test_mps_requires_versioned_dlpack(monkeypatch):
+    monkeypatch.setattr(_gpu, "_wait_for_mps", lambda: None)
+
+    def old_dlpack(_tensor):
+        raise TypeError("__dlpack__() got an unexpected keyword argument 'max_version'")
+
+    monkeypatch.setattr(_gpu, "_borrow_versioned", old_dlpack)
+    with pytest.raises(
+            RuntimeError, match="MPS reads require PyTorch 2.10 or newer"):
+        _gpu._metal_target(object())
+
+
+def test_gpu_shutdown_waits_for_an_active_context(monkeypatch):
+    started = threading.Event()
+    closed = threading.Event()
+
+    class Context:
+        lock = threading.Lock()
+
+        @staticmethod
+        def close():
+            closed.set()
+
+    context = Context()
+    monkeypatch.setattr(_gpu, "_contexts", {(_METAL, 0): context})
+    monkeypatch.setattr(_gpu, "_closing", False)
+
+    context.lock.acquire()
+
+    def close():
+        started.set()
+        _gpu._close_contexts()
+
+    thread = threading.Thread(target=close, daemon=True)
+    thread.start()
+    try:
+        assert started.wait(timeout=1)
+        assert not closed.is_set()
+    finally:
+        context.lock.release()
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert closed.is_set()
+    assert _gpu._closing
+
+
+def test_gpu_context_is_not_created_during_shutdown(monkeypatch):
+    monkeypatch.setattr(_gpu, "_closing", True)
+    with pytest.raises(RuntimeError, match="GPU contexts are shutting down"):
+        with _gpu._context(_METAL, 0):
+            pass
+
+
+def test_waiting_for_one_context_does_not_lock_the_context_table(monkeypatch):
+    waiting = threading.Event()
+    release = threading.Event()
+
+    class Lock:
+        def __enter__(self):
+            waiting.set()
+            release.wait()
+
+        def __exit__(self, *_args):
+            pass
+
+    context = _gpu._Context(object(), Lock())
+    monkeypatch.setattr(_gpu, "_contexts", {(_CUDA, 0): context})
+    monkeypatch.setattr(_gpu, "_closing", False)
+
+    def use_context():
+        with _gpu._context(_CUDA, 0):
+            pass
+
+    thread = threading.Thread(target=use_context, daemon=True)
+    thread.start()
+    try:
+        assert waiting.wait(timeout=1)
+        assert _gpu._contexts_lock.acquire(timeout=1)
+        _gpu._contexts_lock.release()
+    finally:
+        release.set()
+    thread.join(timeout=1)
+    assert not thread.is_alive()
 
 
 @pytest.mark.parametrize(("device_type", "device", "torch_type"), _DEVICES)
