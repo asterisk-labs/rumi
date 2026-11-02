@@ -70,7 +70,7 @@ jobs:
           PORT=4399 node node_modules/@asterisk-labs/rumi/playground/server.mjs >server.log 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          for attempt in {1..20}; do
+          for _ in {1..20}; do
             if curl -fs -o /dev/null http://127.0.0.1:4399/geozl/geozl_api.js; then
               ready=yes
               break
@@ -243,6 +243,10 @@ jobs:
           python -m pip install wheelhouse/*.whl
           python -m pip install -q pytest
           python -m pip install -q --index-url https://download.pytorch.org/whl/cpu 'torch==2.11.*'
+          python - <<'PY'
+          from rumi._ffi import lib
+          assert lib.rumi_gpu_available(lib.RUMI_DEVICE_CUDA)
+          PY
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -332,6 +336,10 @@ jobs:
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
           python -m pip install -q pytest 'torch==2.11.*'
+          python - <<'PY'
+          from rumi._ffi import lib
+          assert lib.rumi_gpu_available(lib.RUMI_DEVICE_METAL)
+          PY
           python bindings/python/tests/smoke.py
           python -m pytest bindings/python/tests -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -528,10 +536,15 @@ jobs:
             echo "$package@$version is already published; skipping"
             exit 0
           fi
-          latest=$(npm view "$package" dist-tags.latest 2>/dev/null || true)
           tag=latest
-          case "$version" in *-*) tag=next ;; esac
-          if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$version" "$latest" | sort -V | tail -1)" != "$version" ]; then
-            tag=next
-          fi
+          case "$version" in
+            *-*) tag=next ;;
+            *)
+              latest=$(npm view "$package" dist-tags.latest 2>/dev/null || true)
+              latest=${latest%%-*}
+              if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$version" "$latest" | sort -V | tail -1)" != "$version" ]; then
+                tag=next
+              fi
+              ;;
+          esac
           npm publish ./npm-dist/*.tgz --access public --tag "$tag"
