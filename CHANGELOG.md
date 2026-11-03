@@ -4,6 +4,10 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Direct GPU reads batch local frame I/O and overlap it with decoding.
+
 ## [0.27.1] - 2026-11-02
 
 ### Fixed

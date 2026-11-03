@@ -527,14 +527,19 @@ decode_tasks(Executor& executor, const Plan& plan,
 }
 
 std::expected<void, Error>
-execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
+execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
+                   auto&& locator_of, auto&& decode)
 {
     std::vector<karu_req> requests;
     std::vector<FrameTask> local_tasks;
-    requests.reserve(plan.tasks.size());
-    local_tasks.reserve(plan.tasks.size());
-    for (FrameTask& task : plan.tasks) {
-        const karu_locator* locator = task.source->remote_locator();
+    try {
+        requests.reserve(tasks.size());
+        local_tasks.reserve(tasks.size());
+    } catch (const std::bad_alloc&) {
+        return fail(RUMI_ERR_OOM, "could not allocate read batch");
+    }
+    for (FrameTask& task : tasks) {
+        const karu_locator* locator = locator_of(*task.source);
         if (locator) {
             requests.push_back({
                 locator,
@@ -549,7 +554,7 @@ execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
         }
     }
 
-    if (requests.empty()) return decode(plan.tasks);
+    if (requests.empty()) return decode(tasks);
 
     karu_client* client = transport.client();
     if (!client) {
@@ -565,22 +570,24 @@ execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
     }
     std::unique_ptr<karu_batch, KaruBatchFree> batch(raw_batch);
 
-    // Submit the entire remote workload before doing any decoding. Karu keeps
-    // its full opportunity to group and coalesce ranges while its I/O threads
-    // progress independently of local reads and CPU decode.
+    // Karu keeps reading while the caller handles sources that cannot join the
+    // batch and every wave of completed ranges.
     if (auto decoded = decode(local_tasks); !decoded)
         return decoded;
 
     std::vector<KaruBuffer> buffers;
-    // FrameTask borrows the completed payload. Keep every Karu allocation alive
-    // until the whole plan has stopped using its task list.
-    buffers.reserve(requests.size());
     std::vector<FrameTask> ready;
-    ready.reserve(requests.size());
+    try {
+        buffers.reserve(requests.size());
+        ready.reserve(requests.size());
+    } catch (const std::bad_alloc&) {
+        return fail(RUMI_ERR_OOM, "could not retain transport buffers");
+    }
     std::size_t completed = 0;
 
     bool ended = false;
     while (!ended) {
+        buffers.clear();
         ready.clear();
         karu_done done{};
         const karu_status step = karu_batch_next(batch.get(), &done, -1);
@@ -608,9 +615,11 @@ execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
                              static_cast<unsigned long long>(done.got),
                              task->compressed_size);
             }
-            task->compressed = static_cast<const std::byte*>(done.buffer);
             buffers.push_back(std::move(buffer));
-            ready.push_back(*task);
+            FrameTask completed_task = *task;
+            completed_task.compressed =
+                static_cast<const std::byte*>(done.buffer);
+            ready.push_back(completed_task);
             ++completed;
 
             done = {};
@@ -633,6 +642,73 @@ execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
     if (completed != requests.size()) {
         return failf(RUMI_ERR_IO, "transport completed %zu of %zu frame reads",
                      completed, requests.size());
+    }
+    return {};
+}
+
+std::expected<void, Error>
+execute_plan_batches(Plan& plan, TransportSession& transport, auto&& decode)
+{
+    return execute_task_batch(
+        plan.tasks, transport,
+        [](Source& source) { return source.remote_locator(); },
+        decode);
+}
+
+const karu_locator* transport_locator(Source& source) noexcept
+{
+    const auto* transport = dynamic_cast<const TransportSource*>(&source);
+    return transport ? transport->transport_locator() : nullptr;
+}
+
+std::expected<std::size_t, Error>
+gpu_batch_end(std::span<const FrameTask> tasks, std::size_t first,
+              std::size_t budget)
+{
+    std::size_t decoded = 0;
+    std::size_t encoded = 0;
+    std::size_t last = first;
+    while (last < tasks.size()) {
+        const FrameTask& task = tasks[last];
+        if (task.frame_bytes > budget) {
+            return failf(RUMI_ERR_INVALID,
+                         "frame %zu needs %zu decoded bytes, GPU budget is %zu",
+                         last, task.frame_bytes, budget);
+        }
+        if (task.compressed_size > budget) {
+            return failf(RUMI_ERR_INVALID,
+                         "frame %zu has %u compressed bytes, GPU budget is %zu",
+                         last, task.compressed_size, budget);
+        }
+        if (decoded > budget - task.frame_bytes
+            || encoded > budget - task.compressed_size) {
+            break;
+        }
+        decoded += task.frame_bytes;
+        encoded += task.compressed_size;
+        ++last;
+    }
+    if (last == first) {
+        return fail(RUMI_ERR_INVALID, "GPU decode batch is empty");
+    }
+    return last;
+}
+
+std::expected<void, Error>
+execute_gpu_plan_batches(Plan& plan, TransportSession& transport,
+                         std::size_t budget, auto&& decode)
+{
+    std::size_t first = 0;
+    while (first < plan.tasks.size()) {
+        auto end = gpu_batch_end(plan.tasks, first, budget);
+        if (!end) return std::unexpected(std::move(end.error()));
+        const std::size_t last = *end;
+        std::span<FrameTask> tasks(plan.tasks.data() + first, last - first);
+        if (auto decoded = execute_task_batch(
+                tasks, transport, transport_locator, decode); !decoded) {
+            return decoded;
+        }
+        first = last;
     }
     return {};
 }
@@ -793,7 +869,8 @@ read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
         return fail(RUMI_ERR_UNSUPPORTED,
                     "GPU reads do not support boolean samples yet");
     }
-    return execute_plan_batches(plan, transport, [&](auto tasks) {
+    return execute_gpu_plan_batches(
+        plan, transport, gpu.max_decoded_bytes(), [&](auto tasks) {
         return gpu.decode(plan, tasks, dst, dst_size, stream);
     });
 }

@@ -635,6 +635,9 @@ public:
     [[nodiscard]] const karu_locator*
     remote_locator() const noexcept override;
 
+    // Used internally to batch positional reads from both paths and URIs.
+    [[nodiscard]] const karu_locator* transport_locator() const noexcept;
+
 private:
     TransportSource() = default;
     karu_locator* locator_{};
