@@ -32,7 +32,7 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.27.0 | Where it is pinned |
+| Component | Rumi 0.27.1 | Where it is pinned |
 | --- | --- | --- |
 | GeoZL | 0.20.0 | `extern/geozl` submodule; `geozl>=0.20.0,<0.21` in the package dependencies |
 | OpenZL | 0.3.0 | through GeoZL's submodule |

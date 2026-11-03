@@ -23,6 +23,8 @@ assets/js/
   backdrop.js         the animated tile grid
   router.js           hash router over the templates
   main.js             navigation state, copy control, boot
+  reader.js           interactive frame-selection diagram
+  examples.js         example code cards and copy controls
 assets/svg/           project marks and icons, one file each
 ```
 
