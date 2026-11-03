@@ -1,6 +1,4 @@
-// What a parameter block has to satisfy, read by both ends and by the binding.
-// Lived inside quant_log_dtype.h before, which is not where the other two
-// families keep it.
+// Parameter validation shared by the encoder, decoder and binding.
 
 #ifndef GEOZL_CODECS_QUANT_LOG_CHECK_H
 #define GEOZL_CODECS_QUANT_LOG_CHECK_H

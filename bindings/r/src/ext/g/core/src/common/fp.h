@@ -1,6 +1,4 @@
-// Floating point landmarks the codecs share. Written out ten times across the
-// three lossy families before, sometimes with a comment saying which power of
-// two it was and sometimes without.
+// Floating point limits shared by the lossy codecs.
 
 #ifndef GEOZL_COMMON_FP_H
 #define GEOZL_COMMON_FP_H

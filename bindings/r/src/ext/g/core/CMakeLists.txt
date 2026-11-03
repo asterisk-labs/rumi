@@ -350,6 +350,20 @@ if(GEOZL_BUILD_FULL)
     endif()
 endif()
 
+# The R source package carries notices under inst/ instead of beside core/.
+# Its package installer handles those files; a repository CMake install
+# installs them with the native libraries and public headers.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../NOTICE"
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../licenses")
+    install(FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../NOTICE"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/geozl")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../licenses/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/geozl")
+endif()
+
 if(GEOZL_BUILD_KERNELS_SHARED)
     add_library(geozl_kernels SHARED ${GEOZL_KERNELS})
     # The kernel headers carry no export attribute, so a Windows DLL needs every

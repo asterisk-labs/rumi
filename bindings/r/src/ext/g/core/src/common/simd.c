@@ -47,9 +47,8 @@ static int top_of(unsigned mask) {
   return best;
 }
 
-/* Paths GEOZL_SIMD leaves on the table. Unset, or set to something this build
-   does not know, allows everything; NEON used to double as that sentinel, which
-   meant GEOZL_SIMD=avx512 quietly meant no ceiling at all. */
+/* Unset or unrecognized GEOZL_SIMD values impose no ceiling on the available
+   paths. Use a separate sentinel because NEON is a valid path. */
 #define GEOZL_SIMD_ALL_ALLOWED (~0u)
 
 static unsigned allowed_from_env(void) {

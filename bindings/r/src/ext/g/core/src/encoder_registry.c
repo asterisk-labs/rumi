@@ -130,29 +130,6 @@ ZL_NodeID geozl_node_pfor(ZL_Compressor *c) {
   return ZL_Compressor_registerTypedEncoder(c, &desc);
 }
 
-ZL_NodeID geozl_node_binoffset(ZL_Compressor *c) {
-  (void)c;
-  return ZL_NODE_ILLEGAL;
-}
-
-ZL_NodeID geozl_node_intmult(ZL_Compressor *c, uint64_t base) {
-  (void)c;
-  (void)base;
-  return ZL_NODE_ILLEGAL;
-}
-
-ZL_NodeID geozl_node_floatquant(ZL_Compressor *c, unsigned k) {
-  (void)c;
-  (void)k;
-  return ZL_NODE_ILLEGAL;
-}
-
-ZL_NodeID geozl_node_floatmult(ZL_Compressor *c, double base) {
-  (void)c;
-  (void)base;
-  return ZL_NODE_ILLEGAL;
-}
-
 ZL_NodeID geozl_node_nodata(ZL_Compressor *c, uint32_t width,
                             geozl_nodata_mode mode, uint64_t valueBits,
                             int dtype, double radius) {

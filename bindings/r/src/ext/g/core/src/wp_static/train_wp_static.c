@@ -1,11 +1,10 @@
 // Fit the wp_static kernel from a tile: ridge normal equations for the
 // coefficients, then the shift with the lowest residual byte-plane entropy.
-// Candidate 0 is planar and the winner is by argmin, so the fit never loses to
-// planar; and since encode and decode apply the same K, a poor fit only costs
-// ratio, never correctness. The 1 and 2 byte paths are unchanged. For 4 and 8
-// byte samples the normal equations are scaled by the largest neighbour, which
-// leaves the least-squares minimiser unchanged (scaling both sides of the fit
-// by one constant) while keeping the products exact in double.
+// Candidate 0 is planar, so a fitted predictor is chosen only when its
+// estimated byte-plane cost beats planar. Encode and decode use the same
+// coefficients, so a poor fit affects compression ratio, not reconstruction.
+// For 4 and 8 byte samples, scaling the normal equations by the largest
+// neighbour reduces the magnitude of the products accumulated in double.
 
 #include "train_wp_static.h"
 
@@ -85,7 +84,7 @@ static int solve4(double A[4][4], double b[4], double x[4]) {
 
 // Normal equations: target is the planar residual (row[c] - left), features the
 // four neighbours above, both divided by sc (see header). sc is 1 for narrow
-// samples, so that path is unchanged.
+// samples.
 #define WP_ACCUM(T)                                                            \
   do {                                                                         \
     const T *s = (const T *)src;                                               \
@@ -302,10 +301,9 @@ int wp_static_train(int16_t coeffs[4], uint8_t *shift, const void *src,
   for (int p = 0; p < nplanes; ++p)
     planar_cost += plane_H(hist[0][p], nb_elts);
 
-  // The order-0 byte-plane proxy is close to the coded size at 1/2 bytes, so
-  // the choice is a plain argmin there (margin 0, unchanged). At 4/8 bytes the
-  // proxy is weaker, so a candidate must beat planar by a small relative margin
-  // to be taken, which stops a tile from ever coming out larger than planar.
+  // For 1/2 byte samples, choose the lowest estimated cost. For 4/8 byte
+  // samples, require a small improvement over planar because the byte-plane
+  // proxy is less reliable at predicting the eventual coded size.
   const double margin = (elt_width >= 4) ? planar_cost * 0.003 : 0.0;
 
   int best = 0;

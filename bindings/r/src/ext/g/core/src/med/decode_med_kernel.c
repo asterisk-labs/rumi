@@ -1,4 +1,4 @@
-// Inverse MED predictor, JPEG-LS (ITU-T T.87 A.4.2,
+// Inverse MED predictor, JPEG-LS (ITU-T T.87 A.4.1,
 // https://www.itu.int/rec/T-REC-T.87/en). The traversal lives in
 // decode_med_wavefront.h, shared with med_zigzag; here the stream carries the
 // residuals as they are.
