@@ -83,10 +83,16 @@ def sync(package: Path) -> None:
         copy(karu / part, vendor / "k" / part)
 
     (package / "inst").mkdir(exist_ok=True)
-    shutil.copy2(ROOT / "NOTICE", package / "inst" / "NOTICE")
+    notice = (ROOT / "NOTICE").read_text()
+    marker = "see LICENSE."
+    if notice.count(marker) != 1:
+        raise ValueError("NOTICE must identify Rumi's LICENSE exactly once")
+    notice = notice.replace(marker, "see licenses/LICENSE.GPL-3.", 1)
+    (package / "inst" / "NOTICE").write_text(notice)
     licenses = package / "inst" / "licenses"
     shutil.rmtree(licenses, ignore_errors=True)
     shutil.copytree(ROOT / "licenses", licenses)
+    shutil.copy2(ROOT / "LICENSE", licenses / "LICENSE.GPL-3")
 
 
 def fingerprints(root: Path) -> dict[str, tuple[str, str]]:

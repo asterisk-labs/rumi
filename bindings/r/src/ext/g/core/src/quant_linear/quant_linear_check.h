@@ -1,5 +1,4 @@
-// What a parameter block has to satisfy, read by both ends. Written twice
-// before, and the two copies had drifted.
+// Parameter validation shared by the encoder and decoder.
 
 #ifndef GEOZL_CODECS_QUANT_LINEAR_CHECK_H
 #define GEOZL_CODECS_QUANT_LINEAR_CHECK_H

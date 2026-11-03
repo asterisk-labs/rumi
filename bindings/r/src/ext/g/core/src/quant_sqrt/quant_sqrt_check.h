@@ -1,5 +1,4 @@
-// What a parameter block has to satisfy, read by both ends and by the binding.
-// Written three times before, and the three had drifted.
+// Parameter validation shared by the encoder, decoder and binding.
 
 #ifndef GEOZL_CODECS_QUANT_SQRT_CHECK_H
 #define GEOZL_CODECS_QUANT_SQRT_CHECK_H
@@ -18,8 +17,7 @@ static inline int quant_sqrt_params_ok(const quant_sqrt_params *p, int dtype) {
     return 0;
   // The encoder divides by the square, so the square is what has to be normal. A
   // step that is only positive and finite can still square to zero, and then the
-  // reciprocal is infinity and every sample folds onto one level in silence. The
-  // sign is separate, a negative step squares to a normal number.
+  // reciprocal is infinity and every sample folds onto one level in silence.
   if (!isfinite(p->step) || !(p->step > 0.0) || !(p->step * p->step >= DBL_MIN))
     return 0;
   if (!isfinite(p->offset) || !(p->offset >= 0.0))

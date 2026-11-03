@@ -23,8 +23,7 @@ the development build described here.
 - `RUMI_API_VERSION` and the SONAME remain 1 throughout the unstable pre-1.0 period,
   even when layouts change. Neither the source API nor the ABI is stable; recompile
   after every update. Starting with Rumi 1.0, incompatible ABI changes increment them.
-- The C header is the surface for future R and Julia bindings; `test_c_header.c` keeps it
-  valid C11.
+- The R and Julia readers use the C API; `test_c_header.c` keeps the header valid C11.
 - 0.20.0 removed `rumi_read_stack`, `rumi_read_stack_dlpack`, `rumi_index_file`,
   `rumi_read_geo` and `rumi_read_time`. Use `rumi_read_many`, `rumi_read_many_dlpack`
   and `rumi_info`.

@@ -70,7 +70,7 @@ on Ubuntu).
 git submodule update --init --recursive      # or: make submodules
 python -m pip install cmake ninja numpy cffi pytest ruff mypy
 make python      # configure, build librumi, stage it, pip install -e, verify the install
-make test        # make python, then pytest bindings/python
+make test        # make python, JavaScript tests, then pytest bindings/python
 make lint        # ruff and mypy with bindings/python/pyproject.toml
 make ctest       # C++ component tests in core/build-tests
 ```
@@ -91,14 +91,14 @@ make ctest       # C++ component tests in core/build-tests
 | `make` / `make python` | build, stage `librumi` into `bindings/python/rumi/_lib`, editable install, check |
 | `make build` | build `core/build/librumi` only |
 | `make lib` | build and stage the library (the CI entry) |
-| `make test` | `make python`, then pytest |
+| `make test` | `make python`, JavaScript tests, then pytest |
 | `make lint` | Ruff and mypy |
 | `make ctest` | configure `core/build-tests` with `RUMI_BUILD_TESTS=ON` and run `rumi_tests` |
 | `make fuzz-check` | build fuzzers with Clang, seed, run each for `FUZZ_TIME` seconds, fail on findings |
 | `make fuzz-replay` | replay `fuzz/replay/` and any cached corpus once |
 | `make docs` | render `SPEC.md` into a deployable copy of `docs/` in `_site/` |
 | `make install` | `cmake --install` into `PREFIX` |
-| `make sync` | validate `VERSION` (and write R metadata once `bindings/r` exists) |
+| `make sync` | validate `VERSION` and update R, Julia and JavaScript manifests |
 | `make clean` | remove builds, caches, staged libraries and fuzz output |
 
 ## 4. Test suites and what they guard

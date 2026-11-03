@@ -18,7 +18,8 @@ and Frame index sections of `SPEC.md`. Shapes and messages below were captured f
 ## 1. Frame pattern grammar
 
 A frame pattern tells `rumi.frames` how to cut an array. It is compiled by the core, so
-C, Python and future bindings share it.
+C and Python use the same pattern compiler. The R and Julia readers use its output
+pattern grammar.
 
 ```text
 <input axes> -> <grid y> <grid x> [<index axes>] (<frame axes>)

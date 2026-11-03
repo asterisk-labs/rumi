@@ -112,6 +112,7 @@ jobs:
           mkdir -p "$dist/$name"
           cp -L "$library" "$dist/$name/"
           cp LICENSE NOTICE "$dist/$name/"
+          cp -R licenses "$dist/$name/"
           tar -C "$dist" -czf "$dist/$name.tar.gz" "$name"
           cp -R bindings/julia "$package"
           export JULIA_DEPOT_PATH="$RUNNER_TEMP/rumi-julia-depot-${{ matrix.julia }}"

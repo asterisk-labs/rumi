@@ -1,13 +1,9 @@
 #include "geozl/geozl.h"
 
 #include "average/decode_average_binding.h"
-#include "binoffset/decode_binoffset_binding.h"
 #include "deinterleave/decode_deinterleave_binding.h"
 #include "delta_n/decode_delta_n_binding.h"
 #include "delta_w/decode_delta_w_binding.h"
-#include "floatmult/decode_floatmult_binding.h"
-#include "floatquant/decode_floatquant_binding.h"
-#include "intmult/decode_intmult_binding.h"
 #include "med/decode_med_binding.h"
 #include "med_zigzag/decode_med_zigzag_binding.h"
 #include "nodata/decode_nodata_binding.h"
@@ -47,10 +43,6 @@ static const ZL_TypedDecoderDesc kDecoders[] = {
     REGISTER(GEOZL_CTID_AVERAGE, DI_AVERAGE),
     REGISTER(GEOZL_CTID_WP_STATIC, DI_WP_STATIC),
     REGISTER(GEOZL_CTID_DEINTERLEAVE, DI_DEINTERLEAVE),
-    REGISTER(GEOZL_CTID_BINOFFSET, DI_BINOFFSET),
-    REGISTER(GEOZL_CTID_INTMULT, DI_INTMULT),
-    REGISTER(GEOZL_CTID_FLOATQUANT, DI_FLOATQUANT),
-    REGISTER(GEOZL_CTID_FLOATMULT, DI_FLOATMULT),
     REGISTER(GEOZL_CTID_NODATA, DI_NODATA),
     REGISTER(GEOZL_CTID_PFOR, DI_PFOR),
     REGISTER(GEOZL_CTID_QUANT_LINEAR, DI_QUANT_LINEAR),

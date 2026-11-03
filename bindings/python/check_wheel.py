@@ -12,6 +12,7 @@ NOTICES = (
     "LICENSE",
     "NOTICE",
     "LICENSE.GeoZL",
+    "LICENSE.DLPack",
     "LICENSE.OpenZL",
     "LICENSE.Zstandard",
     "LICENSE.LZ4",
@@ -21,7 +22,8 @@ NOTICES = (
 )
 LIB_SUFFIXES = (".so", ".dylib", ".dll")
 EXPECTED_NAME = "rumi-eo"
-EXPECTED_VERSION = (Path(__file__).resolve().parents[2] / "VERSION").read_text().strip()
+ROOT = Path(__file__).resolve().parents[2]
+EXPECTED_VERSION = (ROOT / "VERSION").read_text().strip()
 
 
 def check(path: Path) -> list[str]:
@@ -32,8 +34,13 @@ def check(path: Path) -> list[str]:
         if len(metadata_names) != 1:
             return [f"expected one dist-info/METADATA, found {sorted(metadata_names)}"]
         metadata = Parser().parsestr(wheel.read(metadata_names[0]).decode("utf-8"))
+        info = metadata_names[0].split("/")[0]
+        packaged_notices = {
+            notice: wheel.read(f"{info}/licenses/{notice}")
+            for notice in NOTICES
+            if f"{info}/licenses/{notice}" in names
+        }
 
-    info = metadata_names[0].split("/")[0]
     if metadata["Name"] != EXPECTED_NAME:
         bad.append(f"metadata Name is {metadata['Name']!r}, expected {EXPECTED_NAME!r}")
     if metadata["Version"] != EXPECTED_VERSION:
@@ -45,6 +52,10 @@ def check(path: Path) -> list[str]:
         want = f"{info}/licenses/{notice}"
         if want not in names:
             bad.append(f"missing {want}")
+            continue
+        source = ROOT / (notice if notice in ("LICENSE", "NOTICE") else f"licenses/{notice}")
+        if packaged_notices[notice] != source.read_bytes():
+            bad.append(f"{want} differs from {source.relative_to(ROOT)}")
 
     libs = [
         name

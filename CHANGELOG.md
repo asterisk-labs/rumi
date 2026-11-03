@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- Moved the GeoZL pin to a revision without the four retired decoders.
+  CTids `0x72D708` through `0x72D70B` remain reserved.
+
 ### Fixed
 
 - Direct GPU reads batch local frame I/O and overlap it with decoding.

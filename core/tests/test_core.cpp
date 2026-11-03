@@ -1,4 +1,4 @@
-// Component tests for internal APIs not exposed to Python.
+// Component tests for core helpers and the public C API.
 
 #include "rumi/rumi.hpp"
 #include "rumi/thread_pool.hpp"
@@ -470,7 +470,7 @@ void test_count_packing()
     CASE("counts survive every width from 0 to 32")
     std::uint64_t rng = 20260813;
     for (int bits = 0; bits <= 32; ++bits) {
-        // 96 residuals exercise every byte alignment for widths 0..32.
+        // For nonzero widths, 96 residuals cross multiple byte boundaries.
         std::vector<std::uint32_t> counts(96);
         // Set the top required bit without overflowing the 32-bit case after
         // adding count_min.
@@ -1453,7 +1453,7 @@ void test_trailer_time()
         return enc->size();
     };
 
-    // Magic, version and time fields, then a one-byte text after its length.
+    // Magic and version, a one-byte text after its length, then time fields.
     constexpr std::size_t fixed = sizeof(rumi::TrailerHead)
                                 + sizeof(rumi::TimeFields);
     const std::vector<std::string> one{"x"};
@@ -1521,7 +1521,7 @@ void test_trailer_time()
                                        {1724596200, 1724596500}}};
     EQ(trip(window, 1, 1), bare);
 
-    CASE("a span past int64 is fine when the slope it implies is not")
+    CASE("a span past int64 is fine when its slope fits")
     // The endpoint span exceeds int64 while the resulting slope still fits.
     const Trailer wide{one, TimeAxis{rumi::TIME_INSTANT, 1,
                                      {-4611686018427387904LL, 0,
@@ -1666,10 +1666,10 @@ void test_trailer_malformed()
         wrong_magic[0] = std::byte{0};
         OK(!rumi::decode_trailer(wrong_magic, 1, 60));
 
-        // A trailer from before band texts is not read as one.
-        auto older = *good;
-        std::memcpy(older.data(), "TIME", 4);
-        OK(!rumi::decode_trailer(older, 1, 60));
+        // The required trailer magic is TAIL, not TIME.
+        auto time_magic = *good;
+        std::memcpy(time_magic.data(), "TIME", 4);
+        OK(!rumi::decode_trailer(time_magic, 1, 60));
 
         auto longer = *good;
         longer.push_back(std::byte{0});
@@ -2041,7 +2041,7 @@ void test_write_c_api_band_texts()
     std::uint64_t base = 0;
     desc.band_texts = nullptr;
     EQ(rumi_write_base_offset(&desc, &base), RUMI_OK);
-    OK(base > 0);
+    EQ(base, derived_base(2, n));
 
     CASE("C band texts are bounded before copying")
     // No terminator: a bounded scan must reject this without reading past it.

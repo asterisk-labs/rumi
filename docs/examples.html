@@ -26,7 +26,7 @@
     <main class="manual-layout">
       <aside class="manual-nav" aria-label="Example index">
         <p class="here">Examples</p>
-        <p>One model across Python, R, and Julia</p>
+        <p>Python recipes and cross-language readers</p>
         <ol class="guide-route">
           <li><a href="#setup"><i>01</i><span><b>Set up</b>Install and import</span></a></li>
           <li><a href="#image"><i>02</i><span><b>Write an Image</b>Complete round trip</span></a></li>
@@ -44,10 +44,10 @@
       <article class="journey">
         <p class="guide-kicker">Working recipes</p>
         <h1 id="top">Examples</h1>
-        <p class="lede">Complete examples for writing an Image or Cube, reading only a requested region, moving the same read between local and remote storage, and producing batches for machine-learning frameworks.</p>
+        <p class="lede">Python examples for writing an Image or Cube, reading a requested region, moving the same read between local and remote storage, and producing training batches. R and Julia readers are available in <a href="https://github.com/asterisk-labs/rumi/tree/0.27/bindings/r">bindings/r</a> and <a href="https://github.com/asterisk-labs/rumi/tree/0.27/bindings/julia">bindings/julia</a>.</p>
         <section class="guide-section first" id="setup">
-          <h2>Install the reader and writer</h2>
-          <p class="section-intro">Rumi is designed to expose the same reader and writer through Python, R, and Julia. Reading uses the Rumi core; writing also uses GeoZL to build and compress each frame.</p>
+          <h2>Install the Python reader and writer</h2>
+          <p class="section-intro">Python writes files with Rumi and GeoZL, then reads them through the Rumi core. R and Julia provide native readers for files written by Python.</p>
           <pre data-language="Shell"><code>python -m pip install rumi-eo</code></pre>
           <div class="code-group" data-code-group>
             <div data-language-panel="python">
@@ -55,16 +55,10 @@
 import numpy as np
 import rumi</code></pre>
             </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
-            </div>
           </div>
           <div class="technical-note">
             <span>Shape convention</span>
-            <p>An Image is <code>(B, Y, X)</code>. A temporal Cube is <code>(T, B, Y, X)</code>. Selections use zero-based positions, and a window is always <code>(row, column, height, width)</code>.</p>
+            <p>In Python, an Image is <code>(B, Y, X)</code> and a temporal Cube is <code>(T, B, Y, X)</code>. Selections use zero-based positions, and a window is <code>(row, column, height, width)</code>. R and Julia use one-based positions and return Images as <code>(X, Y, Band)</code> and Cubes as <code>(X, Y, Band, Time)</code>.</p>
           </div>
         </section>
 
@@ -103,12 +97,6 @@ image_path, image_header = rumi.write(
 )
 image_again = rumi.read(image_path, image_header)</code></pre>
             </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
-            </div>
           </div>
           <p><code>image_path</code> identifies the durable file. <code>image_header</code> is the compact external index to keep with that object in a catalogue or dataset manifest.</p>
           <p>Every file names each band and dates each time step. <code>bands</code> takes one text per band, in band order; the recommended text gives the band name, a short description and the wavelength.</p>
@@ -144,12 +132,6 @@ chunky_cells = rumi.frames(
     "b (row h) (col w) -> row col (h w b)",
     tile_size=256,
 )</code></pre>
-            </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
             </div>
           </div>
           <div class="tablewrap">
@@ -198,12 +180,6 @@ cube_path, cube_header = rumi.write(
     time=["2026-01-01", "2026-02-01", "2026-03-01"],
 )</code></pre>
             </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
-            </div>
           </div>
           <div class="choice-grid">
             <div><b>Tile-frame Cube</b><p><code>row col b t (h w)</code> or <code>row col t b (h w)</code> keeps both axes independently addressable.</p></div>
@@ -236,12 +212,6 @@ reordered = rumi.read(
     window=(100, 200, 128, 128),
     pattern="t y x b",
 )</code></pre>
-            </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
             </div>
           </div>
           <div class="definition-grid">
@@ -309,12 +279,6 @@ assert all(np.array_equal(reference, chip) for chip in chips.values())
 
 print({label: chip.shape for label, chip in chips.items()})</code></pre>
             </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
-            </div>
           </div>
           <div class="tablewrap">
             <table>
@@ -365,12 +329,6 @@ batch = rumi.read_many(
 
 assert batch.shape == (3, 4, 128, 128)</code></pre>
             </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
-            </div>
           </div>
           <p>Sources may mix local and remote storage. They must agree on tile size, dtype, band/time counts, and which axes their frames contain. The result preserves input order even when ranges complete in another order.</p>
           <div class="callout">
@@ -402,12 +360,6 @@ cuda_chip = rumi.read(
     cube_path, cube_header,
     framework="torch", device="cuda:0"
 )</code></pre>
-            </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
             </div>
           </div>
           <div class="tablewrap">
@@ -446,12 +398,6 @@ checked = rumi.info(
     source="cube.rumi",
     header=recovered_header,
 )</code></pre>
-            </div>
-            <div data-language-panel="r" data-coming-soon>
-              <div class="code-coming-soon"><span>R</span><strong>Coming soon</strong><p>Native R bindings are not available yet.</p></div>
-            </div>
-            <div data-language-panel="julia" data-coming-soon>
-              <div class="code-coming-soon"><span>Julia</span><strong>Coming soon</strong><p>Native Julia bindings are not available yet.</p></div>
             </div>
           </div>
           <div class="choice-grid">

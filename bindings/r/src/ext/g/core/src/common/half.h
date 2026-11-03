@@ -1,7 +1,5 @@
-// IEEE half conversions, for platforms without _Float16.
-//
-// One copy for the three lossy families. They carried a byte-identical pair
-// each before, which is three places to fix a rounding bug in.
+// IEEE half conversions shared by the lossy codecs, for platforms without
+// _Float16.
 
 #ifndef GEOZL_COMMON_HALF_H
 #define GEOZL_COMMON_HALF_H

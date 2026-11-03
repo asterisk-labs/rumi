@@ -9,10 +9,7 @@ typedef enum {
   GEOZL_CTID_MED = 0x72D705,
   GEOZL_CTID_AVERAGE = 0x72D706,
   GEOZL_CTID_WP_STATIC = 0x72D707,
-  GEOZL_CTID_BINOFFSET = 0x72D708,
-  GEOZL_CTID_INTMULT = 0x72D709,
-  GEOZL_CTID_FLOATQUANT = 0x72D70A,
-  GEOZL_CTID_FLOATMULT = 0x72D70B,
+  // 0x72D708..0x72D70B are retired and must not be reused.
   GEOZL_CTID_NODATA = 0x72D70C,
   GEOZL_CTID_PFOR = 0x72D70D,
   // 0x72D70E was a pre-baseline blocked-transpose experiment. Do not reuse it.
