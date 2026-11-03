@@ -3,6 +3,10 @@
  * \file dlpack.h
  * \brief The common header of DLPack.
  */
+/* Based on DLPack v1.3. This copy adds TPU device codes, a bfloat complex
+ * type code and documentation, and a Metal buffer note. See Rumi's NOTICE
+ * for the Apache 2.0 license location.
+ */
 #ifndef DLPACK_DLPACK_H_
 #define DLPACK_DLPACK_H_
 

@@ -1,6 +1,6 @@
 RUMI
 Copyright (c) 2026, Asterisk Labs
-Licensed under the GNU General Public License version 3, see LICENSE.
+Licensed under the GNU General Public License version 3, see licenses/LICENSE.GPL-3.
 
 `librumi` statically links:
 
@@ -10,12 +10,17 @@ Licensed under the GNU General Public License version 3, see LICENSE.
   LZ4 1.10.0 (lib only)   BSD 2-Clause     licenses/LICENSE.LZ4
   Karu 0.4.0              MIT              licenses/LICENSE.Karu
 
-Only LZ4's BSD-licensed `lib` directory is built.
+Rumi's bundled DLPack header is based on DLPack 1.3 and adapted under
+Apache 2.0; see licenses/LICENSE.DLPack.
+
+Only LZ4's BSD-licensed `lib` directory is built. The R source package also
+contains LZ4 support files outside `lib`, which LZ4 licenses under
+GPL-2.0-or-later unless stated otherwise; see licenses/LICENSE.LZ4-GPL.
 
 Release wheels also bundle the transport runtimes:
 
   curl 8.22.0             curl license     licenses/LICENSE.curl
   OpenSSL 3.x             Apache 2.0       licenses/LICENSE.OpenSSL
 
-Python wheels include these license texts under `dist-info/licenses/`; native
-archives use `licenses/`.
+Python wheels include the applicable license texts under `dist-info/licenses/`;
+native archives use `licenses/`, and the R package uses `inst/licenses/`.

@@ -9,6 +9,7 @@ _NOTICE_FILES = (
     "LICENSE",
     "NOTICE",
     "licenses/LICENSE.GeoZL",
+    "licenses/LICENSE.DLPack",
     "licenses/LICENSE.OpenZL",
     "licenses/LICENSE.Zstandard",
     "licenses/LICENSE.LZ4",

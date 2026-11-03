@@ -151,6 +151,8 @@ def check(tag: str | None) -> tuple[str, str, str]:
         "LICENSE",
         "NOTICE",
         "licenses/LICENSE.GeoZL",
+        "licenses/LICENSE.DLPack",
+        "licenses/LICENSE.LZ4-GPL",
         "licenses/LICENSE.OpenZL",
         "licenses/LICENSE.Zstandard",
         "licenses/LICENSE.LZ4",
