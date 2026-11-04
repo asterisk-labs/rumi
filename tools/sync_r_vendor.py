@@ -88,7 +88,7 @@ def sync(package: Path) -> None:
     if notice.count(marker) != 1:
         raise ValueError("NOTICE must identify Rumi's LICENSE exactly once")
     notice = notice.replace(marker, "see licenses/LICENSE.GPL-3.", 1)
-    (package / "inst" / "NOTICE").write_text(notice)
+    (package / "inst" / "NOTICE").write_text(notice, newline="\n")
     licenses = package / "inst" / "licenses"
     shutil.rmtree(licenses, ignore_errors=True)
     shutil.copytree(ROOT / "licenses", licenses)
