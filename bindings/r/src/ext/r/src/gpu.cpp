@@ -122,7 +122,7 @@ std::expected<void, Error> GpuDecoder::synchronize()
 std::expected<void, Error>
 GpuDecoder::decode(const Plan& plan, std::span<const FrameTask> tasks,
                    void* destination, std::size_t destination_bytes,
-                   void* stream)
+                   void* stream, bool force_host)
 {
 #if RUMI_BUILD_GPU
     if (tasks.empty()) return {};
@@ -170,10 +170,12 @@ GpuDecoder::decode(const Plan& plan, std::span<const FrameTask> tasks,
         std::vector<std::byte> compressed;
         std::vector<GeozlGpuFrame> frames;
         std::vector<GeozlGpuCopy> copies;
+        std::vector<std::uint8_t> host_flags;
         try {
             compressed.resize(local_bytes);
             frames.reserve(last - first);
             copies.reserve(copy_count);
+            if (force_host) host_flags.assign(last - first, 1);
         } catch (const std::bad_alloc&) {
             return fail(RUMI_ERR_OOM, "could not allocate GPU read staging");
         }
@@ -231,10 +233,11 @@ GpuDecoder::decode(const Plan& plan, std::span<const FrameTask> tasks,
 
         GeozlGpuTarget target{destination, 0, destination_bytes, stream};
         std::array<char, 512> message{};
-        if (geozl_gpu_decode(impl_->gpu, frames.data(), frames.size(),
-                             copies.data(), copies.size(), sample_bytes,
-                             element_bytes, &target,
-                             message.data(), message.size()) != 0) {
+        if (geozl_gpu_decode_ex(impl_->gpu, frames.data(), frames.size(),
+                                copies.data(), copies.size(), sample_bytes,
+                                element_bytes, &target,
+                                force_host ? host_flags.data() : nullptr,
+                                message.data(), message.size()) != 0) {
             return fail(RUMI_ERR_DECODE,
                         message[0] ? message.data() : "GPU decode failed");
         }
@@ -247,6 +250,7 @@ GpuDecoder::decode(const Plan& plan, std::span<const FrameTask> tasks,
     (void) destination;
     (void) destination_bytes;
     (void) stream;
+    (void) force_host;
     return fail(RUMI_ERR_UNSUPPORTED,
                 "this rumi build has no GPU support");
 #endif

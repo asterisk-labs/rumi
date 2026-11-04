@@ -50,6 +50,16 @@
     }                                                                          \
   } while (0)
 
+// No encoder writes a negative under the flag, so this leaves a valid frame as it
+// is, in one pass.
+#define QSQ_DEC_FLOOR(T)                                                       \
+  do {                                                                         \
+    const T *restrict s = (const T *)src;                                      \
+    T *restrict d = (T *)dst;                                                  \
+    for (size_t i = 0; i < nbElts; ++i)                                        \
+      d[i] = s[i] < 0 ? (T)0 : s[i];                                           \
+  } while (0)
+
 #define QSQ_ID(v) (v)
 #define QSQ_TOF32(v) ((float)(v))
 #define QSQ_TOF16(v) (quant_sqrt_float_to_half((float)(v)))
@@ -94,8 +104,26 @@ int quant_sqrt_decode(void *restrict dst, const void *restrict src,
   const int nonneg = (p->flags & QUANT_SQRT_FLAG_NONNEGATIVE) != 0;
   const int narrow = (p->flags & QUANT_SQRT_FLAG_DECODE_F32) != 0;
 
-  // Integer VALUES already holds the reconstruction.
+  // Integer VALUES already holds the reconstruction. An unsigned one carries the
+  // floor by its type.
   if (dtype <= QSQ_LAST_INT && values) {
+    if (nonneg && dtype >= QSQ_I8) {
+      switch ((qsq_dtype)dtype) {
+      case QSQ_I8:
+        QSQ_DEC_FLOOR(int8_t);
+        break;
+      case QSQ_I16:
+        QSQ_DEC_FLOOR(int16_t);
+        break;
+      case QSQ_I32:
+        QSQ_DEC_FLOOR(int32_t);
+        break;
+      default:
+        QSQ_DEC_FLOOR(int64_t);
+        break;
+      }
+      return 0;
+    }
     memcpy(dst, src, nbElts * quant_sqrt_width(dtype));
     return 0;
   }
@@ -200,6 +228,7 @@ int quant_sqrt_decode(void *restrict dst, const void *restrict src,
 
 #undef QSQ_DEC
 #undef QSQ_DEC_V
+#undef QSQ_DEC_FLOOR
 #undef QSQ_ID
 #undef QSQ_TOF32
 #undef QSQ_TOF16

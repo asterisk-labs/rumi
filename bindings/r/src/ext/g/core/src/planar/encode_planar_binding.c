@@ -52,7 +52,7 @@ ZL_Report EI_geozl_planar(ZL_Encoder *eictx, const ZL_Input *in) {
   }
 
   // the width is all the decoder needs, it rides in the codec header
-  // four bytes for one plane, the header this codec has always written
+  // width, then the plane count when above one
   uint8_t header[8];
   geozl_st_le32(header, width);
   size_t headerSize = 4;

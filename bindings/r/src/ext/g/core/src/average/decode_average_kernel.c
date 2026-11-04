@@ -9,7 +9,7 @@
 // with L[c] = N & 1 carrying the low bit, so the chain stays in native width
 // with no overflow. Column zero has W == 0, so t starts at floor(N/2), the edge
 // rule. If the scratch allocation fails the kernel falls back to the in-place
-// recurrence, so it never fails on a valid frame. @dst may alias @src.
+// recurrence, so it never fails on a valid frame. @dst must not alias @src.
 
 #include "decode_average_kernel.h"
 

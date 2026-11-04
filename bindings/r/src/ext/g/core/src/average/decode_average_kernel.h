@@ -4,8 +4,7 @@
 #include <stddef.h>
 
 // Inverse Average predictor, row major, @width samples per row.
-// In-place is supported: @dst may equal @src. They must not otherwise
-// partially overlap.
+// @dst must not alias @src.
 // Returns 0 on success, nonzero when the geometry is rejected: eltWidth is
 // not 1, 2, 4 or 8, nbElts is 0, or width does not divide nbElts. On a
 // nonzero return dst is left untouched.

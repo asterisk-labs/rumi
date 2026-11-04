@@ -46,6 +46,15 @@ def test_path_round_trip(image):
 def test_cpu_device_keeps_the_existing_path(image):
     path, header, data = image
     assert np.array_equal(rumi.read(path, header, device="cpu"), data)
+    assert np.array_equal(rumi.read(path, header, decode_backend="cpu"), data)
+
+
+def test_invalid_decode_backend_is_rejected(image):
+    path, header, _ = image
+    with pytest.raises(ValueError, match="decode_backend"):
+        rumi.read(path, header, decode_backend="gpu")
+    with pytest.raises(ValueError, match="decode_backend"):
+        rumi.read_many([path], [header], decode_backend="gpu")
 
 
 def test_cuda_device_requires_torch(image):

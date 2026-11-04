@@ -34,8 +34,8 @@ static inline double qlog_from_index(int64_t q, double step, int anchor,
 // The table is signed and covers the index zero, so neither the sign nor the
 // zero needs a branch in the loop. Its entries are already at the output width
 // and already folded onto the output range, so the loop is a load, a lookup and
-// a store. Clamping the index into the tabulated range doubles as the guard
-// against a forged stream.
+// a store. lo and hi are this stream's own extremes, so every element lands in
+// the table whatever the stream holds.
 #define QLOG_DEC_INDEX(WT, IT, STORE)                                          \
   do {                                                                         \
     const IT *restrict s = (const IT *)src;                                    \
@@ -54,11 +54,8 @@ static inline double qlog_from_index(int64_t q, double step, int anchor,
       for (uint64_t k = 0; k < span; ++k)                                      \
         lut[k] = (WT)(STORE(                                                   \
             qlog_from_index(lo + (int64_t)k, step, anchor, vlo, vhi)));         \
-      for (size_t i = 0; i < nbElts; ++i) {                                    \
-        int64_t v = (int64_t)s[i];                                             \
-        v = v < lo ? lo : (v > hi ? hi : v);                                   \
-        d[i] = lut[(uint64_t)(v - lo)];                                        \
-      }                                                                        \
+      for (size_t i = 0; i < nbElts; ++i)                                      \
+        d[i] = lut[(uint64_t)((int64_t)s[i] - lo)];                            \
       free(lut);                                                               \
     } else {                                                                   \
       for (size_t i = 0; i < nbElts; ++i)                                      \

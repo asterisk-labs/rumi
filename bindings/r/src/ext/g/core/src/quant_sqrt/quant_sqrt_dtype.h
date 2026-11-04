@@ -123,7 +123,7 @@ static inline double quant_sqrt_value_lo(int dtype) {
 // The ceiling depends on where the index goes. On the index path it is written
 // into the stream and has to fit an element. On the value path it never leaves
 // the encoder and only has to stay exact in the double that carries it. Reading
-// stream_max there capped a u8 grid at 255 levels.
+// stream_max there would cap a u8 grid at 255 levels.
 //
 // The sqrt runs once per stream. IEEE has it correctly rounded, so the ceiling is
 // the same number on every machine that reads the frame.

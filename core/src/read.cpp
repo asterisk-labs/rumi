@@ -857,7 +857,7 @@ std::expected<void, Error>
 read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
                std::span<const int> times, std::span<const int> bands,
                int y_size, int x_size, const LayoutPlan& layout,
-               void* dst, std::size_t dst_size, void* stream,
+               void* dst, std::size_t dst_size, void* stream, bool force_host,
                const char* item_name)
 {
     TransportSession transport;
@@ -871,7 +871,7 @@ read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
     }
     return execute_gpu_plan_batches(
         plan, transport, gpu.max_decoded_bytes(), [&](auto tasks) {
-        return gpu.decode(plan, tasks, dst, dst_size, stream);
+        return gpu.decode(plan, tasks, dst, dst_size, stream, force_host);
     });
 }
 
@@ -1042,12 +1042,12 @@ read_window_gpu(GpuDecoder& gpu, Source& src, const Header& h,
                 std::span<const int> times, std::span<const int> bands,
                 int y_off, int y_size, int x_off, int x_size,
                 const LayoutPlan& layout, void* dst, std::size_t dst_size,
-                void* stream)
+                void* stream, bool force_host)
 {
     const ReadItem item{&src, &h, y_off, x_off, 0};
     return read_items_gpu(gpu, std::span<const ReadItem>(&item, 1),
                           times, bands, y_size, x_size, layout,
-                          dst, dst_size, stream, nullptr);
+                          dst, dst_size, stream, force_host, nullptr);
 }
 
 
@@ -1058,7 +1058,7 @@ read_many_gpu(GpuDecoder& gpu,
               std::span<const int> y_offs, std::span<const int> x_offs,
               std::span<const int> times, std::span<const int> bands,
               int y_size, int x_size, const LayoutPlan& layout,
-              void* dst, std::size_t dst_size, void* stream)
+              void* dst, std::size_t dst_size, void* stream, bool force_host)
 {
     const std::size_t n = sources.size();
     if (n == 0) return fail(RUMI_ERR_INVALID, "read_many needs at least one item");
@@ -1080,7 +1080,7 @@ read_many_gpu(GpuDecoder& gpu,
         items.push_back({sources[k], headers[k], y_offs[k], x_offs[k], k + 1});
     }
     return read_items_gpu(gpu, items, times, bands, y_size, x_size,
-                          layout, dst, dst_size, stream, "item");
+                          layout, dst, dst_size, stream, force_host, "item");
 }
 
 

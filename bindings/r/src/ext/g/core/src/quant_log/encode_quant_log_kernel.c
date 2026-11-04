@@ -51,7 +51,7 @@ static inline double qlog_value_at(const double *lev, int64_t j, double step,
 }
 
 // Index of the level a magnitude lands on. Everything it reads is a parameter,
-// so a rename in a caller cannot quietly change which grid this cuts against.
+// so a rename in a caller cannot change which grid this cuts against.
 // bias is 0.5 on the value grid, where index 0 is the anchor, and 1.5 on the
 // index grid, where index magnitude 1 is.
 static inline int64_t qlog_pick(double a, int anchorExp2, double inv,

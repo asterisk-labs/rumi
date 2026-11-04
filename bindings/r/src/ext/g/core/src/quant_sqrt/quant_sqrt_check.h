@@ -17,7 +17,7 @@ static inline int quant_sqrt_params_ok(const quant_sqrt_params *p, int dtype) {
     return 0;
   // The encoder divides by the square, so the square is what has to be normal. A
   // step that is only positive and finite can still square to zero, and then the
-  // reciprocal is infinity and every sample folds onto one level in silence.
+  // reciprocal is infinity and every sample folds onto one level with no error.
   if (!isfinite(p->step) || !(p->step > 0.0) || !(p->step * p->step >= DBL_MIN))
     return 0;
   if (!isfinite(p->offset) || !(p->offset >= 0.0))

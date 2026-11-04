@@ -635,6 +635,9 @@ public:
     [[nodiscard]] const karu_locator*
     remote_locator() const noexcept override;
 
+    // Used internally to batch positional reads from both paths and URIs.
+    [[nodiscard]] const karu_locator* transport_locator() const noexcept;
+
 private:
     TransportSource() = default;
     karu_locator* locator_{};
@@ -895,7 +898,7 @@ public:
     [[nodiscard]] std::expected<void, Error>
     decode(const Plan& plan, std::span<const FrameTask> tasks,
            void* destination, std::size_t destination_bytes,
-           void* stream);
+           void* stream, bool force_host);
 
 private:
     struct Impl;
@@ -908,7 +911,7 @@ read_window_gpu(GpuDecoder& gpu, Source& src, const Header& h,
                 std::span<const int> times, std::span<const int> bands,
                 int y_off, int y_size, int x_off, int x_size,
                 const LayoutPlan& layout, void* dst, std::size_t dst_size,
-                void* stream);
+                void* stream, bool force_host);
 
 [[nodiscard]] std::expected<void, Error>
 read_many_gpu(GpuDecoder& gpu,
@@ -917,7 +920,7 @@ read_many_gpu(GpuDecoder& gpu,
               std::span<const int> y_offs, std::span<const int> x_offs,
               std::span<const int> times, std::span<const int> bands,
               int y_size, int x_size, const LayoutPlan& layout,
-              void* dst, std::size_t dst_size, void* stream);
+              void* dst, std::size_t dst_size, void* stream, bool force_host);
 
 
 // Indexing.

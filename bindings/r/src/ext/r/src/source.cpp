@@ -167,6 +167,10 @@ const karu_locator* TransportSource::remote_locator() const noexcept
     return remote_ ? locator_ : nullptr;
 }
 
+const karu_locator* TransportSource::transport_locator() const noexcept
+{
+    return locator_;
+}
 
 std::size_t
 MemorySource::read(TransportSession&, std::uint64_t offset,

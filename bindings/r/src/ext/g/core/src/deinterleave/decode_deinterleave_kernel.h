@@ -5,7 +5,7 @@
 
 // Interleave two lanes back into one stream. Element 2k comes from in0, element
 // 2k+1 from in1. nbElts is the total output count, the sum of the two lanes,
-// each element eltWidth bytes.
+// each element eltWidth bytes, one of 1, 2, 4 or 8.
 void deinterleave_join(void *dst, const void *in0, const void *in1,
                        size_t nbElts, size_t eltWidth);
 

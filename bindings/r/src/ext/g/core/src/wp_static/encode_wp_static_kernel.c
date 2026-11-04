@@ -37,6 +37,9 @@
 
 int wp_static_encode(void *dst, const void *src, size_t width, size_t nbElts,
                      size_t eltWidth, const int16_t coeffs[4], uint8_t shift) {
+  // The sum below folds in 64 bits, so a wider shift is undefined.
+  if (shift >= 64)
+    return 1;
   // A width that does not divide nbElts would leave the last row short,
   // and the row loops below assume every row is complete.
   const size_t w = geozl_row_width(width, nbElts);

@@ -58,7 +58,9 @@ clamped to the output range and to zero when flag bit 0 is set.
 
 The resolver chooses `step` so grid error and output rounding remain within the
 requested relative bound. The values grid of integer input splits that budget
-between the grid and whole-number rounding.
+between the grid and whole-number rounding. It is refused if nothing is left for
+the grid, or if `span / step` reaches `2^53`, where `span` is 8, 16, 32, or 64 by
+the width of the type, since an index past that does not name every level.
 
 The index grid covers the full floating-point type rather than the current tile.
 It is refused if the requested bound is below the output precision or needs
@@ -67,7 +69,10 @@ on tile statistics. Tile statistics only set the nonnegative flag.
 
 Zero is exact. Negative zero loses its sign. NaNs reconstruct as zero unless a
 preceding `nodata` codec restores them. Infinities are clamped to the largest
-finite reconstruction.
+finite reconstruction of their sign. A negative infinity counts as a negative
+sample, so the resolver never sets flag bit 0 on a tile that holds one, and a
+graph resolved with that flag refuses a later tile that does, unless it is the
+declared `nodata` value.
 
 For floating-point input, the relative-error guarantee starts at the smallest
 normal value. Subnormal values are still encoded, but the high-level resolver

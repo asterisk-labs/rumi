@@ -73,8 +73,16 @@ gpu_chip = rumi.read(path, header, bands=[2, 3],
 mps_chip = rumi.read(path, header, bands=[2, 3],
                      window=(0, 0, 256, 256),
                      framework="torch", device="mps")
+
+# Decode every selected frame on the CPU, then place samples on the GPU:
+cpu_decoded_chip = rumi.read(path, header, bands=[2, 3],
+                             window=(0, 0, 256, 256),
+                             framework="torch", device="mps",
+                             decode_backend="cpu")
 ```
 
+The default `decode_backend="auto"` uses the GPU for supported single-chunk
+frames and the CPU for other frames. A frame is never split between decoders.
 MPS reads require PyTorch 2.10 or newer.
 
 GPU frame planning uses the same process-wide count as CPU reads. Set it before

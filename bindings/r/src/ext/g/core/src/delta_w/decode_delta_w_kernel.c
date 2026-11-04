@@ -11,7 +11,7 @@
 #include "common/scan.h"
 
 // The scans live in common/scan.h, shared by every horizontal predictor
-// decoder. These aliases keep the local call sites unchanged.
+// decoder. These aliases give the local call sites short names.
 #define scan8 geozl_scan8
 #define scan16 geozl_scan16
 #define scan32 geozl_scan32

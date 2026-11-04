@@ -8,8 +8,7 @@
 #include <stdint.h>
 
 // The level nearest the sample in x, not in u. Rounding in the warped domain
-// would cost a third of the step and this costs one sqrt either way, derived in
-// spec.md under Cutting the step.
+// would cost a third of the step and this costs one sqrt either way.
 //
 // The guard is !(t > 0.25) so a NaN takes the zero branch, since casting one to
 // an integer is undefined. A raster that means its NaNs carries nodata in front.

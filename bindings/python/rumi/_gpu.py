@@ -163,7 +163,8 @@ def _metal_target(tensor):
 
 
 def read_one(source, spec, times, n_times, bands, n_bands,
-             window, pattern, dtype: DType, device: str):
+             window, pattern, dtype: DType, device: str,
+             decode_backend: int):
     y_off, y_size, x_off, x_size = window
     shape = _shape(1, False, n_times or spec.fields.time_count,
                    n_bands or spec.fields.samples_per_pixel,
@@ -176,21 +177,23 @@ def read_one(source, spec, times, n_times, bands, n_bands,
         if device_type == _CUDA:
             with torch.cuda.device(index):
                 stream = torch.cuda.current_stream(index).cuda_stream
-                _check(lib.rumi_read_gpu(
+                _check(lib.rumi_read_gpu_ex(
                     context.handle, source.handle, spec.handle,
                     times, n_times, bands, n_bands,
                     y_off, y_size, x_off, x_size, pattern,
                     ffi.cast("void*", tensor.data_ptr()),
                     tensor.numel() * tensor.element_size(),
                     ffi.cast("void*", stream),
+                    decode_backend,
                 ))
         else:
             capsule, target = _metal_target(tensor)
-            _check(lib.rumi_read_gpu(
+            _check(lib.rumi_read_gpu_ex(
                 context.handle, source.handle, spec.handle,
                 times, n_times, bands, n_bands,
                 y_off, y_size, x_off, x_size, pattern,
                 target, tensor.numel() * tensor.element_size(), ffi.NULL,
+                decode_backend,
             ))
             _check(lib.rumi_gpu_synchronize(context.handle))
             del capsule
@@ -198,7 +201,8 @@ def read_one(source, spec, times, n_times, bands, n_bands,
 
 
 def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
-              y_size: int, x_size: int, pattern, dtype: DType, device: str):
+              y_size: int, x_size: int, pattern, dtype: DType, device: str,
+              decode_backend: int):
     fields = specs[0].fields
     shape = _shape(n_items, True, n_times or fields.time_count,
                    n_bands or fields.samples_per_pixel,
@@ -211,21 +215,23 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
         if device_type == _CUDA:
             with torch.cuda.device(index):
                 stream = torch.cuda.current_stream(index).cuda_stream
-                _check(lib.rumi_read_many_gpu(
+                _check(lib.rumi_read_many_gpu_ex(
                     context.handle, items, n_items,
                     times, n_times, bands, n_bands,
                     y_size, x_size, pattern,
                     ffi.cast("void*", tensor.data_ptr()),
                     tensor.numel() * tensor.element_size(),
                     ffi.cast("void*", stream),
+                    decode_backend,
                 ))
         else:
             capsule, target = _metal_target(tensor)
-            _check(lib.rumi_read_many_gpu(
+            _check(lib.rumi_read_many_gpu_ex(
                 context.handle, items, n_items,
                 times, n_times, bands, n_bands,
                 y_size, x_size, pattern,
                 target, tensor.numel() * tensor.element_size(), ffi.NULL,
+                decode_backend,
             ))
             _check(lib.rumi_gpu_synchronize(context.handle))
             del capsule

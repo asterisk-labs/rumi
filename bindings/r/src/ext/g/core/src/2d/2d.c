@@ -151,8 +151,6 @@ static ZL_NodeID predictor_node(ZL_Compressor *c, geozl_predictor p,
   switch (p) {
   case GEOZL_PRED_DELTA_W:   return geozl_node_delta_w(c, width);
   case GEOZL_PRED_DELTA_N:   return geozl_node_delta_n(c, width, planes);
-  case GEOZL_PRED_PLANAR:    return geozl_node_planar(c, width, planes);
-  case GEOZL_PRED_MED:       return geozl_node_med(c, width, planes);
   case GEOZL_PRED_AVERAGE:   return geozl_node_average(c, width, planes);
   case GEOZL_PRED_WP_STATIC: return geozl_node_wp_static(c, width, planes);
   default:                   return ZL_NODE_ILLEGAL;
@@ -218,8 +216,8 @@ static ZL_Report geozl_categorical_fg(ZL_Graph *g, ZL_Edge *inputs[],
   return ZL_Edge_setDestination(inputs[0], dst);
 }
 
-// The same count for byte streams, which are all PivCo is offered. Four
-// histograms so consecutive equal bytes do not wait on each other's increment.
+// The same count for byte streams. Four histograms so consecutive equal bytes
+// do not wait on each other's increment.
 static size_t dominant_count_u8(const unsigned char *p, size_t n) {
   size_t h[4][256] = {{0}};
   size_t i = 0;
@@ -441,7 +439,7 @@ static ZL_GraphID build_graph(ZL_Compressor *c, geozl_predictor p,
 }
 
 // OpenZL error strings must be copied before their owner is freed.
-typedef enum { ERR_NONE, ERR_COMPRESSOR, ERR_CCTX, ERR_DCTX } err_owner;
+typedef enum { ERR_NONE, ERR_COMPRESSOR, ERR_CCTX } err_owner;
 
 static void copy_err(char *dst, size_t cap, const char *src) {
   if (dst == NULL || cap == 0)
@@ -528,12 +526,19 @@ static ZL_Report graph_open(geozl_2d_graph **out, const char *method,
     return ZL_returnError(ZL_ErrorCode_parameter_invalid);
   }
 
-  // Every quantizer indexes tables by this, checked once here.
+  // Every quantizer indexes tables by this.
   if (!GEOZL_DT_OK(dtype)) {
     if (has_err)
       snprintf(errCtx, errCtxSize,
                "dtype %d is outside the geozl_dtype codes, which run 0 to %d",
                dtype, (int)GEOZL_DT_F64);
+    return ZL_returnError(ZL_ErrorCode_parameter_invalid);
+  }
+
+  // No node takes any other mode, and that failure would blame the method.
+  if (nodataMode != GEOZL_NODATA_NONE && nodataMode != GEOZL_NODATA_NAN &&
+      nodataMode != GEOZL_NODATA_VALUE) {
+    copy_err(errCtx, errCtxSize, "unknown nodata mode");
     return ZL_returnError(ZL_ErrorCode_parameter_invalid);
   }
 
@@ -552,13 +557,22 @@ static ZL_Report graph_open(geozl_2d_graph **out, const char *method,
   geozl_lossy_plan plan;
   {
     char why[192] = {0};
-    if (geozl_lossy_parse(error, &recipe, why, sizeof(why)) != 0 ||
-        geozl_lossy_fit(&recipe, src, dtype, width, numElts, why,
+    if (geozl_lossy_parse(error, &recipe, why, sizeof(why)) != 0) {
+      copy_err(errCtx, errCtxSize, why);
+      return ZL_returnError(ZL_ErrorCode_parameter_invalid);
+    }
+    // The fit and the scans read src as dtype. A lossless path does not, and
+    // Python passes dtype 0 for a lossless dtype that has no code.
+    if (recipe.family != GEOZL_LOSSY_NONE &&
+        geozl_dtype_width(dtype) != eltWidth) {
+      copy_err(errCtx, errCtxSize, "dtype width is not eltWidth");
+      return ZL_returnError(ZL_ErrorCode_parameter_invalid);
+    }
+    if (geozl_lossy_fit(&recipe, src, dtype, width, numElts, why,
                         sizeof(why)) != 0 ||
         geozl_lossy_resolve(&recipe, src, dtype, numElts, &plan, why,
                             sizeof(why)) != 0) {
-      if (has_err)
-        snprintf(errCtx, errCtxSize, "%s", why);
+      copy_err(errCtx, errCtxSize, why);
       return ZL_returnError(ZL_ErrorCode_parameter_invalid);
     }
   }

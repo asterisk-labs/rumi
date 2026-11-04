@@ -54,11 +54,11 @@ def test_public_function_parameters_stay_stable():
         "open": ("source", "header"),
         "read": (
             "source", "header", "framework", "pattern", "time", "bands", "window",
-            "device",
+            "device", "decode_backend",
         ),
         "read_many": (
             "sources", "headers", "windows", "framework", "pattern", "time", "bands",
-            "device",
+            "device", "decode_backend",
         ),
         "set_checksum_verification": ("on",),
         "set_num_threads": ("n",),
@@ -74,9 +74,11 @@ def test_read_defaults_stay_stable():
     assert read["framework"].default == "numpy"
     assert all(read[name].default is None
                for name in ("pattern", "time", "bands", "window", "device"))
+    assert read["decode_backend"].default == "auto"
 
     many = inspect.signature(rumi.read_many).parameters
     assert many["headers"].default is None
     assert many["framework"].default == "numpy"
     assert all(many[name].default is None
                for name in ("windows", "pattern", "time", "bands", "device"))
+    assert many["decode_backend"].default == "auto"

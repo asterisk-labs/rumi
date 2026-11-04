@@ -45,6 +45,20 @@ static inline double quant_linear_eps(int dtype) {
   }
 }
 
+// Half the gap between subnormals of the output type, where the rounding of a
+// stored reconstruction is flat rather than relative. Zero on an integer, and on
+// f64, whose step is normal and so is every level built on it.
+static inline double quant_linear_sub_eps(int dtype) {
+  switch (dtype) {
+  case QL_F16:
+    return 2.98023223876953125e-8; // 2^-25
+  case QL_F32:
+    return 7.00649232162408535e-46; // 2^-150
+  default:
+    return 0.0;
+  }
+}
+
 // Largest magnitude the stream carries. It keeps the original element width,
 // signed once the original was a float.
 static inline double quant_linear_stream_max(int dtype) {

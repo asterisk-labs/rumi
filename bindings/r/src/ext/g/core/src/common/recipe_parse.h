@@ -4,6 +4,7 @@
 #define GEOZL_COMMON_RECIPE_PARSE_H
 
 #include <errno.h>
+#include <float.h>
 #include <locale.h>
 #include <math.h>
 #include <stdarg.h>
@@ -27,8 +28,9 @@ static inline int geozl_recipe_fail(char *err, size_t errSize, const char *fmt,
 // rather than the conversion replaced, which keeps it correctly rounded.
 //
 // Every character can be a dot and each one grows to plen bytes, so the bound is
-// on n * plen. ERANGE also refuses an underflow to subnormal, which resolve
-// cannot cut a grid from.
+// on n * plen. A subnormal is refused whether or not strtod raises ERANGE for it,
+// and strtod does not when the conversion is exact, since resolve cannot cut a
+// grid from one.
 static inline int geozl_recipe_number(const char *s, const char *end,
                                       double *out) {
   const char *point = localeconv()->decimal_point;
@@ -55,7 +57,8 @@ static inline int geozl_recipe_number(const char *s, const char *end,
   char *tail = NULL;
   errno = 0;
   const double v = strtod(buf, &tail);
-  if (tail != buf + w || errno == ERANGE || !isfinite(v))
+  if (tail != buf + w || errno == ERANGE || !isfinite(v) ||
+      (v != 0.0 && fabs(v) < DBL_MIN))
     return 1;
   *out = v;
   return 0;

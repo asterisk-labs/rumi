@@ -86,10 +86,14 @@ int quant_log_resolve(const quant_log_spec *sp, int dtype,
     // Two things stand between the sample and the reconstruction and each is a
     // ratio, so they multiply. The grid, and the rounding of the level to a whole
     // number. Split the budget evenly and each gets sqrt(1+b).
+    //
+    // Past 2^53 levels quant_log_value_top pins and the grid ends short of the
+    // type, so a step that fine is refused with the rest.
     const double r = sqrt(1.0 + b);
     const double half =
         (log1p(r - 1.0) - log1p(slack * QLOG_LN2)) * QLOG_LOG2E - slack;
-    if (!(half > 0.0))
+    if (!(half > 0.0) ||
+        !(quant_log_value_span(dtype) / (2.0 * half) < GEOZL_F64_EXACT_INT))
       return geozl_recipe_fail(err, errSize,
                   "a MAX_ERROR of %g%% is too tight for a whole-number "
                   "reconstruction",

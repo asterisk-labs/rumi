@@ -18,7 +18,7 @@ static inline uint64_t quant_linear_step_u64(double step) {
 }
 
 // A normal step, not merely finite and positive. A subnormal one passes both
-// ends and then saturates every index at the type maximum, in silence.
+// ends and then saturates every index at the type maximum with no error.
 static inline int quant_linear_params_ok(const quant_linear_params *p,
                                          int dtype) {
   if (p == NULL || !QL_DTYPE_OK(dtype))

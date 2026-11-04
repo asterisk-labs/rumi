@@ -1,7 +1,8 @@
 # wp_static Decoder Specification
 
-Lossless numeric codec, CTID `0x72D707`. The predictor is a fixed-weight form
-of the JPEG XL self-correcting predictor (ISO/IEC 18181-1, Annex E.3).
+Lossless numeric codec, CTID `0x72D707`. The predictor is a fixed-weight relative
+of the JPEG XL self-correcting predictor (ISO/IEC 18181-1:2022, Annex E), with
+no error feedback.
 
 ## Inputs
 
@@ -23,15 +24,15 @@ shared by all planes.
 
 ## Decoding
 
-Planes are decoded independently. Missing neighbors are zero. Define
+Planes are decoded independently. Samples are read as unsigned integers of the
+element width, whatever the raster dtype. Missing neighbors are zero. Define
 
     round = shift ? 1 << (shift - 1) : 0
     K = (cN*N + cNW*NW + cNE*NE + cNN*NN + round) >> shift
     output = residual + W + K
 
-The weighted sum uses a signed 32-bit accumulator for 8- and 16-bit samples and
-a signed 64-bit accumulator for 32- and 64-bit samples. Reconstruction wraps at
-the element width.
+The sum wraps modulo 2^64 and shifts as a signed value; with shift <= 16, 8- and
+16-bit samples may use 32 bits. Reconstruction wraps at the element width.
 
 The default coefficients `(1, -1, 0, 0)` with shift zero reproduce `planar`.
 

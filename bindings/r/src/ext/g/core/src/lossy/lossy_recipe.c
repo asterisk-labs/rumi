@@ -103,7 +103,7 @@ int geozl_lossy_resolve(const geozl_lossy_recipe *r, const void *src, int dtype,
     if (quant_sqrt_scan(src, dtype, nbElts, &out->domain.sqrt) != 0)
       return geozl_recipe_fail(err, errSize, "the raster holds no finite sample");
     // NULL curve: geozl_lossy_fit has already written one into the recipe, or
-    // the recipe came with A and B, or quant_sqrt refuses and says so.
+    // the recipe came with A and B, or quant_sqrt refuses.
     return quant_sqrt_resolve(&r->as.sqrt, dtype, &out->domain.sqrt, NULL,
                               &out->as.sqrt, err, errSize);
   }
@@ -129,6 +129,7 @@ typedef struct {
   double minAbs;
   double maxAbs;
   int anyNegative;
+  int anyNegativeInf;
   int haveFinite;
 } geozl_domain_stats;
 
@@ -141,8 +142,11 @@ typedef struct {
       if (raw == (U)ignoredBits)                                               \
         continue;                                                              \
       const double v = (double)(RD);                                           \
-      if (!isfinite(v))                                                        \
+      if (!isfinite(v)) {                                                      \
+        if (v < 0.0)                                                           \
+          out->anyNegativeInf = 1;                                             \
         continue;                                                              \
+      }                                                                        \
       out->haveFinite = 1;                                                     \
       if (v < out->lo)                                                         \
         out->lo = v;                                                           \
@@ -170,6 +174,7 @@ static int scan_ignoring_value(const void *src, int dtype, size_t nbElts,
   out->minAbs = INFINITY;
   out->maxAbs = 0.0;
   out->anyNegative = 0;
+  out->anyNegativeInf = 0;
   out->haveFinite = 0;
 
   switch ((geozl_dtype)dtype) {
@@ -230,8 +235,8 @@ int geozl_lossy_check_domain(const geozl_lossy_plan *plan, const void *src,
       now.maxAbs = sc.maxAbs;
       now.anyNegative = sc.anyNegative;
     } else {
-      // An all-zero tile is valid even though the resolver cannot cut a new
-      // grid from one. The scan still returns its zeroed statistics.
+      // A tile with no finite sample is valid even though the resolver cannot
+      // cut a new grid from one. The scan still returns its zeroed statistics.
       (void)quant_linear_scan(src, dtype, nbElts, &now);
     }
     if (rejects_negative(plan->as.linear.flags,
@@ -256,7 +261,8 @@ int geozl_lossy_check_domain(const geozl_lossy_plan *plan, const void *src,
         return geozl_recipe_fail(err, errSize, "could not scan the lossy tile");
       now.minAbs = sc.minAbs;
       now.maxAbs = sc.maxAbs;
-      now.anyNegative = sc.anyNegative;
+      // quant_log_scan counts -inf as negative. Under the floor it rebuilds as 0.
+      now.anyNegative = sc.anyNegative || sc.anyNegativeInf;
       now.anySubnormal = 0;
     } else if (quant_log_scan(src, dtype, nbElts, &now) != 0) {
       return geozl_recipe_fail(err, errSize, "could not scan the lossy tile");

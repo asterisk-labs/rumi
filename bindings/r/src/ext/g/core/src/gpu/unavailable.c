@@ -43,6 +43,18 @@ int geozl_gpu_decode(GeozlGpu *gpu, const GeozlGpuFrame frames[],
   return 1;
 }
 
+int geozl_gpu_decode_ex(GeozlGpu *gpu, const GeozlGpuFrame frames[],
+                        size_t frameCount, const GeozlGpuCopy copies[],
+                        size_t copyCount, size_t sampleBytes,
+                        size_t elementBytes, const GeozlGpuTarget *target,
+                        const uint8_t forceHost[], char *error,
+                        size_t errorCapacity) {
+  (void)forceHost;
+  return geozl_gpu_decode(gpu, frames, frameCount, copies, copyCount,
+                           sampleBytes, elementBytes, target, error,
+                           errorCapacity);
+}
+
 int geozl_gpu_synchronize(GeozlGpu *gpu, char *error, size_t errorCapacity) {
   (void)gpu;
   unavailable(error, errorCapacity);

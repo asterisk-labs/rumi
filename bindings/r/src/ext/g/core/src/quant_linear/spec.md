@@ -42,7 +42,9 @@ The encoded stream always has an integer representation:
 | float | index | grid index `q` | `q * step` |
 
 The result is clamped to the output type. When flag bit 0 is set, the lower
-limit is zero. Reconstruction is rounded once to the output width.
+limit is zero. `q * step` is a binary64 product. An f64 output stores it. An f32
+output rounds it to binary32, ties to even. An f16 output rounds twice: to
+binary32, ties to even, then to binary16, ties away from zero.
 
 An integer index rebuilds with integers, not doubles: take `step` to a whole
 number the way the encoder did, multiply the magnitude, put the sign back, then
@@ -68,11 +70,13 @@ never above `|x|`, so an index always fits the stream the value came from.
 For floating-point input, division during encoding and multiplication during
 decoding both consume rounding budget:
 
-    step = 2 * (MAX_ERROR - 2 * eps * maxAbs)
+    step = 2 * (MAX_ERROR - 2 * eps * maxAbs - sub)
 
-Here `eps` is `2^-11`, `2^-24`, or `2^-53` for f16, f32, or f64. The recipe is
-refused if the step is not positive or the required index exceeds the stream
-range.
+Here `eps` is `2^-11`, `2^-24`, or `2^-53` for f16, f32, or f64. `sub` is half
+the gap between subnormals, where rounding is flat rather than relative: `2^-25`
+for f16, `2^-150` for f32, and zero for f64, whose levels are never subnormal
+because its step is at least `DBL_MIN`. The recipe is refused if the step is
+smaller than `DBL_MIN` or the required index exceeds the stream range.
 
 All paths scan whether finite samples are negative. Only the floating-point
 path makes the grid depend on `maxAbs`, so changing tile boundaries can change

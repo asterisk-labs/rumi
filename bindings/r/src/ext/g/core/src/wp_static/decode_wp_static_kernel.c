@@ -102,9 +102,8 @@ WP_STATIC_KROW(uint64_t, krow64, 0)
 
 int wp_static_decode(void *dst, const void *src, size_t width, size_t nbElts,
                      size_t eltWidth, const int16_t coeffs[4], uint8_t shift) {
-  // The sum below folds in 64 bits, so a wider shift is undefined. Checked here
-  // and not only in the binding, since the kernel is exported and a caller that
-  // never went through a frame can reach it.
+  // The sum below folds in 64 bits, so a wider shift is undefined. A direct
+  // caller can pass any shift.
   if (shift >= 64)
     return 1;
   // A width that does not divide nbElts would leave the last row short,

@@ -56,8 +56,7 @@ ZL_Report EI_geozl_wp_static(ZL_Encoder *eictx, const ZL_Input *in) {
   }
 
   // header, little endian: uint32 width, uint8 shift, four int16
-  // {cN,cNW,cNE,cNN}
-  // thirteen bytes for one plane, the header this codec has always written
+  // {cN,cNW,cNE,cNN}, then the plane count when above one
   uint8_t header[4 + 1 + 4 * 2 + 4];
   geozl_st_le32(header, width);
   header[4] = shift;

@@ -357,6 +357,8 @@ rumi_plan_ranges(const rumi_spec* spec,
 // Device types follow DLPack.
 #define RUMI_DEVICE_CUDA 2
 #define RUMI_DEVICE_METAL 8
+#define RUMI_GPU_DECODE_AUTO 0
+#define RUMI_GPU_DECODE_CPU 1
 
 typedef struct rumi_gpu rumi_gpu;
 
@@ -412,6 +414,21 @@ rumi_read_gpu(rumi_gpu*        gpu,
               void*            dst, size_t dst_size,
               void*            stream);
 
+// As rumi_read_gpu, with a decode backend chosen for every selected frame.
+// CPU decodes each complete frame on the host, then places samples on dst.
+// AUTO uses GPU only for supported complete frames. dst stays on the GPU.
+RUMI_API rumi_status
+rumi_read_gpu_ex(rumi_gpu*        gpu,
+                 rumi_source*     src,
+                 const rumi_spec* spec,
+                 const int*       times, size_t n_times,
+                 const int*       bands, size_t n_bands,
+                 int              y_off, int y_size,
+                 int              x_off, int x_size,
+                 const char*      pattern,
+                 void*            dst, size_t dst_size,
+                 void*            stream, int decode_backend);
+
 // DLPack form of rumi_read. It allocates the output instead of accepting dst.
 // On success, release *out with its deleter or rumi_dlpack_free.
 RUMI_API rumi_status
@@ -460,6 +477,16 @@ rumi_read_many_gpu(rumi_gpu* gpu,
                    const char* pattern,
                    void* dst, size_t dst_size,
                    void* stream);
+
+RUMI_API rumi_status
+rumi_read_many_gpu_ex(rumi_gpu* gpu,
+                      const rumi_read_item* items, size_t n_items,
+                      const int* times, size_t n_times,
+                      const int* bands, size_t n_bands,
+                      int y_size, int x_size,
+                      const char* pattern,
+                      void* dst, size_t dst_size,
+                      void* stream, int decode_backend);
 
 // DLPack form of rumi_read_many. It allocates the output instead of accepting
 // dst; release *out with its deleter or rumi_dlpack_free.

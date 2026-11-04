@@ -12,8 +12,7 @@
 // to the top level rather than running a transform on an exponent of all ones.
 #define GEOZL_F64_MAX 1.7976931348623157e308
 
-// An infinity without pulling in math.h, which the kernels stay clear of so a
-// frame reads the same on every platform.
+// An infinity from plain arithmetic, for code that does not include math.h.
 #define GEOZL_F64_INF (GEOZL_F64_MAX * 10.0)
 
 #endif // GEOZL_COMMON_FP_H

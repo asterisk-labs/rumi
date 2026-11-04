@@ -1,5 +1,6 @@
 #include "quant_sqrt_spec.h"
 
+#include "quant_sqrt_check.h"
 #include "quant_sqrt_dtype.h"
 #include "quant_sqrt_half.h"
 
@@ -27,8 +28,8 @@
 // Half ulps the quotient that finds the level picks up, which moves the boundary
 // between two levels and costs the step eta*u. Six covers the add, the square,
 // the reciprocal, the product and the two the root sits between; measured worst
-// is near a third of that. Derived in spec.md under Cutting the step. Leaving it
-// out let an f64 grid run 1.40x over its declared bound.
+// is near a third of that. Leaving it out lets an f64 grid run 1.40x over its
+// declared bound.
 #define QSQ_INDEX_TERMS 3.0
 
 int quant_sqrt_parse(const char *s, quant_sqrt_spec *out, char *err,
@@ -191,6 +192,9 @@ int quant_sqrt_resolve(const quant_sqrt_spec *sp, int dtype,
     // Nothing here reads the raster, on purpose. Two tiles of one product have to
     // land on the same grid or the same value encodes differently in each.
     out->step = 0.5 * c;
+    if (!quant_sqrt_params_ok(out, dtype))
+      return geozl_recipe_fail(err, errSize,
+                               "this bound makes the grid step too small");
 
     // Refuse grids whose index arithmetic cannot resolve every level.
     const double levels = 0.5 / (QSQ_INDEX_TERMS * DBL_EPSILON);
@@ -207,16 +211,29 @@ int quant_sqrt_resolve(const quant_sqrt_spec *sp, int dtype,
     return 0;
   }
 
-  // The index path, where the step reads the raster anyway, so both charges land
-  // on it rather than becoming a refusal the way the value path does it.
+  // The floating-point path, where the step reads the raster anyway, so both
+  // charges land on it rather than becoming a refusal the way the integer path
+  // does it.
   const double eps = quant_sqrt_eps(dtype);
   const double chargeWide =
       eps * fmax(store_charge(sc->lo, offset), store_charge(sc->hi, offset));
   const double chargeIndex = QSQ_INDEX_TERMS * DBL_EPSILON * u;
 
   double charge = chargeWide;
-  if (dtype == QSQ_F32) {
-    const double chargeNarrow = QSQ_F32_TERMS * eps * u;
+  if (dtype == QSQ_F16) {
+    // The decoder always rebuilds f16 in float, and at this eps the rounding to
+    // half is read at a reconstruction up to c*u from the sample.
+    charge += eps * c + QSQ_F32_TERMS * quant_sqrt_eps(QSQ_F32) * u;
+  } else if (dtype == QSQ_F32) {
+    // Below zero offset is larger than u^2 by |x|, and binary32 rounds it before
+    // the subtraction, so the error stays while the bound shrinks toward -offset.
+    // At -offset itself the bound is zero, so the charge reads the next float up.
+    const double loBound = sc->lo > -offset
+                               ? sc->lo
+                               : (double)nextafterf((float)sc->lo, INFINITY);
+    const double below =
+        sc->lo < 0.0 ? 2.0 * eps * (store_charge(loBound, offset) + c) : 0.0;
+    const double chargeNarrow = QSQ_F32_TERMS * eps * u + below;
     if (chargeNarrow <= QSQ_F32_SHARE * c) {
       charge = chargeNarrow;
       out->flags |= QUANT_SQRT_FLAG_DECODE_F32;
@@ -230,6 +247,9 @@ int quant_sqrt_resolve(const quant_sqrt_spec *sp, int dtype,
                 "between %g and %g, where the type resolves %g and the bound "
                 "asks for %g",
                 sc->lo, sc->hi, chargeWide, c);
+  if (!quant_sqrt_params_ok(out, dtype))
+    return geozl_recipe_fail(err, errSize,
+                             "this bound makes the grid step too small");
 
   const double q = u / out->step;
   if (!(q < quant_sqrt_stream_max(dtype)))

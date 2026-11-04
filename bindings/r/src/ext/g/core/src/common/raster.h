@@ -13,13 +13,16 @@ static inline size_t geozl_row_width(size_t width, size_t nbElts) {
   return (nbElts % width == 0) ? width : 0;
 }
 
-// Normalize 0 or an oversized width to a single row.
+// Normalize 0 or an oversized width to a single row. Most decoders reject
+// width 0, so an empty stream declares 1.
 static inline uint32_t geozl_row_width_declared(uint32_t width, size_t nbElts) {
+  if (nbElts == 0)
+    return 1;
   return (width == 0 || (size_t)width > nbElts) ? (uint32_t)nbElts : width;
 }
 
-// Row width plus the element width switch, written out identically by nine
-// kernels. B is the width in bits, for bodies that paste it into a scan name.
+// Row width plus the element width switch. B is the width in bits, for bodies
+// that paste it into a scan name.
 // dst and src must be aligned to eltWidth; checking it here costs delta_w u64
 // a third, so it belongs where an unaligned pointer first appears.
 #define GEOZL_ROW_DISPATCH(W, BODY)                                            \
@@ -55,7 +58,7 @@ static inline uint32_t geozl_planes_declared(uint32_t planes, uint32_t width,
   if (nbElts % planes != 0)
     return 1;
   const size_t per = nbElts / planes;
-  if (per == 0 || per % width != 0)
+  if (per % width != 0)
     return 1;
   return planes;
 }

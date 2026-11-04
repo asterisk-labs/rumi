@@ -25,9 +25,10 @@ each plane must contain whole rows.
 
 ## Encoding
 
-Planes are independent. Let `W`, `N` and `NW` be source neighbours, with zero
-outside the plane. The MED prediction is the JPEG-LS median edge detector,
-ITU-T T.87 A.4.1:
+Planes are independent. Samples are read as unsigned integers of the element
+width, whatever the raster dtype. Let `W`, `N` and `NW` be source neighbours,
+with zero outside the plane. The MED prediction is the JPEG-LS median edge
+detector, ITU-T T.87 A.4.1:
 
     min(W, N)       if NW >= max(W, N)
     max(W, N)       if NW <= min(W, N)

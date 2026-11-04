@@ -5,7 +5,8 @@
 #include <stdint.h>
 
 // Fit the wp_static kernel from a tile, encode side. Writes the four int16
-// coefficients {cN, cNW, cNE, cNN} and the shift, never worse than planar.
+// coefficients {cN, cNW, cNE, cNN} and the shift, never worse than planar by
+// estimated byte-plane cost.
 // Defined for 1, 2, 4 and 8 byte samples. @width per row.
 // Returns 0 on success, nonzero when the geometry is rejected: elt_width is
 // not 1, 2, 4 or 8, nb_elts is 0, or width does not divide nb_elts. A tile

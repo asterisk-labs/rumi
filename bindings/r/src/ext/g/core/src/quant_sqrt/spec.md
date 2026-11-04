@@ -62,7 +62,7 @@ The encoded stream always has an integer representation:
 | Input | Storage | Reconstruction |
 | --- | --- | --- |
 | integer | index | evaluate `(q * step)^2 - offset`, then round to an integer |
-| integer | values | copy the stored value |
+| integer | values | copy the stored value, floored at zero when flag bit 0 is set |
 | float | values | cast the stored value to the output type |
 | float | index | evaluate `(q * step)^2 - offset` |
 
@@ -73,27 +73,37 @@ the original `x` domain:
     q = 0                              when t <= 1/4
     q = floor(1/2 + sqrt(t - 1/4))     otherwise
 
-Index reconstruction uses binary32 arithmetic only when flag bit 2 is set;
-otherwise it uses binary64. The result is clamped to the output range and to
-zero when flag bit 0 is set.
+Index reconstruction uses binary32 arithmetic for f16 always, and for f32 when
+flag bit 2 is set; otherwise it uses binary64. The result is clamped to the
+output range and to zero when flag bit 0 is set.
 
 ## Cutting the step
 
 For integer input, `step = c / 2`. The resolver refuses grids whose level
-calculation is not reliable.
+calculation is not reliable, and on any input a step whose square is smaller than
+`DBL_MIN`, which is the check the kernels apply.
 
 The floating-point index path subtracts the encoding and output-rounding costs
 from `c`. Let `u = sqrt(maxAbs + offset)` and
 `g(x) = |x| / sqrt(x + offset)`. Binary64 reconstruction uses
 `eps * max(g(lo), g(hi)) + 3 * DBL_EPSILON * u` as its charge. For f32, the
-resolver may replace the first term with `8 * eps * u` when that term is at
-most one quarter of `c`; the second term remains. A recipe is refused if the
-remaining step is not positive or the index range does not fit the stream.
+resolver may set flag bit 2 and replace the first term with `8 * eps * u`, plus
+`2 * eps * (g(lo) + c)` if `lo` is negative. It does so only when that replacement
+is at most one quarter of `c`; the second term remains. For f16, which always
+rebuilds in binary32, the first term becomes
+
+    eps * (max(g(lo), g(hi)) + c) + 8 * 2^-24 * u
+
+A recipe is refused if the remaining step is not positive or the index range
+does not fit the stream.
 
 The bound is defined only where `a + b*x` is positive. A tile extending below
 `-a/b` is refused. Non-finite samples are outside the guarantee and should be
-handled by the `nodata` codec. The encoder does not decode and verify every
-sample again; the resolver's construction is covered by tests and fuzzers.
+handled by the `nodata` codec. For floating-point input the guarantee starts at
+the smallest normal value: a subnormal has neighbours a flat gap apart, and no
+charge against a bound that shrinks with the signal covers that gap. The encoder
+does not decode and verify every sample again; the resolver's construction is
+covered by tests and fuzzers.
 
 ## Fitting the noise model
 

@@ -37,3 +37,7 @@ contain a breaking change; it will be called out in the changelog.
 Rumi 0.27.0 includes GeoZL 0.20.0 and OpenZL 0.3.0. Its Python package requires
 `geozl>=0.20.0,<0.21`. GeoZL 0.20 reads the older
 frames used by Rumi, while byte-lane PivCo frames require a GeoZL 0.20 reader.
+
+Rumi 0.28.0 includes GeoZL 0.21.0 and requires `geozl>=0.21.0,<0.22` in
+Python. Its GPU reads decode multi-chunk OpenZL frames on the CPU before
+placing their samples on the GPU. The Rumi file format is unchanged.

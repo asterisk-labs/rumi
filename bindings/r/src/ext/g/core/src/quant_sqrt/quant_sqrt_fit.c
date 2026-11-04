@@ -26,7 +26,7 @@
 //
 // The number belongs to QSQ_BLK and to the mask below and to nothing else.
 // Changing either without measuring this again moves every bound the codec
-// declares, and moves it quietly, since the fit will still look reasonable.
+// declares, and the fit will still look reasonable.
 #define QSQ_PCT_BIAS 0.624732
 
 static int fail(char *err, size_t errSize, const char *fmt, ...) {
@@ -176,12 +176,13 @@ int quant_sqrt_accum_push(quant_sqrt_accum *acc, const void *src, int dtype,
 
 int quant_sqrt_accum_solve(const quant_sqrt_accum *acc, quant_sqrt_noise *out,
                            char *err, size_t errSize) {
-  memset(out, 0, sizeof(*out));
+  if (out != NULL)
+    memset(out, 0, sizeof(*out));
   if (acc == NULL || out == NULL)
     return fail(err, errSize, "no accumulator");
   if (acc->failed)
     return fail(err, errSize, "the fit ran out of memory");
-  out->blocks = (int)(acc->n > (size_t)INT32_MAX ? INT32_MAX : acc->n);
+  out->blocks = (int)(acc->seen > (size_t)INT32_MAX ? INT32_MAX : acc->seen);
   if (acc->n < (size_t)(QSQ_MINBIN * QSQ_MINBLK))
     return fail(err, errSize,
                 "%zu blocks is not enough to fit a curve, a raster needs to be "
@@ -251,8 +252,8 @@ int quant_sqrt_accum_solve(const quant_sqrt_accum *acc, quant_sqrt_noise *out,
   out->b = (Sw * Sxy - Sx * Sy) / det;
   out->a = (Sy - out->b * Sx) / Sw;
   // A negative intercept is a variance at zero signal, which does not exist. It
-  // comes from extrapolating past where the data reaches, so it is floored rather
-  // than trusted.
+  // comes from extrapolating past where the data reaches, so it is floored at
+  // zero.
   if (out->a < 0.0)
     out->a = 0.0;
 
@@ -286,7 +287,8 @@ int quant_sqrt_fit(const void *src, int dtype, size_t width, size_t height,
                    quant_sqrt_noise *out, char *err, size_t errSize) {
   quant_sqrt_accum acc;
   quant_sqrt_accum_init(&acc);
-  memset(out, 0, sizeof(*out));
+  if (out != NULL)
+    memset(out, 0, sizeof(*out));
   if (quant_sqrt_accum_push(&acc, src, dtype, width, height) != 0) {
     quant_sqrt_accum_free(&acc);
     return fail(err, errSize,

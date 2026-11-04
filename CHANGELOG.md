@@ -4,9 +4,21 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-03
+
+### Added
+
+- `read` and `read_many` accept `decode_backend="cpu"` for PyTorch GPU reads.
+  Every selected frame then decodes fully on the CPU before its samples are
+  placed on the GPU. The default `"auto"` uses GPU decoding for supported
+  single-chunk frames and CPU decoding for the rest.
+- `rumi_read_gpu_ex` and `rumi_read_many_gpu_ex` expose the same per-call
+  choice to C callers; the existing entry points keep automatic routing.
+
 ### Changed
 
-- Moved the GeoZL pin to a revision without the four retired decoders.
+- Updated the GeoZL pin and Python dependency to 0.21.0, which no longer has
+  the four retired decoders.
   CTids `0x72D708` through `0x72D70B` remain reserved.
 
 ### Fixed
@@ -611,7 +623,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/asterisk-labs/rumi/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/asterisk-labs/rumi/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.4...v0.27.0
 [0.27.0-alpha.4]: https://github.com/asterisk-labs/rumi/compare/v0.27.0-alpha.3...v0.27.0-alpha.4

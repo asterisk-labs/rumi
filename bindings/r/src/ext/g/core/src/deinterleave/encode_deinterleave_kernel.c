@@ -1,7 +1,6 @@
 #include "encode_deinterleave_kernel.h"
 
 #include <stdint.h>
-#include <string.h>
 
 // Pairwise so the compiler recognizes the interleave and emits vzip/unpck.
 #define DEINTERLEAVE_SPLIT(T)                                                  \
@@ -33,17 +32,6 @@ void deinterleave_split(void *out0, void *out1, const void *src, size_t nbElts,
   case 8:
     DEINTERLEAVE_SPLIT(uint64_t);
     break;
-  default: {
-    const char *s = (const char *)src;
-    char *a = (char *)out0;
-    char *b = (char *)out1;
-    for (size_t k = 0; k < half; ++k) {
-      memcpy(a + k * eltWidth, s + (2 * k) * eltWidth, eltWidth);
-      memcpy(b + k * eltWidth, s + (2 * k + 1) * eltWidth, eltWidth);
-    }
-    if (nbElts & 1u)
-      memcpy(a + half * eltWidth, s + (2 * half) * eltWidth, eltWidth);
-  }
   }
 }
 

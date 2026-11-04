@@ -19,7 +19,8 @@ each plane must contain whole rows.
 
 ## Decoding
 
-Planes are decoded independently. For each sample,
+Planes are decoded independently. Samples are read as unsigned integers of the
+element width, whatever the raster dtype. For each sample,
 
     prediction = floor((W + N) / 2)
     output     = residual + prediction

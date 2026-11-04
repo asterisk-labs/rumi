@@ -184,10 +184,18 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
     return RumiArray(out[0], _dlpack_shape(out[0]), specs[0].fields.dtype)
 
 
+def _decode_backend_code(value: str) -> int:
+    if value == "auto":
+        return lib.RUMI_GPU_DECODE_AUTO
+    if value == "cpu":
+        return lib.RUMI_GPU_DECODE_CPU
+    raise ValueError("decode_backend must be 'auto' or 'cpu'")
+
+
 def read(source: _ReadTarget, header: Header | None = None, *,
          framework: str = "numpy", pattern: str | None = None,
          time: Axis = None, bands: Axis = None, window: Window = None,
-         device: str | None = None):
+         device: str | None = None, decode_backend: str = "auto"):
     """Read one rumi raster.
 
     ``source`` may be a local path, a remote URI, or the file's bytes. Use
@@ -206,9 +214,13 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     writes directly into a PyTorch GPU tensor and requires
     ``framework="torch"``. CUDA work is enqueued on PyTorch's current stream;
     use the result there, or make another stream wait on an event recorded
-    after the read. CPU reads use the process-wide thread pool; call
-    ``set_num_threads`` before the first parallel read to set its size.
+    after the read. ``decode_backend="cpu"`` decodes every selected frame on
+    CPU before placing its samples on the GPU. The default ``"auto"`` uses GPU
+    decoding for supported frames and CPU decoding for all others. CPU reads
+    use the process-wide thread pool; call ``set_num_threads`` before the
+    first parallel read to set its size.
     """
+    backend = _decode_backend_code(decode_backend)
     if isinstance(source, Dataset):
         if header is not None:
             raise TypeError("header is already carried by this Dataset")
@@ -240,7 +252,8 @@ def read(source: _ReadTarget, header: Header | None = None, *,
         bands_c, n_bands_c = _to_c(picked_bands)
         return read_one(
             native_source, spec, times_c, n_times_c, bands_c, n_bands_c,
-            resolved_window, output_pattern, consumer.dtype, device)
+            resolved_window, output_pattern, consumer.dtype, device,
+            backend)
 
     arr = _read_one(native_source, spec, times, picked_bands,
                     resolved_window, output_pattern)
@@ -252,7 +265,7 @@ def read_many(sources: Sequence[_ReadTarget],
               windows: Sequence[tuple[int, int, int, int]] | None = None,
               framework: str = "numpy", pattern: str | None = None,
               time: Axis = None, bands: Axis = None,
-              device: str | None = None):
+              device: str | None = None, decode_backend: str = "auto"):
     """Read one fixed-size window per source, or every whole image.
 
     ``windows[i]`` is the ``(row, column, height, width)`` read from
@@ -277,8 +290,10 @@ def read_many(sources: Sequence[_ReadTarget],
     ``framework="torch"`` with ``device="cuda:N"`` or ``device="mps"`` returns
     the batch on that GPU. CUDA work is enqueued on PyTorch's current stream;
     transfer that dependency with an event before consuming the batch from a
-    different stream.
+    different stream. ``decode_backend="cpu"`` decodes all selected frames
+    on CPU before placing their samples on the GPU; ``"auto"`` selects per frame.
     """
+    backend = _decode_backend_code(decode_backend)
     if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
         raise TypeError("read_many takes a sequence of sources; use read for one")
     sources = list(sources)
@@ -341,7 +356,8 @@ def read_many(sources: Sequence[_ReadTarget],
         return read_many_gpu(
             items, len(specs), specs,
             times_c, n_times_c, bands_c, n_bands_c,
-            y_size, x_size, output_pattern, consumer.dtype, device)
+            y_size, x_size, output_pattern, consumer.dtype, device,
+            backend)
 
     arr = _read_many(native_sources, specs, y_offs, x_offs, y_size, x_size,
                      times, picked_bands, output_pattern)

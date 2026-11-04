@@ -63,13 +63,15 @@ of the residual.
 
 One numeric stream with the input length and element width.
 
-## Relation to the other two
+## Relation to the other codecs
 
-Three codecs walk the same chain and differ only in where they stop. `planar`
+Four codecs walk the same chain and differ only in where they stop. `planar`
 (CTID `0x72D703`) stops after the predictor and leaves a signed residual.
 This codec also applies Zigzag and is still numeric out, so a packer or an
 entropy stage follows it. `planar_zigzag_pfor` (CTID `0x72D710`) goes to the
-end and emits the serial stream itself.
+end and emits the serial stream itself. `planar_zigzag_transpose_pivco` (CTID
+`0x72D712`) goes to the end one byte lane at a time and emits weights and a
+serial payload.
 
 `planar_zigzag_pfor` packs exactly the numeric values emitted by this codec.
 Which stopping point to choose is a question of graph flexibility and
@@ -78,5 +80,7 @@ intermediate memory traffic, not a change to the planar or Zigzag transform.
 ## Compatibility
 
 Recipes beginning with `planar>zigzag` select this codec. The PFOR variant
-selects `planar_zigzag_pfor` instead. Decoders register both planar CTIDs and
-PFOR, so frames written by the former graphs remain readable.
+selects `planar_zigzag_pfor` instead, and `planar>zigzag>pivco` on one-byte
+elements and `planar>zigzag>transpose>pivco` select
+`planar_zigzag_transpose_pivco`. Decoders register both planar CTIDs and PFOR,
+so frames written by the former graphs remain readable.

@@ -6,6 +6,7 @@
 #include "common/recipe_parse.h"
 
 #include <errno.h>
+#include <float.h>
 #include <locale.h>
 #include <math.h>
 #include <stdarg.h>
@@ -79,14 +80,16 @@ int quant_linear_resolve(const quant_linear_spec *sp, int dtype,
 
   // Two roundings, not one. The division inside nearbyint(x/step) can send q to
   // the neighbour the exact quotient would not have picked, which costs eps*|x|,
-  // and storing q*step at the output width rounds again by eps*|x^|. See
-  // spec.md. This is also the only thing on this path that reads the tile.
-  out->step = 2.0 * (sp->max_error - 2.0 * quant_linear_eps(dtype) * maxAbs);
+  // and storing q*step at the output width rounds again by eps*|x^|, or by half
+  // the subnormal gap where that rounding is flat. See spec.md. This is also the
+  // only thing on this path that reads the tile.
+  out->step = 2.0 * (sp->max_error - 2.0 * quant_linear_eps(dtype) * maxAbs -
+                     quant_linear_sub_eps(dtype));
   if (!isfinite(out->step))
     return geozl_recipe_fail(err, errSize,
                 "a MAX_ERROR of %g makes the grid step too large",
                 sp->max_error);
-  if (!(out->step > 0.0))
+  if (!(out->step >= DBL_MIN))
     return geozl_recipe_fail(err, errSize,
                 "a MAX_ERROR of %g is at or below the rounding of the output "
                 "type at %g",
@@ -113,6 +116,20 @@ int quant_linear_resolve(const quant_linear_spec *sp, int dtype,
     }                                                                          \
   } while (0)
 
+// A double cannot hold a 64 bit sample, and converting two of them before the
+// subtraction measures the gap between their roundings.
+#define QL_VER_64(T)                                                           \
+  do {                                                                         \
+    const T *a = (const T *)src, *b = (const T *)dec;                          \
+    for (size_t i = 0; i < nbElts; ++i) {                                      \
+      const uint64_t d = a[i] > b[i] ? (uint64_t)a[i] - (uint64_t)b[i]         \
+                                     : (uint64_t)b[i] - (uint64_t)a[i];        \
+      const double r = (double)d / sp->max_error;                              \
+      if (r > w)                                                               \
+        w = r;                                                                 \
+    }                                                                          \
+  } while (0)
+
 int quant_linear_verify(const void *src, const void *dec,
                         const quant_linear_spec *sp, int dtype, size_t nbElts,
                         double *worst) {
@@ -132,7 +149,7 @@ int quant_linear_verify(const void *src, const void *dec,
     QL_VER(((const uint32_t *)src)[i], ((const uint32_t *)dec)[i]);
     break;
   case QL_U64:
-    QL_VER(((const uint64_t *)src)[i], ((const uint64_t *)dec)[i]);
+    QL_VER_64(uint64_t);
     break;
   case QL_I8:
     QL_VER(((const int8_t *)src)[i], ((const int8_t *)dec)[i]);
@@ -144,7 +161,7 @@ int quant_linear_verify(const void *src, const void *dec,
     QL_VER(((const int32_t *)src)[i], ((const int32_t *)dec)[i]);
     break;
   case QL_I64:
-    QL_VER(((const int64_t *)src)[i], ((const int64_t *)dec)[i]);
+    QL_VER_64(int64_t);
     break;
   case QL_F16:
     QL_VER(quant_linear_half_to_float(((const uint16_t *)src)[i]),

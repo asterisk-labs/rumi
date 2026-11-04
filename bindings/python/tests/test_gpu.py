@@ -317,14 +317,28 @@ def test_partial_read_writes_a_gpu_tensor(
     assert np.array_equal(result.cpu().numpy(), expected)
 
 
+@pytest.mark.parametrize(("device", "torch_type"), _TORCH_DEVICES)
+def test_cpu_decode_backend_places_partial_read_on_gpu(
+        scenes, device, torch_type):
+    path, header, data = scenes[0]
+    result = rumi.read(
+        path, header, framework="torch", device=device,
+        decode_backend="cpu", bands=[3, 1], window=(7, 11, 63, 75))
+
+    assert result.device.type == torch_type
+    assert np.array_equal(result.cpu().numpy(), data[[3, 1], 7:70, 11:86])
+
+
 @pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
-def test_chunky_layout_and_nondefault_stream(scenes):
+@pytest.mark.parametrize("decode_backend", ["auto", "cpu"])
+def test_chunky_layout_and_nondefault_stream(scenes, decode_backend):
     path, header, data = scenes[0]
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
         result = rumi.read(
             path, header, framework="torch", device="cuda:0",
-            pattern="y x b", window=(0, 0, 64, 64))
+            pattern="y x b", window=(0, 0, 64, 64),
+            decode_backend=decode_backend)
     stream.synchronize()
 
     expected = torch.from_numpy(
@@ -402,16 +416,34 @@ def test_read_many_preserves_item_order(
     assert np.array_equal(result.cpu().numpy(), expected)
 
 
+@pytest.mark.parametrize(("device", "torch_type"), _TORCH_DEVICES)
+def test_cpu_decode_backend_places_batch_on_gpu(
+        scenes, device, torch_type):
+    windows = [(0, 0, 32, 48), (13, 17, 32, 48), (40, 70, 32, 48)]
+    result = rumi.read_many(
+        [item[0] for item in scenes], [item[1] for item in scenes],
+        windows=windows, framework="torch", device=device,
+        decode_backend="cpu")
+
+    expected = np.stack([
+        item[2][:, row:row + height, col:col + width]
+        for item, (row, col, height, width) in zip(scenes, windows, strict=True)
+    ])
+    assert result.device.type == torch_type
+    assert np.array_equal(result.cpu().numpy(), expected)
+
+
 @pytest.mark.skipif(not _MPS_AVAILABLE, reason="Metal is not available")
 @pytest.mark.skipif(
     not hasattr(torch.mps, "Stream"), reason="MPS streams are not available")
-def test_mps_read_from_a_nondefault_stream(scenes):
+@pytest.mark.parametrize("decode_backend", ["auto", "cpu"])
+def test_mps_read_from_a_nondefault_stream(scenes, decode_backend):
     path, header, data = scenes[0]
     stream = torch.mps.Stream()
     with torch.mps.stream(stream):
         result = rumi.read(
             path, header, framework="torch", device="mps",
-            window=(0, 0, 32, 32))
+            window=(0, 0, 32, 32), decode_backend=decode_backend)
 
     stream.synchronize()
     assert np.array_equal(result.cpu().numpy(), data[:, :32, :32])

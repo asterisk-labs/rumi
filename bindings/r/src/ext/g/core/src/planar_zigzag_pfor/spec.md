@@ -74,4 +74,4 @@ end and emits the serial stream itself.
 
 The packed payload and compression ratio are the same as `planar_zigzag`
 followed by `pfor`. Total frame size may differ because the graph metadata is
-different. Decoder performance must be measured separately.
+different.

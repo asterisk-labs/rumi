@@ -44,8 +44,7 @@ ZL_Report EI_geozl_quant_linear(ZL_Encoder *eictx, const ZL_Input *in) {
   ZL_ERR_IF_NULL(out, allocation);
 
   // The resolver refused anything the grid cannot serve, so a failure here is
-  // parameters this codec's own kernels reject, which is a bug rather than a
-  // recipe the caller has to loosen.
+  // parameters this codec's own kernels reject, and no change to the recipe helps.
   if (quant_linear_encode(ZL_Output_ptr(out), ZL_Input_ptr(in), &p, dtype,
                           nbElts) != 0)
     ZL_ERR(GENERIC, "quant_linear resolved parameters its own kernels reject");

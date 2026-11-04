@@ -25,6 +25,9 @@ endif()
 if(GEOZL_BUILD_GPU AND NOT GEOZL_BUILD_FULL)
     message(FATAL_ERROR "GEOZL_BUILD_GPU requires GEOZL_BUILD_FULL=ON")
 endif()
+if(GEOZL_BUILD_FUZZERS AND NOT GEOZL_BUILD_FULL)
+    message(FATAL_ERROR "GEOZL_BUILD_FUZZERS requires GEOZL_BUILD_FULL=ON")
+endif()
 
 # Freeze geozl's linkage before OpenZL touches BUILD_SHARED_LIBS. A standalone
 # build is shared; a parent that explicitly sets OFF gets a static library.
@@ -122,8 +125,7 @@ if(CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC" AND CMAKE_C_COMPILER_ID STR
     endif()
 endif()
 
-# Discover encoder and decoder sides independently. Retired writers keep their
-# decoders so frames already on disk remain readable.
+# Discover encoder and decoder sides independently.
 file(GLOB GEOZL_ENCODER_BINDINGS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*/encode_*_binding.c)
 foreach(binding IN LISTS GEOZL_ENCODER_BINDINGS)
@@ -159,6 +161,9 @@ list(APPEND GEOZL_KERNELS
 
 if(GEOZL_BUILD_FULL)
     if(GEOZL_USE_SYSTEM_OPENZL)
+        # OpenZL's exported targets name these two without finding them.
+        find_package(zstd CONFIG REQUIRED)
+        find_package(lz4 CONFIG REQUIRED)
         find_package(openzl CONFIG REQUIRED)
         set(GEOZL_OPENZL_TARGET OpenZL::openzl)
     else()
@@ -171,6 +176,11 @@ if(GEOZL_BUILD_FULL)
         set(OPENZL_ALLOW_INTROSPECTION OFF CACHE BOOL "" FORCE)
         set(OPENZL_INSTALL             OFF CACHE BOOL "" FORCE)
         set(OPENZL_BUILD_SHARED_LIBS   OFF CACHE BOOL "" FORCE)
+        # zstd and LZ4 headers mark their API default visibility themselves, which
+        # beats the preset above and would export them from libgeozl.
+        add_compile_definitions(ZSTDLIB_VISIBLE= ZSTDERRORLIB_VISIBLE=
+                                ZDICTLIB_VISIBLE= LZ4LIB_VISIBILITY=
+                                LZ4FLIB_VISIBILITY=)
         add_subdirectory(${GEOZL_OPENZL_DIR}
                          ${CMAKE_CURRENT_BINARY_DIR}/openzl EXCLUDE_FROM_ALL)
         set(GEOZL_OPENZL_TARGET openzl)
@@ -198,6 +208,10 @@ if(GEOZL_BUILD_FULL)
         target_include_directories(geozl PRIVATE ${GEOZL_OPENZL_DIR}/src)
     endif()
     target_compile_definitions(geozl PRIVATE GEOZL_BUILD)
+    # PUBLIC because a consumer of the static library must not ask for dllimport.
+    if(GEOZL_LIB_TYPE STREQUAL "STATIC")
+        target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
+    endif()
     target_compile_options(geozl PRIVATE ${GEOZL_WARN} ${GEOZL_FP})
     if(GEOZL_BUILD_GPU)
         find_package(Threads REQUIRED)

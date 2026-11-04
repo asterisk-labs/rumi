@@ -19,8 +19,9 @@ each plane must contain whole rows.
 
 ## Decoding
 
-Planes are decoded independently. Let `W`, `N` and `NW` be reconstructed
-neighbors, with zero outside the plane. The MED prediction is
+Planes are decoded independently. Samples are read as unsigned integers of the
+element width, whatever the raster dtype. Let `W`, `N` and `NW` be
+reconstructed neighbors, with zero outside the plane. The MED prediction is
 
     min(W, N)       if NW >= max(W, N)
     max(W, N)       if NW <= min(W, N)

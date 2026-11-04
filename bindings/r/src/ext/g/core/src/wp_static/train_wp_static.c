@@ -82,9 +82,9 @@ static int solve4(double A[4][4], double b[4], double x[4]) {
     }                                                                          \
   } while (0)
 
-// Normal equations: target is the planar residual (row[c] - left), features the
-// four neighbours above, both divided by sc (see header). sc is 1 for narrow
-// samples.
+// Normal equations: target is the horizontal residual (row[c] - left),
+// features the four neighbours above, both divided by sc (see header). sc is 1
+// for narrow samples.
 #define WP_ACCUM(T)                                                            \
   do {                                                                         \
     const T *s = (const T *)src;                                               \
@@ -119,9 +119,9 @@ static double plane_H(const uint32_t *hist, size_t nb) {
   return H;
 }
 
-// Two scorers, not one duplicated. WIDE reproduces the encoder exactly. NARROW
-// takes the cheaper int64 subtract truncated to int16, which only holds at 8
-// and 16 bits, and always scores two planes, over-counting every candidate alike.
+// Two scorers. WIDE reproduces the encoder exactly. NARROW takes the cheaper
+// int64 subtract truncated to int16, which only holds at 8 and 16 bits, and
+// always scores two planes.
 #define WP_SCORE_NARROW(T, ZCAST)                                              \
   do {                                                                         \
     const T *s = (const T *)src;                                               \
@@ -269,10 +269,9 @@ int wp_static_train(int16_t coeffs[4], uint8_t *shift, const void *src,
   }
 
   // One 256-bin plane per sample byte: planes 0-1 for narrow, eltWidth for
-  // wide. Heap rather than a static buffer, which two threads compressing at
-  // once would share, and too large to sit on the stack of a worker thread.
-  // Failing to allocate is not an error, the planar defaults set at the top
-  // stand and the tile just does not get a fitted predictor.
+  // wide. Heap, 80 KiB is too large for a worker stack. Failing to allocate is
+  // not an error, the planar defaults set at the top stand and the tile just
+  // does not get a fitted predictor.
   uint32_t (*hist)[WP_MAX_PLANES][256] = calloc(WP_MAX_CAND, sizeof *hist);
   if (hist == NULL)
     return 0;

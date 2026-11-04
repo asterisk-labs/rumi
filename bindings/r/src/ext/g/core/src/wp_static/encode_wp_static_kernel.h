@@ -7,9 +7,9 @@
 // Forward wp_static predictor, the residual for wp_static_decode. @coeffs is
 // {cN, cNW, cNE, cNN}. Row major, @width samples per row. @dst must not alias
 // @src. See spec.md for the kernel and the edge convention.
-// Returns 0 on success, nonzero when the geometry is rejected: eltWidth is
-// not 1, 2, 4 or 8, nbElts is 0, or width does not divide nbElts. On a
-// nonzero return dst is left untouched.
+// Returns 0 on success, nonzero when the input is rejected: eltWidth is not 1,
+// 2, 4 or 8, nbElts is 0, width does not divide nbElts, or shift is 64 or more.
+// On a nonzero return dst is left untouched.
 int wp_static_encode(void *dst, const void *src, size_t width, size_t nbElts,
                      size_t eltWidth, const int16_t coeffs[4], uint8_t shift);
 

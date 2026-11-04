@@ -18,7 +18,7 @@ each frame may use its own compression graph. A small external header locates ev
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 
-This skill describes **rumi 0.27.1** (GeoZL 0.20.0, OpenZL
+This skill describes **rumi 0.28.0** (GeoZL 0.21.0, OpenZL
 0.3.0, Karu 0.4.0).
 Check `rumi.__version__`. If it differs, trust the installed source, `SPEC.md`
 and `CHANGELOG.md` over this file.
@@ -40,6 +40,8 @@ and `CHANGELOG.md` over this file.
 - Reads take zero-based `time`, `bands` and `window=(row, column, height, width)` plus an
   output `pattern` over `n t b y x`. They return NumPy by default. PyTorch can return
   CUDA tensors with `device="cuda:N"` or Metal tensors with `device="mps"`.
+  `decode_backend="cpu"` decodes every selected frame on the CPU and places
+  samples on the selected GPU; `"auto"` uses GPU decoding when possible.
 
 ## Canonical workflow
 

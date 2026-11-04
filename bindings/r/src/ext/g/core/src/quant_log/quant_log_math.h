@@ -32,10 +32,9 @@ static inline double qlog_round(double v) {
   return v < 0.0 ? -(double)(int64_t)(0.5 - v) : (double)(int64_t)(v + 0.5);
 }
 
-// 1 KB per translation unit that includes this. Kept here on purpose: as
-// externs in a .c they would be one copy, but every caller that links the
-// kernels by hand would then have a new file to add, which is a worse trade
-// than the kilobyte.
+// 1 KB per translation unit that includes this. As externs in a .c they would be
+// one copy, but every caller that links the kernels by hand would then have a new
+// file to add.
 static const double qlog_mlg[64] = {
     1.12272554232541195e-02, 3.34230015374502795e-02, 5.52824355011896015e-02, 7.68155970508308944e-02,
     9.80320829605267202e-02, 1.18941072723507429e-01, 1.39551352398793543e-01, 1.59871336778389411e-01,

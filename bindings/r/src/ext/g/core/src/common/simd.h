@@ -80,9 +80,10 @@ unsigned geozl_simd_built(void);
 unsigned geozl_simd_cpu(void);
 
 /* Best path that is both built and available, lowered by GEOZL_SIMD when that
-   names a narrower one. A value it does not recognise is ignored. This is the
-   name the Python side reports under; geozl_simd_now is the one the kernels
-   call. */
+   names a narrower one. A value it does not recognise is ignored. The cap only
+   turns off AVX2 dispatch. SSE2 and NEON kernels are compiled in, so a
+   GEOZL_NO_SIMD build is what runs the scalar path. This is the name the Python
+   side reports under; geozl_simd_now is the one the kernels call. */
 int geozl_simd_active(void);
 
 const char *geozl_simd_name(int path);
