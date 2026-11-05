@@ -83,7 +83,6 @@ fuzz/out/
 core/tests/fixtures/data/
 /demo.py
 /check.py
-/examples/sentinel2-cuda-benchmark.ipynb
 *.rumi
 *.tif
 !bindings/r/tests/testthat/fixtures/*.rumi
