@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+void rumi_r_abort(void) { Rf_error("OpenZL failed an internal check"); }
+
 typedef struct {
   rumi_source *source;
   rumi_spec *spec;
