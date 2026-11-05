@@ -134,6 +134,16 @@ def check(tag: str | None) -> tuple[str, str, str]:
     expected = next_minor_constraint(geozl_version)
     if expected not in project.get("dependencies", []):
         fail(f"Python dependencies must contain {expected!r}")
+    js_dependency = js_package.get("dependencies", {}).get("@asterisk-labs/geozl")
+    lock_root = js_lock.get("packages", {}).get("", {})
+    lock_dependency = lock_root.get("dependencies", {}).get("@asterisk-labs/geozl")
+    lock_geozl = js_lock.get("packages", {}).get("node_modules/@asterisk-labs/geozl", {})
+    lock_version = lock_geozl.get("version")
+    if (js_dependency, lock_dependency, lock_version) != (geozl_version,) * 3:
+        fail(
+            "JavaScript GeoZL dependency and lock must match the native pin "
+            f"{geozl_version}"
+        )
 
     classifiers = set(project.get("classifiers", []))
     required = {
@@ -151,6 +161,10 @@ def check(tag: str | None) -> tuple[str, str, str]:
         "LICENSE",
         "NOTICE",
         "licenses/LICENSE.GeoZL",
+        "licenses/LICENSE.xxHash",
+        "licenses/LICENSE.pdqsort",
+        "licenses/LICENSE.divsufsort",
+        "licenses/LICENSE.JoinPaths",
         "licenses/LICENSE.DLPack",
         "licenses/LICENSE.LZ4-GPL",
         "licenses/LICENSE.OpenZL",
