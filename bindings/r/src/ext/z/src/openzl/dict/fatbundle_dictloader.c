@@ -225,7 +225,7 @@ ZL_Report ZL_FatBundleDictLoader_loadFatBundle(
                             &parsed.contentHash,
                             &existingDict->val->contentHash),
                     dict_corruption,
-                    "trying to load a dict with an ID already in use",
+                    "trying to load dict %zu with an ID already in use",
                     i);
             bundle->dicts[i] = existingDict->val;
             p += parsed.packedSize;

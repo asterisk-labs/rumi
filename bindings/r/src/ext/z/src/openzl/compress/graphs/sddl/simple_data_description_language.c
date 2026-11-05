@@ -1482,13 +1482,13 @@ static ZL_RESULT_OF(ZL_SDDL_Expr) ZL_SDDL_Scope_get(
             entry,
             corruption,
             "Variable '%.*s' read without ever having been written.",
-            var->name.size,
+            (int)var->name.size,
             var->name.data);
     ZL_ERR_IF_NULL(
             entry->val,
             corruption,
             "Variable '%.*s' has NULL value.",
-            var->name.size,
+            (int)var->name.size,
             var->name.data);
     ZL_SDDL_Expr result = *entry->val;
     ZL_SDDL_Expr_incref(state, &result);

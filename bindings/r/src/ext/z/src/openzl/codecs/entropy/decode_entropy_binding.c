@@ -636,7 +636,7 @@ ZL_Report DI_fse_typed(ZL_Decoder* dictx, const ZL_Input* ins[])
                 header.size,
                 1,
                 corruption,
-                "FSE header size should be at most 1, got unexpected header size - %d",
+                "FSE header size should be at most 1, got unexpected header size - %zu",
                 header.size);
         nbStates = *(uint8_t const*)header.start;
         // We support only 2 or 4 states, anything else is probably a

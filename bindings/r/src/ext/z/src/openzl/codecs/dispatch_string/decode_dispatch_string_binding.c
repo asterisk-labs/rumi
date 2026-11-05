@@ -95,7 +95,7 @@ ZL_Report DI_dispatch_string(
                     ZL_Input_numElts(variableSrcs[i]),
                     histogram->count[i],
                     node_invalid_input,
-                    "Index stream requires different input length than provided src[%u]",
+                    "Index stream requires different input length than provided src[%zu]",
                     i);
         }
     }

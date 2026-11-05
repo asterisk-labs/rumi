@@ -121,6 +121,12 @@ static void CCTX_TransformHeaders_destroy(CCTX_TransformHeaders* headers)
     VECTOR_DESTROY(headers->sentHeaderStream);
 }
 
+static size_t CCTX_TransformHeaders_sizeof(const CCTX_TransformHeaders* headers)
+{
+    return VECTOR_SIZEOF(headers->stagingHeaderStream)
+            + VECTOR_SIZEOF(headers->sentHeaderStream);
+}
+
 // --------------------------
 // CCtx Lifetime management
 // --------------------------
@@ -575,7 +581,7 @@ static ZL_Report CCTX_runCNode_wParams(
             nbInputs,
             ZL_runtimeNodeInputLimit(cctx->appliedGCParams.formatVersion),
             node_versionMismatch,
-            "Too many inputs (%u) for format version %u (max=%u)",
+            "Too many inputs (%zu) for format version %u (max=%zu)",
             nbInputs,
             cctx->appliedGCParams.formatVersion,
             ZL_runtimeNodeInputLimit(cctx->appliedGCParams.formatVersion));
@@ -2190,6 +2196,26 @@ size_t CCTX_arenaMemory(ZL_CCtx const* cctx)
             + ALLOC_Arena_memAllocated(cctx->chunkArena)
             + ALLOC_Arena_memAllocated(cctx->graphArena)
             + ALLOC_Arena_memAllocated(cctx->codecArena);
+}
+
+static size_t RTGM_sizeof(const RTGraph* rtgraph)
+{
+    return VECTOR_SIZEOF(rtgraph->nodes) + VECTOR_SIZEOF(rtgraph->streams)
+            + ALLOC_Arena_memAllocated(rtgraph->rtsidsArena)
+            + ALLOC_Arena_memAllocated(rtgraph->streamArena);
+}
+
+size_t CCTX_sizeof(const ZL_CCtx* cctx)
+{
+    if (cctx == NULL) {
+        return 0;
+    }
+    return sizeof(*cctx) + RTGM_sizeof(&cctx->rtgraph)
+            + ZL_Compressor_sizeof(cctx->internal_cgraph)
+            + TRS_sizeof(&cctx->cachedCodecStates)
+            + CCTX_TransformHeaders_sizeof(&cctx->trHeaders)
+            + CodecCache_sizeof(cctx->tryGraphCodecOutputCache)
+            + ZL_OC_sizeof(&cctx->opCtx) + CCTX_arenaMemory(cctx);
 }
 
 static ZL_RESULT_OF(ZL_GraphPerformance) CCTX_tryGraphInternal(

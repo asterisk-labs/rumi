@@ -491,6 +491,8 @@ static TRS_NumericFeatures NumericFeatures_extract_sub64(
     size_t delta_down_count          = 0;
     int64_t delta_min_s              = 0;
     int64_t delta_max_s              = 0;
+    int64_t delta_first_min_s        = INT64_MAX;
+    int64_t delta_first_max_s        = INT64_MIN;
     uint64_t min_lb0                 = 64;
     size_t nonzero_count             = (data[0] != 0) ? 1 : 0;
     uint64_t prev_u                  = (uint64_t)data[0];
@@ -568,6 +570,10 @@ static TRS_NumericFeatures NumericFeatures_extract_sub64(
             delta_min_s = delta_s;
         if (delta_s > delta_max_s)
             delta_max_s = delta_s;
+        if (delta_s < delta_first_min_s)
+            delta_first_min_s = delta_s;
+        if (delta_s > delta_first_max_s)
+            delta_first_max_s = delta_s;
 
         if (val_u != prev_u) {
             if (val_u > prev_u) {
@@ -613,7 +619,10 @@ static TRS_NumericFeatures NumericFeatures_extract_sub64(
     f.delta_down_count = delta_down_count;
     f.delta_min_s      = delta_min_s;
     f.delta_max_s      = delta_max_s;
-    f.min_lb0          = (nonzero_count == 0) ? 0 : min_lb0;
+    /* Fewer than two elements have no delta; report 0 like delta_min_s. */
+    f.delta_first_min_s = n_elements > 1 ? delta_first_min_s : 0;
+    f.delta_first_max_s = n_elements > 1 ? delta_first_max_s : 0;
+    f.min_lb0           = (nonzero_count == 0) ? 0 : min_lb0;
 
     f.range_u   = max_u - min_u;
     f.range_s   = TRS_wide_i64_abs_diff_to_u64(max_s, min_s);
@@ -683,6 +692,8 @@ static TRS_NumericFeatures NumericFeatures_extract_sub64_decision(
     size_t delta_down_count      = 0;
     int64_t delta_min_s          = 0;
     int64_t delta_max_s          = 0;
+    int64_t delta_first_min_s    = INT64_MAX;
+    int64_t delta_first_max_s    = INT64_MIN;
     uint64_t min_lb0             = 64;
     size_t nonzero_count         = (data[0] != 0) ? 1 : 0;
     uint64_t prev_u              = (uint64_t)data[0];
@@ -746,6 +757,10 @@ static TRS_NumericFeatures NumericFeatures_extract_sub64_decision(
             delta_min_s = delta_s;
         if (delta_s > delta_max_s)
             delta_max_s = delta_s;
+        if (delta_s < delta_first_min_s)
+            delta_first_min_s = delta_s;
+        if (delta_s > delta_first_max_s)
+            delta_first_max_s = delta_s;
 
         if (val_u != prev_u) {
             if (val_u > prev_u) {
@@ -771,7 +786,10 @@ static TRS_NumericFeatures NumericFeatures_extract_sub64_decision(
     f.delta_down_count = delta_down_count;
     f.delta_min_s      = delta_min_s;
     f.delta_max_s      = delta_max_s;
-    f.min_lb0          = (nonzero_count == 0) ? 0 : min_lb0;
+    /* Fewer than two elements have no delta; report 0 like delta_min_s. */
+    f.delta_first_min_s = n_elements > 1 ? delta_first_min_s : 0;
+    f.delta_first_max_s = n_elements > 1 ? delta_first_max_s : 0;
+    f.min_lb0           = (nonzero_count == 0) ? 0 : min_lb0;
 
     f.range_u       = max_u - min_u;
     f.range_s       = TRS_wide_i64_abs_diff_to_u64(max_s, min_s);
@@ -1060,6 +1078,8 @@ static TRS_NumericFeatures NumericFeatures_extract_num8_from_bytes(
     size_t delta_down_count          = 0;
     int64_t delta_min_s              = 0;
     int64_t delta_max_s              = 0;
+    int64_t delta_first_min_s        = INT64_MAX;
+    int64_t delta_first_max_s        = INT64_MIN;
     uint64_t min_lb0                 = 64;
     size_t nonzero_count             = (data[0] != 0) ? 1 : 0;
     uint64_t prev_u                  = (uint64_t)data[0];
@@ -1134,6 +1154,10 @@ static TRS_NumericFeatures NumericFeatures_extract_num8_from_bytes(
             delta_min_s = delta_s;
         if (delta_s > delta_max_s)
             delta_max_s = delta_s;
+        if (delta_s < delta_first_min_s)
+            delta_first_min_s = delta_s;
+        if (delta_s > delta_first_max_s)
+            delta_first_max_s = delta_s;
 
         if (val_u != prev_u) {
             if (val_u > prev_u) {
@@ -1179,7 +1203,10 @@ static TRS_NumericFeatures NumericFeatures_extract_num8_from_bytes(
     f.delta_down_count = delta_down_count;
     f.delta_min_s      = delta_min_s;
     f.delta_max_s      = delta_max_s;
-    f.min_lb0          = (nonzero_count == 0) ? 0 : min_lb0;
+    /* Fewer than two elements have no delta; report 0 like delta_min_s. */
+    f.delta_first_min_s = n_bytes > 1 ? delta_first_min_s : 0;
+    f.delta_first_max_s = n_bytes > 1 ? delta_first_max_s : 0;
+    f.min_lb0           = (nonzero_count == 0) ? 0 : min_lb0;
 
     f.range_u   = max_u - min_u;
     f.range_s   = TRS_wide_i64_abs_diff_to_u64(max_s, min_s);

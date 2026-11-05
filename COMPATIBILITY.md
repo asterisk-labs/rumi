@@ -44,3 +44,7 @@ placing their samples on the GPU. The Rumi file format is unchanged.
 
 Rumi 0.28.1 includes GeoZL 0.21.1 and requires `geozl>=0.21.1,<0.22` in
 Python. The Rumi file format is unchanged.
+
+Rumi 0.29.0 includes GeoZL 0.30.0 and requires `geozl>=0.30.0,<0.31` in
+Python. The JavaScript reader uses the same GeoZL release. GeoZL carries
+upstream OpenZL commit `000f69b`. The Rumi file format is unchanged.

@@ -4,8 +4,10 @@ Licensed under the GNU General Public License version 3, see licenses/LICENSE.GP
 
 `librumi` statically links:
 
-  GeoZL 0.21.1            BSD 3-Clause     licenses/LICENSE.GeoZL
-  OpenZL 0.3.0            BSD 3-Clause     licenses/LICENSE.OpenZL
+  GeoZL 0.30.0            BSD 3-Clause     licenses/LICENSE.GeoZL
+  OpenZL 000f69b          BSD 3-Clause     licenses/LICENSE.OpenZL
+  xxHash, in OpenZL       BSD 2-Clause     licenses/LICENSE.xxHash
+  pdqsort, in OpenZL      zlib             licenses/LICENSE.pdqsort
   Zstandard 1.5.7         BSD 3-Clause     licenses/LICENSE.Zstandard
   LZ4 1.10.0 (lib only)   BSD 2-Clause     licenses/LICENSE.LZ4
   Karu 0.4.0              MIT              licenses/LICENSE.Karu
@@ -16,6 +18,9 @@ Apache 2.0; see licenses/LICENSE.DLPack.
 Only LZ4's BSD-licensed `lib` directory is built. The R source package also
 contains LZ4 support files outside `lib`, which LZ4 licenses under
 GPL-2.0-or-later unless stated otherwise; see licenses/LICENSE.LZ4-GPL.
+
+The R source package also carries unused zstd sources from divsufsort and
+JoinPaths; see licenses/LICENSE.divsufsort and licenses/LICENSE.JoinPaths.
 
 Release wheels also bundle the transport runtimes:
 

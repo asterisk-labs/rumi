@@ -2,6 +2,7 @@
 
 #include "openzl/codecs/splitByStruct/encode_splitByStruct_binding.h"
 #include "openzl/codecs/splitByStruct/encode_splitByStruct_kernel.h"
+#include "openzl/codecs/transpose/encode_transpose_kernel.h" // ZS_splitTransposeEncode
 #include "openzl/common/assertion.h"
 #include "openzl/common/logging.h"         // ZL_DLOG
 #include "openzl/common/wire_format.h"     // ZS2_strid_*
@@ -10,7 +11,6 @@
 #include "openzl/compress/private_nodes.h" // ZS2_NODE_SPLITBYSTRUCT_TRANSFORM
 #include "openzl/zl_ctransform.h"
 #include "openzl/zl_data.h"
-#include "openzl/zl_graph_api.h"
 #include "openzl/zl_selector.h" // ZL_SelectorDesc
 
 static size_t sum(const size_t array_st[], size_t arr_size)
@@ -82,12 +82,14 @@ EI_splitByStruct(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
             "allocation error in splitByStruct while trying to create array of %zu output pointers",
             nbFields);
 
+    bool byteFields = true;
     for (size_t n = 0; n < nbFields; n++) {
         ZL_ERR_IF_EQ(
                 fieldSizes[n],
                 0,
                 nodeParameter_invalidValue,
                 "Must not have a field size of zero!");
+        byteFields &= fieldSizes[n] == 1;
         ZL_Output* const out = ZL_Encoder_createTypedStream(
                 eictx, 0, nbStructs, fieldSizes[n]);
         ZL_ERR_IF_NULL(
@@ -98,6 +100,16 @@ EI_splitByStruct(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
                 nbStructs * fieldSizes[n]);
         outArr[n] = ZL_Output_ptr(out);
         ZL_ERR_IF_ERR(ZL_Output_commit(out, nbStructs));
+    }
+
+    // Fields of 1 byte each: a transpose, which has vectorized variants
+    if (byteFields && (nbFields == 2 || nbFields == 4 || nbFields == 8)) {
+        uint8_t* bytes[8];
+        for (size_t n = 0; n < nbFields; n++) {
+            bytes[n] = (uint8_t*)outArr[n];
+        }
+        ZS_splitTransposeEncode(bytes, ZL_Input_ptr(in), nbStructs, nbFields);
+        return ZL_returnSuccess();
     }
 
     ZS_dispatchArrayFixedSizeStruct(

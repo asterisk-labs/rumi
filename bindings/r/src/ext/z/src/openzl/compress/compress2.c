@@ -28,6 +28,11 @@ void ZL_CCtx_free(ZL_CCtx* cctx)
     CCTX_free(cctx);
 }
 
+size_t ZL_CCtx_sizeof(const ZL_CCtx* cctx)
+{
+    return CCTX_sizeof(cctx);
+}
+
 /**
  * Requires: applied parameters set
  */
@@ -350,6 +355,8 @@ ZL_Report ZL_CCtx_compressMultiTypedRef(
         const ZL_TypedRef* inputs[],
         size_t nbInputs)
 {
+    ZL_OC_startOperation(
+            ZL_CCtx_getOperationContext(cctx), ZL_Operation_compress);
     ZL_RESULT_DECLARE_SCOPE_REPORT(cctx);
     CWAYPOINT(
             on_ZL_CCtx_compressMultiTypedRef_start,

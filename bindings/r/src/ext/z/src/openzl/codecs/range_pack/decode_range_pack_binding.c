@@ -31,7 +31,7 @@ ZL_Report DI_rangePack(ZL_Decoder* dictx, const ZL_Input* streams[])
     ZL_ERR_IF(
             !ZL_isLegalIntegerWidth(dstWidth),
             corruption,
-            "Range pack decoder got an illegal dstWidth (%zu)",
+            "Range pack decoder got an illegal dstWidth (%d)",
             dstWidth);
     uint64_t minValue = 0;
     if (header.size > 1) {

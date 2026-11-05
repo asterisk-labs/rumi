@@ -39,18 +39,21 @@ ZL_BEGIN_C_DECLS
 #    define ZL_FLATTEN_ATTR // MSVC doesn't have equivalent to flatten
 #    define ZL_ALIGNED(n) __declspec(align(n))
 #    define ZL_UNUSED // MSVC doesn't need unused attribute
+#    define ZL_NORETURN __declspec(noreturn)
 #elif defined(__GNUC__) || defined(__clang__)
 #    define ZL_FORCE_INLINE_ATTR __attribute__((always_inline))
 #    define ZL_FORCE_NOINLINE_ATTR __attribute__((noinline))
 #    define ZL_FLATTEN_ATTR __attribute__((flatten))
 #    define ZL_ALIGNED(n) __attribute__((aligned(n)))
 #    define ZL_UNUSED __attribute__((unused))
+#    define ZL_NORETURN __attribute__((noreturn))
 #else
 #    define ZL_FORCE_INLINE_ATTR
 #    define ZL_FORCE_NOINLINE_ATTR
 #    define ZL_FLATTEN_ATTR
 #    define ZL_ALIGNED(n)
 #    define ZL_UNUSED
+#    define ZL_NORETURN
 #endif
 
 /// Keywords
@@ -289,8 +292,38 @@ ZL_INLINE bool ZL_addressIsPoisoned(const void* ptr)
 #    define ZL_HAS_BMI2 0
 #endif
 
+#if defined(__aarch64__) && defined(__ARM_NEON)
+#    define ZL_HAS_NEON 1
+#else
+#    define ZL_HAS_NEON 0
+#endif
+
+#if ZL_HAS_NEON && defined(__ARM_FEATURE_DOTPROD)
+#    define ZL_HAS_NEON_DOTPROD 1
+#else
+#    define ZL_HAS_NEON_DOTPROD 0
+#endif
+
+#if ZL_HAS_NEON_DOTPROD && defined(__ARM_FEATURE_MATMUL_INT8)
+#    define ZL_HAS_NEON_I8MM 1
+#else
+#    define ZL_HAS_NEON_I8MM 0
+#endif
+
 #if defined(__aarch64__) && defined(__ARM_FEATURE_SVE) \
-        && defined(__ARM_FEATURE_SVE2_BITPERM) && ZL_HAS_INCLUDE(<arm_sve.h>)
+        && ZL_HAS_INCLUDE(<arm_sve.h>)
+#    define ZL_HAS_SVE 1
+#else
+#    define ZL_HAS_SVE 0
+#endif
+
+#if ZL_HAS_SVE && defined(__ARM_FEATURE_SVE2)
+#    define ZL_HAS_SVE2 1
+#else
+#    define ZL_HAS_SVE2 0
+#endif
+
+#if ZL_HAS_SVE2 && defined(__ARM_FEATURE_SVE2_BITPERM)
 #    define ZL_HAS_SVE2_BITPERM 1
 #else
 #    define ZL_HAS_SVE2_BITPERM 0

@@ -38,8 +38,10 @@ typedef struct {
     size_t zero_count;        /* count of zero values */
     size_t delta_up_count;    /* count of upward transitions */
     size_t delta_down_count;  /* count of downward transitions */
-    int64_t delta_min_s;      /* min signed delta between consecutive */
-    int64_t delta_max_s;      /* max signed delta between consecutive */
+    int64_t delta_min_s;      /* min(0, min signed delta between consecutive) */
+    int64_t delta_max_s;      /* max(0, max signed delta between consecutive) */
+    int64_t delta_first_min_s; /* min signed delta, not clamped to 0 */
+    int64_t delta_first_max_s; /* max signed delta, not clamped to 0 */
 
     /* Complex raw statistics (each requires independent data scan) */
     uint64_t mean_abs_dev_u_fp; /* mean absolute deviation (unsigned), scaled by

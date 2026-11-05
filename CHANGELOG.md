@@ -4,6 +4,25 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-05
+
+### Changed
+
+- Updated the native GeoZL pin and Python and JavaScript dependencies to 0.30.0.
+  GeoZL now includes upstream OpenZL commit `000f69b`, with OpenZL's
+  `range_pack` header-write fix and configurable abort and logging callbacks.
+- Refreshed the R vendor from the new pins and excluded unused OpenZL GNU
+  Makefiles.
+
+### Fixed
+
+- The JavaScript package now depends on the same GeoZL release as the native
+  library and Python package.
+- The R package routes OpenZL aborts and logs through R instead of terminating
+  the session or writing to stderr.
+- macOS builds give the bundled GeoZL Metal classes private names so loading
+  Rumi alongside GeoZL does not register duplicate Objective-C classes.
+
 ## [0.28.1] - 2026-11-05
 
 ### Changed
@@ -634,7 +653,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.28.1...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/asterisk-labs/rumi/compare/v0.28.1...v0.29.0
 [0.28.1]: https://github.com/asterisk-labs/rumi/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/asterisk-labs/rumi/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/asterisk-labs/rumi/compare/v0.27.0...v0.27.1

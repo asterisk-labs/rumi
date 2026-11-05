@@ -189,7 +189,7 @@ ZL_Report A1C_convert_cbor_to_json(
             written,
             encoded_size,
             GENERIC,
-            "Serialized size (%lu) didn't end up being the size we expected (%lu).",
+            "Serialized size (%zu) didn't end up being the size we expected (%zu).",
             written,
             encoded_size);
 

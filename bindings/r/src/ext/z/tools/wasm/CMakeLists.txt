@@ -47,8 +47,14 @@ if(NOT EMSCRIPTEN)
       PRIVATE
         openzl_wasm_lib
         openzl
+        custom_parsers
         GTest::gtest_main
     )
+    if(OPENZL_BUILD_CLI)
+      # Enable additional test to verify if wasm and zli are out of sync only when cli is also enabled
+      target_sources(test_wasm_binding PRIVATE tests/test_wasm_profiles.cpp)
+      target_link_libraries(test_wasm_binding PRIVATE utils)
+    endif()
     apply_openzl_compile_options_to_target(test_wasm_binding)
     gtest_discover_tests(test_wasm_binding)
   endif()
@@ -99,8 +105,17 @@ set(OPENZL_WASM_PTHREAD_POOL_SIZE 4 CACHE STRING
 target_compile_options(openzl_wasm PRIVATE -O3)
 target_compile_definitions(openzl_wasm PRIVATE
   OPENZL_WASM_TRAIN_MAX_THREADS=${OPENZL_WASM_PTHREAD_POOL_SIZE})
+# The `-g` below is for speed, not debugging: emcc reads it off the link line
+# and then skips binaryen's post-link pass, which costs this workload about a
+# quarter of its compression throughput. DWARF in the objects plays no part --
+# the same link with and without it produces a byte-identical code section --
+# and whoever ships the artifact strips the result anyway, see the docs deploy.
+# Stated here rather than inherited from OpenZLCompilerUnix.cmake, which adds
+# `-g` to Release for native profiling: removing it there is a reasonable
+# cleanup and must not silently slow this module down.
 target_link_options(openzl_wasm PRIVATE
   -O3                        # optimise the linked wasm
+  -g                         # speed, not debugging; see above
   -sWASM=1                   # emit wasm, not asm.js
   -sALLOW_MEMORY_GROWTH=1    # heap can grow; JS must re-read mod.HEAPU8
   -sINITIAL_MEMORY=32MB      # starting heap size

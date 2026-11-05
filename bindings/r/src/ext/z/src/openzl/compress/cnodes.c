@@ -50,6 +50,17 @@ void CTM_destroy(CNodes_manager* ctm)
     ZL_zeroes(ctm, sizeof(*ctm));
 }
 
+size_t CTM_sizeof(const CNodes_manager* ctm)
+{
+    if (ctm == NULL) {
+        return 0;
+    }
+    return VECTOR_SIZEOF(ctm->cnodes)
+            + ZL_OpaquePtrRegistry_sizeof(&ctm->opaquePtrs)
+            + ALLOC_Arena_memAllocated(ctm->allocator)
+            + ALLOC_Arena_memAllocated(ctm->scratchAllocator);
+}
+
 void CTM_reset(CNodes_manager* ctm)
 {
     ZL_DLOG(FRAME, "CTM_reset");
@@ -217,7 +228,7 @@ static ZL_RESULT_OF(CNodeID) CTM_registerCNode(
                     CNODE_getNbInputPorts(cnode),
                     ZL_runtimeNodeInputLimit(ZL_MAX_FORMAT_VERSION),
                     node_invalid_input,
-                    "Too many inputs (%u) defined for transform '%s' (max=%u)",
+                    "Too many inputs (%zu) defined for transform '%s' (max=%zu)",
                     CNODE_getNbInputPorts(cnode),
                     CNODE_getName(cnode),
                     ZL_runtimeNodeInputLimit(ZL_MAX_FORMAT_VERSION));

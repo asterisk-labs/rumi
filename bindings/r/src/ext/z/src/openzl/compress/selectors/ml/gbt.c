@@ -164,7 +164,7 @@ ZL_Report GBTPredictor_validate_forest(
     ZL_ERR_IF_NULL(
             forest->trees,
             GENERIC,
-            "GBTModel's %u forest's tree array is null",
+            "GBTModel's %zu forest's tree array is null",
             forest_idx);
 
     for (size_t j = 0; j < forest->numTrees; j++) {
@@ -172,7 +172,7 @@ ZL_Report GBTPredictor_validate_forest(
         ZL_ERR_IF_NULL(
                 tree->nodes,
                 GENERIC,
-                "GBTModel's %u forest's %u tree is null",
+                "GBTModel's %zu forest's %zu tree is null",
                 forest_idx,
                 j);
         ZL_ERR_IF_ERR(GBTPredictor_validate_tree(tree, nbFeatures));

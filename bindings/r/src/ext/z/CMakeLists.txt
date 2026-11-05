@@ -33,6 +33,7 @@ option(OPENZL_BUILD_TOOLS "Builds the tools subdirectory" ON)
 option(OPENZL_BUILD_CLI "Build the cli subdirectory" ON)
 option(OPENZL_BUILD_EXAMPLES "Build the examples subdirectory" ON)
 option(OPENZL_BUILD_WASM "Builds WASM binding (requires Emscripten)" OFF)
+option(OPENZL_BUILD_GPU "Builds the CUDA GPU decoder in contrib/gpu (requires the CUDA Toolkit)" OFF)
 
 set(OPENZL_SUPPORT_SHARED_LIBRARY "${OPENZL_BUILD_SHARED_LIBS}")
 
@@ -223,19 +224,39 @@ apply_openzl_compile_options_to_target(openzl)
 
 target_link_libraries(openzl PUBLIC openzl_deps)
 
-# Keep shared profile graph builders independent of CLI dependencies for WASM.
-add_library(openzl_profile_graphs cli/utils/profile_graphs.cpp)
-target_include_directories(openzl_profile_graphs PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(openzl_profile_graphs PUBLIC openzl)
-apply_openzl_compile_options_to_target(openzl_profile_graphs)
+# Shared profile graph builders used by both the CLI and wasm. Defined here
+# rather than under cli/ because wasm needs them even when the CLI is off.
+# Native WASM binding tests also use these builders.
+if (OPENZL_BUILD_CLI
+    OR OPENZL_BUILD_WASM
+    OR (OPENZL_BUILD_TESTS AND NOT EMSCRIPTEN))
+    if (NOT OPENZL_BUILD_CPP OR NOT OPENZL_BUILD_CUSTOM_PARSERS)
+        message(FATAL_ERROR
+            "Shared profile graphs for the CLI, WASM, or native WASM binding tests "
+            "require OPENZL_BUILD_CPP=ON and OPENZL_BUILD_CUSTOM_PARSERS=ON.")
+    endif()
+
+    add_library(openzl_profile_graphs cli/utils/profile_graphs.cpp)
+    target_include_directories(openzl_profile_graphs PUBLIC ${PROJECT_SOURCE_DIR})
+    target_link_libraries(
+        openzl_profile_graphs
+        PUBLIC
+            openzl
+            openzl_cpp
+            csv_parser
+            parquet_graph
+            shared_components
+            pytorch_model_parser)
+    apply_openzl_compile_options_to_target(openzl_profile_graphs)
+endif()
 
 # order matters. dependencies first
 if (OPENZL_BUILD_TESTS)
     set(INSTALL_GTEST OFF)
     FetchContent_Declare(
-        googletest # v1.14.0
-        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-        URL_HASH SHA256=1f357c27ca988c3f7c6b4bf68a9395005ac6761f034046e9dde0896e3aba00e4
+        googletest # v1.17.0
+        URL https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz
+        URL_HASH SHA256=65fab701d9829d38cb77c14acdc431d2108bfdbf8979e40eb8ae567edf10b27c
     )
     FetchContent_MakeAvailable(googletest)
     include(GoogleTest)
@@ -275,6 +296,10 @@ endif()
 
 if (OPENZL_BUILD_PYTHON_DEMO)
     add_subdirectory(contrib/openzl-demo)
+endif()
+
+if (OPENZL_BUILD_GPU)
+    add_subdirectory(contrib/gpu)
 endif()
 
 if (OPENZL_INSTALL)

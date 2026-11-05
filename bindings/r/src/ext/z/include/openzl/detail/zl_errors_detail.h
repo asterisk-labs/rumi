@@ -315,6 +315,7 @@ ZL_Error ZL_E_create(
  * Append a formatted string to the error's message. May be a no-op if the
  * error doesn't have a rich error info set up internally.
  */
+ZL_PRINTF_FN(2, 3)
 void ZL_E_appendToMessage(ZL_Error err, char const* fmt, ...);
 
 /**

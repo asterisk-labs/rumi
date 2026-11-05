@@ -79,6 +79,22 @@ extern "C" {
 #endif
 
 /**
+ * Declares a printf-style function, so the compiler checks its variadic
+ * arguments against the format string. @p fmtIdx and @p firstArgIdx are the
+ * 1-based positions of the format string and of the first variadic argument.
+ */
+#if defined(__MINGW32__) && !defined(__clang__)
+/* MinGW GCC checks `printf` against msvcrt, which rejects C99's `%zu`. */
+#    define ZL_PRINTF_FN(fmtIdx, firstArgIdx) \
+        __attribute__((__format__(__gnu_printf__, fmtIdx, firstArgIdx)))
+#elif ZL_HAS_ATTRIBUTE(__format__)
+#    define ZL_PRINTF_FN(fmtIdx, firstArgIdx) \
+        __attribute__((__format__(__printf__, fmtIdx, firstArgIdx)))
+#else
+#    define ZL_PRINTF_FN(fmtIdx, firstArgIdx)
+#endif
+
+/**
  * Functions passed into OpenZL core from C++ should be `noexcept`. The C++
  * standard, by omitting to describe a behavior, makes it by default undefined
  * behavior to throw an exception from C++ code into C code, even if that C

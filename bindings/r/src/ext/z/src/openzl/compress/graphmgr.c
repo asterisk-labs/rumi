@@ -104,6 +104,17 @@ void GM_free(GraphsMgr* gm)
     ZL_free(gm);
 }
 
+size_t GM_sizeof(const GraphsMgr* gm)
+{
+    if (gm == NULL) {
+        return 0;
+    }
+    return sizeof(*gm) + VECTOR_SIZEOF(gm->gdv) + GraphMap_sizeof(&gm->nameMap)
+            + ZL_OpaquePtrRegistry_sizeof(&gm->opaquePtrs)
+            + ALLOC_Arena_memAllocated(gm->allocator)
+            + ALLOC_Arena_memAllocated(gm->scratchAllocator);
+}
+
 void GM_setCDictMgr(GraphsMgr* gm, CDictMgr* cdictMgr)
 {
     ZL_ASSERT_NN(gm);
@@ -426,7 +437,7 @@ GM_registerTypedSelectorGraph(GraphsMgr* gm, const ZL_SelectorDesc* tsd)
                 GM_getGraphNbInputs(gm, successorID),
                 1,
                 graph_invalid,
-                "Candidate Successor '%s' (%u) must have a single input (detected %u)",
+                "Candidate Successor '%s' (%u) must have a single input (detected %zu)",
                 GM_getGraphName(gm, successorID),
                 successorID.gid,
                 GM_getGraphNbInputs(gm, successorID));
@@ -514,7 +525,7 @@ GM_registerStaticGraph(GraphsMgr* gm, const ZL_StaticGraphDesc* sgDesc)
                 GM_getGraphNbInputs(gm, successors[n]),
                 1,
                 graph_invalid,
-                "Successor must have a single input (detected %u)",
+                "Successor must have a single input (detected %zu)",
                 GM_getGraphNbInputs(gm, successors[n]));
         // Check type compatibility for each outcome
         ZL_Type const origType = n < nbSingletons

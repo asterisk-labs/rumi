@@ -23,6 +23,10 @@
 #include "openzl/zl_graph_api.h"
 
 typedef const HUF_CElt* HufCTable;
+
+/// FSE tables need up to 2^9 states for 256 symbols: a smaller maximum table
+/// log could not hold for all byte alphabets.
+#define ENTROPY_FSE_MIN_MAX_TABLELOG 9
 ZL_RESULT_DECLARE_TYPE(HufCTable);
 
 static ZL_Histogram const* getHistogram(ZL_Encoder* eictx, const ZL_Input* in)
@@ -47,15 +51,73 @@ static ZL_Histogram const* getHistogram(ZL_Encoder* eictx, const ZL_Input* in)
     return histogram;
 }
 
-static ZL_Report buildHufCTable(HUF_CElt* ctable, const ZL_Histogram* histogram)
+/// Scratch space of buildHufCTable(), allocated by its callers.
+typedef struct {
+    HUF_CElt longer[HUF_CTABLE_SIZE_ST(HUF_SYMBOLVALUE_MAX)];
+    unsigned build[HUF_CTABLE_WORKSPACE_SIZE_U32];
+} HufCTableWksp;
+
+/// @returns the maximum code length set by ZL_ENTROPY_HUFFMAN_MAX_TABLE_LOG_PID
+/// in @p param, or HUF_TABLELOG_DEFAULT if unset, or 0 if invalid.
+static unsigned hufMaxTableLog(ZL_IntParam param)
+{
+    if (param.paramId == ZL_LP_INVALID_PARAMID) {
+        return HUF_TABLELOG_DEFAULT;
+    }
+    if (param.paramValue < HUF_TABLELOG_DEFAULT
+        || param.paramValue > HUF_TABLELOG_MAX) {
+        return 0;
+    }
+    return (unsigned)param.paramValue;
+}
+
+/// Codes longer than HUF_TABLELOG_DEFAULT bits double the decoding table and
+/// slow decoding down, so when @p maxTableLog allows them, they are only kept
+/// when they save at least 1/512 of the compressed size.
+static ZL_Report buildHufCTable(
+        HUF_CElt* ctable,
+        const ZL_Histogram* histogram,
+        unsigned maxTableLog,
+        HufCTableWksp* wksp)
 {
     ZL_RESULT_DECLARE_SCOPE_REPORT(NULL);
+    ZL_ASSERT_NN(wksp);
     ZL_ASSERT_NE(histogram->maxSymbol, 0, "Must've already ruled out constant");
     size_t tableLog = HUF_optimalTableLog(
             HUF_TABLELOG_DEFAULT, histogram->total, histogram->maxSymbol);
-    tableLog = HUF_buildCTable(
-            ctable, histogram->count, histogram->maxSymbol, (unsigned)tableLog);
+    tableLog = HUF_buildCTable_wksp(
+            ctable,
+            histogram->count,
+            histogram->maxSymbol,
+            (unsigned)tableLog,
+            wksp->build,
+            sizeof(wksp->build));
     ZL_ERR_IF(HUF_isError(tableLog), GENERIC);
+    if (maxTableLog <= HUF_TABLELOG_DEFAULT
+        || tableLog < HUF_TABLELOG_DEFAULT) {
+        // Codes are shorter than the limit, or the input is too small for
+        // longer codes: a higher limit changes nothing.
+        return ZL_returnSuccess();
+    }
+    size_t longerLog = HUF_optimalTableLog(
+            maxTableLog, histogram->total, histogram->maxSymbol);
+    longerLog = HUF_buildCTable_wksp(
+            wksp->longer,
+            histogram->count,
+            histogram->maxSymbol,
+            (unsigned)longerLog,
+            wksp->build,
+            sizeof(wksp->build));
+    if (HUF_isError(longerLog) || longerLog <= tableLog) {
+        return ZL_returnSuccess();
+    }
+    const size_t size = ZS_HUF_estimateCompressedSize(
+            ctable, histogram->count, histogram->maxSymbol);
+    const size_t longerSize = ZS_HUF_estimateCompressedSize(
+            wksp->longer, histogram->count, histogram->maxSymbol);
+    if (longerSize + ((size + 511) >> 9) <= size) {
+        memcpy(ctable, wksp->longer, HUF_CTABLE_SIZE(histogram->maxSymbol));
+    }
     return ZL_returnSuccess();
 }
 
@@ -69,10 +131,16 @@ static ZL_RESULT_OF(HufCTable)
         return ZL_RESULT_WRAP_VALUE(HufCTable, param.paramRef);
     }
 
+    unsigned const maxTableLog = hufMaxTableLog(ZL_Encoder_getLocalIntParam(
+            encoder, ZL_ENTROPY_HUFFMAN_MAX_TABLE_LOG_PID));
+    ZL_ERR_IF_EQ(maxTableLog, 0, nodeParameter_invalidValue);
     HUF_CElt* ctable = ZL_Encoder_getScratchSpace(
             encoder, HUF_CTABLE_SIZE(histogram->maxSymbol));
     ZL_ERR_IF_NULL(ctable, allocation);
-    ZL_ERR_IF_ERR(buildHufCTable(ctable, histogram));
+    HufCTableWksp* const wksp =
+            ZL_Encoder_getScratchSpace(encoder, sizeof(HufCTableWksp));
+    ZL_ERR_IF_NULL(wksp, allocation);
+    ZL_ERR_IF_ERR(buildHufCTable(ctable, histogram, maxTableLog, wksp));
 
     return ZL_RESULT_WRAP_VALUE(HufCTable, ctable);
 }
@@ -152,8 +220,18 @@ ZL_Report EI_fse_v2(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
         ZL_ERR_IF_NULL(normStream, allocation);
         int16_t* const normCount = ZL_Output_ptr(normStream);
 
-        unsigned const tableLog = FSE_optimalTableLog(
-                FSE_DEFAULT_TABLELOG, srcSize, histogram->maxSymbol);
+        unsigned maxTableLog               = FSE_DEFAULT_TABLELOG;
+        ZL_IntParam const maxTableLogParam = ZL_Encoder_getLocalIntParam(
+                eictx, ZL_ENTROPY_FSE_MAX_TABLE_LOG_PID);
+        if (maxTableLogParam.paramId != ZL_LP_INVALID_PARAMID) {
+            ZL_ERR_IF(
+                    maxTableLogParam.paramValue < ENTROPY_FSE_MIN_MAX_TABLELOG
+                            || maxTableLogParam.paramValue > FSE_MAX_TABLELOG,
+                    nodeParameter_invalidValue);
+            maxTableLog = (unsigned)maxTableLogParam.paramValue;
+        }
+        unsigned const tableLog =
+                FSE_optimalTableLog(maxTableLog, srcSize, histogram->maxSymbol);
         ctable = ZL_Encoder_getScratchSpace(
                 eictx, FSE_CTABLE_SIZE(tableLog, histogram->maxSymbol));
         ZL_ERR_IF_NULL(ctable, allocation);
@@ -539,24 +617,66 @@ EI_huffman_typed(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
     return ZL_returnValue(1);
 }
 
+// Chunking of 8-bit inputs, see chunkInputStream()
+#define EI_CHUNK_SIZE ((size_t)1 << 15)
+#define EI_MIN_SIZE_TO_CHUNK ((size_t)100000)
+
+#define EI_SAMPLED_CHUNK_RATIO 32
+#define EI_MIN_SAMPLED_CHUNKS 3
+
+typedef enum {
+    EBM_huf,
+    EBM_fse,
+    EBM_store,
+    EBM_any,
+} EntropyBackendMode;
+
+typedef enum {
+    HM_huf0,
+    HM_pivco,
+    HM_any,
+} HuffmanMode;
+
 /**
  * Splits the input into chunks to entropy compress independently.
  *
  * TODO: This currently only splits into fixed size chunks. We should
  * do intelligent block splitting at higher compression levels.
  */
-static ZL_RESULT_OF(ZL_EdgeList)
-        chunkInputStream(ZL_Graph* gctx, ZL_Edge** sctx)
+static ZL_RESULT_OF(ZL_EdgeList) chunkInputStream(
+        ZL_Graph* gctx,
+        ZL_Edge** sctx,
+        EntropyBackendMode mode)
 {
     ZL_RESULT_DECLARE_SCOPE(ZL_EdgeList, gctx);
     ZL_Input const* input = ZL_Edge_getData(*sctx);
     size_t const nbElts   = ZL_Input_numElts(input);
     ZL_ASSERT_NE(ZL_Input_type(input) & (ZL_Type_serial | ZL_Type_struct), 0);
 
-    // TODO: These are taken directly from the entropy compression library to
-    // match behavior. We should look into tuning these.
-    size_t const kChunkSize      = 1 << 15;
-    size_t const kMinSizeToChunk = 100000;
+    // TODO: The 8-bit values are taken directly from the entropy compression
+    // library to match behavior. 16-bit uses larger chunks to amortize its much
+    // larger statistics table. We should look into tuning these.
+    bool const is16        = ZL_Input_eltWidth(input) == 2;
+    size_t kChunkSize      = is16 ? (size_t)1 << 18 : EI_CHUNK_SIZE;
+    size_t kMinSizeToChunk = is16 ? 400000 : EI_MIN_SIZE_TO_CHUNK;
+    ZL_IntParam const chunkSizeParam =
+            ZL_Graph_getLocalIntParam(gctx, ZL_ENTROPY_CHUNK_SIZE_PID);
+    if (chunkSizeParam.paramId != ZL_LP_INVALID_PARAMID) {
+        // Chunks smaller than the default could need more nodes and streams
+        // than a frame holds.
+        ZL_ERR_IF(
+                chunkSizeParam.paramValue < (int)EI_CHUNK_SIZE
+                        || chunkSizeParam.paramValue > (1 << 26),
+                graphParameter_invalid);
+        if (!is16) {
+            kChunkSize = (size_t)chunkSizeParam.paramValue;
+            if (mode == EBM_huf) {
+                kChunkSize = ZL_MIN(kChunkSize, HUF_BLOCKSIZE_MAX);
+            }
+            // Inputs too small to be cut by default stay whole.
+            kMinSizeToChunk = ZL_MAX(kChunkSize + 1, EI_MIN_SIZE_TO_CHUNK);
+        }
+    }
     if (nbElts < kMinSizeToChunk) {
         ZL_EdgeList out = { .edges = sctx, .nbEdges = 1 };
         return ZL_WRAP_VALUE(out);
@@ -575,19 +695,6 @@ static ZL_RESULT_OF(ZL_EdgeList)
 
     return ZL_Edge_runSplitNode(sctx[0], chunkSizes, nbChunks);
 }
-
-typedef enum {
-    EBM_huf,
-    EBM_fse,
-    EBM_store,
-    EBM_any,
-} EntropyBackendMode;
-
-typedef enum {
-    HM_huf0,
-    HM_pivco,
-    HM_any,
-} HuffmanMode;
 
 /// Resolves EBM_any to a concrete mode and returns the entropy compressed
 /// size
@@ -651,11 +758,13 @@ static size_t resolveMode(
     }
 }
 
+/// @p fseMaxTableLog is passed to the node when it is not 0.
 static ZL_RESULT_OF(ZL_EdgeList) runNode_withParams(
         ZL_Edge* sctx,
         ZL_NodeID node,
         ZL_Histogram const* histogram,
-        HufCTable ctable)
+        HufCTable ctable,
+        int fseMaxTableLog)
 {
     ZL_RefParam const refParams[2] = {
         {
@@ -667,7 +776,15 @@ static ZL_RESULT_OF(ZL_EdgeList) runNode_withParams(
                 .paramRef = ctable,
         },
     };
+    ZL_IntParam const intParam = {
+        .paramId    = ZL_ENTROPY_FSE_MAX_TABLE_LOG_PID,
+        .paramValue = fseMaxTableLog,
+    };
     ZL_LocalParams params = {
+        .intParams = {
+                .intParams = &intParam,
+                .nbIntParams = fseMaxTableLog != 0 ? 1 : 0,
+        },
         .refParams = {
                 .refParams = refParams,
                 .nbRefParams = 2,
@@ -759,7 +876,10 @@ static ZL_Report entropyCompressChunk(
         ZL_Edge* chunk,
         EntropyBackendMode mode,
         size_t minGainBytes,
-        HuffmanMode hufMode)
+        HuffmanMode hufMode,
+        int fseMaxTableLog,
+        unsigned hufTableLog,
+        HufCTableWksp* hufWksp)
 {
     ZL_RESULT_DECLARE_SCOPE_REPORT(gctx);
     ZL_Input const* input = ZL_Edge_getData(chunk);
@@ -836,11 +956,19 @@ static ZL_Report entropyCompressChunk(
                         (ZL_NodeID){
                                 ZL_PrivateStandardNodeID_huffman_struct_v2 },
                         histogram,
-                        NULL));
+                        NULL,
+                        0));
         ZL_ASSERT_EQ(streams.nbEdges, 2);
         ZL_ERR_IF_ERR(ZL_Edge_setDestination(streams.edges[0], ZL_GRAPH_FSE));
         ZL_ERR_IF_ERR(ZL_Edge_setDestination(streams.edges[1], ZL_GRAPH_STORE));
         return ZL_returnSuccess();
+    }
+
+    // 4-stream Huffman stores the sizes of its streams on 16 bits, which larger
+    // chunks could overflow.
+    ZL_ASSERT(mode != EBM_huf || nbElts <= HUF_BLOCKSIZE_MAX);
+    if (mode == EBM_any && nbElts > HUF_BLOCKSIZE_MAX) {
+        mode = EBM_fse;
     }
 
     DataStatsU8 stats;
@@ -868,7 +996,8 @@ static ZL_Report entropyCompressChunk(
         hufCTable = ZL_Graph_getScratchSpace(
                 gctx, HUF_CTABLE_SIZE(histogram->maxSymbol));
         ZL_ERR_IF_NULL(hufCTable, allocation);
-        ZL_ERR_IF_ERR(buildHufCTable(hufCTable, histogram));
+        ZL_ERR_IF_ERR(
+                buildHufCTable(hufCTable, histogram, hufTableLog, hufWksp));
     }
 
     const size_t entropySize =
@@ -896,7 +1025,7 @@ static ZL_Report entropyCompressChunk(
         ZL_TRY_LET(
                 ZL_EdgeList,
                 streams,
-                runNode_withParams(chunk, node, histogram, hufCTable));
+                runNode_withParams(chunk, node, histogram, hufCTable, 0));
         ZL_ASSERT_EQ(streams.nbEdges, 2);
         // TODO(T267366720): Improve Huffman header encoding.
         // Bitpack is fast but leaves a lot on the table, however FSE is too
@@ -913,7 +1042,8 @@ static ZL_Report entropyCompressChunk(
                         chunk,
                         (ZL_NodeID){ ZL_PrivateStandardNodeID_fse_v2 },
                         histogram,
-                        hufCTable));
+                        hufCTable,
+                        fseMaxTableLog));
         ZL_ASSERT_EQ(streams.nbEdges, 2);
         ZL_ERR_IF_ERR(ZL_Edge_setDestination(
                 streams.edges[0],
@@ -924,6 +1054,43 @@ static ZL_Report entropyCompressChunk(
         ZL_ASSERT_EQ(mode, EBM_store);
         return ZL_Edge_setDestination(chunk, ZL_GRAPH_STORE);
     }
+}
+
+/**
+ * Inputs large enough to be chunked are stored whole when evenly spaced chunks,
+ * one out of EI_SAMPLED_CHUNK_RATIO but at least the first, middle and last,
+ * cannot gain half of @p minGainBytes (scaled to the chunk) even at their
+ * order-0 entropy, which bounds every backend. Each chunk would then most
+ * likely be stored anyway, at the cost of one stream per chunk, and of
+ * reassembling them at decompression. The margin keeps inputs whose unsampled
+ * chunks are compressible on the chunked path.
+ */
+static bool sampledChunksAreIncompressible(
+        const ZL_Input* input,
+        size_t minGainBytes)
+{
+    const size_t size = ZL_Input_contentSize(input);
+    if (ZL_Input_eltWidth(input) != 1 || size < EI_MIN_SIZE_TO_CHUNK) {
+        return false;
+    }
+    const uint8_t* const src = (const uint8_t*)ZL_Input_ptr(input);
+    const size_t minChunkGain =
+            (size_t)((uint64_t)minGainBytes * EI_CHUNK_SIZE / size);
+    const size_t nbSamples =
+            ZL_MAX(size / EI_CHUNK_SIZE / EI_SAMPLED_CHUNK_RATIO,
+                   (size_t)EI_MIN_SAMPLED_CHUNKS);
+    const uint64_t lastStart = size - EI_CHUNK_SIZE;
+    for (size_t i = 0; i < nbSamples; ++i) {
+        const size_t start = (size_t)(lastStart * i / (nbSamples - 1));
+        DataStatsU8 stats;
+        DataStatsU8_init(&stats, src + start, EI_CHUNK_SIZE);
+        const double entropySize =
+                DataStatsU8_getEntropy(&stats) * (double)EI_CHUNK_SIZE / 8;
+        if (entropySize + (double)minChunkGain / 2 <= (double)EI_CHUNK_SIZE) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static ZL_Report entropyDynamicGraph(
@@ -941,16 +1108,47 @@ static ZL_Report entropyDynamicGraph(
     }
 
     const size_t minGainBytes = getMinGainBytes(gctx, contentSize);
+    if (sampledChunksAreIncompressible(ZL_Edge_getData(sctx), minGainBytes)) {
+        return ZL_Edge_setDestination(sctx, ZL_GRAPH_STORE);
+    }
 
-    ZL_TRY_LET(ZL_EdgeList, chunks, chunkInputStream(gctx, &sctx));
+    int fseMaxTableLog = 0;
+    ZL_IntParam const maxTableLogParam =
+            ZL_Graph_getLocalIntParam(gctx, ZL_ENTROPY_FSE_MAX_TABLE_LOG_PID);
+    if (maxTableLogParam.paramId != ZL_LP_INVALID_PARAMID) {
+        ZL_ERR_IF(
+                maxTableLogParam.paramValue < ENTROPY_FSE_MIN_MAX_TABLELOG
+                        || maxTableLogParam.paramValue > FSE_MAX_TABLELOG,
+                graphParameter_invalid);
+        fseMaxTableLog = maxTableLogParam.paramValue;
+    }
+
+    unsigned const hufTableLog = hufMaxTableLog(ZL_Graph_getLocalIntParam(
+            gctx, ZL_ENTROPY_HUFFMAN_MAX_TABLE_LOG_PID));
+    ZL_ERR_IF_EQ(hufTableLog, 0, graphParameter_invalid);
+    HufCTableWksp* hufWksp = NULL;
+    if (mode == EBM_huf || mode == EBM_any) {
+        hufWksp = ZL_Graph_getScratchSpace(gctx, sizeof(HufCTableWksp));
+        ZL_ERR_IF_NULL(hufWksp, allocation);
+    }
+
+    ZL_TRY_LET(ZL_EdgeList, chunks, chunkInputStream(gctx, &sctx, mode));
     for (size_t i = 0; i < chunks.nbEdges; ++i) {
-        // Scale minGainBytes to divide evenly among the chunks
+        // Scale minGainBytes to divide evenly among the chunks, in 64 bits:
+        // the product can exceed a 32-bit size_t.
         const size_t chunkSize =
                 ZL_Input_contentSize(ZL_Edge_getData(chunks.edges[i]));
         const size_t scaledMinGainBytes =
-                (minGainBytes * chunkSize) / contentSize;
+                (size_t)((uint64_t)minGainBytes * chunkSize / contentSize);
         ZL_ERR_IF_ERR(entropyCompressChunk(
-                gctx, chunks.edges[i], mode, scaledMinGainBytes, hufMode));
+                gctx,
+                chunks.edges[i],
+                mode,
+                scaledMinGainBytes,
+                hufMode,
+                fseMaxTableLog,
+                hufTableLog,
+                hufWksp));
     }
     return ZL_returnSuccess();
 }

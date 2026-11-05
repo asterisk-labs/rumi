@@ -151,7 +151,7 @@ int geozl_pivco_lanes_parse(GeozlPivcoLanes *decoded,
       !geozl_pivco_lanes_width_ok(width) ||
       laneHeadersSize != width * GEOZL_PIVCO_LANE_HEADER_SIZE ||
       blockSize == 0 || blockSize > ZL_PIVCO_MAX_BLOCK_SIZE ||
-      (weightsSize != 0 && weights == NULL))
+      count > UINT_MAX || (weightsSize != 0 && weights == NULL))
     return 1;
 
   *decoded = (GeozlPivcoLanes){

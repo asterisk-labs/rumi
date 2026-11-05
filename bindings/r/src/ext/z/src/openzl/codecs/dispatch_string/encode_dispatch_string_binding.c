@@ -39,7 +39,7 @@ EI_dispatch_string(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
     ZL_ERR_IF(
             nbElts > 0 && nbOutputs == 0,
             streamParameter_invalid,
-            "dispatch_string: ill-formed degenerate case (%u, %i)",
+            "dispatch_string: ill-formed degenerate case (%zu, %i)",
             nbElts,
             nbOutputsInt);
 
@@ -61,7 +61,7 @@ EI_dispatch_string(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
     ZL_ERR_IF_NOT(
             indicesValid == 1,
             streamParameter_invalid,
-            "Dispatch index out of bounds. Expected all to be in range [0,%u)",
+            "Dispatch index out of bounds. Expected all to be in range [0,%zu)",
             nbOutputs);
 
     size_t* outputSizes =

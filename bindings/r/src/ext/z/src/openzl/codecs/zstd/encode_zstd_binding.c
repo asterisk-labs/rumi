@@ -133,7 +133,8 @@ EI_zstdWithCCtx(ZL_Encoder* eictx, ZSTD_CCtx* cctx, const ZL_Input* src)
         ZL_ERR_IF_NOT(
                 EI_zstd_parameter_valid(param, ip.paramValue),
                 nodeParameter_invalid,
-                "zstd parameter %i cannot be modified");
+                "zstd parameter %i cannot be modified",
+                ip.paramId);
         ZL_ERR_IF_ZSTD_ERR(ZSTD_CCtx_setParameter(cctx, param, ip.paramValue));
     }
     if (blockSize == srcSize) {
@@ -181,6 +182,10 @@ void* EIZSTD_createCCtx(void)
 void EIZSTD_freeCCtx(void* state)
 {
     (void)ZSTD_freeCCtx(state);
+}
+size_t EIZSTD_sizeofCCtx(const void* state)
+{
+    return state == NULL ? 0 : ZSTD_sizeof_CCtx((const ZSTD_CCtx*)state);
 }
 
 ZL_Report EI_zstd(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
