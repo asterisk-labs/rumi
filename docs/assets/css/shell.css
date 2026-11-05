@@ -60,10 +60,6 @@
   gap: clamp(18px, 3vh, 32px);
 }
 
-html[data-route="spec"] .page {
-  padding-top: 74px;
-}
-
 .masthead {
   position: relative;
   z-index: 3;
@@ -79,12 +75,9 @@ html[data-route="spec"] .page {
 }
 
 html[data-route="spec"] .masthead {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 50%;
   z-index: 10;
-  width: min(100%, calc(var(--page) + (var(--pad-inline) * 2)));
-  transform: translateX(-50%);
   border-bottom-color: rgba(37, 35, 31, 0.10);
   background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(10px);
@@ -325,10 +318,6 @@ html[data-route="home"] .colophon {
   .page {
     grid-template-rows: auto auto auto;
     gap: 26px;
-  }
-
-  html[data-route="spec"] .page {
-    padding-top: 116px;
   }
 
   .masthead {
