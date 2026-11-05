@@ -68,6 +68,14 @@ set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib
 set(GEOZL_BUILD_GPU ${RUMI_BUILD_GPU} CACHE BOOL "" FORCE)
 add_subdirectory(${RUMI_GEOZL_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/geozl EXCLUDE_FROM_ALL)
 target_compile_definitions(geozl PUBLIC GEOZL_STATIC)
+if(APPLE AND RUMI_BUILD_GPU)
+    # Both Python packages load their own GeoZL copy. Objective-C class names
+    # are process-global even when the library symbols are hidden.
+    target_compile_definitions(geozl PRIVATE
+        "$<$<COMPILE_LANGUAGE:OBJC>:GeozlMetalProgram=RumiGeozlMetalProgram>"
+        "$<$<COMPILE_LANGUAGE:OBJC>:GeozlMetalBatch=RumiGeozlMetalBatch>"
+        "$<$<COMPILE_LANGUAGE:OBJC>:GeozlMetalMemory=RumiGeozlMetalMemory>")
+endif()
 
 # Karu is an internal source dependency. It owns local and remote transport,
 # but its symbols and headers are not installed as part of Rumi.
