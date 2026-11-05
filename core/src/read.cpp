@@ -526,6 +526,25 @@ decode_tasks(Executor& executor, const Plan& plan,
         : "read failed");
 }
 
+// Karu returns a merged span only after reading all of it. Smaller local spans
+// reduce the wait; remote reads keep Karu's larger limit to save requests.
+constexpr std::uint64_t LOCAL_COALESCE_LIMIT = std::uint64_t{4} << 20;
+
+karu_status submit_requests(karu_client* client,
+                            std::span<const karu_req> requests,
+                            karu_batch** batch) noexcept
+{
+    karu_submit_options options = KARU_SUBMIT_OPTIONS_INIT;
+    const bool local = std::none_of(
+        requests.begin(), requests.end(), [](const karu_req& request) {
+            return karu_locator_is_remote(request.locator) != 0;
+        });
+    if (local && !std::getenv("KARU_COALESCE_LIMIT"))
+        options.coalesce_limit = LOCAL_COALESCE_LIMIT;
+    return karu_client_submit_with(client, requests.data(), requests.size(),
+                                   &options, batch);
+}
+
 std::expected<void, Error>
 execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
                    auto&& locator_of, auto&& decode)
@@ -563,8 +582,7 @@ execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
     }
 
     karu_batch* raw_batch = nullptr;
-    const karu_status submitted =
-        karu_client_submit(client, requests.data(), requests.size(), &raw_batch);
+    const karu_status submitted = submit_requests(client, requests, &raw_batch);
     if (submitted != KARU_OK) {
         return transport_error("transport submit failed", submitted);
     }

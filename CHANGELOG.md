@@ -7,6 +7,7 @@ Notable user-visible changes are recorded here.
 ### Fixed
 
 - Failed GPU reads wait for queued work before releasing the output tensor.
+- Local file batches use a 4 MiB merge limit. `KARU_COALESCE_LIMIT` overrides it.
 
 ## [0.28.0] - 2026-11-03
 
