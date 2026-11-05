@@ -12,6 +12,8 @@ NOTICES = (
     "LICENSE",
     "NOTICE",
     "LICENSE.GeoZL",
+    "LICENSE.xxHash",
+    "LICENSE.pdqsort",
     "LICENSE.DLPack",
     "LICENSE.OpenZL",
     "LICENSE.Zstandard",
