@@ -869,10 +869,13 @@ read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
         return fail(RUMI_ERR_UNSUPPORTED,
                     "GPU reads do not support boolean samples yet");
     }
-    return execute_gpu_plan_batches(
+    auto done = execute_gpu_plan_batches(
         plan, transport, gpu.max_decoded_bytes(), [&](auto tasks) {
         return gpu.decode(plan, tasks, dst, dst_size, stream, force_host);
     });
+    // A failed read releases its target; wait for earlier GPU writes first.
+    if (!done) (void) gpu.synchronize();
+    return done;
 }
 
 }  // namespace

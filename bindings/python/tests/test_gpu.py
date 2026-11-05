@@ -347,6 +347,38 @@ def test_chunky_layout_and_nondefault_stream(scenes, decode_backend):
 
 
 @pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
+@pytest.mark.parametrize("decode_backend", ["auto", "cpu"])
+def test_failed_read_leaves_the_decoder_usable(tmp_path, decode_backend):
+    rng = np.random.default_rng(7)
+    images, paths, headers = [], [], []
+    for i in range(8):
+        data = rng.integers(0, 4000, (4, 256, 256), dtype=np.uint16)
+        table = rumi.frames(
+            data, "b (row h) (col w) -> row col b (h w)", tile_size=256)
+        for frame in table:
+            graph = geozl.graph(frame.data, "planar>zigzag>pfor")
+            frame.compressed = geozl.compress(frame.data, graph=graph)
+        path, header = rumi.write(
+            tmp_path / f"scene-{i}.rumi", table, **labels(table))
+        images.append(data)
+        paths.append(path)
+        headers.append(header)
+    # Frames start after the file prefix, and the last ones stay valid.
+    broken = tmp_path / "broken.rumi"
+    payload = bytearray(paths[0].read_bytes())
+    payload[4096:len(payload) // 2] = b"\xff" * (len(payload) // 2 - 4096)
+    broken.write_bytes(payload)
+
+    with pytest.raises((OSError, ValueError, RuntimeError)):
+        rumi.read_many([*paths, broken], [*headers, headers[0]],
+                       framework="torch", device="cuda:0",
+                       decode_backend=decode_backend)
+    result = rumi.read_many(paths, headers, framework="torch", device="cuda:0",
+                            decode_backend=decode_backend)
+    assert np.array_equal(result.cpu().numpy(), np.stack(images))
+
+
+@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
 def test_cuda_result_can_move_between_streams_with_an_event(scenes):
     path, header, data = scenes[0]
     producer = torch.cuda.Stream(device=0)

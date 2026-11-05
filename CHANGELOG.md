@@ -4,6 +4,10 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Failed GPU reads wait for queued work before releasing the output tensor.
+
 ## [0.28.0] - 2026-11-03
 
 ### Added
