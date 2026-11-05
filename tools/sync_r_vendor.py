@@ -28,8 +28,9 @@ def copy(source: Path, destination: Path, *skip: str) -> None:
 
 
 def copy_openzl(destination: Path) -> None:
-    for part in ("CMakeLists.txt", "LICENSE", "build-scripts", "include", "src"):
+    for part in ("CMakeLists.txt", "LICENSE", "include", "src"):
         copy(OPENZL / part, destination / part)
+    copy(OPENZL / "build-scripts" / "cmake", destination / "build-scripts" / "cmake")
     copy(OPENZL / "tools" / "CMakeLists.txt", destination / "tools" / "CMakeLists.txt")
     for listfile in (OPENZL / "tools").glob("*/CMakeLists.txt"):
         copy(listfile, destination / listfile.relative_to(OPENZL))
