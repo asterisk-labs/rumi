@@ -361,6 +361,28 @@ if(GEOZL_BUILD_FULL)
                 target_link_libraries(geozl_${fz}_fuzzer PRIVATE ${GEOZL_LIBM})
             endif()
         endforeach()
+
+        # Fuzz the host planners that validate frames before GPU kernels read them.
+        find_package(Threads REQUIRED)
+        add_executable(geozl_gpu_plan_fuzzer
+            ${CMAKE_CURRENT_SOURCE_DIR}/../fuzz/gpu_plan_fuzzer.c
+            src/gpu/pfor_plan.c
+            src/gpu/pfor_plan_parallel.c
+            src/gpu/pivco_plan.c
+            src/gpu/pivco_plan_parallel.c
+            ${GEOZL_KERNELS})
+        target_include_directories(geozl_gpu_plan_fuzzer PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/gpu
+            ${GEOZL_OPENZL_DIR}/src)
+        target_compile_options(geozl_gpu_plan_fuzzer PRIVATE ${GEOZL_FP})
+        target_link_options(geozl_gpu_plan_fuzzer PRIVATE -fsanitize=fuzzer)
+        target_link_libraries(geozl_gpu_plan_fuzzer PRIVATE
+            ${GEOZL_OPENZL_TARGET} Threads::Threads)
+        if(GEOZL_LIBM)
+            target_link_libraries(geozl_gpu_plan_fuzzer PRIVATE ${GEOZL_LIBM})
+        endif()
     endif()
 endif()
 

@@ -74,10 +74,10 @@ GEOZL_API void geozl_gpu_destroy(GeozlGpu *gpu);
 // completely into host staging before their samples are copied to the device.
 // Copies address at most 2^32 samples of the target and each route source.
 //
-// On CUDA the call returns once the device work is queued on target->stream.
-// The target allocation must remain alive on the selected device until work
-// later in the same stream, geozl_gpu_synchronize, the next decode call or
-// geozl_gpu_destroy has completed. Metal finishes before returning.
+// On CUDA the call returns after queuing work on target->stream. Keep the
+// target allocation and stream alive until that work finishes. A later decode
+// on the same stream need not wait and may report an earlier failure. Metal
+// finishes before returning.
 GEOZL_API int geozl_gpu_decode(GeozlGpu *gpu, const GeozlGpuFrame frames[],
                                size_t frameCount, const GeozlGpuCopy copies[],
                                size_t copyCount, size_t sampleBytes,

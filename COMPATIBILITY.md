@@ -41,3 +41,6 @@ frames used by Rumi, while byte-lane PivCo frames require a GeoZL 0.20 reader.
 Rumi 0.28.0 includes GeoZL 0.21.0 and requires `geozl>=0.21.0,<0.22` in
 Python. Its GPU reads decode multi-chunk OpenZL frames on the CPU before
 placing their samples on the GPU. The Rumi file format is unchanged.
+
+Rumi 0.28.1 includes GeoZL 0.21.1 and requires `geozl>=0.21.1,<0.22` in
+Python. The Rumi file format is unchanged.
