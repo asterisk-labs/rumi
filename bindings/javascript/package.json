@@ -31,7 +31,7 @@
     "playground": "node playground/server.mjs"
   },
   "dependencies": {
-    "@asterisk-labs/geozl": "0.30.0"
+    "@asterisk-labs/geozl": "0.31.0"
   },
   "publishConfig": {
     "access": "public"

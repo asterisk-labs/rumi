@@ -4,8 +4,8 @@ Licensed under the GNU General Public License version 3, see LICENSE.
 
 `librumi` statically links:
 
-  GeoZL 0.30.0            BSD 3-Clause     licenses/LICENSE.GeoZL
-  OpenZL 000f69b          BSD 3-Clause     licenses/LICENSE.OpenZL
+  GeoZL 0.31.0            BSD 3-Clause     licenses/LICENSE.GeoZL
+  OpenZL b7f498b          BSD 3-Clause     licenses/LICENSE.OpenZL
   xxHash, in OpenZL       BSD 2-Clause     licenses/LICENSE.xxHash
   pdqsort, in OpenZL      zlib             licenses/LICENSE.pdqsort
   Zstandard 1.5.7         BSD 3-Clause     licenses/LICENSE.Zstandard

@@ -18,7 +18,7 @@ authors = [
 dependencies = [
     "numpy>=2",
     "cffi>=1.17",
-    "geozl>=0.30.0,<0.31",
+    "geozl>=0.31.0,<0.32",
 ]
 
 classifiers = [

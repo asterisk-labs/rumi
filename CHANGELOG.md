@@ -8,8 +8,8 @@ Notable user-visible changes are recorded here.
 
 ### Changed
 
-- Updated the native GeoZL pin and Python and JavaScript dependencies to 0.30.0.
-  GeoZL now includes upstream OpenZL commit `000f69b`, with OpenZL's
+- Updated the native GeoZL pin and Python and JavaScript dependencies to 0.31.0.
+  GeoZL carries OpenZL's integrated `dev` commit `b7f498b`, with OpenZL's
   `range_pack` header-write fix and configurable abort and logging callbacks.
 - Refreshed the R vendor from the new pins and excluded unused OpenZL GNU
   Makefiles.
