@@ -219,14 +219,7 @@ rumi_read_gpu(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
               const int* bands, size_t n_bands,
               int y_off, int y_size, int x_off, int x_size,
               const char* pattern, void* dst, size_t dst_size,
-              void* stream);
-rumi_status
-rumi_read_gpu_ex(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
-                 const int* times, size_t n_times,
-                 const int* bands, size_t n_bands,
-                 int y_off, int y_size, int x_off, int x_size,
-                 const char* pattern, void* dst, size_t dst_size,
-                 void* stream, int decode_backend);
+              void* stream, int decode_backend);
 
 rumi_status
 rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
@@ -254,17 +247,9 @@ rumi_read_many_gpu(rumi_gpu* gpu,
                    const rumi_read_item* items, size_t n_items,
                    const int* times, size_t n_times,
                    const int* bands, size_t n_bands,
-                   int y_size, int x_size,
-                   const char* pattern, void* dst, size_t dst_size,
-                   void* stream);
-rumi_status
-rumi_read_many_gpu_ex(rumi_gpu* gpu,
-                      const rumi_read_item* items, size_t n_items,
-                      const int* times, size_t n_times,
-                      const int* bands, size_t n_bands,
-                      int y_size, int x_size, const char* pattern,
-                      void* dst, size_t dst_size,
-                      void* stream, int decode_backend);
+                   int y_size, int x_size, const char* pattern,
+                   void* dst, size_t dst_size,
+                   void* stream, int decode_backend);
 
 rumi_status
 rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,

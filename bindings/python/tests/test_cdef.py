@@ -77,14 +77,7 @@ rumi_status rumi_read_gpu(rumi_gpu* gpu, rumi_source* src,
                           const int* bands, size_t n_bands,
                           int y_off, int y_size, int x_off, int x_size,
                           const char* pattern, void* dst, size_t dst_size,
-                          void* stream);
-rumi_status rumi_read_gpu_ex(rumi_gpu* gpu, rumi_source* src,
-                             const rumi_spec* spec,
-                             const int* times, size_t n_times,
-                             const int* bands, size_t n_bands,
-                             int y_off, int y_size, int x_off, int x_size,
-                             const char* pattern, void* dst, size_t dst_size,
-                             void* stream, int decode_backend);
+                          void* stream, int decode_backend);
 rumi_status rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                              const int* times, size_t n_times,
                              const int* bands, size_t n_bands, int y_off,
@@ -101,14 +94,8 @@ rumi_status rumi_read_many_gpu(rumi_gpu* gpu,
                                const int* times, size_t n_times,
                                const int* bands, size_t n_bands,
                                int y_size, int x_size, const char* pattern,
-                               void* dst, size_t dst_size, void* stream);
-rumi_status rumi_read_many_gpu_ex(rumi_gpu* gpu,
-                                  const rumi_read_item* items, size_t n_items,
-                                  const int* times, size_t n_times,
-                                  const int* bands, size_t n_bands,
-                                  int y_size, int x_size, const char* pattern,
-                                  void* dst, size_t dst_size, void* stream,
-                                  int decode_backend);
+                               void* dst, size_t dst_size, void* stream,
+                               int decode_backend);
 rumi_status rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
                                   const int* times, size_t n_times,
                                   const int* bands, size_t n_bands,
@@ -299,7 +286,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 45
+    assert len(baseline) == 43
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

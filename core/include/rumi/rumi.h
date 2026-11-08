@@ -402,6 +402,9 @@ rumi_read(rumi_source*     src,
 // earlier work touching dst before the call; this function finishes its Metal
 // work before returning and retains dst until synchronization, the next read,
 // or context destruction.
+// decode_backend chooses the decoder for every selected frame. CPU decodes
+// each complete frame on the host, then places samples on dst. AUTO uses GPU
+// only for supported complete frames. dst stays on the GPU.
 RUMI_API rumi_status
 rumi_read_gpu(rumi_gpu*        gpu,
               rumi_source*     src,
@@ -412,22 +415,7 @@ rumi_read_gpu(rumi_gpu*        gpu,
               int              x_off, int x_size,
               const char*      pattern,
               void*            dst, size_t dst_size,
-              void*            stream);
-
-// As rumi_read_gpu, with a decode backend chosen for every selected frame.
-// CPU decodes each complete frame on the host, then places samples on dst.
-// AUTO uses GPU only for supported complete frames. dst stays on the GPU.
-RUMI_API rumi_status
-rumi_read_gpu_ex(rumi_gpu*        gpu,
-                 rumi_source*     src,
-                 const rumi_spec* spec,
-                 const int*       times, size_t n_times,
-                 const int*       bands, size_t n_bands,
-                 int              y_off, int y_size,
-                 int              x_off, int x_size,
-                 const char*      pattern,
-                 void*            dst, size_t dst_size,
-                 void*            stream, int decode_backend);
+              void*            stream, int decode_backend);
 
 // DLPack form of rumi_read. It allocates the output instead of accepting dst.
 // On success, release *out with its deleter or rumi_dlpack_free.
@@ -467,7 +455,8 @@ rumi_read_many(const rumi_read_item* items, size_t n_items,
                const char* pattern,
                void* dst, size_t dst_size);
 
-// GPU form of rumi_read_many. dst and stream follow the rumi_read_gpu contract.
+// GPU form of rumi_read_many. dst, stream, and decode_backend follow the
+// rumi_read_gpu contract.
 RUMI_API rumi_status
 rumi_read_many_gpu(rumi_gpu* gpu,
                    const rumi_read_item* items, size_t n_items,
@@ -476,17 +465,7 @@ rumi_read_many_gpu(rumi_gpu* gpu,
                    int y_size, int x_size,
                    const char* pattern,
                    void* dst, size_t dst_size,
-                   void* stream);
-
-RUMI_API rumi_status
-rumi_read_many_gpu_ex(rumi_gpu* gpu,
-                      const rumi_read_item* items, size_t n_items,
-                      const int* times, size_t n_times,
-                      const int* bands, size_t n_bands,
-                      int y_size, int x_size,
-                      const char* pattern,
-                      void* dst, size_t dst_size,
-                      void* stream, int decode_backend);
+                   void* stream, int decode_backend);
 
 // DLPack form of rumi_read_many. It allocates the output instead of accepting
 // dst; release *out with its deleter or rumi_dlpack_free.

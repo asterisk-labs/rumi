@@ -4,6 +4,12 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Breaking
+
+- `rumi_read_gpu` and `rumi_read_many_gpu` take the `decode_backend` argument
+  that `rumi_read_gpu_ex` and `rumi_read_many_gpu_ex` took. The `_ex` names
+  are gone. Recompile C callers.
+
 ## [0.29.0] - 2026-11-05
 
 ### Changed

@@ -177,7 +177,7 @@ def read_one(source, spec, times, n_times, bands, n_bands,
         if device_type == _CUDA:
             with torch.cuda.device(index):
                 stream = torch.cuda.current_stream(index).cuda_stream
-                _check(lib.rumi_read_gpu_ex(
+                _check(lib.rumi_read_gpu(
                     context.handle, source.handle, spec.handle,
                     times, n_times, bands, n_bands,
                     y_off, y_size, x_off, x_size, pattern,
@@ -188,7 +188,7 @@ def read_one(source, spec, times, n_times, bands, n_bands,
                 ))
         else:
             capsule, target = _metal_target(tensor)
-            _check(lib.rumi_read_gpu_ex(
+            _check(lib.rumi_read_gpu(
                 context.handle, source.handle, spec.handle,
                 times, n_times, bands, n_bands,
                 y_off, y_size, x_off, x_size, pattern,
@@ -215,7 +215,7 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
         if device_type == _CUDA:
             with torch.cuda.device(index):
                 stream = torch.cuda.current_stream(index).cuda_stream
-                _check(lib.rumi_read_many_gpu_ex(
+                _check(lib.rumi_read_many_gpu(
                     context.handle, items, n_items,
                     times, n_times, bands, n_bands,
                     y_size, x_size, pattern,
@@ -226,7 +226,7 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
                 ))
         else:
             capsule, target = _metal_target(tensor)
-            _check(lib.rumi_read_many_gpu_ex(
+            _check(lib.rumi_read_many_gpu(
                 context.handle, items, n_items,
                 times, n_times, bands, n_bands,
                 y_size, x_size, pattern,
