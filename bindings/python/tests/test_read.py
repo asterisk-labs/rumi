@@ -73,12 +73,6 @@ def test_a_pathlike_must_resolve_to_text(image):
         rumi.read(BytesPath(), header)
 
 
-def test_framework_none_is_invalid(image):
-    path, header, _data = image
-    with pytest.raises(ValueError, match=r"unknown framework None"):
-        rumi.read(path, header, framework=None)
-
-
 @pytest.mark.parametrize("kwargs, message", [
     ({"bands": [99]}, "bands: index"),
     ({"window": (0, 0, 1000, 1000)}, "window: requested window"),

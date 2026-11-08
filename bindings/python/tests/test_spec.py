@@ -93,7 +93,7 @@ def geokeys(path):
     return v[:4], {v[4 + i * 4]: v[7 + i * 4] for i in range(v[3])}
 
 
-def build_tiff(entries, tiles, bands=1, pad_before_tiles=0, trailer=None):
+def build_file(entries, tiles, bands=1, pad_before_tiles=0, trailer=None):
     """Build a file from tag values and frame-index-ordered payloads."""
     ordered = sorted(entries.items())
     ifd_size = 8 + 20 * len(ordered) + 8
@@ -258,7 +258,7 @@ def test_a_band_text_the_spec_forbids_is_refused(tmp_path, text, because):
     tiles = [b"\x01\x02\x03\x04"]
     entries = spec_entries(16, 16, 16, 1, tiles, unit=0, time=1)
     path = tmp_path / "text.rumi"
-    path.write_bytes(build_tiff(entries, tiles,
+    path.write_bytes(build_file(entries, tiles,
                                 trailer=pack_trailer(2, [19723], texts=[text])))
     with pytest.raises(ValueError, match=because):
         rumi.info(source=path)
@@ -603,7 +603,7 @@ def valid_file(tmp_path):
     tiles = [bytes([i % 251]) * (7 + 3 * i) for i in range(2 * 3 * 5)]
     entries = spec_entries(70, 40, 16, 2, tiles)
     path = tmp_path / "made.rumi"
-    path.write_bytes(build_tiff(entries, tiles, bands=2))
+    path.write_bytes(build_file(entries, tiles, bands=2))
     return path, entries, tiles
 
 
@@ -619,7 +619,7 @@ def test_the_independent_writer_is_accepted(valid_file):
 
 def _rejects(tmp_path, entries, tiles, match, bands=2, pad=0):
     path = tmp_path / "bad.rumi"
-    path.write_bytes(build_tiff(entries, tiles, bands=bands,
+    path.write_bytes(build_file(entries, tiles, bands=bands,
                                 pad_before_tiles=pad))
     with pytest.raises((ValueError, IOError), match=match):
         rumi.info(source=path)
@@ -642,7 +642,7 @@ def test_tags_with_the_wrong_tiff_type_are_rejected(tmp_path, valid_file):
 
 def test_tags_out_of_rising_order_are_rejected(tmp_path, valid_file):
     _path, entries, tiles = valid_file
-    blob = bytearray(build_tiff(entries, tiles, bands=2))
+    blob = bytearray(build_file(entries, tiles, bands=2))
     first = IFD_OFFSET + 8
     a = bytes(blob[first:first + 20])
     blob[first:first + 20] = blob[first + 20:first + 40]
@@ -655,7 +655,7 @@ def test_tags_out_of_rising_order_are_rejected(tmp_path, valid_file):
 
 def test_external_values_out_of_place_are_rejected(tmp_path, valid_file):
     _path, entries, tiles = valid_file
-    blob = bytearray(build_tiff(entries, tiles, bands=2))
+    blob = bytearray(build_file(entries, tiles, bands=2))
     transform_entry = IFD_OFFSET + 8 + TAGS.index(34264) * 20
     (at,) = struct.unpack_from("<Q", blob, transform_entry + 12)
     struct.pack_into("<Q", blob, transform_entry + 12, at + 8)
@@ -694,7 +694,7 @@ def test_an_unaligned_tile_size_is_accepted(tmp_path):
     tiles = [b"x" * 8] * 4
     entries = spec_entries(40, 40, 20, 1, tiles)
     path = tmp_path / "unaligned.rumi"
-    path.write_bytes(build_tiff(entries, tiles, bands=1))
+    path.write_bytes(build_file(entries, tiles, bands=1))
     assert rumi.info(source=path).tile == (20, 20)
 
 
@@ -703,7 +703,7 @@ def test_rectangular_tile_metadata_uses_height_width_order(tmp_path):
     entries = spec_entries(40, 30, 20, 1, tiles)
     entries[323] = (SHORT, [10])
     path = tmp_path / "rectangular.rumi"
-    path.write_bytes(build_tiff(entries, tiles, bands=1))
+    path.write_bytes(build_file(entries, tiles, bands=1))
 
     metadata = rumi.info(source=path)
     assert metadata.tile == (10, 20)
@@ -721,7 +721,7 @@ def test_an_undefined_crs_file_is_accepted(tmp_path):
     entries = spec_entries(32, 32, 16, 1, tiles, model=0, epsg=0,
                            transform=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0))
     path = tmp_path / "nogeo.rumi"
-    path.write_bytes(build_tiff(entries, tiles, bands=1))
+    path.write_bytes(build_file(entries, tiles, bands=1))
     assert rumi.info(source=path).shape == (1, 32, 32)
 
 
@@ -792,7 +792,7 @@ def dated_file(path, trailer, steps, **kw):
     # Unit 1 stores the time axis inside a single cell frame.
     tiles = [b"\x01\x02\x03\x04"]
     entries = spec_entries(16, 16, 16, 1, tiles, unit=1, time=steps, **kw)
-    path.write_bytes(build_tiff(entries, tiles, trailer=trailer))
+    path.write_bytes(build_file(entries, tiles, trailer=trailer))
     return path
 
 
@@ -802,7 +802,7 @@ def test_a_sample_format_wider_than_a_byte_is_refused(tmp_path):
     entries = spec_entries(16, 16, 16, 1, tiles, unit=0, time=1)
     entries[339] = (SHORT, [257])
     path = tmp_path / "sf.rumi"
-    path.write_bytes(build_tiff(entries, tiles))
+    path.write_bytes(build_file(entries, tiles))
     with pytest.raises(ValueError, match="sample_format=257"):
         rumi.info(source=path)
 
@@ -816,7 +816,7 @@ def test_reserved_sample_encodings_are_refused(tmp_path, fmt, bits):
     entries = spec_entries(16, 16, 16, 1, tiles, bits=bits, fmt=fmt,
                            unit=0, time=1)
     path = tmp_path / f"reserved-{fmt}-{bits}.rumi"
-    path.write_bytes(build_tiff(entries, tiles))
+    path.write_bytes(build_file(entries, tiles))
     with pytest.raises(ValueError):
         rumi.info(source=path)
 
@@ -831,7 +831,7 @@ def test_an_undefined_crs_needs_the_geographic_key(tmp_path):
     directory[12] = PROJECTED
     entries[34735] = (SHORT, directory)
     path = tmp_path / "gk.rumi"
-    path.write_bytes(build_tiff(entries, tiles))
+    path.write_bytes(build_file(entries, tiles))
     with pytest.raises(ValueError, match="key 2048"):
         rumi.info(source=path)
 
@@ -1070,7 +1070,7 @@ def test_georeferencing_fields_have_one_legal_shape(tmp_path, because, mutate):
     entries = spec_entries(16, 16, 16, 1, tiles, unit=0, time=1)
     mutate(entries)
     path = tmp_path / "geo.rumi"
-    path.write_bytes(build_tiff(entries, tiles))
+    path.write_bytes(build_file(entries, tiles))
     with pytest.raises(ValueError, match=because):
         rumi.info(source=path)
 
@@ -1084,7 +1084,7 @@ def test_a_decoded_bool_frame_contains_only_zero_or_one(tmp_path):
         entries = spec_entries(16, 16, 16, 1, [payload], bits=1, fmt=1,
                                unit=0, time=1)
         path = tmp_path / f"{fill:02x}.rumi"
-        path.write_bytes(build_tiff(entries, [payload]))
+        path.write_bytes(build_file(entries, [payload]))
         header = rumi.info(source=path).header
         if ok:
             assert np.unique(rumi.read(path, header)) == [True]
@@ -1104,7 +1104,7 @@ def test_every_registered_dtype_reaches_torch_exactly(tmp_path, dtype):
     entries = spec_entries(4, 4, 4, 1, [payload], bits=dtype.bits,
                            fmt=dtype.sample_format, unit=0, time=1)
     path = tmp_path / f"{dtype.name}.rumi"
-    path.write_bytes(build_tiff(entries, [payload]))
+    path.write_bytes(build_file(entries, [payload]))
     header = rumi.info(source=path).header
 
     result = rumi.read(path, header, framework="torch")
@@ -1134,7 +1134,7 @@ def make_dtype_file(tmp_path, dtype, name=None):
     entries = spec_entries(4, 4, 4, 1, [payload], bits=dtype.bits,
                            fmt=dtype.sample_format, unit=0, time=1)
     path = tmp_path / f"{name or dtype.name}.rumi"
-    path.write_bytes(build_tiff(entries, [payload]))
+    path.write_bytes(build_file(entries, [payload]))
     return path, rumi.info(source=path).header, raw
 
 
@@ -1274,7 +1274,7 @@ def make_zero_dtype_file(tmp_path, dtype, name):
     entries = spec_entries(4, 4, 4, 1, [payload], bits=dtype.bits,
                            fmt=dtype.sample_format, unit=0, time=1)
     path = tmp_path / f"{name}-{dtype.name}.rumi"
-    path.write_bytes(build_tiff(entries, [payload]))
+    path.write_bytes(build_file(entries, [payload]))
     return path, rumi.info(source=path).header
 
 
@@ -1357,12 +1357,12 @@ def test_an_undefined_crs_carries_the_matrix_the_spec_fixes(tmp_path):
     entries = spec_entries(16, 16, 16, 1, tiles, unit=0, time=1, model=0,
                            epsg=0, transform=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0))
     path = tmp_path / "none.rumi"
-    path.write_bytes(build_tiff(entries, tiles))
+    path.write_bytes(build_file(entries, tiles))
     assert rumi.info(source=path).frames == 1
 
     entries[34264] = (DOUBLE, [30.0, *entries[34264][1][1:]])
     bad = tmp_path / "none-but-placed.rumi"
-    bad.write_bytes(build_tiff(entries, tiles))
+    bad.write_bytes(build_file(entries, tiles))
     with pytest.raises(ValueError, match="undefined CRS carries"):
         rumi.info(source=bad)
 
@@ -1376,7 +1376,7 @@ def test_a_bool_window_reads_like_any_other(tmp_path):
                           for r in range(2) for c in range(2))]
     entries = spec_entries(32, 32, 16, 1, payloads, bits=1, fmt=1, unit=0, time=1)
     path = tmp_path / "bool.rumi"
-    path.write_bytes(build_tiff(entries, payloads))
+    path.write_bytes(build_file(entries, payloads))
     header = rumi.info(source=path).header
 
     assert np.array_equal(np.asarray(rumi.read(path, header))[0], src)
@@ -1414,7 +1414,7 @@ def test_a_bool_batch_reads_through_dlpack(tmp_path):
         entries = spec_entries(16, 16, 16, 1, [payload], bits=1, fmt=1,
                                unit=0, time=1)
         path = tmp_path / f"bool{i}.rumi"
-        path.write_bytes(build_tiff(entries, [payload]))
+        path.write_bytes(build_file(entries, [payload]))
         paths.append(path)
         headers.append(rumi.info(source=path).header)
         want.append(buf)

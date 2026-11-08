@@ -47,7 +47,7 @@ bindings/python/
   rumi/_lib/                     staged librumi (ignored by git)
   tests/                         pytest suites
   pyproject.toml hatch_build.py check_wheel.py
-fuzz/                            libFuzzer harnesses: header, index, pattern, read; replay/ seeds in git
+fuzz/                            libFuzzer harnesses: header, info, pattern, read; replay/ seeds in git
 docs/                            hand-written static site; SPEC.md is rendered in by make docs
 deck/ img/                       slide deck and SVG figures, mounted under the site
 examples/rumi-vs-geotiff.ipynb   GeoTIFF decompress comparison notebook
@@ -129,7 +129,7 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
 
 - CI runs the core tests three ways with GCC: warnings as errors, ASan with UBSan, and
   TSan (`-DRUMI_SANITIZE=thread` skips the post-fork thread test).
-- `make fuzz-check FUZZ_TIME=60` builds `rumi_{header,index,pattern,read}_fuzzer` with
+- `make fuzz-check FUZZ_TIME=60` builds `rumi_{header,info,pattern,read}_fuzzer` with
   Clang, ASan and UBSan (Homebrew LLVM on macOS, since Apple clang lacks libFuzzer).
   Findings land in `fuzz/out/`; `make fuzz-replay` reruns the versioned inputs.
 - `python tools/make_fuzz_seeds.py` regenerates `fuzz/replay/` with valid frames after a
@@ -166,7 +166,7 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
   full suite.
 - **Karu update:** move `extern/karu`, update `NOTICE` (`Karu X.Y.Z`),
   `licenses/LICENSE.Karu` if it changed, and `CHANGELOG.md`.
-- **Format change:** follow `compatibility.md` section 5.
+- **Format change:** follow `compatibility.md` section 4.
 
 ## 8. CI and releases
 

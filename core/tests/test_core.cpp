@@ -23,6 +23,15 @@
 
 namespace {
 
+// UNIT_REGISTRY rows the tests name: one tile, then one non-spatial axis
+// before or after h w.
+constexpr std::uint8_t UNIT_HW  = 0;
+constexpr std::uint8_t UNIT_AHW = 1;
+constexpr std::uint8_t UNIT_HWA = 2;
+static_assert(rumi::UNIT_REGISTRY[UNIT_HW].ndim == 2);
+static_assert(rumi::UNIT_REGISTRY[UNIT_AHW].axes[0] == rumi::AXIS_ONE);
+static_assert(rumi::UNIT_REGISTRY[UNIT_HWA].axes[2] == rumi::AXIS_ONE);
+
 int failures = 0;
 int checks   = 0;
 const char* current = "";
@@ -234,7 +243,7 @@ void test_writer_rejects_a_noncanonical_frame_unit()
 {
     CASE("the writer requires a frame unit valid for the raster extents")
     auto d = desc_of(32, 32, 16, 1, nullptr, 0);
-    d.frame_unit = rumi::FRAME_PLANAR;
+    d.frame_unit = UNIT_AHW;
     auto result = rumi::base_offset(d);
     OK(!result.has_value());
     if (!result) OK(result.error().find("not valid") != std::string::npos);
@@ -563,7 +572,7 @@ void test_count_packing()
 
     // Cell layouts have one count per grid position. Their internal axis order
     // does not change header parsing.
-    for (std::uint8_t unit : {rumi::FRAME_PLANAR, rumi::FRAME_CHUNKY}) {
+    for (std::uint8_t unit : {UNIT_AHW, UNIT_HWA}) {
         auto cell = make_blob(32, 32, 16, 3, std::vector<std::uint32_t>(4, 9));
         cell[26] = std::byte{unit};
         auto cp = rumi::parse_blob(cell);
@@ -1174,15 +1183,15 @@ void test_frame_pattern()
 {
     CASE("the three layouts a pattern can name")
     struct { const char* text; std::uint8_t unit; const char* layout; } good[] = {
-        {"b (row h) (col w) -> row col (b h w)", rumi::FRAME_PLANAR, "b h w"},
-        {"b (row h) (col w) -> row col b (h w)", rumi::FRAME_TILE,   "h w"},
-        {"b (row h) (col w) -> row col (h w b)", rumi::FRAME_CHUNKY, "h w b"},
+        {"b (row h) (col w) -> row col (b h w)", UNIT_AHW, "b h w"},
+        {"b (row h) (col w) -> row col b (h w)", UNIT_HW,  "h w"},
+        {"b (row h) (col w) -> row col (h w b)", UNIT_HWA, "h w b"},
         // Spatial split names are user-defined.
-        {"b (r th) (c tw) -> r c (b th tw)",     rumi::FRAME_PLANAR, "b h w"},
+        {"b (r th) (c tw) -> r c (b th tw)",     UNIT_AHW, "b h w"},
         // Input axes may appear in any order.
-        {"(row h) (col w) b -> row col (b h w)", rumi::FRAME_PLANAR, "b h w"},
+        {"(row h) (col w) b -> row col (b h w)", UNIT_AHW, "b h w"},
         // Whitespace is insignificant.
-        {"  b ( row h )(col w)->row col( b h w ) ", rumi::FRAME_PLANAR, "b h w"},
+        {"  b ( row h )(col w)->row col( b h w ) ", UNIT_AHW, "b h w"},
     };
     for (const auto& g : good) {
         auto p = rumi::compile_frame_pattern(g.text);
@@ -1247,8 +1256,7 @@ void test_frame_pattern()
     }
 
     CASE("a layout round trips through its name")
-    for (std::uint8_t u : {rumi::FRAME_TILE, rumi::FRAME_PLANAR,
-                           rumi::FRAME_CHUNKY}) {
+    for (std::uint8_t u : {UNIT_HW, UNIT_AHW, UNIT_HWA}) {
         auto back = rumi::unit_from_name(rumi::unit_name(u, 3, 1), 3, 1);
         OK(back.has_value());
         if (back) EQ(*back, u);
@@ -1259,14 +1267,14 @@ void test_frame_pattern()
     CASE("the grid, the count and where each frame sits")
     // 130 x 100 with 32-pixel tiles gives a 5 x 4 grid and clipped edges.
     std::uint32_t across = 0, down = 0;
-    auto n = rumi::frame_geometry(rumi::FRAME_CHUNKY, 130, 100, 32, 3, 1,
+    auto n = rumi::frame_geometry(UNIT_HWA, 130, 100, 32, 3, 1,
                                   &across, &down);
     OK(n.has_value());
     EQ(across, 5u);
     EQ(down, 4u);
     if (n) EQ(*n, std::uint64_t(20));
 
-    auto corner = rumi::frame_at_index(rumi::FRAME_CHUNKY, 130, 100, 32, 3, 1, 19);
+    auto corner = rumi::frame_at_index(UNIT_HWA, 130, 100, 32, 3, 1, 19);
     OK(corner.has_value());
     if (corner) {
         EQ(corner->row, 3u);
@@ -1280,11 +1288,11 @@ void test_frame_pattern()
     }
 
     CASE("a frame holding one band makes the index walk bands too")
-    auto tiles = rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 32, 3, 1,
+    auto tiles = rumi::frame_geometry(UNIT_HW, 130, 100, 32, 3, 1,
                                       nullptr, nullptr);
     OK(tiles.has_value());
     if (tiles) EQ(*tiles, std::uint64_t(60));
-    auto t19 = rumi::frame_at_index(rumi::FRAME_TILE, 130, 100, 32, 3, 1, 19);
+    auto t19 = rumi::frame_at_index(UNIT_HW, 130, 100, 32, 3, 1, 19);
     OK(t19.has_value());
     if (t19) {
         EQ(t19->band, 1u);          // 19 % 3
@@ -1295,10 +1303,10 @@ void test_frame_pattern()
 
     CASE("geometry refuses what it cannot answer")
     OK(!rumi::frame_geometry(0xFF, 130, 100, 32, 3, 1, nullptr, nullptr));
-    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 0, 100, 32, 3, 1, nullptr, nullptr));
-    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 0, 3, 1, nullptr, nullptr));
-    OK(!rumi::frame_geometry(rumi::FRAME_TILE, 130, 100, 32, 0, 1, nullptr, nullptr));
-    OK(!rumi::frame_at_index(rumi::FRAME_TILE, 130, 100, 32, 3, 1, 60));
+    OK(!rumi::frame_geometry(UNIT_HW, 0, 100, 32, 3, 1, nullptr, nullptr));
+    OK(!rumi::frame_geometry(UNIT_HW, 130, 100, 0, 3, 1, nullptr, nullptr));
+    OK(!rumi::frame_geometry(UNIT_HW, 130, 100, 32, 0, 1, nullptr, nullptr));
+    OK(!rumi::frame_at_index(UNIT_HW, 130, 100, 32, 3, 1, 60));
 }
 
 

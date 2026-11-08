@@ -45,7 +45,7 @@ CASES = [
 ]
 
 
-def build(out_index: pathlib.Path, out_header: pathlib.Path) -> int:
+def build(out_files: pathlib.Path, out_header: pathlib.Path) -> int:
     for name, shape, tile, pattern, kw in CASES:
         arr = np.arange(int(np.prod(shape)), dtype=np.uint16).reshape(shape)
         tf = rumi.frames(arr, pattern, tile)
@@ -56,7 +56,7 @@ def build(out_index: pathlib.Path, out_header: pathlib.Path) -> int:
                 graph = graphs[frame.data.shape] = geozl.graph(
                     frame.data, "planar>zigzag>zstd")
             frame.compressed = geozl.compress(frame.data, graph=graph)
-        path = out_index / name
+        path = out_files / name
         days = [FIRST_DAY + dt.timedelta(days=t) for t in range(tf.time_count)]
         labels = {"bands": TEXTS[:tf.bands], "time": days}
         blob = write_frames(path, tf["compressed"], tf, **{**labels, **kw})
@@ -66,7 +66,7 @@ def build(out_index: pathlib.Path, out_header: pathlib.Path) -> int:
 
 def main() -> int:
     seeds = ROOT / "fuzz" / "replay"
-    targets = ("index", "header", "read")
+    targets = ("info", "header", "read")
     for target in targets:
         d = seeds / target
         d.mkdir(parents=True, exist_ok=True)
@@ -76,11 +76,11 @@ def main() -> int:
     staged = ROOT / "fuzz" / "replay" / ".staging"
     if staged.exists():
         shutil.rmtree(staged)
-    (staged / "index").mkdir(parents=True)
+    (staged / "files").mkdir(parents=True)
     (staged / "header").mkdir(parents=True)
-    n = build(staged / "index", staged / "header")
+    n = build(staged / "files", staged / "header")
     for target in targets:
-        src = "index" if target in ("index", "read") else "header"
+        src = "files" if target in ("info", "read") else "header"
         for f in sorted((staged / src).iterdir()):
             (seeds / target / f"seed_{f.name}").write_bytes(f.read_bytes())
     shutil.rmtree(staged)
