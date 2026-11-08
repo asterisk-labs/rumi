@@ -21,7 +21,7 @@ static inline double qlog_clamp(double v, double lo, double hi) {
   return v < lo ? lo : (v > hi ? hi : v);
 }
 
-// The whole of case 3 in one place. The table caches this and the long way calls
+// The whole of case 2 in one place. The table caches this and the long way calls
 // it, so a tile decoded either way comes out bit for bit the same.
 static inline double qlog_from_index(int64_t q, double step, int anchor,
                                      double vlo, double vhi) {
@@ -64,19 +64,6 @@ static inline double qlog_from_index(int64_t q, double step, int anchor,
     }                                                                          \
   } while (0)
 
-// Case 2. The stream already holds the reconstruction, so this is a conversion
-// and no arithmetic. The floor is a max against a loop invariant, which the
-// compiler keeps vectorised.
-#define QLOG_DEC_VALUES(WT, IT, STORE)                                         \
-  do {                                                                         \
-    const IT *restrict s = (const IT *)src;                                    \
-    WT *restrict d = (WT *)dst;                                                \
-    for (size_t i = 0; i < nbElts; ++i) {                                      \
-      const IT v = s[i];                                                       \
-      d[i] = (WT)(STORE((double)(v < floorv ? floorv : v)));                   \
-    }                                                                          \
-  } while (0)
-
 #define QLOG_DEC_FLOOR(T)                                                      \
   do {                                                                         \
     const T *restrict s = (const T *)src;                                      \
@@ -93,7 +80,6 @@ int quant_log_decode(void *restrict dst, const void *restrict src,
                      const quant_log_params *p, int dtype, size_t nbElts) {
   if (!quant_log_params_ok(p, dtype))
     return 1;
-  const int values = (p->flags & QUANT_LOG_FLAG_STORE_VALUES) != 0;
   const int nonneg = (p->flags & QUANT_LOG_FLAG_NONNEGATIVE) != 0;
 
   // Case 1. The stream is already the output, in the output type. An unsigned
@@ -123,27 +109,6 @@ int quant_log_decode(void *restrict dst, const void *restrict src,
   if (nbElts == 0)
     return 0;
 
-  if (values) {
-    switch ((qlog_dtype)dtype) {
-    case QLOG_F16: {
-      const int16_t floorv = nonneg ? 0 : INT16_MIN;
-      QLOG_DEC_VALUES(uint16_t, int16_t, QLOG_F16);
-      break;
-    }
-    case QLOG_F32: {
-      const int32_t floorv = nonneg ? 0 : INT32_MIN;
-      QLOG_DEC_VALUES(float, int32_t, QLOG_F32);
-      break;
-    }
-    default: {
-      const int64_t floorv = nonneg ? 0 : INT64_MIN;
-      QLOG_DEC_VALUES(double, int64_t, QLOG_ID);
-      break;
-    }
-    }
-    return 0;
-  }
-
   const double step = p->step;
   const int anchor = quant_log_anchor_exp2(dtype);
   const double vhi = quant_log_value_hi(dtype);
@@ -166,7 +131,6 @@ int quant_log_decode(void *restrict dst, const void *restrict src,
 #undef QLOG_MAG
 #undef QLOG_LUT_BYTES
 #undef QLOG_DEC_INDEX
-#undef QLOG_DEC_VALUES
 #undef QLOG_DEC_FLOOR
 #undef QLOG_ID
 #undef QLOG_F32

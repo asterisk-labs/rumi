@@ -28,9 +28,8 @@ static inline int quant_linear_params_ok(const quant_linear_params *p,
   if (!isfinite(p->step) || !(p->step >= DBL_MIN))
     return 0;
 
-  const int values = (p->flags & QUANT_LINEAR_FLAG_STORE_VALUES) != 0;
-  // Integer grids and floating-point value grids require a whole step.
-  if (dtype <= QL_LAST_INT || values)
+  // Integer grids require a whole step.
+  if (dtype <= QL_LAST_INT)
     return floor(p->step) == p->step;
   return 1;
 }

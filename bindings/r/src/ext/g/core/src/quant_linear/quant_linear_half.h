@@ -1,5 +1,5 @@
-// The shared half conversions under this codec's names, plus the two branchless
-// variants only this codec needs.
+// The shared half conversions under this codec's names, plus the branchless
+// variant only this codec needs.
 
 #ifndef GEOZL_CODECS_QUANT_LINEAR_HALF_H
 #define GEOZL_CODECS_QUANT_LINEAR_HALF_H
@@ -16,19 +16,6 @@
 // For a normal float, (ax - QL_HALF_REBASE) >> 13 is the rebased exponent and
 // the truncated mantissa in one subtract and one shift.
 #define QL_HALF_REBASE (((uint32_t)(127 - 15)) << 23)
-
-// The int16 stream of a values frame. Exact in float, so no nan, no
-// infinity, no subnormal and no overflow. Only the rebase is left.
-static inline uint16_t ql_i16_to_half(int32_t v) {
-  const float f = (float)v;
-  uint32_t x;
-  memcpy(&x, &f, sizeof(x));
-  const uint32_t sign = (x >> 16) & 0x8000u;
-  const uint32_t ax = x & 0x7FFFFFFFu;
-  uint32_t h = (ax - QL_HALF_REBASE) >> 13;
-  h += (ax >> 12) & 1u; // the carry runs into the exponent, which is correct
-  return (uint16_t)(sign | (ax == 0 ? 0u : h));
-}
 
 // Same bits as quant_linear_float_to_half, without branches. One branch in here
 // stops the vectoriser on the loop that calls it, which is the whole point.

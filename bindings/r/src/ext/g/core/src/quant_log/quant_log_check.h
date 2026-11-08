@@ -18,8 +18,9 @@ static inline int quant_log_params_ok(const quant_log_params *p, int dtype) {
     return 0;
   if ((p->flags & ~(unsigned)QUANT_LOG_FLAGS_KNOWN) != 0)
     return 0;
-  // An integer type carries the reconstruction and nothing else.
-  return dtype > QLOG_LAST_INT || (p->flags & QUANT_LOG_FLAG_STORE_VALUES) != 0;
+  // An integer type carries the reconstruction and a float type the index.
+  return (dtype <= QLOG_LAST_INT) ==
+         ((p->flags & QUANT_LOG_FLAG_STORE_VALUES) != 0);
 }
 
 #endif // GEOZL_CODECS_QUANT_LOG_CHECK_H

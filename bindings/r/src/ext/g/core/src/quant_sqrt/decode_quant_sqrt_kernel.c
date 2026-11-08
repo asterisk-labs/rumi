@@ -38,18 +38,6 @@
     }                                                                          \
   } while (0)
 
-// The stream already holds the reconstruction, so this is a conversion.
-#define QSQ_DEC_V(WT, IT, STORE)                                               \
-  do {                                                                         \
-    const IT *s = (const IT *)src;                                             \
-    WT *d = (WT *)dst;                                                         \
-    for (size_t i = 0; i < nbElts; ++i) {                                      \
-      IT v = s[i];                                                             \
-      v = v < flo ? flo : v;                                                   \
-      d[i] = (WT)(STORE((double)v));                                           \
-    }                                                                          \
-  } while (0)
-
 // No encoder writes a negative under the flag, so this leaves a valid frame as it
 // is, in one pass.
 #define QSQ_DEC_FLOOR(T)                                                       \
@@ -104,9 +92,9 @@ int quant_sqrt_decode(void *restrict dst, const void *restrict src,
   const int nonneg = (p->flags & QUANT_SQRT_FLAG_NONNEGATIVE) != 0;
   const int narrow = (p->flags & QUANT_SQRT_FLAG_DECODE_F32) != 0;
 
-  // Integer VALUES already holds the reconstruction. An unsigned one carries the
-  // floor by its type.
-  if (dtype <= QSQ_LAST_INT && values) {
+  // A values frame, which is always an integer one, already holds the
+  // reconstruction. An unsigned one carries the floor by its type.
+  if (values) {
     if (nonneg && dtype >= QSQ_I8) {
       switch ((qsq_dtype)dtype) {
       case QSQ_I8:
@@ -125,27 +113,6 @@ int quant_sqrt_decode(void *restrict dst, const void *restrict src,
       return 0;
     }
     memcpy(dst, src, nbElts * quant_sqrt_width(dtype));
-    return 0;
-  }
-
-  if (values) {
-    switch ((qsq_dtype)dtype) {
-    case QSQ_F16: {
-      const int16_t flo = nonneg ? 0 : INT16_MIN;
-      QSQ_DEC_V(uint16_t, int16_t, QSQ_TOF16);
-      break;
-    }
-    case QSQ_F32: {
-      const int32_t flo = nonneg ? 0 : INT32_MIN;
-      QSQ_DEC_V(float, int32_t, QSQ_TOF32);
-      break;
-    }
-    default: {
-      const int64_t flo = nonneg ? 0 : INT64_MIN;
-      QSQ_DEC_V(double, int64_t, QSQ_ID);
-      break;
-    }
-    }
     return 0;
   }
 
@@ -227,7 +194,6 @@ int quant_sqrt_decode(void *restrict dst, const void *restrict src,
 }
 
 #undef QSQ_DEC
-#undef QSQ_DEC_V
 #undef QSQ_DEC_FLOOR
 #undef QSQ_ID
 #undef QSQ_TOF32

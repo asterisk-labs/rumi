@@ -18,11 +18,6 @@ static inline uint64_t ql_round_u64(uint64_t m, uint64_t isc, uint64_t half) {
   return m / isc + (m % isc >= isc - half);
 }
 
-// Multiply with saturation for legacy values frames.
-static inline uint64_t ql_times_u64(uint64_t q, uint64_t isc) {
-  return q > UINT64_MAX / isc ? UINT64_MAX : q * isc;
-}
-
 // Quantize magnitudes so signed grids remain symmetric around zero.
 #define QL_ENC_UV(T)                                                           \
   do {                                                                         \
@@ -32,8 +27,7 @@ static inline uint64_t ql_times_u64(uint64_t q, uint64_t isc) {
     for (size_t i = 0; i < nbElts; ++i) {                                      \
       const uint64_t q = sizeof(T) < 8 ? ((uint64_t)s[i] + half) / isc         \
                                        : ql_round_u64(s[i], isc, half);        \
-      const uint64_t r = values ? ql_times_u64(q, isc) : q;                    \
-      d[i] = (T)(r < cap ? r : cap);                                           \
+      d[i] = (T)(q < cap ? q : cap);                                           \
     }                                                                          \
   } while (0)
 
@@ -48,22 +42,20 @@ static inline uint64_t ql_times_u64(uint64_t q, uint64_t isc) {
       const uint64_t m = neg ? 0u - (uint64_t)s[i] : (uint64_t)s[i];           \
       const uint64_t q = sizeof(T) < 8 ? (m + half) / isc                      \
                                        : ql_round_u64(m, isc, half);           \
-      const uint64_t r = values ? ql_times_u64(q, isc) : q;                    \
       if (neg)                                                                 \
-        d[i] = r >= top ? (LO) : (T)(0 - (int64_t)r);                          \
+        d[i] = q >= top ? (LO) : (T)(0 - (int64_t)q);                          \
       else                                                                     \
-        d[i] = r >= top - 1u ? (HI) : (T)r;                                    \
+        d[i] = q >= top - 1u ? (HI) : (T)q;                                    \
     }                                                                          \
   } while (0)
 
-// Legacy values frames have an integer step and reconstruction.
 #define QL_ENC_F(WT, IT, RD)                                                   \
   do {                                                                         \
     const WT *s = (const WT *)src;                                             \
     IT *d = (IT *)dst;                                                         \
     for (size_t i = 0; i < nbElts; ++i) {                                      \
       const double q = nearbyint((double)(RD) / step);                          \
-      d[i] = (IT)(int64_t)ql_fit(values ? q * step : q, -smax - 1.0, smax);    \
+      d[i] = (IT)(int64_t)ql_fit(q, -smax - 1.0, smax);                         \
     }                                                                          \
   } while (0)
 
@@ -75,7 +67,6 @@ int quant_linear_encode(void *restrict dst, const void *restrict src,
     return 1;
   const double step = p->step;
   const double smax = quant_linear_stream_max(dtype);
-  const int values = (p->flags & QUANT_LINEAR_FLAG_STORE_VALUES) != 0;
   const uint64_t isc = quant_linear_step_u64(step);
   const uint64_t half = isc >> 1;
 

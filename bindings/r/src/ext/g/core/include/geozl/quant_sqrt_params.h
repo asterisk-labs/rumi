@@ -4,7 +4,7 @@
 // Clamp reconstruction at zero when the input has no negative samples.
 #define QUANT_SQRT_FLAG_NONNEGATIVE 1u
 
-// Store reconstructed values when the index does not fit, and read legacy frames.
+// Integer frames store reconstructed values when the index does not fit.
 #define QUANT_SQRT_FLAG_STORE_VALUES 2u
 
 // Reconstruct float32 output with float arithmetic.

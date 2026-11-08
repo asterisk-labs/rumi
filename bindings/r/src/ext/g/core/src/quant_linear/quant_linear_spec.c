@@ -35,10 +35,6 @@ int quant_linear_parse(const char *s, quant_linear_spec *out, char *err,
       if (out->max_error <= 0.0)
         return geozl_recipe_fail(err, errSize, "error \"%s\": MAX_ERROR must be positive", s);
       haveError = 1;
-    } else if (geozl_recipe_keyed(&cur, "STORE", &vb, &ve) == 0) {
-      return geozl_recipe_fail(err, errSize,
-                  "error \"%s\": STORE was removed, a LINEAR stream always "
-                  "carries the grid index", s);
     } else {
       return geozl_recipe_fail(err, errSize,
                   "error \"%s\": unknown key, expected MAX_ERROR", s);

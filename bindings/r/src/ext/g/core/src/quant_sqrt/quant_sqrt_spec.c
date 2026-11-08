@@ -77,10 +77,6 @@ int quant_sqrt_parse(const char *s, quant_sqrt_spec *out, char *err,
                     "does not grow with the signal and this curve is flat",
                     s);
       haveB = 1;
-    } else if (geozl_recipe_keyed(&cur, "STORE", &vb, &ve) == 0) {
-      return geozl_recipe_fail(err, errSize,
-                  "error \"%s\": STORE was removed, a SQRT stream carries the "
-                  "grid index wherever it fits the element", s);
     } else {
       return geozl_recipe_fail(err, errSize,
                   "error \"%s\": unknown key, expected MAX_ERROR, A or B", s);

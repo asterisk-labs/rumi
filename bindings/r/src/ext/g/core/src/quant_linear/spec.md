@@ -7,8 +7,6 @@ Lossy numeric codec, CTID `0x72D781`.
     LINEAR:MAX_ERROR=V
 
 `MAX_ERROR` is required and must be positive. The encoder writes grid indices.
-Frames written from 0.14 to 0.18 may hold reconstructed values instead, which the
-`STORE=VALUES` key of those releases asked for; a decoder still reads them.
 
 ## Inputs
 
@@ -21,25 +19,22 @@ Exactly 10 little-endian bytes:
 - Byte 0: original type. Codes 0..3 are u8, u16, u32, and u64; 4..7 are the
   signed types of the same widths; 8..10 are f16, f32, and f64.
 - Byte 1: flags. Bit 0 means the source contained no negative finite sample.
-  Bit 1 means the stream stores reconstructed values rather than indices.
+  The other bits are zero.
 - Bytes 2..9: `step` as IEEE binary64.
 
 A frame is corrupt if the type or flags are unknown, `step` is smaller than
-`DBL_MIN` or is not finite, or the step is fractional on any frame other than a
-floating-point index frame. An integer frame rebuilds in integer arithmetic
-whichever way it stores, so it needs a whole step both ways; only the
-floating-point index path carries a fractional one.
+`DBL_MIN` or is not finite, or the step is fractional on an integer frame. An
+integer frame rebuilds in integer arithmetic, so it needs a whole step; only the
+floating-point path carries a fractional one.
 
 ## Representation and decoding
 
-The encoded stream always has an integer representation:
+The encoded stream holds the grid index `q` as an integer:
 
-| Input | Storage | Stream value | Reconstruction |
-| --- | --- | --- | --- |
-| integer | index | grid index `q` | `q * step`, in integer arithmetic |
-| integer | values (0.14 to 0.18) | reconstructed value | copied |
-| float | values (0.14 to 0.18) | quantized value `q` | cast `q` to the output type |
-| float | index | grid index `q` | `q * step` |
+| Input | Reconstruction |
+| --- | --- |
+| integer | `q * step`, in integer arithmetic |
+| float | `q * step` |
 
 The result is clamped to the output type. When flag bit 0 is set, the lower
 limit is zero. `q * step` is a binary64 product. An f64 output stores it. An f32
@@ -60,8 +55,7 @@ For integer input:
 
     step = floor(2 * MAX_ERROR)
 
-with a minimum of one, which is lossless. A values frame from 0.14 to 0.18 used
-the same grid, and a floating-point one the same whole step.
+with a minimum of one, which is lossless.
 
 An integer index needs no range check. The encoder forms the magnitude index as
 `(|x| + step/2) / step` in integer arithmetic, which for a step of one or more is

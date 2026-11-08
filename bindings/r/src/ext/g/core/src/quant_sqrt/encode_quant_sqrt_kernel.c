@@ -109,17 +109,8 @@ int quant_sqrt_encode(void *restrict dst, const void *restrict src,
     case QSQ_I32:
       QSQ_ENC_V(int32_t, int32_t, s[i], qsq_fit_i);
       break;
-    case QSQ_I64:
-      QSQ_ENC_V(int64_t, int64_t, s[i], qsq_fit_i);
-      break;
-    case QSQ_F16:
-      QSQ_ENC_V(uint16_t, int16_t, quant_sqrt_half_to_float(s[i]), qsq_fit_i);
-      break;
-    case QSQ_F32:
-      QSQ_ENC_V(float, int32_t, s[i], qsq_fit_i);
-      break;
     default:
-      QSQ_ENC_V(double, int64_t, s[i], qsq_fit_i);
+      QSQ_ENC_V(int64_t, int64_t, s[i], qsq_fit_i);
       break;
     }
     return 0;

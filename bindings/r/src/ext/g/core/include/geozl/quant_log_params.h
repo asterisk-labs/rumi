@@ -4,7 +4,7 @@
 // Clamp reconstruction at zero when the input has no negative samples.
 #define QUANT_LOG_FLAG_NONNEGATIVE 1u
 
-// Integer and legacy float frames may store reconstructed values.
+// Integer frames store reconstructed values, float frames grid indices.
 #define QUANT_LOG_FLAG_STORE_VALUES 2u
 
 #define QUANT_LOG_FLAGS_KNOWN                                                  \

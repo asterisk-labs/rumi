@@ -17,7 +17,6 @@ typedef enum {
   GEOZL_CTID_PLANAR_ZIGZAG_PFOR = 0x72D710,
   GEOZL_CTID_MED_ZIGZAG = 0x72D711,
   GEOZL_CTID_PLANAR_ZIGZAG_TRANSPOSE_PIVCO = 0x72D712,
-  GEOZL_CTID_PLANAR_ZIGZAG_PIVCO = GEOZL_CTID_PLANAR_ZIGZAG_TRANSPOSE_PIVCO,
   GEOZL_CTID_TRANSPOSE_PIVCO = 0x72D713,
   // 0x72D780 was quant, one codec carrying all three curves. Split into the
   // three below and retired, not reused.

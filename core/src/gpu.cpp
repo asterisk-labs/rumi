@@ -233,11 +233,11 @@ GpuDecoder::decode(const Plan& plan, std::span<const FrameTask> tasks,
 
         GeozlGpuTarget target{destination, 0, destination_bytes, stream};
         std::array<char, 512> message{};
-        if (geozl_gpu_decode_ex(impl_->gpu, frames.data(), frames.size(),
-                                copies.data(), copies.size(), sample_bytes,
-                                element_bytes, &target,
-                                force_host ? host_flags.data() : nullptr,
-                                message.data(), message.size()) != 0) {
+        if (geozl_gpu_decode(impl_->gpu, frames.data(), frames.size(),
+                             copies.data(), copies.size(), sample_bytes,
+                             element_bytes, &target,
+                             force_host ? host_flags.data() : nullptr,
+                             message.data(), message.size()) != 0) {
             return fail(RUMI_ERR_DECODE,
                         message[0] ? message.data() : "GPU decode failed");
         }

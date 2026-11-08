@@ -74,6 +74,9 @@ GEOZL_API void geozl_gpu_destroy(GeozlGpu *gpu);
 // completely into host staging before their samples are copied to the device.
 // Copies address at most 2^32 samples of the target and each route source.
 //
+// forceHost is NULL for automatic routing, or frameCount bytes. A nonzero byte
+// decodes that entire frame on the host before copying its samples to the GPU.
+//
 // On CUDA the call returns after queuing work on target->stream. Keep the
 // target allocation and stream alive until that work finishes. A later decode
 // on the same stream need not wait and may report an earlier failure. Metal
@@ -82,19 +85,9 @@ GEOZL_API int geozl_gpu_decode(GeozlGpu *gpu, const GeozlGpuFrame frames[],
                                size_t frameCount, const GeozlGpuCopy copies[],
                                size_t copyCount, size_t sampleBytes,
                                size_t elementBytes,
-                               const GeozlGpuTarget *target, char *error,
+                               const GeozlGpuTarget *target,
+                               const uint8_t forceHost[], char *error,
                                size_t errorCapacity);
-
-// forceHost is NULL for automatic routing, or frameCount bytes. A nonzero byte
-// decodes that entire frame on the host before copying its samples to the GPU.
-GEOZL_API int geozl_gpu_decode_ex(GeozlGpu *gpu,
-                                  const GeozlGpuFrame frames[],
-                                  size_t frameCount,
-                                  const GeozlGpuCopy copies[], size_t copyCount,
-                                  size_t sampleBytes, size_t elementBytes,
-                                  const GeozlGpuTarget *target,
-                                  const uint8_t forceHost[], char *error,
-                                  size_t errorCapacity);
 GEOZL_API int geozl_gpu_synchronize(GeozlGpu *gpu, char *error,
                                     size_t errorCapacity);
 

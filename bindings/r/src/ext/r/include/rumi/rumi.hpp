@@ -200,12 +200,6 @@ inline constexpr std::array<UnitRow, 10> UNIT_REGISTRY{{
     {{AXIS_H, AXIS_W},                       2, true },  // 9  h w, t then b
 }};
 
-enum FrameUnit : std::uint8_t {
-    FRAME_TILE   = 0,  // (h w)
-    FRAME_PLANAR = 1,  // non-spatial axis before h w
-    FRAME_CHUNKY = 2,  // non-spatial axis after h w
-};
-
 [[nodiscard]] constexpr bool unit_is_defined(std::uint8_t u) noexcept {
     return u < UNIT_REGISTRY.size();
 }

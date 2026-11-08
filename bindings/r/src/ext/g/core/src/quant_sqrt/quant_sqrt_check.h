@@ -26,6 +26,9 @@ static inline int quant_sqrt_params_ok(const quant_sqrt_params *p, int dtype) {
   // two to pick from.
   if ((p->flags & QUANT_SQRT_FLAG_DECODE_F32) != 0 && dtype != QSQ_F32)
     return 0;
+  // Only an integer type falls back to storing the reconstruction.
+  if ((p->flags & QUANT_SQRT_FLAG_STORE_VALUES) != 0 && dtype > QSQ_LAST_INT)
+    return 0;
   return 1;
 }
 

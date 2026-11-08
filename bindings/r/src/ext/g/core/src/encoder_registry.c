@@ -89,11 +89,6 @@ ZL_NodeID geozl_node_planar_zigzag_transpose_pivco(ZL_Compressor *c,
   return geometry_node(c, &desc, width, planes);
 }
 
-ZL_NodeID geozl_node_planar_zigzag_pivco(ZL_Compressor *c, uint32_t width,
-                                         uint32_t planes) {
-  return geozl_node_planar_zigzag_transpose_pivco(c, width, planes);
-}
-
 ZL_NodeID geozl_node_transpose_pivco(ZL_Compressor *c) {
   const ZL_TypedEncoderDesc desc =
       EI_TRANSPOSE_PIVCO(GEOZL_CTID_TRANSPOSE_PIVCO);

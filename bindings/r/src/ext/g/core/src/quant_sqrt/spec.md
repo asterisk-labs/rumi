@@ -21,9 +21,7 @@ climbs as the bound tightens, so a tight recipe on a narrow integer element can
 ask for more levels than the element carries. There the reconstruction, which
 always fits, is stored instead, on the same `step = c / 2` grid, so the levels
 and the bound do not change with the choice. Floating-point input always carries
-indices. Frames from 0.14 to 0.18 stored integer reconstructions by default, and
-floating-point ones on request through `STORE=VALUES`; a decoder still reads
-both.
+indices.
 
 ## Inputs
 
@@ -36,15 +34,16 @@ Exactly 18 little-endian bytes:
 - Byte 0: original type. Codes 0..3 are u8, u16, u32, and u64; 4..7 are the
   signed types of the same widths; 8..10 are f16, f32, and f64.
 - Byte 1: flags. Bit 0 means the source contained no negative finite sample.
-  Bit 1 means the stream stores reconstructed values. Bit 2 selects binary32
-  arithmetic when rebuilding f32 indices.
+  Bit 1 means the stream stores reconstructed values, which only an integer
+  frame does. Bit 2 selects binary32 arithmetic when rebuilding f32 indices.
 - Bytes 2..9: `step` as IEEE binary64.
 - Bytes 10..17: `offset` as IEEE binary64.
 
 A frame is corrupt if the type or flags are unknown, `step` is not positive and
 finite, `step * step` is smaller than `DBL_MIN`, `offset` is negative or not
-finite, or bit 2 is set for a type other than f32. An integer frame carries
-either the index or the reconstruction; both are legal.
+finite, bit 1 is set for a floating-point type, or bit 2 is set for a type
+other than f32. An integer frame carries either the index or the
+reconstruction; both are legal.
 
 ## Grid and decoding
 
@@ -63,7 +62,6 @@ The encoded stream always has an integer representation:
 | --- | --- | --- |
 | integer | index | evaluate `(q * step)^2 - offset`, then round to an integer |
 | integer | values | copy the stored value, floored at zero when flag bit 0 is set |
-| float | values | cast the stored value to the output type |
 | float | index | evaluate `(q * step)^2 - offset` |
 
 Valid encoder indices are nonnegative. The encoder chooses the nearest level in

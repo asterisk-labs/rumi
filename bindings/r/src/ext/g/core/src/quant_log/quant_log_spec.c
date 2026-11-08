@@ -42,10 +42,6 @@ int quant_log_parse(const char *s, quant_log_spec *out, char *err,
                     v);
       out->rel_err = v / 100.0;
       haveError = 1;
-    } else if (geozl_recipe_keyed(&cur, "STORE", &vb, &ve) == 0) {
-      return geozl_recipe_fail(err, errSize,
-                  "error \"%s\": STORE was removed, a LOG stream carries values "
-                  "for integers and grid indices for floats", s);
     } else {
       return geozl_recipe_fail(err, errSize,
                   "error \"%s\": unknown key, expected MAX_ERROR", s);

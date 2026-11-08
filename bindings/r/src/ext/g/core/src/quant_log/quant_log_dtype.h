@@ -62,8 +62,7 @@ static inline double quant_log_index_span(int dtype) {
 }
 
 // log2 of the largest reconstruction the value grid may produce, which anchors
-// at one. On a float it is capped by the largest whole number the type carries
-// with no gap, since past that a cast back would round.
+// at one. Only an integer type takes the value grid.
 static inline double quant_log_value_span(int dtype) {
   switch (dtype) {
   case QLOG_U8:
@@ -75,15 +74,8 @@ static inline double quant_log_value_span(int dtype) {
   case QLOG_U32:
   case QLOG_I32:
     return 32.0;
-  case QLOG_U64:
-  case QLOG_I64:
-    return 64.0;
-  case QLOG_F16:
-    return 11.0;
-  case QLOG_F32:
-    return 24.0;
   default:
-    return 53.0;
+    return 64.0;
   }
 }
 
@@ -111,19 +103,6 @@ static inline double quant_log_normal_min(int dtype) {
     return 1.17549435082228751e-38; // 2^-126
   default:
     return 2.22507385850720138e-308; // 2^-1022
-  }
-}
-
-// Largest whole number the type carries with no gap. A values frame cannot reach
-// past it, since the reconstruction would round on the way back.
-static inline double quant_log_exact_int(int dtype) {
-  switch (dtype) {
-  case QLOG_F16:
-    return 2048.0; // 2^11
-  case QLOG_F32:
-    return 16777216.0; // 2^24
-  default:
-    return GEOZL_F64_EXACT_INT;
   }
 }
 

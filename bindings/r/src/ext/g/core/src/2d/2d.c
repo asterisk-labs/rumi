@@ -39,11 +39,8 @@
 #include <windows.h> // QueryPerformanceCounter
 #endif
 
-#define OPENZL_COMMENT_VERSION_MIN 22
-// OpenZL 0.2 reads up to format 24, and nothing geozl writes gains from 27
-// except PivCo Huffman and sparse_num, which exist from 27 and 26 on.
-#define GEOZL_FORMAT_VERSION 24
-#define GEOZL_OPENZL03_FORMAT_VERSION 27
+// The OpenZL 0.3 frame format, written for every recipe.
+#define GEOZL_FORMAT_VERSION 27
 
 // A method combines an optional predictor with a terminal, for example
 // "planar>zigzag>entropy". The full graph is:
@@ -640,11 +637,8 @@ static ZL_Report graph_open(geozl_2d_graph **out, const char *method,
     owner = ERR_CCTX;
     goto fail;
   }
-  const int openzl03 = term == GEOZL_TERM_PIVCO ||
-                       term == GEOZL_TERM_T_PIVCO || term == GEOZL_TERM_SPARSE;
   r = ZL_CCtx_setParameter(e->cctx, ZL_CParam_formatVersion,
-                           openzl03 ? GEOZL_OPENZL03_FORMAT_VERSION
-                                    : GEOZL_FORMAT_VERSION);
+                           GEOZL_FORMAT_VERSION);
   if (ZL_isError(r)) {
     owner = ERR_CCTX;
     goto fail;
@@ -774,11 +768,7 @@ GEOZL_API int geozl_2d_frame_coeffs_c(const void *frame, size_t frameSize,
   ZL_RESULT_OF(ZL_Comment) cr = ZL_FrameInfo_getComment(fi);
   int rc;
   if (ZL_RES_isError(cr)) {
-    ZL_Report v = ZL_FrameInfo_getFormatVersion(fi);
-    rc = (!ZL_isError(v) &&
-          ZL_validResult(v) < OPENZL_COMMENT_VERSION_MIN)
-             ? -1
-             : (int)ZL_RES_code(cr);
+    rc = (int)ZL_RES_code(cr);
   } else {
     ZL_Comment cm = ZL_RES_value(cr);
     int parsed = cm.size == 0

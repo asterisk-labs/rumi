@@ -4,11 +4,7 @@
 // Clamp reconstruction at zero when the input has no negative samples.
 #define QUANT_LINEAR_FLAG_NONNEGATIVE 1u
 
-// Legacy frames may store reconstructed values instead of grid indices.
-#define QUANT_LINEAR_FLAG_STORE_VALUES 2u
-
-#define QUANT_LINEAR_FLAGS_KNOWN                                               \
-  (QUANT_LINEAR_FLAG_NONNEGATIVE | QUANT_LINEAR_FLAG_STORE_VALUES)
+#define QUANT_LINEAR_FLAGS_KNOWN QUANT_LINEAR_FLAG_NONNEGATIVE
 
 typedef struct {
   unsigned char flags;

@@ -65,7 +65,7 @@ static inline int64_t qlog_pick(double a, int anchorExp2, double inv,
 #define QLOG_LEV(a)                                                            \
   qlog_value_at(lev, qlog_pick((a), 0, inv, 0.5, 0.0, dtop, top), step, cap)
 
-// Cases 1 and 2, the value grid. The stream carries the reconstruction, so the
+// Case 1, the value grid. The stream carries the reconstruction, so the
 // levels are whole numbers already folded onto the output range.
 #define QLOG_ENC_U(T)                                                          \
   do {                                                                         \
@@ -97,23 +97,7 @@ static inline int64_t qlog_pick(double a, int anchorExp2, double inv,
     }                                                                          \
   } while (0)
 
-#define QLOG_ENC_FV(WT, IT, RD)                                                \
-  do {                                                                         \
-    const WT *restrict s = (const WT *)src;                                    \
-    IT *restrict d = (IT *)dst;                                                \
-    for (size_t i = 0; i < nbElts; ++i) {                                      \
-      const double x = (double)(RD);                                           \
-      const double a = x < 0.0 ? -x : x;                                       \
-      if (!(a > 0.0)) {                                                        \
-        d[i] = 0;                                                              \
-        continue;                                                              \
-      }                                                                        \
-      const double r = QLOG_LEV(a);                                            \
-      d[i] = (IT)(int64_t)(x < 0.0 ? -r : r);                                  \
-    }                                                                          \
-  } while (0)
-
-// Case 3, the index grid. Index magnitude one is the anchor, so zero is free.
+// Case 2, the index grid. Index magnitude one is the anchor, so zero is free.
 #define QLOG_ENC_FI(WT, IT, RD)                                                \
   do {                                                                         \
     const WT *restrict s = (const WT *)src;                                    \
@@ -158,8 +142,7 @@ int quant_log_encode(void *restrict dst, const void *restrict src,
 
   const double dtop = quant_log_value_top(step, dtype);
   const int64_t top = (int64_t)dtop;
-  const double cap = dtype <= QLOG_LAST_INT ? quant_log_value_mag(dtype)
-                                            : quant_log_exact_int(dtype);
+  const double cap = quant_log_value_mag(dtype);
   const double levels = dtop + 1.0;
   double *lev = NULL;
   if (levels <= (double)(QLOG_LEV_BYTES / sizeof(double))) {
@@ -192,17 +175,8 @@ int quant_log_encode(void *restrict dst, const void *restrict src,
   case QLOG_I32:
     QLOG_ENC_I(int32_t);
     break;
-  case QLOG_I64:
-    QLOG_ENC_I(int64_t);
-    break;
-  case QLOG_F16:
-    QLOG_ENC_FV(uint16_t, int16_t, quant_log_half_to_float(s[i]));
-    break;
-  case QLOG_F32:
-    QLOG_ENC_FV(float, int32_t, s[i]);
-    break;
   default:
-    QLOG_ENC_FV(double, int64_t, s[i]);
+    QLOG_ENC_I(int64_t);
     break;
   }
   free(lev);
@@ -285,6 +259,5 @@ int quant_log_scan(const void *src, int dtype, size_t nbElts,
 #undef QLOG_LEV
 #undef QLOG_ENC_U
 #undef QLOG_ENC_I
-#undef QLOG_ENC_FV
 #undef QLOG_ENC_FI
 #undef QLOG_SCAN
