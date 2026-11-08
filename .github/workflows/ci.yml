@@ -63,9 +63,10 @@ jobs:
             libcurl=8.22.0
             openssl=3.6.4
             libopenssl-static=3.6.4
+      # The fixtures are written with the GeoZL binding built from extern/geozl.
       - name: Install Python fixture dependencies
         shell: bash -el {0}
-        run: python -m pip install numpy cffi 'geozl>=0.31.0,<0.32'
+        run: python -m pip install numpy cffi
       - name: Test R and Julia readers
         shell: bash -el {0}
         run: make bindings-test
@@ -298,10 +299,12 @@ jobs:
       - name: Lint
         if: matrix.python == '3.12'
         run: make lint
+      # make py-test writes frames with the GeoZL binding built from extern/geozl,
+      # ahead of the geozl release that rumi-eo depends on.
       - name: Run the Python suite
-        run: python -m pytest bindings/python/tests -q
+        run: make py-test
       - name: Run JAX x64 integration
         if: matrix.python == '3.12'
         env:
           JAX_ENABLE_X64: 'true'
-        run: python -m pytest bindings/python/tests/test_spec.py -q -k jax_integration
+        run: make py-test PYTEST_ARGS='-k jax_integration'

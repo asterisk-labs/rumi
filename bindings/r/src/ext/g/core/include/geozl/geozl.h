@@ -43,11 +43,11 @@ GEOZL_API ZL_NodeID geozl_node_planar_zigzag_pfor(ZL_Compressor *c,
                                                   uint32_t width,
                                                   uint32_t planes);
 // Planar, Zigzag, byte transpose and PivCo or PFOR per residual byte lane.
-GEOZL_API ZL_NodeID geozl_node_planar_zigzag_transpose_pivco(ZL_Compressor *c,
-                                                             uint32_t width,
-                                                             uint32_t planes);
+GEOZL_API ZL_NodeID geozl_node_planar_zigzag_lanes(ZL_Compressor *c,
+                                                   uint32_t width,
+                                                   uint32_t planes);
 // Byte transpose followed by PivCo or PFOR independently on every lane.
-GEOZL_API ZL_NodeID geozl_node_transpose_pivco(ZL_Compressor *c);
+GEOZL_API ZL_NodeID geozl_node_lanes(ZL_Compressor *c);
 GEOZL_API ZL_NodeID geozl_node_med(ZL_Compressor *c, uint32_t width,
                                    uint32_t planes);
 GEOZL_API ZL_NodeID geozl_node_med_zigzag(ZL_Compressor *c, uint32_t width,
@@ -159,8 +159,9 @@ GEOZL_API int geozl_2d_compress_coeffs_c(geozl_2d_graph *g, const void *src,
                                          char *errCtx, size_t errCtxSize);
 
 // Copy a frame's coefficient blob without decompressing the payload. Return 0
-// on success, -1 when absent, or a positive ZL_ErrorCode on failure. Call with
-// dst NULL to query the size.
+// on success, -1 when absent, or a positive ZL_ErrorCode on failure. A frame
+// older than OpenZL format GEOZL_COEFFS_FORMAT_MIN fails with
+// ZL_ErrorCode_formatVersion_unsupported. Call with dst NULL to query the size.
 GEOZL_API int geozl_2d_frame_coeffs_c(const void *frame, size_t frameSize,
                                       void *dst, size_t dstCapacity,
                                       size_t *outSize);

@@ -1,4 +1,4 @@
-#include "decode_transpose_pivco_kernel.h"
+#include "decode_lanes_kernel.h"
 
 #include <string.h>
 
@@ -13,8 +13,8 @@
     }                                                                          \
   } while (0)
 
-int transpose_pivco_unlanes(void *dst, const uint8_t *lanes, size_t count,
-                            size_t width) {
+int lanes_join(void *dst, const uint8_t *lanes, size_t count,
+               size_t width) {
   if (dst == NULL || lanes == NULL || count == 0 ||
       (width != 1 && width != 2 && width != 4 && width != 8))
     return 1;

@@ -69,7 +69,7 @@ GEOZL_API void geozl_gpu_destroy(GeozlGpu *gpu);
 // must be aligned to the sample size. Every frame must decode to numeric
 // elements of elementBytes or of whole samples, so elementBytes divides
 // sampleBytes. When elementBytes equals sampleBytes and is 1 or 2, the direct
-// id/planar PFOR and PivCo recipes can decode on the device when the frame has
+// id/planar pfor and lanes recipes can decode on the device when the frame has
 // one chunk. Other graphs, including frames with multiple chunks, decode
 // completely into host staging before their samples are copied to the device.
 // Copies address at most 2^32 samples of the target and each route source.

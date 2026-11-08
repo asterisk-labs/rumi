@@ -1,5 +1,5 @@
-#include "decode_planar_zigzag_transpose_pivco_binding.h"
-#include "decode_planar_zigzag_transpose_pivco_kernel.h"
+#include "decode_planar_zigzag_lanes_binding.h"
+#include "decode_planar_zigzag_lanes_kernel.h"
 
 #include "openzl/zl_data.h"
 #include "openzl/zl_errors.h"
@@ -25,15 +25,15 @@ typedef struct {
 static int read_header(CodecHeader *decoded, ZL_RBuffer encoded,
                        const uint8_t *weights, size_t weightsAvailable,
                        size_t bitsAvailable) {
-  if (encoded.size < PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_FIXED)
+  if (encoded.size < PLANAR_ZIGZAG_LANES_HEADER_FIXED)
     return 1;
 
   const uint8_t *bytes = encoded.start;
   const size_t elementWidth = bytes[8];
   if (!geozl_pivco_lanes_width_ok(elementWidth) ||
       encoded.size !=
-          PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_FIXED +
-              elementWidth * PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_LANE)
+          PLANAR_ZIGZAG_LANES_HEADER_FIXED +
+              elementWidth * PLANAR_ZIGZAG_LANES_HEADER_LANE)
     return 1;
 
   *decoded = (CodecHeader){
@@ -46,14 +46,14 @@ static int read_header(CodecHeader *decoded, ZL_RBuffer encoded,
   if (decoded->elementCount > SIZE_MAX)
     return 1;
   return geozl_pivco_lanes_parse(
-      &decoded->lanes, bytes + PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_FIXED,
-      encoded.size - PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_FIXED,
+      &decoded->lanes, bytes + PLANAR_ZIGZAG_LANES_HEADER_FIXED,
+      encoded.size - PLANAR_ZIGZAG_LANES_HEADER_FIXED,
       (size_t)decoded->elementCount, elementWidth, decoded->blockSize, weights,
       weightsAvailable, bitsAvailable);
 }
 
-ZL_Report DI_geozl_planar_zigzag_transpose_pivco(ZL_Decoder *dictx,
-                                                 const ZL_Input *ins[]) {
+ZL_Report DI_geozl_planar_zigzag_lanes(ZL_Decoder *dictx,
+                                       const ZL_Input *ins[]) {
   ZL_RESULT_DECLARE_SCOPE_REPORT(dictx);
   assert(ins != NULL);
   const ZL_Input *weightsIn = ins[0];
@@ -101,7 +101,7 @@ ZL_Report DI_geozl_planar_zigzag_transpose_pivco(ZL_Decoder *dictx,
   if (ZL_isError(report))
     return report;
 
-  if (planar_zigzag_transpose_pivco_unlanes(
+  if (planar_zigzag_lanes_join(
           ZL_Output_ptr(out), lanes, header.rowWidth, n, header.elementWidth,
           header.planes) != 0)
     return ZL_returnError(ZL_ErrorCode_corruption);

@@ -80,8 +80,7 @@ for a following Zigzag node. This codec also applies Zigzag and is still
 numeric out, so an entropy or packing stage follows it. The values it emits are
 the ones the two-node graph emits.
 
-## Compatibility
+## Selection
 
-Recipes beginning with `med>zigzag` select this codec. Decoders register both
-`med` and `med_zigzag`, so frames written by the two-node graph remain
-readable.
+Recipes beginning with `med>zigzag` select this codec. `med` remains a codec of
+its own for low-level graphs, and decoders register both.

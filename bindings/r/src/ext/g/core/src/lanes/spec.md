@@ -1,11 +1,10 @@
-# transpose_pivco codec
+# lanes codec
 
 Lossless codec, CTID `0x72D713`. It splits each numeric element into
 little-endian byte lanes and codes every lane independently with PivCo Huffman
 or byte PFOR. It does not apply a predictor or Zigzag mapping.
 
-`id>pivco` selects this codec for one-byte elements. `id>transpose>pivco`
-selects it for two-, four- and eight-byte elements.
+`id>lanes` selects this codec for one-, two-, four- and eight-byte elements.
 
 The codec has two outputs: the PivCo weights as one-byte numeric data and the
 lane payloads as serial data. Its header contains:

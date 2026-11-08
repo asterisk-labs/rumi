@@ -198,7 +198,7 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 | `"dlpack"` | `RumiArray`, exported later with a framework method or `__dlpack__` |
 
 - CPU results move to the framework through DLPack without a copy. On CUDA and Metal,
-  one- and two-byte PFOR and PivCo frames decode on the device; other frames use CPU
+  one- and two-byte PFOR and `lanes` frames decode on the device. Other frames use CPU
   staging before the result is placed in the PyTorch tensor. A `RumiArray` exports once;
   a second export raises `RuntimeError: this RumiArray was already exported`.
 - CUDA reads enqueue work on the current PyTorch stream. Use the tensor on that stream,

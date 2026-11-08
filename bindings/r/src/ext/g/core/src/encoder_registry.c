@@ -4,18 +4,18 @@
 #include "deinterleave/encode_deinterleave_binding.h"
 #include "delta_n/encode_delta_n_binding.h"
 #include "delta_w/encode_delta_w_binding.h"
+#include "lanes/encode_lanes_binding.h"
 #include "med/encode_med_binding.h"
 #include "med_zigzag/encode_med_zigzag_binding.h"
 #include "nodata/encode_nodata_binding.h"
 #include "pfor/encode_pfor_binding.h"
 #include "planar/encode_planar_binding.h"
 #include "planar_zigzag/encode_planar_zigzag_binding.h"
+#include "planar_zigzag_lanes/encode_planar_zigzag_lanes_binding.h"
 #include "planar_zigzag_pfor/encode_planar_zigzag_pfor_binding.h"
-#include "planar_zigzag_transpose_pivco/encode_planar_zigzag_transpose_pivco_binding.h"
 #include "quant_linear/encode_quant_linear_binding.h"
 #include "quant_log/encode_quant_log_binding.h"
 #include "quant_sqrt/encode_quant_sqrt_binding.h"
-#include "transpose_pivco/encode_transpose_pivco_binding.h"
 #include "wp_static/encode_wp_static_binding.h"
 
 #include "common/endian.h"                   // geozl_st_le64
@@ -81,17 +81,16 @@ ZL_NodeID geozl_node_planar_zigzag_pfor(ZL_Compressor *c, uint32_t width,
       EI_PLANAR_ZIGZAG_PFOR(GEOZL_CTID_PLANAR_ZIGZAG_PFOR);
   return geometry_node(c, &desc, width, planes);
 }
-ZL_NodeID geozl_node_planar_zigzag_transpose_pivco(ZL_Compressor *c,
-                                                   uint32_t width,
-                                                   uint32_t planes) {
-  const ZL_TypedEncoderDesc desc = EI_PLANAR_ZIGZAG_TRANSPOSE_PIVCO(
-      GEOZL_CTID_PLANAR_ZIGZAG_TRANSPOSE_PIVCO);
+ZL_NodeID geozl_node_planar_zigzag_lanes(ZL_Compressor *c,
+                                         uint32_t width,
+                                         uint32_t planes) {
+  const ZL_TypedEncoderDesc desc =
+      EI_PLANAR_ZIGZAG_LANES(GEOZL_CTID_PLANAR_ZIGZAG_LANES);
   return geometry_node(c, &desc, width, planes);
 }
 
-ZL_NodeID geozl_node_transpose_pivco(ZL_Compressor *c) {
-  const ZL_TypedEncoderDesc desc =
-      EI_TRANSPOSE_PIVCO(GEOZL_CTID_TRANSPOSE_PIVCO);
+ZL_NodeID geozl_node_lanes(ZL_Compressor *c) {
+  const ZL_TypedEncoderDesc desc = EI_LANES(GEOZL_CTID_LANES);
   return ZL_Compressor_registerTypedEncoder(c, &desc);
 }
 ZL_NodeID geozl_node_med(ZL_Compressor *c, uint32_t width,

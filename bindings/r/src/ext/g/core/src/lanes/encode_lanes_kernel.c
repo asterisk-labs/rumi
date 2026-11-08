@@ -1,4 +1,4 @@
-#include "encode_transpose_pivco_kernel.h"
+#include "encode_lanes_kernel.h"
 
 #include <string.h>
 
@@ -13,8 +13,8 @@
     }                                                                          \
   } while (0)
 
-int transpose_pivco_lanes(uint8_t *lanes, const void *src, size_t count,
-                          size_t width) {
+int lanes_split(uint8_t *lanes, const void *src, size_t count,
+                size_t width) {
   if (lanes == NULL || src == NULL || count == 0 ||
       (width != 1 && width != 2 && width != 4 && width != 8))
     return 1;

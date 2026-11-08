@@ -71,8 +71,7 @@ typedef enum {
   GEOZL_TERM_T_ENTROPY,   // transpose to lanes, entropy (shuffle + entropy)
   GEOZL_TERM_T_ZSTD,      // transpose to lanes, zstd (shuffle + zstd)
   GEOZL_TERM_PFOR,        // bit pack fixed blocks and patch exceptions
-  GEOZL_TERM_PIVCO,       // one byte lane, PivCo or PFOR
-  GEOZL_TERM_T_PIVCO,     // transpose to lanes, PivCo or PFOR per lane
+  GEOZL_TERM_LANES,       // byte lanes, PivCo or PFOR per lane
   GEOZL_TERM_SPARSE,      // sparse_num when one value dominates
   GEOZL_TERM_COUNT
 } geozl_terminal;
@@ -106,8 +105,7 @@ static const char *term_name(geozl_terminal t) {
   case GEOZL_TERM_T_ENTROPY: return "transpose>entropy";
   case GEOZL_TERM_T_ZSTD:    return "transpose>zstd";
   case GEOZL_TERM_PFOR:      return "pfor";
-  case GEOZL_TERM_PIVCO:     return "pivco";
-  case GEOZL_TERM_T_PIVCO:   return "transpose>pivco";
+  case GEOZL_TERM_LANES:     return "lanes";
   case GEOZL_TERM_SPARSE:    return "sparse";
   default:                   return "?";
   }
@@ -234,8 +232,8 @@ static size_t dominant_count_u8(const unsigned char *p, size_t n) {
   return hits;
 }
 
-static ZL_GraphID transpose_pivco_graph(ZL_Compressor *c) {
-  const ZL_NodeID node = geozl_node_transpose_pivco(c);
+static ZL_GraphID lanes_graph(ZL_Compressor *c) {
+  const ZL_NodeID node = geozl_node_lanes(c);
   if (!ZL_NodeID_isValid(node))
     return ZL_GRAPH_ILLEGAL;
   return ZL_Compressor_registerStaticGraph_fromNode(
@@ -268,10 +266,8 @@ static ZL_GraphID build_candidate(ZL_Compressor *c, geozl_predictor p,
     return ZL_Compressor_registerStaticGraph_fromNode1o(c, fused,
                                                          ZL_GRAPH_STORE);
   }
-  if (p == GEOZL_PRED_PLANAR &&
-      (t == GEOZL_TERM_T_PIVCO || (t == GEOZL_TERM_PIVCO && eltWidth == 1))) {
-    ZL_NodeID fused =
-        geozl_node_planar_zigzag_transpose_pivco(c, width, planes);
+  if (p == GEOZL_PRED_PLANAR && t == GEOZL_TERM_LANES) {
+    ZL_NodeID fused = geozl_node_planar_zigzag_lanes(c, width, planes);
     if (!ZL_NodeID_isValid(fused))
       return ZL_GRAPH_ILLEGAL;
     return ZL_Compressor_registerStaticGraph_fromNode(
@@ -328,16 +324,6 @@ static ZL_GraphID build_candidate(ZL_Compressor *c, geozl_predictor p,
       return ZL_GRAPH_ILLEGAL;
     return chain(c, head, n, fg);
   }
-  case GEOZL_TERM_PIVCO: {
-    // A bare PivCo terminal is one byte lane. Wider elements spell out the
-    // transpose, which selects the same lane codec with a wider header.
-    if (eltWidth != 1)
-      return ZL_GRAPH_ILLEGAL;
-    ZL_GraphID pg = transpose_pivco_graph(c);
-    if (!ZL_GraphID_isValid(pg))
-      return ZL_GRAPH_ILLEGAL;
-    return chain(c, head, n, pg);
-  }
   case GEOZL_TERM_SPARSE: {
     // Run lengths and literals use OpenZL's numeric graph.
     static const ZL_Type in_mask = ZL_Type_numeric;
@@ -374,10 +360,10 @@ static ZL_GraphID build_candidate(ZL_Compressor *c, geozl_predictor p,
     head[n++] = ZL_NODE_CONVERT_NUM_TO_STRUCT_LE;
     return chain(c, head, n, tg);
   }
-  case GEOZL_TERM_T_PIVCO: {
-    if (eltWidth != 2 && eltWidth != 4 && eltWidth != 8)
+  case GEOZL_TERM_LANES: {
+    if (eltWidth != 1 && eltWidth != 2 && eltWidth != 4 && eltWidth != 8)
       return ZL_GRAPH_ILLEGAL;
-    ZL_GraphID pg = transpose_pivco_graph(c);
+    ZL_GraphID pg = lanes_graph(c);
     if (!ZL_GraphID_isValid(pg))
       return ZL_GRAPH_ILLEGAL;
     return chain(c, head, n, pg);
@@ -609,7 +595,7 @@ static ZL_Report graph_open(geozl_2d_graph **out, const char *method,
       snprintf(errCtx, errCtxSize,
                "method \"%s\" does not apply to %zu-byte elements; the "
                "transpose terminals need 2 to 8, categorical needs 1 or 2, "
-               "and pivco without transpose needs 1",
+               "and lanes needs 1, 2, 4 or 8",
                method, eltWidth);
     r = ZL_returnError(ZL_ErrorCode_graph_invalid);
     goto fail;
@@ -764,6 +750,15 @@ GEOZL_API int geozl_2d_frame_coeffs_c(const void *frame, size_t frameSize,
   ZL_FrameInfo *fi = ZL_FrameInfo_create(frame, frameSize);
   if (fi == NULL)
     return (int)ZL_ErrorCode_corruption;
+
+  // A frame older than the header comment cannot carry coefficients, and
+  // GeoZL reads only current frames, so it is refused by its own code.
+  ZL_Report fv = ZL_FrameInfo_getFormatVersion(fi);
+  if (ZL_isError(fv) || ZL_validResult(fv) < GEOZL_COEFFS_FORMAT_MIN) {
+    ZL_FrameInfo_free(fi);
+    return ZL_isError(fv) ? (int)ZL_errorCode(fv)
+                          : (int)ZL_ErrorCode_formatVersion_unsupported;
+  }
 
   ZL_RESULT_OF(ZL_Comment) cr = ZL_FrameInfo_getComment(fi);
   int rc;
@@ -1058,16 +1053,16 @@ GEOZL_API int geozl_2d_grid_c(const char *method, size_t eltWidth, char *names,
   for (size_t i = 0; i < nbPreds; ++i) {
     for (int t = 0; t < GEOZL_TERM_COUNT; ++t) {
       if (((geozl_terminal)t == GEOZL_TERM_T_ENTROPY ||
-           (geozl_terminal)t == GEOZL_TERM_T_ZSTD ||
-           (geozl_terminal)t == GEOZL_TERM_T_PIVCO) &&
+           (geozl_terminal)t == GEOZL_TERM_T_ZSTD) &&
           (eltWidth < 2 || eltWidth > 8))
         continue;
       // categorical's entropy arm tops out at 2, the same place ZL_GRAPH_ENTROPY
       // does
       if ((geozl_terminal)t == GEOZL_TERM_CATEGORICAL && eltWidth > 2)
         continue;
-      // Plain pivco is one byte. Wider streams spell out the transpose.
-      if ((geozl_terminal)t == GEOZL_TERM_PIVCO && eltWidth != 1)
+      // lanes takes 1, 2, 4 or 8 bytes, the widths its lane header names
+      if ((geozl_terminal)t == GEOZL_TERM_LANES && eltWidth != 1 &&
+          eltWidth != 2 && eltWidth != 4 && eltWidth != 8)
         continue;
       if (k < maxNames)
         candidate_name(preds[i], (geozl_terminal)t, names + k * stride, stride);

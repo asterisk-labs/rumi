@@ -53,7 +53,7 @@ def scenes(tmp_path_factory):
             data, "b (row h) (col w) -> row col b (h w)", tile_size=32)
         for j, frame in enumerate(table):
             recipe = ("id>entropy" if j % 3 == 0
-                      else "planar>zigzag>transpose>pivco")
+                      else "planar>zigzag>lanes")
             graph = geozl.graph(
                 frame.data, recipe)
             frame.compressed = geozl.compress(frame.data, graph=graph)
@@ -73,7 +73,7 @@ def mps_scene(tmp_path_factory):
         frame.compressed = geozl.compress(
             frame.data,
             graph=geozl.graph(
-                frame.data, "planar>zigzag>transpose>pivco"),
+                frame.data, "planar>zigzag>lanes"),
         )
     path, header = rumi.write(
         tmp_path_factory.mktemp("mps") / "scene.rumi",

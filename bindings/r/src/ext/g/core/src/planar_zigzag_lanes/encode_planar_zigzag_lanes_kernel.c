@@ -1,4 +1,4 @@
-#include "encode_planar_zigzag_transpose_pivco_kernel.h"
+#include "encode_planar_zigzag_lanes_kernel.h"
 
 #include "common/raster.h"
 
@@ -27,9 +27,9 @@
     }                                                                          \
   } while (0)
 
-int planar_zigzag_transpose_pivco_lanes(uint8_t *lanes, const void *src,
-                                        size_t width, size_t nbElts,
-                                        size_t eltWidth, uint32_t planes) {
+int planar_zigzag_lanes_split(uint8_t *lanes, const void *src,
+                              size_t width, size_t nbElts,
+                              size_t eltWidth, uint32_t planes) {
   if (lanes == NULL || src == NULL || planes == 0 || nbElts == 0 ||
       nbElts % planes != 0)
     return 1;

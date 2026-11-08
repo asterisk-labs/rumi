@@ -1,5 +1,5 @@
-#include "decode_transpose_pivco_binding.h"
-#include "decode_transpose_pivco_kernel.h"
+#include "decode_lanes_binding.h"
+#include "decode_lanes_kernel.h"
 
 #include "common/endian.h"
 #include "pivco_lanes/pivco_lanes.h"
@@ -11,8 +11,8 @@
 #include <assert.h>
 #include <stdint.h>
 
-ZL_Report DI_geozl_transpose_pivco(ZL_Decoder *decoder,
-                                   const ZL_Input *inputs[]) {
+ZL_Report DI_geozl_lanes(ZL_Decoder *decoder,
+                         const ZL_Input *inputs[]) {
   ZL_RESULT_DECLARE_SCOPE_REPORT(decoder);
   assert(inputs != NULL && inputs[0] != NULL && inputs[1] != NULL);
   const ZL_Input *weightsIn = inputs[0];
@@ -23,13 +23,13 @@ ZL_Report DI_geozl_transpose_pivco(ZL_Decoder *decoder,
     return ZL_returnError(ZL_ErrorCode_corruption);
 
   const ZL_RBuffer encoded = ZL_Decoder_getCodecHeader(decoder);
-  if (encoded.size < TRANSPOSE_PIVCO_HEADER_FIXED)
+  if (encoded.size < LANES_HEADER_FIXED)
     return ZL_returnError(ZL_ErrorCode_corruption);
   const uint8_t *headerBytes = encoded.start;
   const size_t width = headerBytes[8];
   if (!geozl_pivco_lanes_width_ok(width) ||
       encoded.size !=
-          TRANSPOSE_PIVCO_HEADER_FIXED + width * GEOZL_PIVCO_LANE_HEADER_SIZE)
+          LANES_HEADER_FIXED + width * GEOZL_PIVCO_LANE_HEADER_SIZE)
     return ZL_returnError(ZL_ErrorCode_corruption);
 
   const uint64_t encodedCount = geozl_ld_le64(headerBytes);
@@ -41,8 +41,8 @@ ZL_Report DI_geozl_transpose_pivco(ZL_Decoder *decoder,
   const uint8_t *bits = ZL_Input_ptr(bitsIn);
   GeozlPivcoLanes header;
   if (geozl_pivco_lanes_parse(
-          &header, headerBytes + TRANSPOSE_PIVCO_HEADER_FIXED,
-          encoded.size - TRANSPOSE_PIVCO_HEADER_FIXED, count, width, blockSize,
+          &header, headerBytes + LANES_HEADER_FIXED,
+          encoded.size - LANES_HEADER_FIXED, count, width, blockSize,
           weights, ZL_Input_numElts(weightsIn), ZL_Input_numElts(bitsIn)) != 0)
     return ZL_returnError(ZL_ErrorCode_corruption);
 
@@ -59,7 +59,7 @@ ZL_Report DI_geozl_transpose_pivco(ZL_Decoder *decoder,
       geozl_pivco_lanes_decode(decoder, &header, weights, bits, lanes);
   if (ZL_isError(report))
     return report;
-  if (transpose_pivco_unlanes(ZL_Output_ptr(output), lanes, count, width) != 0)
+  if (lanes_join(ZL_Output_ptr(output), lanes, count, width) != 0)
     return ZL_returnError(ZL_ErrorCode_corruption);
   ZL_ERR_IF_ERR(ZL_Output_commit(output, count));
   return ZL_returnSuccess();

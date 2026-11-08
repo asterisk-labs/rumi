@@ -2,6 +2,8 @@
 # make build      build librumi only
 # make lib        build and stage the shared lib next to the binding (CI entry)
 # make test       run the Python and JavaScript suites
+# make py-test    run the Python suite (PYTEST_ARGS adds pytest arguments)
+# make geozl-python build the GeoZL Python binding in the submodule for the tests
 # make js-install install the locked JavaScript dependencies
 # make js-test    run the JavaScript reader suite
 # make playground serve the JavaScript MapLibre playground
@@ -59,7 +61,7 @@ CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
-.PHONY: all build configure lib stage-lib python test js-install js-test playground lint ctest docs \
+.PHONY: all build configure lib stage-lib python geozl-python py-test test js-install js-test playground lint ctest docs \
         r r-vendor r-vendor-check r-check julia bindings-test bindings-fixtures sync \
         fuzz-build fuzz-seed fuzz fuzz-report fuzz-check fuzz-replay clean-fuzz \
         install submodules clean help
@@ -106,14 +108,25 @@ python: lib
 	$(PYTHON) -m pip install -e $(PY_DIR) -q
 	$(PYTHON) tools/check_editable.py
 
-# Python tests use geozl to create compressed frame payloads.
-test: python js-test
+# Tests and fixtures write frames with the GeoZL Python binding in the submodule,
+# so they always match the C core librumi vendors. Putting it first on
+# PYTHONPATH shadows any geozl installed in the environment.
+GEOZL_PY   := $(abspath $(GEOZL)/bindings/python)
+WITH_GEOZL := PYTHONPATH="$(GEOZL_PY)$${PYTHONPATH:+:$$PYTHONPATH}"
+PYTEST_ARGS ?=
+
+geozl-python: $(GEOZL)/core/CMakeLists.txt
+	$(MAKE) -C $(GEOZL) lib
+	@$(WITH_GEOZL) $(PYTHON) -c 'import geozl, pathlib, sys; \
+	  p = pathlib.Path(geozl.__file__).resolve(); \
+	  sys.exit(f"geozl loads from {p}, not the submodule") \
+	    if not p.is_relative_to("$(GEOZL_PY)") else print("geozl from", p.parent)'
+
+py-test: python geozl-python
 	@$(PYTHON) -c 'import pytest' 2>/dev/null || { echo "pytest not installed"; exit 1; }
-	@$(PYTHON) -c 'import geozl' 2>/dev/null \
-	  || echo "note: geozl not installed, write tests will skip"
-	@$(PYTHON) -m pytest -q $(PY_DIR); \
-	  rc=$$?; if [ $$rc -eq 5 ]; then echo "no tests collected"; \
-	  elif [ $$rc -ne 0 ]; then exit $$rc; fi
+	$(WITH_GEOZL) $(PYTHON) -m pytest -q $(PY_DIR) $(PYTEST_ARGS)
+
+test: py-test js-test
 
 js-install:
 	@command -v node >/dev/null || { echo "missing Node.js 24 or newer"; exit 1; }
@@ -239,8 +252,8 @@ r-vendor: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
 r-vendor-check: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
 	$(PYTHON) tools/sync_r_vendor.py --check
 
-bindings-fixtures: python
-	$(PYTHON) tools/make_binding_fixture.py \
+bindings-fixtures: python geozl-python
+	$(WITH_GEOZL) $(PYTHON) tools/make_binding_fixture.py \
 		$(R_DIR)/tests/testthat/fixtures $(JL_DIR)/test/fixtures
 
 r: r-vendor bindings-fixtures
@@ -314,6 +327,8 @@ help:
 	@echo "make build      build librumi only"
 	@echo "make lib        build and stage the shared lib next to the binding (CI entry)"
 	@echo "make test       run the Python and JavaScript suites"
+	@echo "make py-test    run the Python suite (PYTEST_ARGS adds pytest arguments)"
+	@echo "make geozl-python build the GeoZL Python binding in the submodule for the tests"
 	@echo "make js-install install the locked JavaScript dependencies"
 	@echo "make js-test    run the JavaScript reader suite"
 	@echo "make playground serve the JavaScript MapLibre playground"
@@ -335,5 +350,6 @@ help:
 	@echo "make submodules fetch or update GeoZL, Karu, and nested dependencies"
 	@echo ""
 	@echo "vars  BUILD_TYPE=Debug  PYTHON=python3.12  GEN='Unix Makefiles'  PREFIX=/opt"
+	@echo "      PYTEST_ARGS='-k gpu'"
 	@echo "      STAGE_DIR=out  CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Debug"
 	@echo ""

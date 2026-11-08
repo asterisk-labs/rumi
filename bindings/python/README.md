@@ -31,7 +31,7 @@ cpu_decoded = rumi.read(path, header, framework="torch", device="mps",
                          window=(row, column, height, width))
 ```
 
-The header, byte ranges and copy plan stay on the CPU. PFOR and PivCo frames of
+The header, byte ranges and copy plan stay on the CPU. PFOR and `lanes` frames of
 one- and two-byte samples decode on the device when they have one chunk; other
 frames use CPU staging before GeoZL writes the result to the selected GPU.
 `decode_backend="cpu"` forces complete CPU decoding for all selected frames;

@@ -1,5 +1,5 @@
-#include "encode_planar_zigzag_transpose_pivco_binding.h"
-#include "encode_planar_zigzag_transpose_pivco_kernel.h"
+#include "encode_planar_zigzag_lanes_binding.h"
+#include "encode_planar_zigzag_lanes_kernel.h"
 
 #include "openzl/codecs/pivco_huffman/common_pivco_kernel.h"
 #include "openzl/zl_data.h"
@@ -17,8 +17,8 @@
 #include <stdint.h>
 #include <string.h>
 
-ZL_Report EI_geozl_planar_zigzag_transpose_pivco(ZL_Encoder *eictx,
-                                                 const ZL_Input *in) {
+ZL_Report EI_geozl_planar_zigzag_lanes(ZL_Encoder *eictx,
+                                       const ZL_Input *in) {
   ZL_RESULT_DECLARE_SCOPE_REPORT(eictx);
   assert(in != NULL);
   assert(ZL_Input_type(in) == ZL_Type_numeric);
@@ -42,10 +42,10 @@ ZL_Report EI_geozl_planar_zigzag_transpose_pivco(ZL_Encoder *eictx,
       nbElts);
   const size_t blockSize = ZL_PIVCO_DEFAULT_BLOCK_SIZE;
 
-  uint8_t header[PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_MAX];
+  uint8_t header[PLANAR_ZIGZAG_LANES_HEADER_MAX];
   const size_t headerSize =
-      PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_FIXED +
-      eltWidth * PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_LANE;
+      PLANAR_ZIGZAG_LANES_HEADER_FIXED +
+      eltWidth * PLANAR_ZIGZAG_LANES_HEADER_LANE;
   memset(header, 0, sizeof(header));
   geozl_st_le64(header, (uint64_t)nbElts);
   header[8] = (uint8_t)eltWidth;
@@ -59,14 +59,14 @@ ZL_Report EI_geozl_planar_zigzag_transpose_pivco(ZL_Encoder *eictx,
   if (nbElts != 0) {
     lanes = ZL_Encoder_getScratchSpace(eictx, nbElts * eltWidth);
     ZL_ERR_IF_NULL(lanes, allocation);
-    if (planar_zigzag_transpose_pivco_lanes(lanes, ZL_Input_ptr(in), width,
-                                            nbElts, eltWidth, planes) != 0)
+    if (planar_zigzag_lanes_split(lanes, ZL_Input_ptr(in), width,
+                                  nbElts, eltWidth, planes) != 0)
       return ZL_returnError(ZL_ErrorCode_node_invalid_input);
   }
 
   ZL_Report report = geozl_pivco_lanes_encode(
       eictx, lanes, nbElts, eltWidth, blockSize,
-      header + PLANAR_ZIGZAG_TRANSPOSE_PIVCO_HEADER_FIXED);
+      header + PLANAR_ZIGZAG_LANES_HEADER_FIXED);
   if (ZL_isError(report))
     return report;
   ZL_Encoder_sendCodecHeader(eictx, header, headerSize);

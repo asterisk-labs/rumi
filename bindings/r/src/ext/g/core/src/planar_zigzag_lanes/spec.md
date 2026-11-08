@@ -1,4 +1,4 @@
-# planar_zigzag_transpose_pivco Codec Specification
+# planar_zigzag_lanes Codec Specification
 
 Lossless codec, CTID `0x72D712`. It applies planar prediction and Zigzag
 mapping, splits every residual into its bytes, and codes each byte lane on its
@@ -7,9 +7,8 @@ fixed-width or bitmap layout, so a GPU can decode the whole codec.
 
 ## Selection
 
-`planar>zigzag>pivco` selects this codec for one-byte elements. For two-,
-four- and eight-byte elements the explicit spelling is
-`planar>zigzag>transpose>pivco`. The lanes' weights go to OpenZL's `entropy`
+`planar>zigzag>lanes` selects this codec for one-, two-, four- and eight-byte
+elements. The lanes' weights go to OpenZL's `entropy`
 graph and the payloads to `store`.
 
 ## Inputs

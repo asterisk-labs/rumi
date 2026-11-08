@@ -2,8 +2,10 @@
 
 Coefficient blobs are stored in OpenZL's frame header comment. They are not a
 codec and have no CTid. Readers can access them without decompressing the frame.
-Header comments exist from OpenZL frame format version 22; older frames have no
-coefficient vectors.
+
+Header comments exist from OpenZL frame format version 22. GeoZL writes only
+current frames, so a reader refuses a frame of an older format as unsupported
+rather than reporting it as a frame without coefficients.
 
 geozl treats the contents as numeric vectors; their meaning belongs to the
 producer and consumer.

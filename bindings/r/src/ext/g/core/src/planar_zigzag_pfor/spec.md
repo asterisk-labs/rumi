@@ -11,8 +11,8 @@ own CTID and header.
 ## Selection
 
 The `planar>zigzag>pfor` recipe selects this codec. It is also available as a
-low-level node. Decoders still register `planar_zigzag` and `pfor`, so frames
-written with the former two-node graph remain readable.
+low-level node. `planar_zigzag` and `pfor` remain codecs of their own, and a
+low-level graph may still chain them.
 
 ## Inputs
 

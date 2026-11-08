@@ -15,6 +15,9 @@ extern "C" {
 
 #define GEOZL_COEFFS_MAX_BYTES 10000
 #define GEOZL_COEFFS_MAX_VECS 255
+// The first OpenZL frame format with a header comment. A frame below it holds
+// no coefficients and geozl_2d_frame_coeffs_c refuses it.
+#define GEOZL_COEFFS_FORMAT_MIN 22
 
 // Return the packed size, or 0 for an invalid shape.
 GEOZL_API size_t geozl_coeffs_size(const uint32_t *counts, size_t nbVecs);
