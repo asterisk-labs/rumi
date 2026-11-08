@@ -139,6 +139,6 @@ repository, and its examples were run against the version it names.
 | Sample types: storage widths, `bool`, complex, ML floats, DLPack | [references/dtypes.md](references/dtypes.md) |
 | File layout, header blob, offsets, trailer, an independent reader | [references/format.md](references/format.md) |
 | C API (`rumi.h`): ownership, threading, linking, compiled examples | [references/c-api.md](references/c-api.md) |
-| Compatibility policy, dependency pins, version history, format changes | [references/compatibility.md](references/compatibility.md) |
+| Compatibility policy, dependency pins, format changes | [references/compatibility.md](references/compatibility.md) |
 | Repository layout, build, tests, fuzzing, docs site, CI, release | [references/contributing.md](references/contributing.md) |
 | Error message lookup, library loading, remote failures, known issues | [references/debugging.md](references/debugging.md) |

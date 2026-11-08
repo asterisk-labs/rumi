@@ -1,9 +1,8 @@
 # Python API
 
-Everything here describes `rumi` 0.27.0, as implemented in `bindings/python/rumi/`
-(`_frames.py`, `_write.py`, `_read.py`, `_info.py`, `_config.py`, `_dlpack.py`,
-`_framework.py`, `_native.py`, and `_ffi.py`). The examples and messages come from
-that release.
+Everything here describes `rumi` 0.29.0, as implemented in `bindings/python/rumi/`
+(`_frames.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`, `_config.py`,
+`_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
 
 ## Contents
 
@@ -25,14 +24,14 @@ pip install rumi-eo
 ```
 
 - Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17` and
-  `geozl>=0.20.0,<0.21`. The import name is `rumi`, the
+  `geozl>=0.31.0,<0.32`. The import name is `rumi`, the
   distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.
   Import fails when neither exists or when the native C interface
   does not match the binding. The pre-1.0 API version remains 1.
-- Public names: `frames`, `FrameTable`, `Frame`, `frame_start`, `write`, `read`,
-  `read_many`, `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`,
+- Public names: `frames`, `FrameTable`, `Frame`, `frame_start`, `write`, `open`,
+  `Dataset`, `read`, `read_many`, `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`,
   `get_num_threads`, `set_checksum_verification`, `get_checksum_verification`,
   `__version__`.
   Everything under `rumi._*` is private.
@@ -126,19 +125,20 @@ rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=Fa
 ## 4. `read`
 
 ```text
-rumi.read(source, header, *, framework="numpy", pattern=None, time=None, bands=None,
-          window=None, device=None)
+rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
+          bands=None, window=None, device=None, decode_backend="auto")
 ```
 
 | Argument | Meaning |
 | --- | --- |
-| `source` | one `str` or `os.PathLike` (local path, URI or VSI path), or the file's bytes as `bytes`, `bytearray` or `memoryview` |
-| `header` | the bytes returned by `write` or `info(source=...).header` |
+| `source` | one `str` or `os.PathLike` (local path, URI or VSI path), the file's bytes as `bytes`, `bytearray` or `memoryview`, or a `rumi.Dataset` |
+| `header` | the bytes returned by `write` or `info(source=...).header`; required for a bare source, refused for a `Dataset` |
 | `time`, `bands` | `None` (all, file order), a list of zero-based positions (any order, repeats allowed), or a half-open `(start, stop)` tuple |
 | `window` | `None` (whole image) or a tuple `(row, column, height, width)` of integers |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
 | `framework` | `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `"dlpack"` for a `RumiArray` |
 | `device` | `None` for CPU, `"cuda"`/`"cuda:N"` on Linux, or `"mps"` on macOS; GPU reads require `framework="torch"` |
+| `decode_backend` | `"auto"` (default) decodes supported single-chunk frames on the GPU and the rest on the CPU; `"cpu"` decodes every selected frame on the CPU, then places its samples on the GPU |
 
 ```python
 cube = rumi.read(path, header)                                    # (3, 4, 300, 260)
@@ -150,11 +150,17 @@ hwc = rumi.read(path, header, time=(0, 2), bands=(1, 4),
 A sequence of sources raises `TypeError: read takes one source; use read_many for
 multiple sources`. Selection errors are listed in `debugging.md`.
 
+`rumi.open(source, header)` pairs a source with its header, validates them once, and
+returns a `rumi.Dataset` with `source`, `header` and `metadata`. Pass it to `read`
+(or call `dataset.read(...)`) without a header. `read_many` takes a list of Datasets
+with `headers=None`, or bare sources with one header each, never a mix. Close a Dataset
+with `close()` or a `with` block.
+
 ## 5. `read_many`
 
 ```text
-rumi.read_many(sources, headers, *, windows=None, framework="numpy", pattern=None,
-               time=None, bands=None, device=None)
+rumi.read_many(sources, headers=None, *, windows=None, framework="numpy", pattern=None,
+               time=None, bands=None, device=None, decode_backend="auto")
 ```
 
 Without `windows`, `read_many` reads every image in full, so the images must share a

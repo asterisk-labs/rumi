@@ -1,17 +1,15 @@
 # Debugging
 
-Messages below describe rumi 0.27.0 (GeoZL 0.20.0, NumPy 2.4,
-PyTorch 2.11).
+Messages below describe rumi 0.29.0 (GeoZL 0.31.0).
 Numeric values inside them vary; match on the text. Pattern messages are in
 `patterns.md` section 7 and `time=` messages in `writing.md` section 6.
 
 ## Contents
 
 1. Error lookup
-2. Known issues in 0.21.3
-3. Library loading and editable installs
-4. Inspecting files, headers and plans
-5. Reporting security issues
+2. Library loading and editable installs
+3. Inspecting files, headers and plans
+4. Reporting security issues
 
 ## 1. Error lookup
 
@@ -22,7 +20,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `OSError: librumi is not bundled; set RUMI_LIB to its path` | no bundled library and no explicit `RUMI_LIB` | `pip install rumi-eo`, run `make python`, or set `RUMI_LIB` |
 | `ImportError: librumi C interface does not match this binding` | `RUMI_LIB` or a stale library from another checkout | unset `RUMI_LIB`, rebuild with `make python` |
 | `editable install check failed: import rumi loaded ..., expected ...` | another `rumi` distribution shadows the checkout | uninstall it, rerun `make python` |
-| `editable install check failed: native library is 0.21.2, expected 0.21.3` | staged library older than `VERSION` | `make python` |
+| `editable install check failed: native library is X, expected Y` | staged library older than `VERSION` | `make python` |
 
 ### Building frames and writing
 
@@ -40,7 +38,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: a transform is six coefficients (x_res, row_rot, x_origin, col_rot, y_res, y_origin), got 5` | short transform | pass six values in `Affine` order |
 | `ValueError: crs must be an EPSG code, got 'WGS84'` | WKT, PROJ or a name | an EPSG code or an object with `to_epsg()` |
 | `ValueError: EPSG:99999 is not a projected or geographic CRS` | unknown or unsupported code | a projected or geographic EPSG code |
-| `OSError: could not open s3://bucket/x.rumi for writing: No such file or directory` (`ValueError` through 0.24.1) | remote write target | write locally, then upload |
+| `OSError: could not open s3://bucket/x.rumi for writing: No such file or directory` | remote write target | write locally, then upload |
 
 ### Reading
 
@@ -52,7 +50,6 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: frame data needs 544743 bytes, source has 490914` | header of another file, or a truncated file | pair the right header; check the download |
 | `OSError: rumi: OpenZL decode failed: Code: Source size too small` or `Unknown header` | header of another file, or corrupt payload bytes | `rumi.info(source=..., header=...)` to check the pair |
 | `OSError: rumi: unexpected frame output (type 4, width 1, size 16384; expected numeric width 2, size 16384)` | payload compressed from other bytes than `frame.data` | recompress `frame.data` (`writing.md` section 5) |
-| `OSError: rumi: unexpected frame output (type 4, width 8, size 16384; expected numeric width 16, size 16384)` | a `complex128` file read by Rumi 0.21.3 | upgrade Rumi; later readers accept components |
 | `NotImplementedError: rumi: file uses an unknown OpenZL custom codec (CTid N)` | a frame graph with a codec Rumi does not link | recompress with standard OpenZL or GeoZL codecs |
 | `NotImplementedError: rumi: file uses a geozl codec this build lacks, update geozl (CTid N)` | frame written by a newer GeoZL | upgrade Rumi |
 | `ValueError: bands: index 4 out of [0, 4)` / `ValueError: time: index 3 out of [0, 3)` | position outside the axis | zero-based positions |
@@ -87,7 +84,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `OSError: could not open missing.rumi: missing.rumi: No such file or directory` | local path | check the working directory |
 | `OSError: could not resolve /vsizip/x.zip/a.rumi: unsupported virtual filesystem '/vsizip/'; ...` | unsupported VSI handler | extract, or use `/vsisubfile/` for stored members |
 | `OSError: transport read failed at 560: https://...: HTTP 404: ... NoSuchKey ...` | missing remote object | check the URI |
-| `OSError: could not open https://...: HTTP 404: ...` (`ValueError` through 0.24.1) | `rumi.info(source=...)` on a missing object | check the URI |
+| `OSError: could not open https://...: HTTP 404: ...` | `rumi.info(source=...)` on a missing object | check the URI |
 | `OSError: transport read failed at 560: /vsis3/...: no AWS credentials; set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, install a custom provider, or set AWS_NO_SIGN_REQUEST=YES for a public object` | no credentials | configure credentials (`reading.md` section 2) |
 | `HTTP Error 403: Forbidden` from `urllib` on `data.source.coop` | no `User-Agent` on your own download | send a `User-Agent` header |
 
@@ -103,21 +100,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: that window reaches N frames, past the N bytes of ranges this reader will allocate` | a huge window of tile frames | smaller reads, or raise `rumi_set_max_frame_bytes` |
 | `ValueError: a decoded frame is past the size limit for this reader` | a frame above 1 GiB decoded | smaller tiles, or raise the limit from C |
 
-## 2. Known issues in 0.21.3
-
-- NumPy reads of `float8_e4m3fn`, `float8_e5m2`, `float8_e8m0` and `bfloat16` files
-  raise `SystemError: <built-in function from_dlpack> returned NULL without setting an
-  exception`: NumPy rejects the DLPack type and the capsule destructor hides its error.
-  Fixed after 0.21.3; on 0.21.3 use `framework="torch"`.
-- Any framework that rejects a Rumi DLPack capsule, for an unsupported type or device,
-  surfaces `SystemError` instead of its own message and leaks the decoded samples. The
-  ctypes destructor cannot run while the consumer has an error pending. Releases after
-  0.24.1 use a C destructor and preserve the original error.
-- `complex128` files write but never read: the reader requires 16-byte numeric
-  elements, which OpenZL cannot produce. Fixed after 0.21.3, where frames may decode as
-  `float64` components (`dtypes.md`, "Complex frames").
-
-## 3. Library loading and editable installs
+## 2. Library loading and editable installs
 
 ```python
 import rumi
@@ -125,7 +108,7 @@ from rumi._ffi import ffi, lib
 
 print(rumi.__version__, rumi.__file__)
 print(ffi.string(lib.rumi_version_string()).decode(), lib.rumi_api_version())
-print(lib.rumi_openzl_format_version(), lib.rumi_get_max_frame_bytes())   # 24 1073741824
+print(lib.rumi_openzl_format_version(), lib.rumi_get_max_frame_bytes())   # 27 1073741824
 ```
 
 - The library is found through `RUMI_LIB`, then `rumi/_lib/`.
@@ -134,7 +117,7 @@ print(lib.rumi_openzl_format_version(), lib.rumi_get_max_frame_bytes())   # 24 1
 - For C applications link `core/build/librumi` (`c-api.md` section 2), not the renamed
   copy under `rumi/_lib/`.
 
-## 4. Inspecting files, headers and plans
+## 3. Inspecting files, headers and plans
 
 - `rumi.info(source=path)` prints shape, dtype, tile, layout, index order, frame count,
   band texts, time, transform and CRS; `rumi.info(header=h)` does the same from the
@@ -160,7 +143,7 @@ lib.rumi_free(out[0])
 - The independent reader in `format.md` section 8 decodes single frames with GeoZL,
   which separates a bad header from a bad payload.
 
-## 5. Reporting security issues
+## 4. Reporting security issues
 
 Malformed files, headers or frames that crash, hang, read out of bounds, corrupt data
 silently or exhaust resources are security issues. Report them privately to

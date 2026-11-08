@@ -2,8 +2,8 @@
 
 Sources: `bindings/python/rumi/_write.py` and `_time.py`, `core/src/write.cpp`,
 `core/src/trailer.cpp`, `core/src/geokeys.cpp`, the Georeferencing, Trailer and Header
-blob sections of `SPEC.md`, and GeoZL's Python API. Examples ran against rumi
-0.27.0 with geozl 0.20.0.
+blob sections of `SPEC.md`, and GeoZL's Python API. Examples describe rumi
+0.29.0 with geozl 0.31.0.
 
 ## Contents
 
@@ -77,7 +77,6 @@ products differ more, so profile.
 
 - `error=` bounds hold per frame. A `(6, 600, 520)` product written as `b h w` frames
   with `geozl.graph(frame.data, recipe, error=4)` read back with a worst error of 4.
-- Frames with a NoData sentinel require a reader built with GeoZL 0.17 or later.
 - A graph built from the frame it compresses cannot see values outside its own domain.
   A lossy graph shared by several frames must be built from data spanning all of them,
   with explicit `width` and `planes`; otherwise GeoZL refuses later frames
@@ -101,7 +100,7 @@ the byte values zero and one.
 | --- | --- |
 | `geozl.compress(frame.data, ...)` | reads |
 | same bytes through another dtype of an accepted width (`frame.data.view(np.int16)`) | reads |
-| complex samples as components (`frame.data.view(np.float64)` for `complex128`) | reads; Rumi 0.21.3 refuses them |
+| complex samples as components (`frame.data.view(np.float64)` for `complex128`) | reads |
 | plain OpenZL frame (`openzl.ext`, standard codecs only) | reads |
 | lossy GeoZL frame | reads, within its bound |
 | arbitrary bytes | `OSError: rumi: OpenZL decode failed: Code: Unknown header ...` |
@@ -111,7 +110,7 @@ the byte values zero and one.
 | a GeoZL codec newer than the linked GeoZL | `NotImplementedError: rumi: file uses a geozl codec this build lacks, update geozl (CTid N)` |
 
 Each payload must be non-empty and below 4 GiB (its size is a `uint32`). The linked
-OpenZL accepts frame format versions up to 24 in 0.24.0
+OpenZL accepts frame format versions up to 27
 (`rumi._ffi.lib.rumi_openzl_format_version()`).
 
 ## 6. Band texts and time

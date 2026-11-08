@@ -24,9 +24,6 @@ the development build described here.
   even when layouts change. Neither the source API nor the ABI is stable; recompile
   after every update. Starting with Rumi 1.0, incompatible ABI changes increment them.
 - The R and Julia readers use the C API; `test_c_header.c` keeps the header valid C11.
-- 0.20.0 removed `rumi_read_stack`, `rumi_read_stack_dlpack`, `rumi_index_file`,
-  `rumi_read_geo` and `rumi_read_time`. Use `rumi_read_many`, `rumi_read_many_dlpack`
-  and `rumi_info`.
 - `core/include/rumi/rumi.hpp` is the internal C++ interface. It includes Karu's headers
   and is not installed; do not build applications on it.
 
@@ -200,6 +197,7 @@ first frame at byte 500
 | Sources | `rumi_source_file`, `rumi_source_memory`, `rumi_source_free` |
 | Planning without I/O | `rumi_plan_ranges` (unique ranges in frame-index order) |
 | Reading | `rumi_read`, `rumi_read_dlpack`, `rumi_read_many`, `rumi_read_many_dlpack`, `rumi_dlpack_free`, `rumi_dlpack_legacy`, `rumi_dlpack_legacy_free` |
+| GPU reads | `rumi_gpu_available`, `rumi_gpu_create`, `rumi_gpu_destroy`, `rumi_gpu_synchronize`, `rumi_read_gpu`, `rumi_read_many_gpu` (`decode_backend` is `RUMI_GPU_DECODE_AUTO` or `RUMI_GPU_DECODE_CPU`) |
 | Python capsule support | `rumi_dlpack_capsule_api`, `rumi_dlpack_capsule_destructor` |
 | Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_frame_start`, `rumi_geokeys` |
 

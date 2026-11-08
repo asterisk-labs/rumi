@@ -4,8 +4,7 @@
 or writer. This file condenses it. Other sources: `core/src/parser.cpp`,
 `core/src/builder.cpp`, `core/src/write.cpp`, `core/src/trailer.cpp`, and the
 independent parsers in `bindings/python/tests/test_writer.py`, `test_spec.py` and
-`test_independent_reader.py`. The reader in section 8 ran against files written by
-0.26.0.
+`test_independent_reader.py`. Everything here describes 0.29.0.
 
 ## Contents
 
