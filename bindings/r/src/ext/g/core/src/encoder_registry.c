@@ -20,6 +20,7 @@
 
 #include "common/endian.h"                   // geozl_st_le64
 #include "common/graph_num1to1.h"            // GEOZL_PARAM_WIDTH
+#include "common/recipe_parse.h"             // geozl_recipe_fail
 #include "lossy/lossy_node.h"                // geozl_lossy_plan
 #include "quant_log/graph_quant_log.h"   // QUANT_LOG_PARAM_*
 #include "quant_sqrt/graph_quant_sqrt.h" // QUANT_SQRT_PARAM_*
@@ -239,4 +240,43 @@ ZL_NodeID geozl_node_lossy(ZL_Compressor *c, const geozl_lossy_plan *plan,
     break;
   }
   return ZL_NODE_ILLEGAL;
+}
+
+// The same parse, fit and resolve as geozl_2d_graph_open_c, so a recipe builds
+// the node the 2d path would put in front of its predictor.
+ZL_NodeID geozl_node_quant(ZL_Compressor *c, const char *error,
+                           uint32_t width, int dtype, const void *src,
+                           size_t numElts, char *errCtx, size_t errCtxSize) {
+  if (errCtx != NULL && errCtxSize != 0)
+    errCtx[0] = '\0';
+  if (c == NULL || (src == NULL && numElts != 0)) {
+    geozl_recipe_fail(errCtx, errCtxSize, "no compressor or no samples");
+    return ZL_NODE_ILLEGAL;
+  }
+  if (!GEOZL_DT_OK(dtype)) {
+    geozl_recipe_fail(errCtx, errCtxSize,
+                      "dtype %d is outside the geozl_dtype codes, which run 0 "
+                      "to %d",
+                      dtype, (int)GEOZL_DT_F64);
+    return ZL_NODE_ILLEGAL;
+  }
+  geozl_lossy_recipe recipe;
+  if (geozl_lossy_parse(error, &recipe, errCtx, errCtxSize) != 0)
+    return ZL_NODE_ILLEGAL;
+  if (recipe.family == GEOZL_LOSSY_NONE) {
+    geozl_recipe_fail(errCtx, errCtxSize,
+                      "a lossless recipe has no quantizer node");
+    return ZL_NODE_ILLEGAL;
+  }
+  geozl_lossy_plan plan;
+  if (geozl_lossy_fit(&recipe, src, dtype, width, numElts, errCtx,
+                      errCtxSize) != 0 ||
+      geozl_lossy_resolve(&recipe, src, dtype, numElts, &plan, errCtx,
+                          errCtxSize) != 0)
+    return ZL_NODE_ILLEGAL;
+  ZL_NodeID node = geozl_node_lossy(c, &plan, dtype);
+  if (!ZL_NodeID_isValid(node))
+    geozl_recipe_fail(errCtx, errCtxSize,
+                      "the compressor refused the quantizer node");
+  return node;
 }

@@ -176,7 +176,7 @@ def test_dlpack_export_is_exactly_once_across_threads(image):
 
 
 def test_fused_planar_pfor_frame_round_trips(tmp_path):
-    """The bundled reader registers GeoZL 0.16's fused PFOR codec."""
+    """The bundled reader registers GeoZL's fused PFOR codec."""
     y, x = np.indices((17, 19))
     data = (3 * x + 5 * y).astype(np.uint16)[None, :, :]
     tf = rumi.frames(data, "b (row h) (col w) -> row col b (h w)", 32)

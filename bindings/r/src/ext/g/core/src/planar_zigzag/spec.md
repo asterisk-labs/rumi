@@ -65,7 +65,7 @@ One numeric stream with the input length and element width.
 
 ## Relation to the other codecs
 
-Four codecs walk the same chain and differ only in where they stop. `planar`
+Four codecs walk the same chain and differ in where they stop. `planar`
 (CTID `0x72D703`) stops after the predictor and leaves a signed residual.
 This codec also applies Zigzag and is still numeric out, so a packer or an
 entropy stage follows it. `planar_zigzag_pfor` (CTID `0x72D710`) goes to the
@@ -73,9 +73,12 @@ end and emits the serial stream itself. `planar_zigzag_lanes` (CTID
 `0x72D712`) goes to the end one byte lane at a time and emits weights and a
 serial payload.
 
-`planar_zigzag_pfor` packs exactly the numeric values emitted by this codec.
-Which stopping point to choose is a question of graph flexibility and
-intermediate memory traffic, not a change to the planar or Zigzag transform.
+`planar_zigzag_pfor` also restarts the prediction at the top of every band of
+16 rows and at the left edge of every strip of a band, and packs
+two-dimensional blocks, so its payload is not this codec followed by `pfor`.
+Between `planar`, this codec and `planar_zigzag_lanes`, which stopping point to
+choose is a question of graph flexibility and intermediate memory traffic, not
+a change to the planar or Zigzag transform.
 
 ## Selection
 

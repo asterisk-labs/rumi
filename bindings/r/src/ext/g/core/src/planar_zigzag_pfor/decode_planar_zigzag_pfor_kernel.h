@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Decode PFOR blocks directly into the planar reconstruction.
+// Decode the banded layout described in spec.md.
 int planar_zigzag_pfor_decode(void *dst, size_t width, size_t nbElts,
                               size_t eltWidth, uint32_t planes,
                               const void *src, size_t srcSize);

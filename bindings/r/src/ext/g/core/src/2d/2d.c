@@ -812,9 +812,25 @@ GEOZL_API int geozl_2d_compress_c(const char *method, uint32_t width,
   return ZL_isError(r) ? (int)ZL_errorCode(r) : 0;
 }
 
-GEOZL_API size_t geozl_2d_frame_dsize_c(const void *frame, size_t frameSize) {
+GEOZL_API int geozl_2d_frame_dsize_c(const void *frame, size_t frameSize,
+                                     size_t *outSize) {
+  if (outSize != NULL)
+    *outSize = 0;
   ZL_Report r = ZL_getDecompressedSize(frame, frameSize);
-  return ZL_isError(r) ? 0 : ZL_validResult(r);
+  if (ZL_isError(r))
+    return (int)ZL_errorCode(r);
+  if (outSize != NULL)
+    *outSize = ZL_validResult(r);
+  return 0;
+}
+
+// OpenZL bounds a frame by its input when store on expansion is on, which
+// GeoZL never turns off. The frame header grows by the comment and its length,
+// which OpenZL budgets as 4 bytes.
+GEOZL_API size_t geozl_2d_compress_bound_c(size_t srcSize, size_t coeffsSize) {
+  if (srcSize > SIZE_MAX / 4 || coeffsSize > SIZE_MAX / 4)
+    return 0;
+  return ZL_compressBound(srcSize) + (coeffsSize == 0 ? 0 : 4 + coeffsSize);
 }
 
 typedef struct {
@@ -945,8 +961,10 @@ GEOZL_API int geozl_2d_bench_c(const char *method, uint32_t width,
     return (int)ZL_errorCode(r);
   }
 
-  size_t cap = 1024 + numElts * eltWidth + numElts * eltWidth / 2;
-  void *cbuf = malloc(cap);
+  const size_t cap = numElts > SIZE_MAX / eltWidth
+                         ? 0
+                         : geozl_2d_compress_bound_c(numElts * eltWidth, 0);
+  void *cbuf = cap == 0 ? NULL : malloc(cap);
   void *dbuf = NULL;
   double bestEnc = DBL_MAX;
   double bestDec = DBL_MAX;
@@ -977,7 +995,9 @@ GEOZL_API int geozl_2d_bench_c(const char *method, uint32_t width,
   }
   runEnc = now_sec() - mark;
 
-  dsize = geozl_2d_frame_dsize_c(cbuf, sz);
+  rc = geozl_2d_frame_dsize_c(cbuf, sz, &dsize);
+  if (rc != 0)
+    goto done;
   dbuf = malloc(dsize ? dsize : 1); // malloc is max-aligned, fine for numeric
   if (dbuf == NULL) {
     rc = (int)ZL_ErrorCode_allocation;
@@ -1014,16 +1034,16 @@ done:
 }
 
 // Resolve a profiler prior into predictors. A named predictor includes ID.
-static int resolve_prior(const char *method, geozl_predictor *out,
+static int resolve_prior(const char *prior, geozl_predictor *out,
                          size_t *outN) {
-  if (method == NULL || method[0] == '\0') {
+  if (prior == NULL || prior[0] == '\0') {
     size_t k = 0;
     for (int p = 0; p < GEOZL_PRED_COUNT; ++p)
       out[k++] = (geozl_predictor)p; // includes GEOZL_PRED_ID last
     *outN = k;
     return 0;
   }
-  if (strcmp(method, "none") == 0 || strcmp(method, "id") == 0) {
+  if (strcmp(prior, "none") == 0 || strcmp(prior, "id") == 0) {
     out[0] = GEOZL_PRED_ID;
     *outN = 1;
     return 0;
@@ -1032,7 +1052,7 @@ static int resolve_prior(const char *method, geozl_predictor *out,
   for (int p = 0; p < GEOZL_PRED_COUNT; ++p) {
     if (p == GEOZL_PRED_ID)
       continue; // handled above, and it takes no second pass
-    if (strcmp(method, pred_name((geozl_predictor)p)) == 0) {
+    if (strcmp(prior, pred_name((geozl_predictor)p)) == 0) {
       out[0] = (geozl_predictor)p;
       out[1] = GEOZL_PRED_ID;
       *outN = 2;
@@ -1042,11 +1062,11 @@ static int resolve_prior(const char *method, geozl_predictor *out,
   return -1;
 }
 
-GEOZL_API int geozl_2d_grid_c(const char *method, size_t eltWidth, char *names,
+GEOZL_API int geozl_2d_grid_c(const char *prior, size_t eltWidth, char *names,
                               size_t stride, size_t maxNames, size_t *outCount) {
   geozl_predictor preds[GEOZL_PRED_COUNT];
   size_t nbPreds = 0;
-  if (resolve_prior(method, preds, &nbPreds) != 0)
+  if (resolve_prior(prior, preds, &nbPreds) != 0)
     return -1;
 
   size_t k = 0;

@@ -207,6 +207,22 @@ size_t pfor_encode_block(void *dst, const void *src, size_t eltWidth) {
   }
 }
 
+size_t pfor_encode_block_split(uint8_t header[3], void *rest, const void *src,
+                               size_t eltWidth) {
+  if (header == NULL || rest == NULL || src == NULL)
+    return SIZE_MAX;
+  uint8_t block[2 + GEOZL_PFOR_BLOCK * 8];
+  const size_t used = pfor_encode_block(block, src, eltWidth);
+  if (used == 0)
+    return SIZE_MAX;
+  const size_t head = block[1] != 0 ? 3u : 2u;
+  header[0] = block[0];
+  header[1] = block[1];
+  header[2] = block[1] != 0 ? block[2] : 0;
+  memcpy(rest, block + head, used - head);
+  return used - head;
+}
+
 int pfor_encode(void *dst, size_t dstCapacity, size_t *outSize, const void *src,
                 size_t nbElts, size_t eltWidth) {
   if (dst == NULL || src == NULL || outSize == NULL)

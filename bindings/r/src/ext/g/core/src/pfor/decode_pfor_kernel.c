@@ -606,45 +606,37 @@ PFOR_FN32(29) PFOR_FN32(30) PFOR_FN32(31) PFOR_FN32(32)
     dst[i] = (T)(dst[i] | (T)((T)high << bits));                               \
   } while (0)
 
-#define PFOR_DEC_DEF(T, BITS, UNPACK, NAME)                                     \
-  static size_t NAME(T *dst, const uint8_t *src, size_t avail) {               \
+// Generate decoders for inline and split block headers.
+#define PFOR_DEC_DEF(T, BITS, UNPACK, NAME)                                    \
+  static size_t NAME##_rest(T *dst, unsigned bits, unsigned nbExceptions,      \
+                            unsigned format, const uint8_t *p, size_t left) {  \
     enum {                                                                     \
       LANES = GEOZL_PFOR_GROUP / (int)sizeof(T),                               \
       SLOTS = GEOZL_PFOR_BLOCK / (GEOZL_PFOR_GROUP / (int)sizeof(T))           \
     };                                                                         \
-    if (avail < 2)                                                             \
-      return 0;                                                                \
-    const unsigned bits = src[0];                                              \
-    const unsigned nbExceptions = src[1];                                      \
+    const uint8_t *const start = p;                                            \
     if (bits > BITS)                                                           \
-      return 0;                                                                \
-    const uint8_t *p = src + 2;                                                \
-    size_t left = avail - 2;                                                   \
+      return SIZE_MAX;                                                         \
                                                                                \
     const uint8_t *positions = NULL, *highBits = NULL;                         \
     unsigned exceptionBits = 0, mode = 0;                                      \
     size_t highBytes = 0;                                                      \
     if (nbExceptions != 0) {                                                   \
-      if (left < 1)                                                            \
-        return 0;                                                              \
-      exceptionBits = (unsigned)(p[0] & 0x7Fu);                                \
-      mode = (unsigned)(p[0] >> 7);                                            \
-      ++p;                                                                     \
-      --left;                                                                  \
+      exceptionBits = format & 0x7Fu;                                          \
+      mode = format >> 7;                                                      \
       if (exceptionBits == 0 || bits + exceptionBits > BITS)                   \
-        return 0;                                                              \
-      const size_t positionBytes =                                             \
-          (mode == GEOZL_PFOR_MODE_BITMAP)                                     \
-              ? (size_t)GEOZL_PFOR_BITMAP_BYTES                                \
-              : (size_t)nbExceptions;                                          \
+        return SIZE_MAX;                                                       \
+      const size_t positionBytes = (mode == GEOZL_PFOR_MODE_BITMAP)            \
+                                       ? (size_t)GEOZL_PFOR_BITMAP_BYTES       \
+                                       : (size_t)nbExceptions;                 \
       highBytes = ((size_t)nbExceptions * exceptionBits + 7) / 8;              \
       if (left < positionBytes + highBytes)                                    \
-        return 0;                                                              \
+        return SIZE_MAX;                                                       \
       positions = p;                                                           \
       highBits = p + positionBytes;                                            \
       if (mode == GEOZL_PFOR_MODE_BITMAP) {                                    \
         if (pfor_bitmap_popcount(positions) != nbExceptions)                   \
-          return 0;                                                            \
+          return SIZE_MAX;                                                     \
       }                                                                        \
       p += positionBytes + highBytes;                                          \
       left -= positionBytes + highBytes;                                       \
@@ -652,7 +644,7 @@ PFOR_FN32(29) PFOR_FN32(30) PFOR_FN32(31) PFOR_FN32(32)
                                                                                \
     const size_t bodyBytes = geozl_pfor_body_bytes(bits);                      \
     if (left < bodyBytes)                                                      \
-      return 0;                                                                \
+      return SIZE_MAX;                                                         \
                                                                                \
     if (bits == 0) {                                                           \
       memset(dst, 0, GEOZL_PFOR_BLOCK * sizeof(T));                            \
@@ -663,8 +655,7 @@ PFOR_FN32(29) PFOR_FN32(30) PFOR_FN32(31) PFOR_FN32(32)
     }                                                                          \
                                                                                \
     if (nbExceptions != 0) {                                                   \
-      const int wide =                                                         \
-          (exceptionBits <= PFOR_WIDE_MAX) && (highBytes >= 8);                \
+      const int wide = (exceptionBits <= PFOR_WIDE_MAX) && (highBytes >= 8);   \
       const size_t wideLimit = wide ? (highBytes - 8) : 0;                     \
       size_t bitPos = 0;                                                       \
       if (mode == GEOZL_PFOR_MODE_BITMAP) {                                    \
@@ -681,13 +672,26 @@ PFOR_FN32(29) PFOR_FN32(30) PFOR_FN32(31) PFOR_FN32(32)
         for (unsigned e = 0; e < nbExceptions; ++e) {                          \
           const unsigned i = positions[e];                                     \
           if (e != 0 && i <= prev)                                             \
-            return 0;                                                          \
+            return SIZE_MAX;                                                   \
           prev = i;                                                            \
           PFOR_PATCH(T, i);                                                    \
         }                                                                      \
       }                                                                        \
     }                                                                          \
-    return (size_t)(p + bodyBytes - src);                                      \
+    return (size_t)(p + bodyBytes - start);                                    \
+  }                                                                            \
+                                                                               \
+  static size_t NAME(T *dst, const uint8_t *src, size_t avail) {               \
+    if (avail < 2)                                                             \
+      return 0;                                                                \
+    const unsigned nbExceptions = src[1];                                      \
+    const size_t head = nbExceptions != 0 ? 3u : 2u;                           \
+    if (avail < head)                                                          \
+      return 0;                                                                \
+    const size_t used =                                                        \
+        NAME##_rest(dst, src[0], nbExceptions, nbExceptions != 0 ? src[2] : 0, \
+                    src + head, avail - head);                                 \
+    return used == SIZE_MAX ? 0 : head + used;                                 \
   }
 
 PFOR_DEC_DEF(uint8_t, 8, PFOR_BODY8, pfor_dec8)
@@ -712,6 +716,34 @@ size_t pfor_decode_block(void *dst, size_t eltWidth, const void *src,
     return pfor_dec64((uint64_t *)dst, (const uint8_t *)src, srcSize);
   default:
     return 0;
+  }
+}
+
+size_t pfor_decode_block_split(void *dst, size_t eltWidth,
+                               const uint8_t header[3], const void *rest,
+                               size_t restSize) {
+  if (dst == NULL || header == NULL || (rest == NULL && restSize != 0))
+    return SIZE_MAX;
+  const unsigned bits = header[0], nbExceptions = header[1];
+  const unsigned format = header[2];
+  if (nbExceptions == 0 && format != 0)
+    return SIZE_MAX;
+  const uint8_t *r = (const uint8_t *)rest;
+  switch (eltWidth) {
+  case 1:
+    return pfor_dec8_rest((uint8_t *)dst, bits, nbExceptions, format, r,
+                          restSize);
+  case 2:
+    return pfor_dec16_rest((uint16_t *)dst, bits, nbExceptions, format, r,
+                           restSize);
+  case 4:
+    return pfor_dec32_rest((uint32_t *)dst, bits, nbExceptions, format, r,
+                           restSize);
+  case 8:
+    return pfor_dec64_rest((uint64_t *)dst, bits, nbExceptions, format, r,
+                           restSize);
+  default:
+    return SIZE_MAX;
   }
 }
 

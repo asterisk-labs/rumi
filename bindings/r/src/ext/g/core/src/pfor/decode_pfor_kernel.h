@@ -2,6 +2,7 @@
 #define GEOZL_CODECS_PFOR_DECODE_KERNEL_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 // Decode pfor blocks. dst must be aligned to eltWidth and must not alias src.
 // Returns nonzero for invalid geometry or a corrupt stream.
@@ -11,5 +12,11 @@ int pfor_decode(void *dst, size_t nbElts, size_t eltWidth, const void *src,
 // Decode one 256-value block. Returns bytes consumed, or 0 on error.
 size_t pfor_decode_block(void *dst, size_t eltWidth, const void *src,
                          size_t srcSize);
+
+// Decode a block whose three header bytes are stored separately.
+// Returns bytes consumed from rest, or SIZE_MAX on error.
+size_t pfor_decode_block_split(void *dst, size_t eltWidth,
+                               const uint8_t header[3], const void *rest,
+                               size_t restSize);
 
 #endif // GEOZL_CODECS_PFOR_DECODE_KERNEL_H

@@ -50,7 +50,8 @@ ZL_Report EI_geozl_planar_zigzag_pfor(ZL_Encoder *eictx,
     return ZL_returnSuccess();
   }
 
-  const size_t bound = planar_zigzag_pfor_bound(nbElts, eltWidth);
+  const size_t bound =
+      planar_zigzag_pfor_bound(nbElts, eltWidth, width, planes);
   if (bound == 0)
     return ZL_returnError(ZL_ErrorCode_node_invalid_input);
   ZL_Output *out = ZL_Encoder_createTypedStream(eictx, 0, bound, 1);
