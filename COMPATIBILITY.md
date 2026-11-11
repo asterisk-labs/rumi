@@ -1,10 +1,11 @@
 # Compatibility
 
-Rumi 0.25 is the released compatibility baseline. Valid sample encodings are
-listed in `SPEC.md`; every other pair is rejected. Reserved encoding numbers
-are never assigned another meaning. Earlier versions are not supported. The
-format may still change before 1.0; any compatibility break is recorded in the
-changelog.
+Rumi is pre-1.0. Each release reads and writes only the current format in
+`SPEC.md`, and carries no code for older formats. A format change is recorded in
+the changelog, and files written before it must be rewritten.
+
+Valid sample encodings are listed in `SPEC.md`, and every other pair is
+rejected. Reserved encoding numbers are never assigned another meaning.
 
 A Rumi file contains everything needed to rebuild its external header. Use
 `rumi.info(source=...).header` in Python, or `rumi_info` in C, when the header
@@ -22,18 +23,23 @@ cannot be read from the specification, that is a specification bug.
 
 ## APIs
 
-The public C source API and binary ABI are not stable before 1.0, so C
-applications should be recompiled after an update. `RUMI_API_VERSION` and the
-shared-library SONAME remain at 1 throughout this unstable period, even when
-layouts change. C applications must be recompiled after an update. The Python
-binding verifies the dtype-registry row size before reading it. Starting with
-Rumi 1.0, incompatible ABI changes will increment the API version and SONAME.
+The public C source API and binary ABI are not stable before 1.0.
+`RUMI_API_VERSION` and the shared-library SONAME remain at 1 throughout this
+period, so C applications must be recompiled after an update. Starting with
+Rumi 1.0, incompatible ABI changes increment them. The Python and Julia
+bindings require version 1, and Python also checks the dtype-registry row size.
 
 The Python API follows semantic versioning. Before 1.0, a minor release may
-contain a breaking change; it will be called out in the changelog.
+contain a breaking change, and the changelog calls it out.
 
 ## GeoZL and OpenZL
 
-Rumi 0.29.0 includes GeoZL 0.31.0 and requires `geozl>=0.31.0,<0.32` in
-Python. The JavaScript reader uses the same GeoZL release. GeoZL carries
-upstream OpenZL commit `b7f498b`.
+The `extern/geozl` submodule is pinned to GeoZL 0.32.0. GeoZL carries upstream
+OpenZL commit `b7f498b`.
+
+The Python package requires `geozl>=0.32.0,<0.33`, the range that
+`tools/check_release.py` derives from the submodule's `VERSION`. The JavaScript
+reader uses `@asterisk-labs/geozl` 0.32.0.
+
+Rumi's tests write frames with the GeoZL Python binding built from the
+submodule, so they always match the C core Rumi vendors.

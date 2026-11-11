@@ -12,13 +12,14 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 ## 1. The policy
 
-- **Files.** Valid sample encodings are listed in `SPEC.md`; every other pair is
-  rejected. Reserved encoding numbers are never assigned another meaning. Earlier
-  files are unsupported. The format may still change before 1.0, and any break is
-  recorded in `CHANGELOG.md`.
+- **Files.** Rumi is pre-1.0 and reads and writes only the current format in `SPEC.md`,
+  with no code for older formats. Any format change is recorded in `CHANGELOG.md`, and
+  files written before it must be rewritten.
+- **Encodings.** Valid sample encodings are listed in `SPEC.md`, and every other pair is
+  rejected. Reserved encoding numbers are never assigned another meaning.
 - **Writers.** The guarantee covers files written by `rumi.write` and `rumi_write`. The
   reader may accept files from other writers, but they are outside the policy.
-- **Independent readers** are supported: `SPEC.md` must be enough to read any file Rumi
+- **Independent readers** are supported. `SPEC.md` must be enough to read any file Rumi
   writes. A Rumi file that cannot be read from the specification is a specification bug.
 - **Headers are derived.** Every file rebuilds its header (`rumi.info(source=...).header`
   or `rumi_info`), so a lost or stale header is recoverable.
@@ -27,13 +28,13 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
   with Rumi 1.0, incompatible ABI changes increment them. Python checks the dtype-row
   size before reading the registry.
 - **Python** follows semantic versioning, but before 1.0 a minor release may break the
-  API; the changelog calls it out.
+  API. The changelog calls it out.
 
 ## 2. Pinned dependencies
 
-| Component | Rumi 0.29.0 | Where it is pinned |
+| Component | Version | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.31.0 | `extern/geozl` submodule; `geozl>=0.31.0,<0.32` in the Python dependencies; `@asterisk-labs/geozl` 0.31.0 in the JavaScript package |
+| GeoZL | 0.32.0 | `extern/geozl` submodule. `geozl>=0.32.0,<0.33` in the Python dependencies. `@asterisk-labs/geozl` 0.32.0 in the JavaScript package |
 | OpenZL | upstream commit `b7f498b` | through GeoZL's submodule |
 | Karu | 0.4.0 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |
@@ -41,6 +42,9 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 - `tools/check_release.py` fails when the dependencies do not read
   `geozl>=X.Y.Z,<X.(Y+1)` for the submodule's `VERSION`, or when `NOTICE` names another
   Karu version.
+- Tests write frames with the GeoZL Python binding built from the submodule, never with
+  an installed `geozl`. `make geozl-python` builds it, and `make test`,
+  `make bindings-fixtures` and CI put it first on `PYTHONPATH`.
 
 ## 3. Deploying readers and writers
 
