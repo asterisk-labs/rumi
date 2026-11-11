@@ -133,8 +133,7 @@ def _empty(dtype: DType, shape: tuple[int, ...], device: str):
 def _wait_for_mps() -> None:
     import torch
 
-    # This records the current stream on multi-stream PyTorch releases and the
-    # default stream on older releases. Do not synchronize the whole device.
+    # Wait for the work queued on the current MPS stream, not the whole device.
     event = torch.mps.event.Event()
     event.record()
     event.synchronize()

@@ -4,11 +4,20 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-11
+
 ### Breaking
 
-- `rumi_read_gpu` and `rumi_read_many_gpu` take the `decode_backend` argument
-  that `rumi_read_gpu_ex` and `rumi_read_many_gpu_ex` took. The `_ex` names
-  are gone. Recompile C callers.
+- `rumi_read_gpu` and `rumi_read_many_gpu` now take `decode_backend`, and the
+  `_ex` variants are removed. Recompile C callers.
+- Files using the earlier `planar>zigzag>pfor` payload must be rewritten.
+
+### Changed
+
+- Update GeoZL to 0.32.0. Its byte-lane codecs are named `lanes` and
+  `planar_zigzag_lanes`, so GPU recipes use `planar>zigzag>lanes`.
+- Python tests and the R and Julia fixtures write frames with the GeoZL binding
+  built from the submodule (`make geozl-python`), not with an installed `geozl`.
 
 ## [0.29.0] - 2026-11-05
 
@@ -659,7 +668,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/asterisk-labs/rumi/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/asterisk-labs/rumi/compare/v0.28.1...v0.29.0
 [0.28.1]: https://github.com/asterisk-labs/rumi/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/asterisk-labs/rumi/compare/v0.27.1...v0.28.0

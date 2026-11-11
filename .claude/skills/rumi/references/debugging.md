@@ -1,6 +1,6 @@
 # Debugging
 
-Messages below describe rumi 0.29.0 (GeoZL 0.31.0).
+Messages below describe rumi 0.30.0 (GeoZL 0.32.0).
 Numeric values inside them vary; match on the text. Pattern messages are in
 `patterns.md` section 7 and `time=` messages in `writing.md` section 6.
 
