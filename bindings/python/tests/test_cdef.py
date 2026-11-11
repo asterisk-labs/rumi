@@ -325,25 +325,25 @@ def test_device_codes_match_the_public_header():
     assert metal and int(metal[1]) == lib.RUMI_DEVICE_METAL == 8
 
 
-def test_binding_refuses_a_different_c_interface():
-    from rumi._ffi import _check_native_abi
+def test_binding_refuses_a_library_from_another_api():
+    from rumi._ffi import API_VERSION, _check_native_abi
 
-    class WrongInterface:
+    class StaleLibrary:
         @staticmethod
         def rumi_api_version():
-            return 1
+            return API_VERSION - 1
 
-    with pytest.raises(ImportError, match="C interface does not match"):
-        _check_native_abi(WrongInterface())
+    with pytest.raises(ImportError, match="incompatible with this binding"):
+        _check_native_abi(StaleLibrary())
 
 
 def test_binding_refuses_a_different_dtype_row_size():
-    from rumi._ffi import _check_native_abi, ffi
+    from rumi._ffi import API_VERSION, _check_native_abi, ffi
 
     class WrongLayout:
         @staticmethod
         def rumi_api_version():
-            return 1
+            return API_VERSION
 
         @staticmethod
         def rumi_dtype_info_size():

@@ -343,14 +343,7 @@ def _check_native_abi(native) -> None:
             f"librumi C API {native_api_version} is incompatible with this "
             f"binding, which requires C API {API_VERSION}"
         )
-    try:
-        native_dtype_info_size = native.rumi_dtype_info_size()
-    except AttributeError:
-        raise ImportError(
-            "librumi C interface does not match this binding"
-        ) from None
-    binding_dtype_info_size = ffi.sizeof("rumi_dtype_info")
-    if native_dtype_info_size != binding_dtype_info_size:
+    if native.rumi_dtype_info_size() != ffi.sizeof("rumi_dtype_info"):
         raise ImportError(
             "librumi C interface does not match this binding"
         )

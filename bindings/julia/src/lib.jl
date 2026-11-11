@@ -1,3 +1,7 @@
+# The C API version this binding is written against. A librumi built from
+# another revision of rumi.h reports a different value and is refused.
+const RUMI_API_VERSION = 1
+
 const _library = Ref{Ptr{Cvoid}}(C_NULL)
 
 
@@ -77,10 +81,10 @@ function __init__()
     path = _find_library()
     handle = Libdl.dlopen(path)
     version = ccall(Libdl.dlsym(handle, :rumi_api_version), Cint, ())
-    if version != 1
+    if version != RUMI_API_VERSION
         Libdl.dlclose(handle)
         throw(InitError(:Rumi, ErrorException(
-            "librumi C API $version is not supported; expected 1")))
+            "librumi C API $version is not supported, expected $RUMI_API_VERSION")))
     end
     _library[] = handle
 end

@@ -9,11 +9,11 @@ def test_rumi_and_geozl_load_without_duplicate_metal_classes():
     script = """
 import numpy as np
 import geozl
-from rumi._ffi import lib
+from rumi._ffi import API_VERSION, lib
 
 samples = np.arange(16, dtype=np.uint16).reshape(4, 4)
 geozl.graph(samples, "planar>zigzag>zstd")
-assert lib.rumi_api_version() == 1
+assert lib.rumi_api_version() == API_VERSION
 """
     result = subprocess.run(
         [sys.executable, "-c", script], capture_output=True, text=True, check=False
