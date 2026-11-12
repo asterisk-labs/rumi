@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ._config import get_num_threads
-from ._dlpack import _borrow_versioned
+from ._dlpack import RumiArray
 from ._dtype import DType
 from ._ffi import _check, ffi, lib
 
@@ -79,31 +79,24 @@ def _context(device_type: int, index: int):
         yield context
 
 
-def _torch_device(device: str):
+def _device(device: str) -> tuple[int, int]:
     if not isinstance(device, str):
         raise TypeError("device must be a string or None")
-
-    import torch
-
-    try:
-        resolved = torch.device(device)
-    except (RuntimeError, ValueError):
-        raise ValueError(f"invalid device {device!r}") from None
-    if resolved.type == "cuda":
-        if not torch.cuda.is_available():
-            raise RuntimeError("CUDA is not available")
-        index = (torch.cuda.current_device()
-                 if resolved.index is None else resolved.index)
-        if index < 0 or index >= torch.cuda.device_count():
-            raise ValueError(f"CUDA device {index} is not available")
-        return torch, torch.device("cuda", index), _CUDA, index
-    if resolved.type == "mps":
-        index = 0 if resolved.index is None else resolved.index
-        if index != 0:
+    name, _, index = device.partition(":")
+    if name == "cuda":
+        if index and not index.isdigit():
+            raise ValueError(f"invalid device {device!r}")
+        if index:
+            return _CUDA, int(index)
+        # Bare "cuda" follows the device a framework made current here.
+        current = ffi.new("int*")
+        if lib.rumi_gpu_available(_CUDA):
+            _check(lib.rumi_gpu_current_device(_CUDA, current))
+        return _CUDA, current[0]
+    if name == "mps":
+        if index not in ("", "0"):
             raise ValueError("MPS exposes only device 0")
-        if not torch.backends.mps.is_available():
-            raise RuntimeError("MPS is not available")
-        return torch, torch.device("mps"), _METAL, index
+        return _METAL, 0
     raise ValueError(
         "device must be 'cpu', 'cuda', 'cuda:N', or 'mps'")
 
@@ -119,48 +112,6 @@ def _shape(n: int, keep_single_n: bool, time: int, bands: int,
     return tuple(int(out.shape[i]) for i in range(out.ndim))
 
 
-def _empty(dtype: DType, shape: tuple[int, ...], device: str):
-    torch, resolved, device_type, index = _torch_device(device)
-    if dtype.name == "bool":
-        raise TypeError("GPU reads do not support rumi dtype bool yet")
-    torch_dtype = getattr(torch, dtype.name, None)
-    if torch_dtype is None:
-        raise TypeError(f"PyTorch cannot represent rumi dtype {dtype.name}")
-    tensor = torch.empty(shape, dtype=torch_dtype, device=resolved)
-    return tensor, device_type, index
-
-
-def _wait_for_mps() -> None:
-    import torch
-
-    # Wait for the work queued on the current MPS stream, not the whole device.
-    event = torch.mps.event.Event()
-    event.record()
-    event.synchronize()
-
-
-def _metal_target(tensor):
-    # A recycled buffer may still be used by earlier PyTorch work.
-    _wait_for_mps()
-    try:
-        capsule, managed = _borrow_versioned(tensor)
-    except TypeError as exc:
-        if "max_version" not in str(exc):
-            raise
-        raise RuntimeError(
-            "MPS reads require PyTorch 2.10 or newer") from None
-    if managed.version.major != 1:
-        raise RuntimeError("PyTorch returned an unsupported DLPack version")
-    if managed.flags & 1:
-        raise RuntimeError("PyTorch returned a read-only DLPack tensor")
-    target = managed.dl_tensor
-    if target.device.device_type != _METAL or target.device.device_id != 0:
-        raise RuntimeError("PyTorch returned a non-Metal DLPack tensor")
-    if target.byte_offset != 0 or target.data == ffi.NULL:
-        raise RuntimeError("PyTorch returned an offset Metal buffer")
-    return capsule, target.data
-
-
 def read_one(source, spec, times, n_times, bands, n_bands,
              window, pattern, dtype: DType, device: str,
              decode_backend: int):
@@ -168,35 +119,18 @@ def read_one(source, spec, times, n_times, bands, n_bands,
     shape = _shape(1, False, n_times or spec.fields.time_count,
                    n_bands or spec.fields.samples_per_pixel,
                    y_size, x_size, pattern, spec.fields.time_count)
-    tensor, device_type, index = _empty(dtype, shape, device)
-
-    import torch
-
+    device_type, index = _device(device)
+    out = ffi.new("DLManagedTensorVersioned**")
     with _context(device_type, index) as context:
-        if device_type == _CUDA:
-            with torch.cuda.device(index):
-                stream = torch.cuda.current_stream(index).cuda_stream
-                _check(lib.rumi_read_gpu(
-                    context.handle, source.handle, spec.handle,
-                    times, n_times, bands, n_bands,
-                    y_off, y_size, x_off, x_size, pattern,
-                    ffi.cast("void*", tensor.data_ptr()),
-                    tensor.numel() * tensor.element_size(),
-                    ffi.cast("void*", stream),
-                    decode_backend,
-                ))
-        else:
-            capsule, target = _metal_target(tensor)
-            _check(lib.rumi_read_gpu(
-                context.handle, source.handle, spec.handle,
-                times, n_times, bands, n_bands,
-                y_off, y_size, x_off, x_size, pattern,
-                target, tensor.numel() * tensor.element_size(), ffi.NULL,
-                decode_backend,
-            ))
-            _check(lib.rumi_gpu_synchronize(context.handle))
-            del capsule
-    return tensor
+        # CUDA reads queue on the context's stream; RumiArray hands them to
+        # the consumer's stream on export.
+        _check(lib.rumi_read_gpu_dlpack(
+            context.handle, source.handle, spec.handle,
+            times, n_times, bands, n_bands,
+            y_off, y_size, x_off, x_size, pattern,
+            decode_backend, out,
+        ))
+    return RumiArray(out[0], shape, dtype.code, (device_type, index))
 
 
 def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
@@ -206,32 +140,13 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
     shape = _shape(n_items, True, n_times or fields.time_count,
                    n_bands or fields.samples_per_pixel,
                    y_size, x_size, pattern, fields.time_count)
-    tensor, device_type, index = _empty(dtype, shape, device)
-
-    import torch
-
+    device_type, index = _device(device)
+    out = ffi.new("DLManagedTensorVersioned**")
     with _context(device_type, index) as context:
-        if device_type == _CUDA:
-            with torch.cuda.device(index):
-                stream = torch.cuda.current_stream(index).cuda_stream
-                _check(lib.rumi_read_many_gpu(
-                    context.handle, items, n_items,
-                    times, n_times, bands, n_bands,
-                    y_size, x_size, pattern,
-                    ffi.cast("void*", tensor.data_ptr()),
-                    tensor.numel() * tensor.element_size(),
-                    ffi.cast("void*", stream),
-                    decode_backend,
-                ))
-        else:
-            capsule, target = _metal_target(tensor)
-            _check(lib.rumi_read_many_gpu(
-                context.handle, items, n_items,
-                times, n_times, bands, n_bands,
-                y_size, x_size, pattern,
-                target, tensor.numel() * tensor.element_size(), ffi.NULL,
-                decode_backend,
-            ))
-            _check(lib.rumi_gpu_synchronize(context.handle))
-            del capsule
-    return tensor
+        _check(lib.rumi_read_many_gpu_dlpack(
+            context.handle, items, n_items,
+            times, n_times, bands, n_bands,
+            y_size, x_size, pattern,
+            decode_backend, out,
+        ))
+    return RumiArray(out[0], shape, dtype.code, (device_type, index))

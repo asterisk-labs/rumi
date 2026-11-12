@@ -211,11 +211,12 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     ``framework`` selects ``"numpy"``, ``"torch"``, ``"jax"``,
     ``"tensorflow"``, or ``"dlpack"``. The last returns a RumiArray
     implementing the DLPack protocol. ``device="cuda:N"`` or ``device="mps"``
-    writes directly into a PyTorch GPU tensor and requires
-    ``framework="torch"``. CUDA work is enqueued on PyTorch's current stream;
-    use the result there, or make another stream wait on an event recorded
-    after the read. ``decode_backend="cpu"`` decodes every selected frame on
-    CPU before placing its samples on the GPU. The default ``"auto"`` uses GPU
+    decodes into GPU memory that rumi allocates and hands to the framework
+    through DLPack, so it needs a framework other than ``"numpy"``. A CUDA
+    import makes the framework's current stream wait for the read on the
+    device, and the memory returns to rumi in that stream's order.
+    ``decode_backend="cpu"`` decodes every selected frame on the CPU before
+    placing its samples on the GPU. The default ``"auto"`` uses GPU
     decoding for supported frames and CPU decoding for all others. CPU reads
     use the process-wide thread pool; call ``set_num_threads`` before the
     first parallel read to set its size.
@@ -244,16 +245,17 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     output_pattern = _resolve_pattern(pattern)
 
     if device not in (None, "cpu"):
-        if framework != "torch":
-            raise ValueError("device requires framework='torch'")
+        if framework == "numpy":
+            raise ValueError("NumPy arrays live on the CPU; choose another "
+                             "framework for device")
         from ._gpu import read_one
 
         times_c, n_times_c = _to_c(times)
         bands_c, n_bands_c = _to_c(picked_bands)
-        return read_one(
+        return consumer.convert(read_one(
             native_source, spec, times_c, n_times_c, bands_c, n_bands_c,
             resolved_window, output_pattern, consumer.dtype, device,
-            backend)
+            backend))
 
     arr = _read_one(native_source, spec, times, picked_bands,
                     resolved_window, output_pattern)
@@ -287,11 +289,10 @@ def read_many(sources: Sequence[_ReadTarget],
 
     ``headers[i]`` is the header returned with ``sources[i]`` by ``write``.
     For an existing file, use ``info(source=...).header`` to rebuild it.
-    ``framework="torch"`` with ``device="cuda:N"`` or ``device="mps"`` returns
-    the batch on that GPU. CUDA work is enqueued on PyTorch's current stream;
-    transfer that dependency with an event before consuming the batch from a
-    different stream. ``decode_backend="cpu"`` decodes all selected frames
-    on CPU before placing their samples on the GPU; ``"auto"`` selects per frame.
+    ``device="cuda:N"`` or ``device="mps"`` returns the batch on that GPU
+    through DLPack, as for ``read``. ``decode_backend="cpu"`` decodes all
+    selected frames on the CPU before placing their samples on the GPU;
+    ``"auto"`` selects per frame.
     """
     backend = _decode_backend_code(decode_backend)
     if isinstance(sources, (str, os.PathLike, bytes, bytearray, memoryview)):
@@ -342,8 +343,9 @@ def read_many(sources: Sequence[_ReadTarget],
     output_pattern = _resolve_pattern(pattern)
 
     if device not in (None, "cpu"):
-        if framework != "torch":
-            raise ValueError("device requires framework='torch'")
+        if framework == "numpy":
+            raise ValueError("NumPy arrays live on the CPU; choose another "
+                             "framework for device")
         from ._gpu import read_many as read_many_gpu
 
         items = ffi.new("rumi_read_item[]", [
@@ -353,11 +355,11 @@ def read_many(sources: Sequence[_ReadTarget],
         ])
         times_c, n_times_c = _to_c(times)
         bands_c, n_bands_c = _to_c(picked_bands)
-        return read_many_gpu(
+        return consumer.convert(read_many_gpu(
             items, len(specs), specs,
             times_c, n_times_c, bands_c, n_bands_c,
             y_size, x_size, output_pattern, consumer.dtype, device,
-            backend)
+            backend))
 
     arr = _read_many(native_sources, specs, y_offs, x_offs, y_size, x_size,
                      times, picked_bands, output_pattern)

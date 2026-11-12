@@ -4,8 +4,28 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `rumi_read_gpu_dlpack` and `rumi_read_many_gpu_dlpack` allocate the output on
+  the GPU and return a `kDLCUDA` or `kDLMetal` DLPack tensor. CUDA reads run on
+  a stream the context owns and take memory from a stream-ordered pool, so
+  releasing a tensor never waits for the whole device. `rumi_dlpack_wait` makes
+  the consumer's stream wait for the read through an event.
+- `rumi_gpu_current_device` reports the device of the calling thread's current
+  CUDA context.
+
 ### Changed
 
+- Python GPU reads no longer depend on PyTorch. `device="cuda:N"` and
+  `device="mps"` work with every framework but NumPy, and `framework="dlpack"`
+  returns the GPU `RumiArray` for CuPy or any other DLPack consumer.
+  `device="cuda"` follows the device the calling thread made current, as
+  PyTorch's `set_device` leaves it.
+- CUDA reads in Python no longer run on PyTorch's current stream. Importing the
+  result makes the framework's current stream wait for the read on the device,
+  and its memory comes from Rumi's pool rather than PyTorch's allocator. The
+  pool keeps freed blocks for four outputs of the largest size read and returns
+  the rest to the driver.
 - GPU reads land compressed frames in host staging the context keeps, bounded
   by its decode budget, instead of one transport buffer per frame. Batches no
   longer fault fresh pages on every read.

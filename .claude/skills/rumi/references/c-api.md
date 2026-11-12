@@ -197,7 +197,7 @@ first frame at byte 500
 | Sources | `rumi_source_file`, `rumi_source_memory`, `rumi_source_free` |
 | Planning without I/O | `rumi_plan_ranges` (unique ranges in frame-index order) |
 | Reading | `rumi_read`, `rumi_read_dlpack`, `rumi_read_many`, `rumi_read_many_dlpack`, `rumi_dlpack_free`, `rumi_dlpack_legacy`, `rumi_dlpack_legacy_free` |
-| GPU reads | `rumi_gpu_available`, `rumi_gpu_create`, `rumi_gpu_destroy`, `rumi_gpu_synchronize`, `rumi_read_gpu`, `rumi_read_many_gpu` (`decode_backend` is `RUMI_GPU_DECODE_AUTO` or `RUMI_GPU_DECODE_CPU`) |
+| GPU reads | `rumi_gpu_available`, `rumi_gpu_create`, `rumi_gpu_destroy`, `rumi_gpu_synchronize`, `rumi_gpu_current_device`, `rumi_read_gpu`, `rumi_read_many_gpu`, `rumi_read_gpu_dlpack`, `rumi_read_many_gpu_dlpack`, `rumi_dlpack_wait` (`decode_backend` is `RUMI_GPU_DECODE_AUTO` or `RUMI_GPU_DECODE_CPU`) |
 | Python capsule support | `rumi_dlpack_capsule_api`, `rumi_dlpack_capsule_destructor` |
 | Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_frame_start`, `rumi_geokeys` |
 

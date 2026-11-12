@@ -57,9 +57,9 @@ def test_invalid_decode_backend_is_rejected(image):
         rumi.read_many([path], [header], decode_backend="gpu")
 
 
-def test_cuda_device_requires_torch(image):
+def test_a_gpu_device_refuses_numpy(image):
     path, header, _data = image
-    with pytest.raises(ValueError, match="framework='torch'"):
+    with pytest.raises(ValueError, match="NumPy arrays live on the CPU"):
         rumi.read(path, header, device="cuda:0")
 
 

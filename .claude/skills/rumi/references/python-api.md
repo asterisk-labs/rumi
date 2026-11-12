@@ -137,7 +137,7 @@ rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
 | `window` | `None` (whole image) or a tuple `(row, column, height, width)` of integers |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
 | `framework` | `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `"dlpack"` for a `RumiArray` |
-| `device` | `None` for CPU, `"cuda"`/`"cuda:N"` on Linux, or `"mps"` on macOS; GPU reads require `framework="torch"` |
+| `device` | `None` for CPU, `"cuda"` (the thread's current CUDA device) or `"cuda:N"` on Linux, or `"mps"` on macOS; any framework but `"numpy"` |
 | `decode_backend` | `"auto"` (default) decodes supported single-chunk frames on the GPU and the rest on the CPU; `"cpu"` decodes every selected frame on the CPU, then places its samples on the GPU |
 
 ```python
@@ -171,12 +171,13 @@ and `pattern` apply to every item, and a custom pattern must contain `n` when th
 more than one item. Sources may repeat and may mix paths, URIs and bytes. See
 `reading.md` for the compatibility rules and a DataLoader recipe.
 
-With `framework="torch"`, `device="cuda:N"` or `device="mps"` keeps the batch on that
-GPU; no decoded copy returns through CPU memory. CUDA work is queued on the current
-PyTorch stream. Consume the result there, or record an event after the read and make
-another stream wait for it; call `result.record_stream(consumer)` when its lifetime may
-end before the consumer finishes. Metal waits on the current MPS stream before its own
-queue writes the result and finishes that write before returning.
+`device="cuda:N"` or `device="mps"` keeps the batch on that GPU for any framework but
+NumPy; no decoded copy returns through CPU memory. Rumi allocates the device memory and
+hands it over through DLPack. CUDA reads run on a stream Rumi owns, and the import makes
+the framework's current stream wait for the read on the device. The memory returns to
+Rumi's pool in that stream's order when the array is released, so keep the stream alive
+until then. `__dlpack__(stream=None)` or `-1` waits on the host instead. Metal finishes
+its write before returning.
 
 ## 6. `info` and `Metadata`
 

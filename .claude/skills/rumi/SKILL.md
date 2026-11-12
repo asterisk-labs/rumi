@@ -38,8 +38,8 @@ and `CHANGELOG.md` over this file.
 - The header is a small `bytes` index. `read` and `read_many` need it, so keep it beside
   the file in a catalog or manifest; `rumi.info(source=path).header` rebuilds it.
 - Reads take zero-based `time`, `bands` and `window=(row, column, height, width)` plus an
-  output `pattern` over `n t b y x`. They return NumPy by default. PyTorch can return
-  CUDA tensors with `device="cuda:N"` or Metal tensors with `device="mps"`.
+  output `pattern` over `n t b y x`. They return NumPy by default. `device="cuda:N"` or
+  `device="mps"` decodes into GPU memory that any DLPack framework imports.
   `decode_backend="cpu"` decodes every selected frame on the CPU and places
   samples on the selected GPU; `"auto"` uses GPU decoding when possible.
 

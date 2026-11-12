@@ -373,6 +373,9 @@ rumi_gpu_create(int device_type, int device, size_t threads,
 RUMI_API void rumi_gpu_destroy(rumi_gpu* gpu);
 // Wait for queued work and release any target retained by the context.
 RUMI_API rumi_status rumi_gpu_synchronize(rumi_gpu* gpu);
+// Device of the CUDA context current on the calling thread, as a framework's
+// set-device call leaves it, or 0 when none is current. Metal reports 0.
+RUMI_API rumi_status rumi_gpu_current_device(int device_type, int* out);
 
 // All read entry points may be called concurrently. Parsed specs and immutable
 // sources may be shared between calls; caller-owned destination buffers must
@@ -416,6 +419,23 @@ rumi_read_gpu(rumi_gpu*        gpu,
               const char*      pattern,
               void*            dst, size_t dst_size,
               void*            stream, int decode_backend);
+
+// DLPack form of rumi_read_gpu. It allocates the output on the context's
+// device and returns a kDLCUDA or kDLMetal tensor. decode_backend follows
+// rumi_read_gpu. CUDA work is queued on a stream the context owns and may
+// still be pending; call rumi_dlpack_wait before using *out on another stream.
+// Metal work has finished. Release *out with its deleter or rumi_dlpack_free.
+RUMI_API rumi_status
+rumi_read_gpu_dlpack(rumi_gpu*        gpu,
+                     rumi_source*     src,
+                     const rumi_spec* spec,
+                     const int*       times, size_t n_times,
+                     const int*       bands, size_t n_bands,
+                     int              y_off, int y_size,
+                     int              x_off, int x_size,
+                     const char*      pattern,
+                     int              decode_backend,
+                     DLManagedTensorVersioned** out);
 
 // DLPack form of rumi_read. It allocates the output instead of accepting dst.
 // On success, release *out with its deleter or rumi_dlpack_free.
@@ -467,6 +487,16 @@ rumi_read_many_gpu(rumi_gpu* gpu,
                    void* dst, size_t dst_size,
                    void* stream, int decode_backend);
 
+// DLPack form of rumi_read_many_gpu, following rumi_read_gpu_dlpack.
+RUMI_API rumi_status
+rumi_read_many_gpu_dlpack(rumi_gpu* gpu,
+                          const rumi_read_item* items, size_t n_items,
+                          const int* times, size_t n_times,
+                          const int* bands, size_t n_bands,
+                          int y_size, int x_size,
+                          const char* pattern, int decode_backend,
+                          DLManagedTensorVersioned** out);
+
 // DLPack form of rumi_read_many. It allocates the output instead of accepting
 // dst; release *out with its deleter or rumi_dlpack_free.
 RUMI_API rumi_status
@@ -479,6 +509,15 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
 
 // Release a versioned tensor returned by rumi. Safe to call with NULL.
 RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
+
+// Hand a GPU tensor to the CUDA stream that will use it, as DLPack's
+// __dlpack__(stream=...) does. stream waits on the device for the read, and
+// the tensor's memory returns to rumi's pool in stream order when it is
+// released, so keep stream alive until then. NULL waits on the host now and
+// for the whole device at release. Call it once, before the first use. CPU and
+// Metal tensors are ready and need no call.
+RUMI_API rumi_status
+rumi_dlpack_wait(DLManagedTensorVersioned* t, void* stream);
 
 // Wrap a versioned tensor for a DLPack 0.x consumer. On success, the wrapper
 // owns t and must be released with rumi_dlpack_legacy_free. On failure, NULL is

@@ -5,12 +5,216 @@
 #include "geozl/gpu.h"
 #endif
 
+#if RUMI_BUILD_GPU && !defined(__APPLE__) && !defined(_WIN32)
+#define RUMI_GPU_CUDA 1
+#include <atomic>
+#include <dlfcn.h>
+#include <cstring>
+#include <map>
+#include <mutex>
+#else
+#define RUMI_GPU_CUDA 0
+#endif
+
 #include <array>
 #include <limits>
 #include <new>
 #include <vector>
 
 namespace rumi {
+
+#if RUMI_GPU_CUDA
+namespace {
+
+// The driver is loaded at run time, as GeoZL does, so Rumi needs no CUDA SDK.
+using CUresult = int;
+using CUdevice = int;
+using CUdeviceptr = unsigned long long;
+using CUcontext = struct CUctx_st*;
+using CUstream = struct CUstream_st*;
+using CUevent = struct CUevent_st*;
+using CUmemoryPool = struct CUmemPoolHandle_st*;
+
+struct CUmemPoolProps {
+    int allocType;
+    int handleTypes;
+    int locationType;
+    int locationId;
+    void* win32SecurityAttributes;
+    unsigned char reserved[64];
+};
+
+constexpr CUresult CUDA_SUCCESS = 0;
+constexpr unsigned CU_STREAM_NON_BLOCKING = 1;
+constexpr unsigned CU_EVENT_DISABLE_TIMING = 2;
+constexpr int CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED = 115;
+constexpr int CU_MEM_ALLOCATION_TYPE_PINNED = 1;
+constexpr int CU_MEM_LOCATION_TYPE_DEVICE = 1;
+constexpr int CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES = 3;
+constexpr int CU_MEMPOOL_ATTR_RELEASE_THRESHOLD = 4;
+const auto CU_STREAM_LEGACY = reinterpret_cast<CUstream>(0x1);
+const auto CU_STREAM_PER_THREAD = reinterpret_cast<CUstream>(0x2);
+
+#define RUMI_CU_API(X)                                                        \
+    X(cuInit, "cuInit", (unsigned))                                           \
+    X(cuGetErrorString, "cuGetErrorString", (CUresult, const char**))         \
+    X(cuDeviceGet, "cuDeviceGet", (CUdevice*, int))                           \
+    X(cuDeviceGetAttribute, "cuDeviceGetAttribute", (int*, int, CUdevice))    \
+    X(cuDevicePrimaryCtxRetain, "cuDevicePrimaryCtxRetain",                   \
+      (CUcontext*, CUdevice))                                                 \
+    X(cuCtxPushCurrent, "cuCtxPushCurrent_v2", (CUcontext))                   \
+    X(cuCtxPopCurrent, "cuCtxPopCurrent_v2", (CUcontext*))                    \
+    X(cuCtxSynchronize, "cuCtxSynchronize", ())                               \
+    X(cuCtxGetDevice, "cuCtxGetDevice", (CUdevice*))                          \
+    X(cuStreamCreate, "cuStreamCreate", (CUstream*, unsigned))                \
+    X(cuStreamDestroy, "cuStreamDestroy_v2", (CUstream))                      \
+    X(cuStreamWaitEvent, "cuStreamWaitEvent", (CUstream, CUevent, unsigned))  \
+    X(cuEventCreate, "cuEventCreate", (CUevent*, unsigned))                   \
+    X(cuEventDestroy, "cuEventDestroy_v2", (CUevent))                         \
+    X(cuEventRecord, "cuEventRecord", (CUevent, CUstream))                    \
+    X(cuEventSynchronize, "cuEventSynchronize", (CUevent))                    \
+    X(cuMemAlloc, "cuMemAlloc_v2", (CUdeviceptr*, std::size_t))               \
+    X(cuMemFree, "cuMemFree_v2", (CUdeviceptr))                               \
+    X(cuMemPoolCreate, "cuMemPoolCreate",                                     \
+      (CUmemoryPool*, const CUmemPoolProps*))                                 \
+    X(cuMemPoolSetAttribute, "cuMemPoolSetAttribute",                         \
+      (CUmemoryPool, int, void*))                                             \
+    X(cuMemPoolTrimTo, "cuMemPoolTrimTo", (CUmemoryPool, std::size_t))        \
+    X(cuMemAllocFromPoolAsync, "cuMemAllocFromPoolAsync",                     \
+      (CUdeviceptr*, std::size_t, CUmemoryPool, CUstream))                    \
+    X(cuMemFreeAsync, "cuMemFreeAsync", (CUdeviceptr, CUstream))
+
+#define RUMI_CU_DECLARE(name, symbol, args) CUresult (*name) args = nullptr;
+RUMI_CU_API(RUMI_CU_DECLARE)
+#undef RUMI_CU_DECLARE
+
+// One device's primary context and output pool. Both live until exit, so a
+// tensor may outlive every decoder.
+struct CudaDevice {
+    CUcontext context{};
+    CUmemoryPool pool{};   // null without stream-ordered allocation
+    std::atomic<std::uint64_t> kept{};   // release threshold, under g_cuda_mutex
+};
+
+// The pool keeps freed blocks for this many outputs of the largest size seen
+// and returns the rest to the driver at the next synchronization.
+constexpr std::uint64_t KEPT_OUTPUTS = 4;
+
+// Never destroyed, so a tensor released during process exit still finds them.
+std::mutex& g_cuda_mutex = *new std::mutex;
+bool g_cuda_loaded = false;
+std::map<int, CudaDevice>& g_cuda_devices = *new std::map<int, CudaDevice>;
+
+std::expected<void, Error> cuda_check(CUresult result, const char* operation)
+{
+    if (result == CUDA_SUCCESS) return {};
+    const char* message = nullptr;
+    if (cuGetErrorString) cuGetErrorString(result, &message);
+    return failf(RUMI_ERR_DECODE, "%s: %s", operation,
+                 message ? message : "CUDA error");
+}
+
+// The caller holds g_cuda_mutex.
+std::expected<void, Error> load_cuda()
+{
+    if (g_cuda_loaded) return {};
+    void* library = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (!library) return fail(RUMI_ERR_UNSUPPORTED, "no NVIDIA driver");
+#define RUMI_CU_RESOLVE(name, symbol, args)                                   \
+    if (void* address = dlsym(library, symbol)) {                             \
+        std::memcpy(&name, &address, sizeof(address));                        \
+    } else {                                                                  \
+        return fail(RUMI_ERR_UNSUPPORTED, "libcuda lacks " symbol);           \
+    }
+    RUMI_CU_API(RUMI_CU_RESOLVE)
+#undef RUMI_CU_RESOLVE
+    if (auto r = cuda_check(cuInit(0), "cuInit"); !r) return r;
+    g_cuda_loaded = true;
+    return {};
+}
+
+std::expected<CudaDevice*, Error> cuda_device(int ordinal)
+{
+    std::lock_guard lock(g_cuda_mutex);
+    if (auto r = load_cuda(); !r) return std::unexpected(r.error());
+    if (auto it = g_cuda_devices.find(ordinal); it != g_cuda_devices.end()) {
+        return &it->second;
+    }
+
+    CUdevice device{};
+    CUcontext context{};
+    CUmemoryPool pool{};
+    int pools = 0;
+    if (auto r = cuda_check(cuDeviceGet(&device, ordinal), "cuDeviceGet"); !r) {
+        return std::unexpected(r.error());
+    }
+    if (auto r = cuda_check(cuDevicePrimaryCtxRetain(&context, device),
+                            "cuDevicePrimaryCtxRetain"); !r) {
+        return std::unexpected(r.error());
+    }
+    if (cuDeviceGetAttribute(&pools, CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
+                             device) == CUDA_SUCCESS && pools) {
+        CUmemPoolProps props{};
+        props.allocType = CU_MEM_ALLOCATION_TYPE_PINNED;
+        props.locationType = CU_MEM_LOCATION_TYPE_DEVICE;
+        props.locationId = device;
+        if (cuMemPoolCreate(&pool, &props) == CUDA_SUCCESS) {
+            // Never make a read wait on a consumer's stream to reuse a block.
+            int no = 0;
+            cuMemPoolSetAttribute(
+                pool, CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES, &no);
+        } else {
+            pool = nullptr;
+        }
+    }
+    CudaDevice& entry = g_cuda_devices[ordinal];
+    entry.context = context;
+    entry.pool = pool;
+    return &entry;
+}
+
+// Makes a device's primary context current for one scope.
+class CudaScope {
+public:
+    explicit CudaScope(const CudaDevice* device) noexcept
+        : pushed_(cuCtxPushCurrent(device->context) == CUDA_SUCCESS) {}
+    ~CudaScope()
+    {
+        CUcontext previous{};
+        if (pushed_) cuCtxPopCurrent(&previous);
+    }
+    CudaScope(const CudaScope&) = delete;
+    CudaScope& operator=(const CudaScope&) = delete;
+    [[nodiscard]] std::expected<void, Error> check() const
+    {
+        if (pushed_) return {};
+        return fail(RUMI_ERR_DECODE, "cannot make the CUDA context current");
+    }
+
+private:
+    bool pushed_;
+};
+
+// What a free must follow. A tensor never handed off waits for its read, one
+// handed to a stream frees in its order, and one whose consumer stream is
+// unknown waits for the device.
+enum class Release { after_read, in_stream, after_device };
+
+}  // namespace
+#endif
+
+struct GpuOutput {
+#if RUMI_BUILD_GPU
+    GeozlGpuMemory* metal{};
+#endif
+#if RUMI_GPU_CUDA
+    CudaDevice* cuda{};
+    CUdeviceptr pointer{};
+    CUevent ready{};
+    CUstream stream{};
+    Release release{Release::after_read};
+#endif
+};
 
 struct GpuDecoder::Impl {
 #if RUMI_BUILD_GPU
@@ -20,7 +224,13 @@ struct GpuDecoder::Impl {
     std::unique_ptr<std::byte[]> transfers;
     std::size_t transfer_bytes{};
 #endif
+#if RUMI_GPU_CUDA
+    CudaDevice* cuda{};
+    CUstream stream{};
+#endif
     std::size_t max_decoded_bytes{};
+    int device_type{};
+    int device{};
 };
 
 GpuDecoder::GpuDecoder(std::unique_ptr<Impl> impl) noexcept
@@ -30,6 +240,15 @@ GpuDecoder::~GpuDecoder()
 {
 #if RUMI_BUILD_GPU
     if (impl_ && impl_->gpu) geozl_gpu_destroy(impl_->gpu);
+#endif
+#if RUMI_GPU_CUDA
+    // Pending work still runs after cuStreamDestroy; the pool returns only
+    // blocks no tensor holds.
+    if (impl_ && impl_->stream) {
+        CudaScope scope(impl_->cuda);
+        cuStreamDestroy(impl_->stream);
+        if (impl_->cuda->pool) cuMemPoolTrimTo(impl_->cuda->pool, 0);
+    }
 #endif
 }
 
@@ -83,16 +302,34 @@ GpuDecoder::create(int device_type, int device, std::size_t threads,
         return fail(RUMI_ERR_UNSUPPORTED,
                     message[0] ? message.data() : "GPU device is unavailable");
     }
-    const int effective_threads = detail::pin_thread_count(requested_threads);
-    if (effective_threads != requested_threads) {
-        geozl_gpu_destroy(handle);
-        return fail(RUMI_ERR_STATE,
-                    "GPU thread count differs from the process-wide read thread count");
-    }
+    // The decoder owns the handle from here, so every failure releases it.
     auto impl = std::make_unique<Impl>();
     impl->gpu = handle;
     impl->max_decoded_bytes = max_decoded_bytes;
-    return std::unique_ptr<GpuDecoder>(new GpuDecoder(std::move(impl)));
+    impl->device_type = device_type;
+    impl->device = device;
+    std::unique_ptr<GpuDecoder> decoder(new GpuDecoder(std::move(impl)));
+#if RUMI_GPU_CUDA
+    if (device_type == RUMI_DEVICE_CUDA) {
+        auto cuda = cuda_device(device);
+        if (!cuda) return std::unexpected(cuda.error());
+        CudaScope scope(*cuda);
+        if (auto r = scope.check(); !r) return std::unexpected(r.error());
+        decoder->impl_->cuda = *cuda;
+        if (auto r = cuda_check(cuStreamCreate(&decoder->impl_->stream,
+                                               CU_STREAM_NON_BLOCKING),
+                                "cuStreamCreate");
+            !r) {
+            return std::unexpected(r.error());
+        }
+    }
+#endif
+    const int effective_threads = detail::pin_thread_count(requested_threads);
+    if (effective_threads != requested_threads) {
+        return fail(RUMI_ERR_STATE,
+                    "GPU thread count differs from the process-wide read thread count");
+    }
+    return decoder;
 #else
     (void) device_type;
     (void) device;
@@ -106,6 +343,46 @@ GpuDecoder::create(int device_type, int device, std::size_t threads,
 std::size_t GpuDecoder::max_decoded_bytes() const noexcept
 {
     return impl_ ? impl_->max_decoded_bytes : 0;
+}
+
+int GpuDecoder::device_type() const noexcept
+{
+    return impl_ ? impl_->device_type : 0;
+}
+
+int GpuDecoder::device() const noexcept
+{
+    return impl_ ? impl_->device : 0;
+}
+
+std::expected<int, Error> GpuDecoder::current_device(int device_type)
+{
+#if RUMI_GPU_CUDA
+    if (device_type == RUMI_DEVICE_CUDA) {
+        {
+            std::lock_guard lock(g_cuda_mutex);
+            if (auto r = load_cuda(); !r) return std::unexpected(r.error());
+        }
+        // A thread without a current context, as before any CUDA work, reads
+        // device 0.
+        CUdevice device{};
+        return cuCtxGetDevice(&device) == CUDA_SUCCESS ? device : 0;
+    }
+#endif
+#if RUMI_BUILD_GPU
+    if (device_type == RUMI_DEVICE_METAL) return 0;
+#endif
+    (void) device_type;
+    return fail(RUMI_ERR_UNSUPPORTED, "this rumi build has no such GPU support");
+}
+
+void* GpuDecoder::stream() const noexcept
+{
+#if RUMI_GPU_CUDA
+    return impl_ ? impl_->stream : nullptr;
+#else
+    return nullptr;
+#endif
 }
 
 std::span<std::byte> GpuDecoder::transfer_staging(std::size_t bytes) noexcept
@@ -125,6 +402,161 @@ std::span<std::byte> GpuDecoder::transfer_staging(std::size_t bytes) noexcept
 #endif
 }
 
+std::expected<GpuOutput*, Error> GpuDecoder::allocate(std::size_t bytes)
+{
+#if RUMI_BUILD_GPU
+    std::unique_ptr<GpuOutput> output(new (std::nothrow) GpuOutput);
+    if (!output) return fail(RUMI_ERR_OOM, "out of memory allocating GPU output");
+    if (bytes == 0) bytes = 1;
+#if RUMI_GPU_CUDA
+    if (impl_->cuda) {
+        // A pool block freed in a consumer's stream order returns without the
+        // device-wide wait of cuMemFree.
+        CudaDevice* cuda = impl_->cuda;
+        CudaScope scope(cuda);
+        if (auto r = scope.check(); !r) return std::unexpected(r.error());
+        const CUresult made = cuda->pool
+            ? cuMemAllocFromPoolAsync(&output->pointer, bytes, cuda->pool,
+                                      impl_->stream)
+            : cuMemAlloc(&output->pointer, bytes);
+        if (made != CUDA_SUCCESS) {
+            auto r = cuda_check(made, "GPU output allocation");
+            return fail(RUMI_ERR_OOM, r.error().message);
+        }
+        output->cuda = cuda;
+        if (cuda->pool) {
+            const std::uint64_t want = std::uint64_t{bytes} * KEPT_OUTPUTS;
+            if (want > cuda->kept.load(std::memory_order_relaxed)) {
+                std::lock_guard lock(g_cuda_mutex);
+                if (want > cuda->kept.load(std::memory_order_relaxed)) {
+                    std::uint64_t threshold = want;
+                    cuMemPoolSetAttribute(
+                        cuda->pool, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD,
+                        &threshold);
+                    cuda->kept.store(want, std::memory_order_relaxed);
+                }
+            }
+        }
+        if (auto r = cuda_check(cuEventCreate(&output->ready,
+                                              CU_EVENT_DISABLE_TIMING),
+                                "cuEventCreate");
+            !r) {
+            if (cuda->pool) {
+                cuMemFreeAsync(output->pointer, impl_->stream);
+            } else {
+                cuMemFree(output->pointer);
+            }
+            return std::unexpected(r.error());
+        }
+        return output.release();
+    }
+#endif
+    std::array<char, 512> message{};
+    output->metal = geozl_gpu_alloc(impl_->gpu, bytes, message.data(),
+                                    message.size());
+    if (!output->metal) {
+        return fail(RUMI_ERR_OOM,
+                    message[0] ? message.data() : "GPU allocation failed");
+    }
+    return output.release();
+#else
+    (void) bytes;
+    return fail(RUMI_ERR_UNSUPPORTED,
+                "this rumi build has no GPU support");
+#endif
+}
+
+std::expected<void, Error> GpuDecoder::finish(GpuOutput* output)
+{
+#if RUMI_GPU_CUDA
+    if (output->cuda) {
+        CudaScope scope(output->cuda);
+        if (auto r = scope.check(); !r) return r;
+        return cuda_check(cuEventRecord(output->ready, impl_->stream),
+                          "cuEventRecord");
+    }
+#endif
+    // Metal work is done; this lets the context drop its retained target.
+    (void) output;
+    return synchronize();
+}
+
+void* GpuDecoder::data(const GpuOutput* output) noexcept
+{
+#if RUMI_GPU_CUDA
+    if (output->cuda) {
+        return reinterpret_cast<void*>(static_cast<std::uintptr_t>(output->pointer));
+    }
+#endif
+#if RUMI_BUILD_GPU
+    return geozl_gpu_pointer(output->metal);
+#else
+    (void) output;
+    return nullptr;
+#endif
+}
+
+std::expected<void, Error> GpuDecoder::hand_off(GpuOutput* output, void* stream)
+{
+#if RUMI_GPU_CUDA
+    if (output->cuda) {
+        CudaScope scope(output->cuda);
+        if (auto r = scope.check(); !r) return r;
+        if (!stream) {
+            output->release = Release::after_device;
+            return cuda_check(cuEventSynchronize(output->ready),
+                              "cuEventSynchronize");
+        }
+        const auto target = static_cast<CUstream>(stream);
+        if (auto r = cuda_check(cuStreamWaitEvent(target, output->ready, 0),
+                                "cuStreamWaitEvent");
+            !r) {
+            return r;
+        }
+        // The per-thread stream names another stream on the thread that frees.
+        if (target == CU_STREAM_PER_THREAD) {
+            output->release = Release::after_device;
+        } else {
+            output->release = Release::in_stream;
+            output->stream = target;
+        }
+        return {};
+    }
+#endif
+    (void) output;
+    (void) stream;
+    return {};
+}
+
+void GpuDecoder::release(GpuOutput* output) noexcept
+{
+    if (!output) return;
+#if RUMI_GPU_CUDA
+    if (output->cuda) {
+        CudaScope scope(output->cuda);
+        CUstream order = CU_STREAM_LEGACY;
+        if (output->release == Release::in_stream) {
+            order = output->stream;
+        } else if (output->release == Release::after_device) {
+            cuCtxSynchronize();
+        } else if (output->ready) {
+            cuEventSynchronize(output->ready);
+        }
+        if (output->ready) cuEventDestroy(output->ready);
+        if (output->cuda->pool) {
+            cuMemFreeAsync(output->pointer, order);
+        } else {
+            cuMemFree(output->pointer);
+        }
+        delete output;
+        return;
+    }
+#endif
+#if RUMI_BUILD_GPU
+    if (output->metal) geozl_gpu_free(output->metal);
+#endif
+    delete output;
+}
 std::expected<void, Error> GpuDecoder::synchronize()
 {
 #if RUMI_BUILD_GPU

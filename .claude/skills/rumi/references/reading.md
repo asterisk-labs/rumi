@@ -193,20 +193,22 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 | --- | --- |
 | `"numpy"` (default) | `numpy.ndarray` |
 | `"torch"` | `torch.Tensor` on CPU by default, CUDA with `device="cuda:N"`, or Metal with `device="mps"` |
-| `"jax"` | JAX array on the CPU |
+| `"jax"` | JAX array on the CPU, or CUDA with `device="cuda:N"` |
 | `"tensorflow"` | TensorFlow tensor on the CPU |
 | `"dlpack"` | `RumiArray`, exported later with a framework method or `__dlpack__` |
 
 - CPU results move to the framework through DLPack without a copy. On CUDA and Metal,
   one- and two-byte PFOR and `lanes` frames decode on the device. Other frames use CPU
-  staging before the result is placed in the PyTorch tensor. A `RumiArray` exports once;
-  a second export raises `RuntimeError: this RumiArray was already exported`.
-- CUDA reads enqueue work on the current PyTorch stream. Use the tensor on that stream,
-  or record an event after the read and make the consumer stream wait for it. Call
-  `tensor.record_stream(consumer)` when the tensor may be released before that stream
-  finishes. Rumi does not synchronize the CUDA device.
-- Metal waits for pending PyTorch work on the current MPS stream, then completes its own
-  Metal command buffer before returning. It does not synchronize unrelated MPS streams.
+  staging before the result is placed in device memory Rumi allocates. A `RumiArray`
+  exports once; a second export raises `RuntimeError: this RumiArray was already
+  exported`. `framework="dlpack"` with a device returns the GPU `RumiArray` for
+  `cupy.from_dlpack` or any other DLPack consumer.
+- CUDA reads run on a stream Rumi owns. Exporting with `__dlpack__(stream=s)`, as every
+  framework's `from_dlpack` does, makes `s` wait for the read on the device, and the
+  memory returns to Rumi's pool in `s`'s order when the array is released. Keep `s`
+  alive until then. A stream of `None` or `-1` waits on the host. Using the array on
+  another stream later needs the usual event between the two streams.
+- Metal completes its own command buffer before returning.
 - Every registered dtype is an exact PyTorch CPU DLPack dtype. NumPy, JAX and
   TensorFlow accept exact subsets; incompatible dtypes fail before the source is opened.
   JAX 64-bit dtypes require `jax_enable_x64`.

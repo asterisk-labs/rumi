@@ -876,9 +876,14 @@ read_many(std::span<Source* const> sources,
           int y_size, int x_size,
           const LayoutPlan& layout, std::byte* dst);
 
+// Device memory of a DLPack GPU read.
+struct GpuOutput;
+
 class GpuDecoder {
 public:
     static bool available(int device_type) noexcept;
+    // Device of the calling thread's current context, as frameworks set it.
+    [[nodiscard]] static std::expected<int, Error> current_device(int device_type);
     static std::expected<std::unique_ptr<GpuDecoder>, Error>
     create(int device_type, int device, std::size_t threads,
            std::size_t max_decoded_bytes);
@@ -889,9 +894,23 @@ public:
 
     [[nodiscard]] std::expected<void, Error> synchronize();
     [[nodiscard]] std::size_t max_decoded_bytes() const noexcept;
+    [[nodiscard]] int device_type() const noexcept;
+    [[nodiscard]] int device() const noexcept;
     // Host memory for compressed frames, reused by every read of this decoder
     // and bounded by its decode budget. Empty when it cannot grow.
     [[nodiscard]] std::span<std::byte> transfer_staging(std::size_t bytes) noexcept;
+    // The decoder's own CUDA stream, used by DLPack reads. NULL on Metal.
+    [[nodiscard]] void* stream() const noexcept;
+    // Device memory that outlives this decoder. release frees it.
+    [[nodiscard]] std::expected<GpuOutput*, Error> allocate(std::size_t bytes);
+    // Marks output ready after the work queued so far on stream().
+    [[nodiscard]] std::expected<void, Error> finish(GpuOutput* output);
+    static void* data(const GpuOutput* output) noexcept;
+    // Makes stream wait for output on the device and frees output in stream
+    // order. NULL stream waits on the host and frees once the device is idle.
+    [[nodiscard]] static std::expected<void, Error>
+    hand_off(GpuOutput* output, void* stream);
+    static void release(GpuOutput* output) noexcept;
     [[nodiscard]] std::expected<void, Error>
     decode(const Plan& plan, std::span<const FrameTask> tasks,
            void* destination, std::size_t destination_bytes,
@@ -945,6 +964,11 @@ build_blob_from_file(const char* path, FileGeo* geo = nullptr,
 [[nodiscard]] DLManagedTensorVersioned*
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;
+
+// Wraps GpuDecoder::allocate memory on a GPU. The tensor deleter releases it.
+[[nodiscard]] DLManagedTensorVersioned*
+build_gpu_dlpack(GpuOutput* memory, int device_type, int device, rumi_dtype dtype,
+                 const std::int64_t* shape, int ndim) noexcept;
 
 // See https://docs.ogc.org/is/19-008r4/19-008r4.html
 inline constexpr std::uint16_t GT_MODEL_TYPE   = 1024;

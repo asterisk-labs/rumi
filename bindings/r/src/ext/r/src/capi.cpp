@@ -967,6 +967,20 @@ extern "C" int rumi_gpu_available(int device_type)
     return rumi::GpuDecoder::available(device_type) ? 1 : 0;
 }
 
+extern "C" rumi_status rumi_gpu_current_device(int device_type, int* out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_gpu_current_device: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        auto device = rumi::GpuDecoder::current_device(device_type);
+        if (!device) return finish_read(std::unexpected(device.error()));
+        *out = *device;
+        return RUMI_OK;
+    });
+}
+
 extern "C" rumi_status
 rumi_gpu_create(int device_type, int device, size_t threads,
                 size_t max_decoded_bytes, rumi_gpu** out)
@@ -1064,6 +1078,89 @@ finish_dlpack(std::byte* buffer,
     }
     *out = t;
     return RUMI_OK;
+}
+
+// Queued work may still write the memory of a failed read, so wait first.
+static rumi_status
+finish_gpu_dlpack(rumi::GpuDecoder& gpu, rumi::GpuOutput* memory,
+                  std::expected<void, rumi::Error> r,
+                  const rumi::Header& h, const rumi::LayoutPlan& plan,
+                  DLManagedTensorVersioned** out)
+{
+    if (r) r = gpu.finish(memory);
+    if (!r) {
+        (void) gpu.finish(memory);
+        (void) gpu.synchronize();
+        rumi::GpuDecoder::release(memory);
+        return finish_read(r);
+    }
+    DLManagedTensorVersioned* t = rumi::build_gpu_dlpack(
+        memory, gpu.device_type(), gpu.device(), h.dtype,
+        plan.shape.data(), static_cast<int>(plan.shape.size()));
+    if (!t) {
+        rumi::GpuDecoder::release(memory);
+        set_error("out of memory allocating DLPack metadata");
+        return RUMI_ERR_OOM;
+    }
+    *out = t;
+    return RUMI_OK;
+}
+
+extern "C" rumi_status
+rumi_read_gpu_dlpack(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
+                     const int* times, size_t n_times,
+                     const int* bands, size_t n_bands,
+                     int y_off, int y_size, int x_off, int x_size,
+                     const char* pattern, int decode_backend,
+                     DLManagedTensorVersioned** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!gpu || !src || !spec || !out) {
+            set_error("rumi_read_gpu_dlpack: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        if (decode_backend != RUMI_GPU_DECODE_AUTO
+            && decode_backend != RUMI_GPU_DECODE_CPU) {
+            set_error("invalid GPU decode backend");
+            return RUMI_ERR_INVALID;
+        }
+        const auto& h = spec->h;
+        SelectionSetup setup;
+        if (const rumi_status status = prepare_selection(
+                h, 1, false, times, n_times, bands, n_bands,
+                y_size, x_size, pattern, &setup);
+            status != RUMI_OK) {
+            return status;
+        }
+        auto memory = gpu->impl->allocate(setup.need);
+        if (!memory) return finish_read(std::unexpected(memory.error()));
+        auto r = rumi::read_window_gpu(
+            *gpu->impl, *src->impl, h,
+            std::span<const int>(setup.picked_t),
+            std::span<const int>(setup.picked_b),
+            y_off, y_size, x_off, x_size, setup.layout,
+            rumi::GpuDecoder::data(*memory), setup.need,
+            gpu->impl->stream(),
+            decode_backend == RUMI_GPU_DECODE_CPU);
+        return finish_gpu_dlpack(*gpu->impl, *memory, r, h, setup.layout, out);
+    });
+}
+
+extern "C" rumi_status
+rumi_dlpack_wait(DLManagedTensorVersioned* tensor, void* stream)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!tensor) {
+            set_error("rumi_dlpack_wait: null tensor");
+            return RUMI_ERR_INVALID;
+        }
+        // CPU tensors keep no manager_ctx and are ready already.
+        if (tensor->deleter != rumi_dlpack_free || !tensor->manager_ctx) {
+            return RUMI_OK;
+        }
+        return finish_read(rumi::GpuDecoder::hand_off(
+            static_cast<rumi::GpuOutput*>(tensor->manager_ctx), stream));
+    });
 }
 
 extern "C" rumi_status
@@ -1237,6 +1334,51 @@ rumi_read_many_gpu(rumi_gpu* gpu,
             y_size, x_size, setup.selection.layout,
             dst, dst_size, stream, decode_backend == RUMI_GPU_DECODE_CPU);
         return finish_read(result);
+    });
+}
+
+extern "C" rumi_status
+rumi_read_many_gpu_dlpack(rumi_gpu* gpu,
+                          const rumi_read_item* items, size_t n_items,
+                          const int* times, size_t n_times,
+                          const int* bands, size_t n_bands,
+                          int y_size, int x_size,
+                          const char* pattern, int decode_backend,
+                          DLManagedTensorVersioned** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!gpu || !out) {
+            set_error("rumi_read_many_gpu_dlpack: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        if (decode_backend != RUMI_GPU_DECODE_AUTO
+            && decode_backend != RUMI_GPU_DECODE_CPU) {
+            set_error("invalid GPU decode backend");
+            return RUMI_ERR_INVALID;
+        }
+        ManySetup setup;
+        if (const rumi_status status = prepare_many(
+                items, n_items, times, n_times, bands, n_bands,
+                y_size, x_size, pattern, "rumi_read_many_gpu_dlpack", &setup);
+            status != RUMI_OK) {
+            return status;
+        }
+        auto memory = gpu->impl->allocate(setup.selection.need);
+        if (!memory) return finish_read(std::unexpected(memory.error()));
+        auto r = rumi::read_many_gpu(
+            *gpu->impl,
+            std::span<rumi::Source* const>(setup.srcs.data(), n_items),
+            std::span<const rumi::Header* const>(setup.headers.data(), n_items),
+            std::span<const int>(setup.y_offs),
+            std::span<const int>(setup.x_offs),
+            std::span<const int>(setup.selection.picked_t),
+            std::span<const int>(setup.selection.picked_b),
+            y_size, x_size, setup.selection.layout,
+            rumi::GpuDecoder::data(*memory), setup.selection.need,
+            gpu->impl->stream(),
+            decode_backend == RUMI_GPU_DECODE_CPU);
+        return finish_gpu_dlpack(*gpu->impl, *memory, r, items[0].spec->h,
+                                 setup.selection.layout, out);
     });
 }
 

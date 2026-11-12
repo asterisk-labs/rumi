@@ -71,6 +71,7 @@ rumi_status rumi_gpu_create(int device_type, int device, size_t threads,
                             size_t max_decoded_bytes, rumi_gpu** out);
 void rumi_gpu_destroy(rumi_gpu* gpu);
 rumi_status rumi_gpu_synchronize(rumi_gpu* gpu);
+rumi_status rumi_gpu_current_device(int device_type, int* out);
 rumi_status rumi_read_gpu(rumi_gpu* gpu, rumi_source* src,
                           const rumi_spec* spec,
                           const int* times, size_t n_times,
@@ -78,6 +79,13 @@ rumi_status rumi_read_gpu(rumi_gpu* gpu, rumi_source* src,
                           int y_off, int y_size, int x_off, int x_size,
                           const char* pattern, void* dst, size_t dst_size,
                           void* stream, int decode_backend);
+rumi_status rumi_read_gpu_dlpack(rumi_gpu* gpu, rumi_source* src,
+                                 const rumi_spec* spec,
+                                 const int* times, size_t n_times,
+                                 const int* bands, size_t n_bands,
+                                 int y_off, int y_size, int x_off, int x_size,
+                                 const char* pattern, int decode_backend,
+                                 DLManagedTensorVersioned** out);
 rumi_status rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                              const int* times, size_t n_times,
                              const int* bands, size_t n_bands, int y_off,
@@ -96,12 +104,21 @@ rumi_status rumi_read_many_gpu(rumi_gpu* gpu,
                                int y_size, int x_size, const char* pattern,
                                void* dst, size_t dst_size, void* stream,
                                int decode_backend);
+rumi_status rumi_read_many_gpu_dlpack(rumi_gpu* gpu,
+                                      const rumi_read_item* items,
+                                      size_t n_items,
+                                      const int* times, size_t n_times,
+                                      const int* bands, size_t n_bands,
+                                      int y_size, int x_size,
+                                      const char* pattern, int decode_backend,
+                                      DLManagedTensorVersioned** out);
 rumi_status rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
                                   const int* times, size_t n_times,
                                   const int* bands, size_t n_bands,
                                   int y_size, int x_size, const char* pattern,
                                   DLManagedTensorVersioned** out);
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
+rumi_status rumi_dlpack_wait(DLManagedTensorVersioned* t, void* stream);
 DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
 void rumi_dlpack_legacy_free(DLManagedTensor* t);
 void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
@@ -286,7 +303,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 43
+    assert len(baseline) == 47
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

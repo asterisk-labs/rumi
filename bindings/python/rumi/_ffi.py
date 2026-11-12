@@ -213,6 +213,7 @@ rumi_status rumi_gpu_create(int device_type, int device, size_t threads,
                             size_t max_decoded_bytes, rumi_gpu** out);
 void rumi_gpu_destroy(rumi_gpu* gpu);
 rumi_status rumi_gpu_synchronize(rumi_gpu* gpu);
+rumi_status rumi_gpu_current_device(int device_type, int* out);
 rumi_status
 rumi_read_gpu(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
               const int* times, size_t n_times,
@@ -220,6 +221,14 @@ rumi_read_gpu(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
               int y_off, int y_size, int x_off, int x_size,
               const char* pattern, void* dst, size_t dst_size,
               void* stream, int decode_backend);
+
+rumi_status
+rumi_read_gpu_dlpack(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
+                     const int* times, size_t n_times,
+                     const int* bands, size_t n_bands,
+                     int y_off, int y_size, int x_off, int x_size,
+                     const char* pattern, int decode_backend,
+                     DLManagedTensorVersioned** out);
 
 rumi_status
 rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
@@ -252,6 +261,15 @@ rumi_read_many_gpu(rumi_gpu* gpu,
                    void* stream, int decode_backend);
 
 rumi_status
+rumi_read_many_gpu_dlpack(rumi_gpu* gpu,
+                          const rumi_read_item* items, size_t n_items,
+                          const int* times, size_t n_times,
+                          const int* bands, size_t n_bands,
+                          int y_size, int x_size, const char* pattern,
+                          int decode_backend,
+                          DLManagedTensorVersioned** out);
+
+rumi_status
 rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
                       const int* times, size_t n_times,
                       const int* bands, size_t n_bands,
@@ -259,6 +277,8 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
                       const char* pattern, DLManagedTensorVersioned** out);
 
 void rumi_dlpack_free(DLManagedTensorVersioned* t);
+
+rumi_status rumi_dlpack_wait(DLManagedTensorVersioned* t, void* stream);
 
 typedef struct DLManagedTensor DLManagedTensor;
 

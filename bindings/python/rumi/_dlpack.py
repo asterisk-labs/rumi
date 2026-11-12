@@ -2,7 +2,7 @@ import ctypes
 import threading
 
 from ._dtype import name as dtype_name
-from ._ffi import ffi, lib
+from ._ffi import _check, ffi, lib
 
 _pyapi = ctypes.pythonapi
 _PyCapsule_New = _pyapi.PyCapsule_New
@@ -40,13 +40,27 @@ def _borrow_versioned(tensor):
     return capsule, ffi.cast("DLManagedTensorVersioned*", pointer)
 
 
-class RumiArray:
-    """Decoded CPU samples that transfer once through DLPack."""
+_CUDA = 2
 
-    def __init__(self, tensor, shape, dtype_code):
+
+def _cuda_stream(stream):
+    # 0 is ambiguous in DLPack; read it as the legacy default stream, 1. None
+    # and -1 name no stream, so rumi waits on the host instead.
+    if stream is None or stream == -1:
+        return ffi.NULL
+    if not isinstance(stream, int) or isinstance(stream, bool) or stream < 0:
+        raise TypeError("stream must be a CUDA stream handle or None")
+    return ffi.cast("void*", stream or 1)
+
+
+class RumiArray:
+    """Decoded samples that transfer once through DLPack."""
+
+    def __init__(self, tensor, shape, dtype_code, device=(1, 0)):
         self._tensor = tensor
         self._shape = shape
         self._dtype_code = dtype_code
+        self._device = device
         self._export_lock = threading.Lock()
 
     @property
@@ -54,8 +68,8 @@ class RumiArray:
         return self._shape
 
     def __dlpack_device__(self) -> tuple[int, int]:
-        """Return the DLPack device tuple for Rumi's CPU output."""
-        return (1, 0)
+        """Return the DLPack device tuple of the decoded samples."""
+        return self._device
 
     def __dlpack__(self, *, stream=None, max_version=None,
                    dl_device=None, copy=None):
@@ -63,8 +77,11 @@ class RumiArray:
 
         ``max_version`` selects a versioned capsule when it is at least
         ``(1, 0)``; omitting it returns a legacy capsule. ``dl_device`` may be
-        omitted or request CPU device ``(1, 0)``. ``copy`` may be ``None`` or
-        ``False`` because Rumi transfers its existing allocation.
+        omitted or request the array's own device. ``copy`` may be ``None`` or
+        ``False`` because Rumi transfers its existing allocation. A CUDA
+        ``stream`` waits on the device for the read, and the memory returns
+        to rumi in that stream's order, so keep the stream alive while the
+        tensor lives. ``None`` or ``-1`` waits on the host instead.
 
         Returns a DLPack capsule and consumes this ``RumiArray``. A later
         export raises ``RuntimeError``.
@@ -72,15 +89,17 @@ class RumiArray:
         with self._export_lock:
             if self._tensor is None:
                 raise RuntimeError("this RumiArray was already exported")
-            if dl_device is not None and tuple(dl_device) != (1, 0):
+            if dl_device is not None and tuple(dl_device) != self._device:
                 raise BufferError(
-                    f"rumi decodes on the CPU, not device {dl_device}")
+                    f"rumi decoded on device {self._device}, not {dl_device}")
             if copy is not None and not isinstance(copy, bool):
                 raise TypeError("copy must be a bool or None")
             if copy is True:
                 raise BufferError("rumi cannot export a copied DLPack tensor")
 
             owner = self._tensor
+            if self._device[0] == _CUDA:
+                _check(lib.rumi_dlpack_wait(owner, _cuda_stream(stream)))
             tensor, name = owner, _VERSIONED_NAME
             legacy = max_version is None or tuple(max_version)[:1] < (1,)
             if legacy:

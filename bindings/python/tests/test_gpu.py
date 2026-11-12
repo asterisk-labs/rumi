@@ -165,39 +165,6 @@ finally:
     assert done.returncode == 0, done.stderr
 
 
-def test_mps_requires_versioned_dlpack(monkeypatch):
-    monkeypatch.setattr(_gpu, "_wait_for_mps", lambda: None)
-
-    def old_dlpack(_tensor):
-        raise TypeError("__dlpack__() got an unexpected keyword argument 'max_version'")
-
-    monkeypatch.setattr(_gpu, "_borrow_versioned", old_dlpack)
-    with pytest.raises(
-            RuntimeError, match="MPS reads require PyTorch 2.10 or newer"):
-        _gpu._metal_target(object())
-
-
-def test_mps_wait_uses_an_event_not_a_device_synchronize(monkeypatch):
-    calls = []
-
-    class Event:
-        def record(self):
-            calls.append("record")
-
-        def synchronize(self):
-            calls.append("synchronize")
-
-    def device_synchronize():
-        raise AssertionError("device-wide MPS synchronization is not allowed")
-
-    monkeypatch.setattr(torch.mps.event, "Event", Event)
-    monkeypatch.setattr(torch.mps, "synchronize", device_synchronize)
-
-    _gpu._wait_for_mps()
-
-    assert calls == ["record", "synchronize"]
-
-
 def test_gpu_shutdown_waits_for_an_active_context(monkeypatch):
     started = threading.Event()
     closed = threading.Event()
@@ -317,6 +284,25 @@ def test_partial_read_writes_a_gpu_tensor(
     assert np.array_equal(result.cpu().numpy(), expected)
 
 
+@pytest.mark.parametrize(("device_type", "device", "torch_type"), _DEVICES)
+def test_dlpack_framework_returns_a_gpu_array(
+        scenes, device_type, device, torch_type):
+    path, header, data = scenes[0]
+    array = rumi.read(path, header, framework="dlpack", device=device,
+                      bands=[3, 1], window=(7, 11, 63, 75))
+
+    assert array.__dlpack_device__() == (device_type, 0)
+    result = torch.from_dlpack(array)
+    assert result.device.type == torch_type
+    assert np.array_equal(result.cpu().numpy(), data[[3, 1], 7:70, 11:86])
+
+
+def test_gpu_read_refuses_numpy(scenes):
+    path, header, _ = scenes[0]
+    with pytest.raises(ValueError, match="NumPy arrays live on the CPU"):
+        rumi.read(path, header, device="mps")
+
+
 @pytest.mark.parametrize(("device", "torch_type"), _TORCH_DEVICES)
 def test_cpu_decode_backend_places_partial_read_on_gpu(
         scenes, device, torch_type):
@@ -398,6 +384,72 @@ def test_cuda_result_can_move_between_streams_with_an_event(scenes):
 
     expected = data[:, 5:53, 9:65]
     assert np.array_equal(observed.cpu().numpy(), expected)
+
+
+@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
+def test_cuda_memory_returns_in_the_consumer_stream_order(scenes):
+    stream = torch.cuda.Stream(device=0)
+    with torch.cuda.stream(stream):
+        first = rumi.read(scenes[0][0], scenes[0][1], framework="torch",
+                          device="cuda:0")
+        # The copy runs late, so a block returned too early would be decoded
+        # into by the next read first.
+        torch.cuda._sleep(50_000_000)
+        observed = first.clone()
+        del first
+        for path, header, _ in scenes[1:] * 4:
+            rumi.read(path, header, framework="torch", device="cuda:0")
+    stream.synchronize()
+
+    assert np.array_equal(observed.cpu().numpy(), scenes[0][2])
+
+
+@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
+@pytest.mark.parametrize("stream", [None, -1])
+def test_cuda_export_without_a_stream_waits_on_the_host(scenes, stream):
+    path, header, data = scenes[0]
+    array = rumi.read(path, header, framework="dlpack", device="cuda:0")
+    result = torch.utils.dlpack.from_dlpack(array.__dlpack__(stream=stream))
+    assert np.array_equal(result.cpu().numpy(), data)
+
+
+@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
+def test_cuda_array_dropped_before_export_is_released(scenes):
+    path, header, data = scenes[0]
+    for _ in range(3):
+        rumi.read(path, header, framework="dlpack", device="cuda:0")
+    result = rumi.read(path, header, framework="torch", device="cuda:0")
+    assert np.array_equal(result.cpu().numpy(), data)
+
+
+@pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is not available")
+@pytest.mark.parametrize("framework", ["cupy", "jax"])
+def test_cuda_array_imports_into_other_frameworks(scenes, framework):
+    path, header, data = scenes[0]
+    module = pytest.importorskip(framework)
+    array = rumi.read(path, header, framework="dlpack", device="cuda:0",
+                      window=(3, 5, 40, 50))
+    if framework == "cupy":
+        result = module.asnumpy(module.from_dlpack(array))
+    else:
+        result = np.asarray(module.dlpack.from_dlpack(array))
+    assert np.array_equal(result, data[:, 3:43, 5:55])
+
+
+@pytest.mark.skipif(
+    not _CUDA_AVAILABLE or torch.cuda.device_count() < 2,
+    reason="two CUDA devices are not available")
+def test_bare_cuda_follows_the_current_device(scenes):
+    path, header, data = scenes[0]
+    previous = torch.cuda.current_device()
+    try:
+        torch.cuda.set_device(1)
+        result = rumi.read(path, header, framework="torch", device="cuda",
+                           window=(0, 0, 32, 32))
+    finally:
+        torch.cuda.set_device(previous)
+    assert result.device == torch.device("cuda", 1)
+    assert np.array_equal(result.cpu().numpy(), data[:, :32, :32])
 
 
 @pytest.mark.skipif(

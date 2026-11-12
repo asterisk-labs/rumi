@@ -8,10 +8,16 @@
 #include <cstring>
 
 // Tensor metadata, shape, and strides share one allocation; data is separate.
+// A GPU tensor keeps its device memory in manager_ctx.
 extern "C" void rumi_dlpack_free(DLManagedTensorVersioned* self)
 {
     if (!self) return;
-    std::free(self->dl_tensor.data);
+    if (self->manager_ctx) {
+        rumi::GpuDecoder::release(
+            static_cast<rumi::GpuOutput*>(self->manager_ctx));
+    } else {
+        std::free(self->dl_tensor.data);
+    }
     std::free(self);
 }
 
@@ -123,6 +129,19 @@ build_dlpack(void* data, rumi_dtype dtype,
     self->dl_tensor.shape       = sh;
     self->dl_tensor.strides     = st;
     self->dl_tensor.byte_offset = 0;
+    return self;
+}
+
+DLManagedTensorVersioned*
+build_gpu_dlpack(GpuOutput* memory, int device_type, int device, rumi_dtype dtype,
+                 const std::int64_t* shape, int ndim) noexcept
+{
+    DLManagedTensorVersioned* self = build_dlpack(
+        GpuDecoder::data(memory), dtype, shape, ndim);
+    if (!self) return nullptr;
+    self->manager_ctx = memory;
+    self->dl_tensor.device = DLDevice{static_cast<DLDeviceType>(device_type),
+                                      device};
     return self;
 }
 

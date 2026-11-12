@@ -340,7 +340,7 @@ assert batch.shape == (3, 4, 128, 128)</code></pre>
         <section class="guide-section" id="frameworks">
           <div class="section-label"><span>08</span><small>Frameworks</small></div>
           <h2>Return the tensor your pipeline expects</h2>
-          <p class="section-intro">Select the destination at the read boundary. CPU results transfer through DLPack without an intermediate NumPy copy, while PyTorch can request direct CUDA or Metal reads.</p>
+          <p class="section-intro">Select the destination at the read boundary. Results transfer through DLPack without an intermediate NumPy copy, and a <code>device</code> decodes straight into CUDA or Metal memory for any framework.</p>
           <div class="code-group" data-code-group>
             <div data-language-panel="python">
               <pre><code>numpy_chip = rumi.read(cube_path, cube_header)
@@ -359,6 +359,10 @@ dlpack_chip = rumi.read(
 cuda_chip = rumi.read(
     cube_path, cube_header,
     framework="torch", device="cuda:0"
+)
+jax_cuda_chip = rumi.read(
+    cube_path, cube_header,
+    framework="jax", device="cuda:0"
 )</code></pre>
             </div>
           </div>
@@ -375,7 +379,7 @@ cuda_chip = rumi.read(
             </table>
           </div>
           <p>Every Rumi dtype maps exactly to a CPU dtype accepted by PyTorch. NumPy, JAX and TensorFlow accept exact subsets. Rumi checks compatibility before opening the source and never casts or returns a byte view.</p>
-          <p>CUDA reads use PyTorch's current stream. Consume the tensor there, or record an event after the read and make another stream wait for it. Metal waits for pending work on the current MPS stream and finishes Rumi's own Metal write before returning.</p>
+          <p>CUDA reads run on a stream Rumi owns. Importing the result makes the framework's current stream wait for the read on the device, without blocking the host, and the memory returns to Rumi in that stream's order once the array is released. Metal reads finish before returning.</p>
         </section>
 
         <section class="guide-section" id="metadata">
