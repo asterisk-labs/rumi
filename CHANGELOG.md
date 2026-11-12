@@ -13,6 +13,8 @@ Notable user-visible changes are recorded here.
   the consumer's stream wait for the read through an event.
 - `rumi_gpu_current_device` reports the device of the calling thread's current
   CUDA context.
+- `tools/benchmark_gpu_read.py` times GPU reads to a ready PyTorch tensor,
+  for whole scenes and for `read_many` batches, one fresh process per trial.
 
 ### Changed
 
