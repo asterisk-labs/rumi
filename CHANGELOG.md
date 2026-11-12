@@ -4,6 +4,12 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- GPU reads land compressed frames in host staging the context keeps, bounded
+  by its decode budget, instead of one transport buffer per frame. Batches no
+  longer fault fresh pages on every read.
+
 ## [0.30.0] - 2026-11-11
 
 ### Breaking

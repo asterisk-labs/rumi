@@ -545,9 +545,27 @@ karu_status submit_requests(karu_client* client,
                                    &options, batch);
 }
 
+// Transfer destinations start on cache lines.
+constexpr std::size_t TRANSFER_ALIGNMENT = 64;
+
+std::size_t transfer_bytes(std::span<const FrameTask> tasks, auto&& locator_of)
+{
+    std::size_t total = 0;
+    for (const FrameTask& task : tasks) {
+        if (!locator_of(*task.source)) continue;
+        total = (total + TRANSFER_ALIGNMENT - 1) / TRANSFER_ALIGNMENT
+            * TRANSFER_ALIGNMENT;
+        total += task.compressed_size;
+    }
+    return total;
+}
+
+// With staging that holds every transfer, Karu reads into it instead of
+// allocating a buffer per frame.
 std::expected<void, Error>
 execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
-                   auto&& locator_of, auto&& decode)
+                   auto&& locator_of, auto&& decode,
+                   std::span<std::byte> staging = {})
 {
     std::vector<karu_req> requests;
     std::vector<FrameTask> local_tasks;
@@ -557,14 +575,24 @@ execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
     } catch (const std::bad_alloc&) {
         return fail(RUMI_ERR_OOM, "could not allocate read batch");
     }
+    const bool staged = !staging.empty()
+        && staging.size() >= transfer_bytes(tasks, locator_of);
+    std::size_t staged_at = 0;
     for (FrameTask& task : tasks) {
         const karu_locator* locator = locator_of(*task.source);
         if (locator) {
+            void* buffer = nullptr;
+            if (staged) {
+                staged_at = (staged_at + TRANSFER_ALIGNMENT - 1)
+                    / TRANSFER_ALIGNMENT * TRANSFER_ALIGNMENT;
+                buffer = staging.data() + staged_at;
+                staged_at += task.compressed_size;
+            }
             requests.push_back({
                 locator,
                 task.offset,
                 task.compressed_size,
-                nullptr,
+                buffer,
                 &task,
                 nullptr,
             });
@@ -615,7 +643,7 @@ execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
         }
 
         for (;;) {
-            KaruBuffer buffer(done.buffer);
+            KaruBuffer buffer(staged ? nullptr : done.buffer);
             auto* task = static_cast<FrameTask*>(done.tag);
             if (!task) {
                 return fail(RUMI_ERR_IO,
@@ -714,16 +742,20 @@ gpu_batch_end(std::span<const FrameTask> tasks, std::size_t first,
 
 std::expected<void, Error>
 execute_gpu_plan_batches(Plan& plan, TransportSession& transport,
-                         std::size_t budget, auto&& decode)
+                         GpuDecoder& gpu, auto&& decode)
 {
+    const std::size_t budget = gpu.max_decoded_bytes();
     std::size_t first = 0;
     while (first < plan.tasks.size()) {
         auto end = gpu_batch_end(plan.tasks, first, budget);
         if (!end) return std::unexpected(std::move(end.error()));
         const std::size_t last = *end;
         std::span<FrameTask> tasks(plan.tasks.data() + first, last - first);
+        auto staging = gpu.transfer_staging(
+            transfer_bytes(tasks, transport_locator));
         if (auto decoded = execute_task_batch(
-                tasks, transport, transport_locator, decode); !decoded) {
+                tasks, transport, transport_locator, decode, staging);
+            !decoded) {
             return decoded;
         }
         first = last;
@@ -888,7 +920,7 @@ read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
                     "GPU reads do not support boolean samples yet");
     }
     auto done = execute_gpu_plan_batches(
-        plan, transport, gpu.max_decoded_bytes(), [&](auto tasks) {
+        plan, transport, gpu, [&](auto tasks) {
         return gpu.decode(plan, tasks, dst, dst_size, stream, force_host);
     });
     // A failed read releases its target; wait for earlier GPU writes first.

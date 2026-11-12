@@ -889,6 +889,9 @@ public:
 
     [[nodiscard]] std::expected<void, Error> synchronize();
     [[nodiscard]] std::size_t max_decoded_bytes() const noexcept;
+    // Host memory for compressed frames, reused by every read of this decoder
+    // and bounded by its decode budget. Empty when it cannot grow.
+    [[nodiscard]] std::span<std::byte> transfer_staging(std::size_t bytes) noexcept;
     [[nodiscard]] std::expected<void, Error>
     decode(const Plan& plan, std::span<const FrameTask> tasks,
            void* destination, std::size_t destination_bytes,

@@ -15,6 +15,10 @@ namespace rumi {
 struct GpuDecoder::Impl {
 #if RUMI_BUILD_GPU
     GeozlGpu* gpu{};
+    // Compressed frames land here across reads. Fresh buffers this large
+    // come from mmap or a trimmed heap and fault their pages on every read.
+    std::unique_ptr<std::byte[]> transfers;
+    std::size_t transfer_bytes{};
 #endif
     std::size_t max_decoded_bytes{};
 };
@@ -102,6 +106,23 @@ GpuDecoder::create(int device_type, int device, std::size_t threads,
 std::size_t GpuDecoder::max_decoded_bytes() const noexcept
 {
     return impl_ ? impl_->max_decoded_bytes : 0;
+}
+
+std::span<std::byte> GpuDecoder::transfer_staging(std::size_t bytes) noexcept
+{
+#if RUMI_BUILD_GPU
+    if (impl_->transfer_bytes < bytes) {
+        impl_->transfers.reset();
+        impl_->transfer_bytes = 0;
+        impl_->transfers.reset(new (std::nothrow) std::byte[bytes]);
+        if (!impl_->transfers) return {};
+        impl_->transfer_bytes = bytes;
+    }
+    return {impl_->transfers.get(), impl_->transfer_bytes};
+#else
+    (void) bytes;
+    return {};
+#endif
 }
 
 std::expected<void, Error> GpuDecoder::synchronize()
