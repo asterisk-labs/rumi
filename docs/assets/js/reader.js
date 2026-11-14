@@ -4,8 +4,9 @@
 // can take to cuda:0. With decode_backend="cpu", OpenZL decodes them on the CPU
 // into pinned staging and the decoded samples cross PCIe. With "auto", OpenZL
 // only captures the payload, the compressed bytes cross and the PFOR and PivCo
-// kernels expand them on the GPU. The dot is the data, and it grows where it is
-// decompressed. Recipes and frame sizes come from a real file, in annecy.js.
+// kernels expand them on the GPU. The dot is the data, it grows where it is
+// decompressed and it waits at each step as long as that step takes. Recipes
+// and frame sizes come from a real file, in annecy.js.
 
 (function (rumi) {
   'use strict';
@@ -29,10 +30,10 @@
   var RAM = { x: 268, y: 62, width: 290, height: 26 };
   var DIAGRAM = 248;     // where the memory regions start, clear of the planes
 
-  var FLY = 650;
-  var STAGGER = 110;
-  var MOVE = 380;        // between two stations
-  var HOLD = 200;        // at a station
+  var FLY = 450;
+  var STAGGER = 60;
+  var MOVE = 1.2;        // ms per unit of path between two stations
+  var PCIE = 0.0005;     // ms per byte that crosses, so the decoded samples cross slower
   var LAND = 380;
 
   var NS = 'http://www.w3.org/2000/svg';
@@ -48,17 +49,20 @@
   ];
 
   // the two routes to cuda:0; {c} is the compressed size, {d} the decoded
-  // one, and the size that crosses PCIe is the point of the figure
+  // one, and the size that crosses PCIe is the point of the figure. A station
+  // holds the dot for its share of the read, so the CPU route takes about 2.5
+  // times as long. With one host thread on an A100, a read takes 93 ms down
+  // the CPU route and 37 ms down the GPU route
   var ROUTES = {
     cpu: {
       name: 'cpu decode',
       call: [[', '], ['decode_backend', 'arg'], ['='], ['"cpu"', 'str']],
       x: 282,
       stations: [
-        { y: 124, title: 'decode on CPU', grow: true },
-        { y: 172, title: 'pinned memory' },
-        { y: 242, title: '{d}', bus: true },
-        { y: 296, title: 'place in tensor' }
+        { y: 124, title: 'decode on CPU', grow: true, hold: 1200 },
+        { y: 172, title: 'pinned memory', hold: 80 },
+        { y: 242, title: '{d}', bus: 'd' },
+        { y: 296, title: 'place in tensor', hold: 80 }
       ]
     },
     gpu: {
@@ -66,10 +70,10 @@
       call: [],
       x: 440,
       stations: [
-        { y: 124, title: 'capture payload' },
-        { y: 172, title: 'pinned memory' },
-        { y: 242, title: '{c}', bus: true },
-        { y: 296, title: 'decode on GPU', grow: true }
+        { y: 124, title: 'capture payload', hold: 80 },
+        { y: 172, title: 'pinned memory', hold: 80 },
+        { y: 242, title: '{c}', bus: 'c' },
+        { y: 296, title: 'decode on GPU', grow: true, hold: 150 }
       ]
     }
   };
@@ -429,12 +433,13 @@
       route.spec.stations.forEach(function (station) {
         var from = scale;
         if (station.grow) scale = 1.7;
-        points.push({ x: route.spec.x, y: station.y, scale: scale, from: from, hold: HOLD });
+        var hold = station.bus ? sizes[station.bus] * PCIE : station.hold;
+        points.push({ x: route.spec.x, y: station.y, scale: scale, from: from, hold: hold });
       });
       points.push({ x: route.spec.x, y: MERGE.y, scale: scale });
       points.push({ x: MERGE.x, y: MERGE.y, scale: scale });
       points.push({ x: MERGE.x, y: TENSOR.y, scale: scale });
-      var path = travel(points, MOVE / 48);
+      var path = travel(points, MOVE);
       later(function () {
         play(packet, path.frames, { duration: path.duration, fill: 'forwards' });
       }, inRam);
