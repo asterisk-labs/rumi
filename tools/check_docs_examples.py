@@ -137,8 +137,10 @@ def main() -> int:
     env = dict(os.environ)
     # GDAL builds without the system certificates, such as Julia's, need them
     # named to read the public Sentinel-2 archive over HTTPS.
-    if "CURL_CA_BUNDLE" not in env and Path("/etc/ssl/cert.pem").is_file():
-        env["CURL_CA_BUNDLE"] = "/etc/ssl/cert.pem"
+    bundles = [Path("/etc/ssl/cert.pem"), Path("/etc/ssl/certs/ca-certificates.crt")]
+    bundle = next((path for path in bundles if path.is_file()), None)
+    if "CURL_CA_BUNDLE" not in env and bundle is not None:
+        env["CURL_CA_BUNDLE"] = str(bundle)
 
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         results = list(pool.map(lambda script: run(script, args, env), todo))

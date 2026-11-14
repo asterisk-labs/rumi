@@ -433,6 +433,70 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
+  # Run every example on the docs pages with this release's wheel, R package and
+  # library, and GeoZL as the guide installs it. A failing example stops the release.
+  docs-examples:
+    name: Docs examples
+    needs: [build-lib-linux, build-wheel-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-name: docs
+          create-args: >-
+            python=3.12
+            rasterio
+            cmake
+            ninja
+            pkg-config
+            r-base=4.5
+            r-terra
+            julia=1.12
+            libcurl=8.22.0
+            openssl=3.6.4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wheel-linux-x86_64
+          path: wheelhouse/
+      # Rumi.jl finds core/build/librumi.so before it looks for an artifact.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: librumi-linux-x86_64
+          path: core/build/
+      - name: Install Python packages
+        shell: bash -el {0}
+        run: python -m pip install wheelhouse/*.whl
+      # Without the submodules, configure builds the vendored sources, as
+      # R-universe does. install.packages only warns on failure, so load each.
+      - name: Install R packages
+        shell: bash -el {0}
+        run: |
+          set -euo pipefail
+          R CMD INSTALL bindings/r
+          Rscript -e 'install.packages("geozl", repos = c(
+            "https://asterisk-labs.r-universe.dev", "https://cloud.r-project.org"))'
+          Rscript -e 'library(geozl); library(rumi); library(terra)'
+      - name: Install Julia packages
+        shell: bash -el {0}
+        run: |
+          julia --startup-file=no --project="$RUNNER_TEMP/docs-julia" -e '
+            using Pkg
+            Pkg.Registry.add("General")
+            Pkg.Registry.add(url = "https://github.com/asterisk-labs/AsteriskRegistry")
+            Pkg.develop(path = "bindings/julia")
+            Pkg.add(["ArchGDAL", "GeoZL"])
+            using ArchGDAL, GeoZL, Rumi
+          '
+      - name: Run the docs examples
+        shell: bash -el {0}
+        run: >-
+          python tools/check_docs_examples.py
+          --julia-project "$RUNNER_TEMP/docs-julia"
+
   gh-release:
     name: GitHub Release
     needs:
@@ -440,6 +504,7 @@ jobs:
       - build-lib-linux
       - build-lib-macos
       - check-wheels
+      - docs-examples
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -491,7 +556,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: [build-wheel-linux, build-wheel-macos, check-wheels]
+    needs: [build-wheel-linux, build-wheel-macos, check-wheels, docs-examples]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
