@@ -8,8 +8,8 @@ Authors@R: c(
     person("Asterisk Labs", role = "cph"))
 Author: Cesar Aybar [aut, cre], Asterisk Labs [cph]
 Maintainer: Cesar Aybar <cesar@asterisk.coop>
-Description: Reads windows, bands and time steps from Rumi Image and Cube
-    files through the native Rumi library.
+Description: Writes Rumi Image and Cube files and reads selected windows,
+    bands and time steps through the native Rumi library.
 License: GPL-3
 URL: https://github.com/asterisk-labs/rumi
 BugReports: https://github.com/asterisk-labs/rumi/issues

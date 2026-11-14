@@ -106,8 +106,8 @@ pip install rumi-eo
 npm install @asterisk-labs/rumi
 ```
 
-The R and Julia readers live in `bindings/r` and `bindings/julia`. Python, R and
-Julia can open a source with its external header. JavaScript opens the complete
+The R and Julia bindings in `bindings/r` and `bindings/julia` can write files
+and read them with an external header. JavaScript opens the complete
 `.rumi` file and reads only the required byte ranges. R and Julia use one-based
 indices and native `(X, Y, Band, Time)` arrays; Python and JavaScript use
 zero-based indices and `(Time, Band, Y, X)`.

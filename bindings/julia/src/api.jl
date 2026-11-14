@@ -17,17 +17,19 @@ function _open_source(source::AbstractString)
     return out[]
 end
 
-function _unit_name(header::_Header)
+function _unit_name(unit::Integer, bands::Integer, times::Integer)
     buffer = zeros(UInt8, 16)
     _check(ccall(
         _sym(:rumi_unit_name), Cint,
         (UInt8, UInt16, UInt32, Ptr{UInt8}, Csize_t),
-        header.frame_unit, header.samples_per_pixel, header.time_count,
-        buffer, length(buffer),
+        unit, bands, times, buffer, length(buffer),
     ))
     first_zero = something(findfirst(iszero, buffer), length(buffer) + 1)
     return String(buffer[1:first_zero-1])
 end
+
+_unit_name(header::_Header) =
+    _unit_name(header.frame_unit, header.samples_per_pixel, header.time_count)
 
 function _index_order(header::_Header)
     axes = zeros(UInt8, 2)

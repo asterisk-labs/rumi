@@ -557,11 +557,218 @@ SEXP rumi_r_read_many(SEXP pointers, SEXP windows_s, SEXP time_s,
   return out;
 }
 
+static size_t element_size(SEXP x) {
+  switch (TYPEOF(x)) {
+  case RAWSXP:
+    return 1;
+  case LGLSXP:
+  case INTSXP:
+    return sizeof(int);
+  case REALSXP:
+    return sizeof(double);
+  case CPLXSXP:
+    return sizeof(Rcomplex);
+  default:
+    Rf_error("`x` must be a raw, logical, integer, double or complex array");
+  }
+}
+
+static uint8_t *elements(SEXP x) {
+  switch (TYPEOF(x)) {
+  case RAWSXP:
+    return RAW(x);
+  case LGLSXP:
+    return (uint8_t *)LOGICAL(x);
+  case INTSXP:
+    return (uint8_t *)INTEGER(x);
+  case REALSXP:
+    return (uint8_t *)REAL(x);
+  default:
+    return (uint8_t *)COMPLEX(x);
+  }
+}
+
+// R stores the pattern's axes, and each frame's axes, in reverse order.
+SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s) {
+  size_t width = element_size(x);
+  rumi_frame_pattern p;
+  fail(rumi_compile_frame_pattern(Rf_translateCharUTF8(STRING_ELT(pattern_s, 0)),
+                                  &p));
+  SEXP dims = Rf_getAttrib(x, R_DimSymbol);
+  int ndim = Rf_isNull(dims) ? 1 : (int)XLENGTH(dims);
+  if (ndim != p.input_ndim)
+    Rf_error("the pattern names %d axes, but `x` has %d dimensions",
+             p.input_ndim, ndim);
+
+  // indexed by rumi_axis; an axis the pattern omits has extent one
+  int64_t extent[6] = {1, 1, 1, 1, 1, 1};
+  int64_t stride[6] = {0};
+  int64_t step = 1;
+  for (int i = p.input_ndim - 1; i >= 0; --i) {
+    int64_t n = INTEGER(dims)[p.input_ndim - 1 - i];
+    extent[p.input[i]] = n;
+    stride[p.input[i]] = step;
+    step *= n;
+  }
+  if (extent[RUMI_AXIS_BAND] > 65535)
+    Rf_error("`x` has %lld bands, more than the 65535 a file holds",
+             (long long)extent[RUMI_AXIS_BAND]);
+  uint16_t bands = (uint16_t)extent[RUMI_AXIS_BAND];
+  uint32_t times = (uint32_t)extent[RUMI_AXIS_TIME];
+  uint32_t length = (uint32_t)extent[RUMI_AXIS_Y];
+  uint32_t across = (uint32_t)extent[RUMI_AXIS_X];
+  uint16_t tile = (uint16_t)INTEGER(tile_s)[0];
+
+  uint8_t unit;
+  fail(rumi_frame_unit(&p, bands, times, &unit));
+  char layout[16] = {0};
+  fail(rumi_unit_name(unit, bands, times, layout, sizeof layout));
+  int held_b = strchr(layout, 'b') != NULL;
+  int held_t = strchr(layout, 't') != NULL;
+  uint64_t count;
+  fail(rumi_frame_count(unit, across, length, tile, bands, times, NULL, NULL,
+                        &count));
+  if (count > (uint64_t)R_XLEN_T_MAX)
+    Rf_error("`x` cuts into more frames than an R list holds");
+
+  const uint8_t *src = elements(x);
+  SEXP frames = PROTECT(Rf_allocVector(VECSXP, (R_xlen_t)count));
+  for (uint64_t k = 0; k < count; ++k) {
+    rumi_frame_at at;
+    fail(rumi_frame_locate(unit, across, length, tile, bands, times, k, &at));
+    // the cut is ordered as held b, held t, h, w, which perm starts from
+    int64_t cut[RUMI_MAX_AXES];
+    int n = 0;
+    if (held_b)
+      cut[n++] = stride[RUMI_AXIS_BAND];
+    if (held_t)
+      cut[n++] = stride[RUMI_AXIS_TIME];
+    cut[n++] = stride[RUMI_AXIS_Y];
+    cut[n++] = stride[RUMI_AXIS_X];
+    if (n != at.ndim)
+      Rf_error("librumi returned a frame of %d axes for layout %s", at.ndim,
+               layout);
+    int64_t base = (int64_t)at.row * tile * stride[RUMI_AXIS_Y] +
+                   (int64_t)at.col * tile * stride[RUMI_AXIS_X];
+    if (!held_b)
+      base += (int64_t)at.band * stride[RUMI_AXIS_BAND];
+    if (!held_t)
+      base += (int64_t)at.time * stride[RUMI_AXIS_TIME];
+    int64_t from[RUMI_MAX_AXES];
+    R_xlen_t samples = 1;
+    for (int d = 0; d < at.ndim; ++d) {
+      from[d] = cut[at.perm[d]];
+      samples *= (R_xlen_t)at.dims[d];
+    }
+
+    SEXP frame = PROTECT(Rf_allocVector(TYPEOF(x), samples));
+    uint8_t *dst = elements(frame);
+    int64_t index[RUMI_MAX_AXES] = {0};
+    for (R_xlen_t i = 0; i < samples; ++i) {
+      int64_t offset = base;
+      for (int d = 0; d < at.ndim; ++d)
+        offset += index[d] * from[d];
+      memcpy(dst + (size_t)i * width, src + (size_t)offset * width, width);
+      for (int d = at.ndim - 1; d >= 0; --d) {
+        if (++index[d] < at.dims[d])
+          break;
+        index[d] = 0;
+      }
+    }
+    SEXP frame_dims = PROTECT(Rf_allocVector(INTSXP, at.ndim));
+    for (int d = 0; d < at.ndim; ++d)
+      INTEGER(frame_dims)[d] = (int)at.dims[at.ndim - 1 - d];
+    Rf_setAttrib(frame, R_DimSymbol, frame_dims);
+    SET_VECTOR_ELT(frames, (R_xlen_t)k, frame);
+    UNPROTECT(2);
+  }
+
+  static const char *const out_names[] = {
+      "data", "layout", "frame_unit", "image_width", "image_length",
+      "tile_size", "bands", "time_count"};
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 8));
+  SET_VECTOR_ELT(out, 0, frames);
+  SET_VECTOR_ELT(out, 1, Rf_mkString(layout));
+  SET_VECTOR_ELT(out, 2, Rf_ScalarInteger(unit));
+  SET_VECTOR_ELT(out, 3, Rf_ScalarReal(across));
+  SET_VECTOR_ELT(out, 4, Rf_ScalarReal(length));
+  SET_VECTOR_ELT(out, 5, Rf_ScalarInteger(tile));
+  SET_VECTOR_ELT(out, 6, Rf_ScalarInteger(bands));
+  SET_VECTOR_ELT(out, 7, Rf_ScalarReal(times));
+  names(out, out_names, 8);
+  UNPROTECT(2);
+  return out;
+}
+
+static rumi_dtype dtype_named(const char *name) {
+  const rumi_dtype_info *registry = NULL;
+  size_t count = rumi_dtype_registry(&registry);
+  for (size_t i = 0; i < count; ++i)
+    if (strcmp(registry[i].name, name) == 0)
+      return (rumi_dtype)registry[i].code;
+  Rf_error("`datatype` \"%s\" is not a Rumi sample type", name);
+}
+
+SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
+                  SEXP transform_s, SEXP epsg_s, SEXP point_s, SEXP texts_s,
+                  SEXP time_type_s, SEXP time_s) {
+  size_t count = (size_t)XLENGTH(payloads_s);
+  const unsigned char **frames =
+      (const unsigned char **)R_alloc(count, sizeof(*frames));
+  size_t *sizes = (size_t *)R_alloc(count, sizeof(*sizes));
+  for (size_t i = 0; i < count; ++i) {
+    SEXP payload = VECTOR_ELT(payloads_s, (R_xlen_t)i);
+    if (TYPEOF(payload) != RAWSXP || XLENGTH(payload) == 0)
+      Rf_error("frame %zu has no payload", i + 1);
+    frames[i] = RAW(payload);
+    sizes[i] = (size_t)XLENGTH(payload);
+  }
+
+  const double *shape = REAL(shape_s);
+  rumi_write_desc desc = {0};
+  desc.image_width = (uint32_t)shape[0];
+  desc.image_length = (uint32_t)shape[1];
+  desc.time_count = (uint32_t)shape[2];
+  desc.tile_size = (uint16_t)shape[3];
+  desc.samples_per_pixel = (uint16_t)shape[4];
+  desc.frame_unit = (uint8_t)shape[5];
+  desc.dtype = dtype_named(Rf_translateCharUTF8(STRING_ELT(dtype_s, 0)));
+  desc.transform = Rf_isNull(transform_s) ? NULL : REAL(transform_s);
+  desc.epsg = Rf_isNull(epsg_s) ? 0 : (uint32_t)INTEGER(epsg_s)[0];
+  desc.pixel_is_point = LOGICAL(point_s)[0];
+
+  size_t ntexts = (size_t)XLENGTH(texts_s);
+  const char **texts = (const char **)R_alloc(ntexts, sizeof(*texts));
+  for (size_t i = 0; i < ntexts; ++i)
+    texts[i] = Rf_translateCharUTF8(STRING_ELT(texts_s, (R_xlen_t)i));
+  desc.band_texts = texts;
+  desc.band_text_count = ntexts;
+
+  size_t ncoords = (size_t)XLENGTH(time_s);
+  int64_t *seconds = (int64_t *)R_alloc(ncoords, sizeof(*seconds));
+  for (size_t i = 0; i < ncoords; ++i)
+    seconds[i] = (int64_t)REAL(time_s)[i];
+  desc.time_type = (uint8_t)INTEGER(time_type_s)[0];
+  desc.time = seconds;
+  desc.time_coords = ncoords;
+
+  unsigned char *blob = NULL;
+  size_t blob_size = 0;
+  fail(rumi_write(Rf_translateCharUTF8(STRING_ELT(path_s, 0)), &desc, frames,
+                  sizes, count, &blob, &blob_size));
+  SEXP header = Rf_allocVector(RAWSXP, (R_xlen_t)blob_size);
+  memcpy(RAW(header), blob, blob_size);
+  rumi_free(blob);
+  return header;
+}
+
 static const R_CallMethodDef calls[] = {
     {"rumi_r_open", (DL_FUNC)&rumi_r_open, 2},
     {"rumi_r_close", (DL_FUNC)&rumi_r_close, 1},
     {"rumi_r_read", (DL_FUNC)&rumi_r_read, 5},
     {"rumi_r_read_many", (DL_FUNC)&rumi_r_read_many, 5},
+    {"rumi_r_frames", (DL_FUNC)&rumi_r_frames, 3},
+    {"rumi_r_write", (DL_FUNC)&rumi_r_write, 10},
     {NULL, NULL, 0}};
 
 void attribute_visible R_init_rumi(DllInfo *dll) {
