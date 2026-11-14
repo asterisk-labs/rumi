@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" role="img" aria-labelledby="title desc">
+<title id="title">One Rumi write returns a file path and an external header</title>
+<desc id="desc">The call path, header equals rumi.write. The path identifies one self-describing .rumi file with a file header, fixed IFD, compressed frames and trailer. The separate header is returned as bytes: 32 fixed bytes and packed frame byte counts. It can be stored in a Parquet column.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9" fill="none" stroke="#7B828D" stroke-width="1.4"/></marker></defs>
+<style>
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif}
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace}
+.ink{fill:#1A1A1A}.dim{fill:#667085}.violet{fill:#4E04EB}
+.rule{stroke:#E5E7EB;stroke-width:1}
+</style>
+<rect width="1000" height="430" fill="#FFFFFF"/>
+
+<text class="mono ink" x="105" y="65" font-size="20">path, header = rumi.write("scene.rumi", frames, ...)</text>
+<path d="M105 80h612" fill="none" stroke="#4E04EB" stroke-width="1.7"/>
+<path d="M500 92v48H315v38" fill="none" stroke="#7B828D" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M500 140h250v38" fill="none" stroke="#7B828D" stroke-width="1.8" marker-end="url(#arrow)"/>
+
+<!-- The physical file is one object. -->
+<text class="mono dim" x="96" y="203" font-size="13">PATH → WRITTEN FILE</text>
+<text class="sans ink" x="96" y="237" font-size="27" font-weight="700">scene.rumi</text>
+<rect x="96" y="256" width="448" height="76" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="1.4"/>
+<path d="M160 256v76M238 256v76M471 256v76" stroke="#C8CDD5" stroke-width="1"/>
+<path d="M284 315v17M330 315v17M376 315v17M422 315v17" stroke="#E5E7EB" stroke-width="1"/>
+<text class="mono ink" x="128" y="289" font-size="12" text-anchor="middle">16 B</text>
+<text class="mono dim" x="128" y="309" font-size="11" text-anchor="middle">file hdr</text>
+<text class="mono ink" x="199" y="300" font-size="14" text-anchor="middle">fixed IFD</text>
+<text class="mono ink" x="354" y="300" font-size="15" text-anchor="middle">compressed frames</text>
+<text class="mono ink" x="507" y="300" font-size="13" text-anchor="middle">trailer</text>
+<text class="mono dim" x="96" y="358" font-size="14">one self-describing object</text>
+
+<!-- The external header is a small returned blob, not a second file. -->
+<text class="mono violet" x="624" y="203" font-size="13">HEADER → RETURNED BYTES</text>
+<text class="sans ink" x="624" y="237" font-size="27" font-weight="700">external header</text>
+<rect x="624" y="256" width="254" height="58" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.5"/>
+<path d="M750 256v58" stroke="#C4B5FD" stroke-width="1"/>
+<text class="mono violet" x="687" y="290" font-size="13" text-anchor="middle">32 B fields</text>
+<text class="mono violet" x="814" y="290" font-size="13" text-anchor="middle">packed counts</text>
+<text class="mono dim" x="624" y="340" font-size="14">external to the .rumi file</text>
+<text class="mono dim" x="624" y="361" font-size="14">e.g. a Parquet column</text>
+</svg>

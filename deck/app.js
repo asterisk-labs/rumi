@@ -3,50 +3,19 @@
 
   var deck = document.getElementById('deck');
   var bar = document.getElementById('progress');
-  var num = document.getElementById('slide-num');
-  var btnP = document.getElementById('btn-prev');
-  var btnN = document.getElementById('btn-next');
-  var cfg = window.DECK || {};
   var slides = [];
   var cur = 0;
   var rendered = false;
-
-  function dataImg(name) {
-    return '<img data-src="' + name + '" alt="">';
-  }
-
-  function buildCover() {
-    var logo = cfg.brand_logo || 'asterisk_banner.svg';
-    var projectLogo = cfg.project_logo || 'rumi-lockup-tight.svg';
-
-    var html =
-      '<section class="slide cover-project">' +
-        '<div class="cover-content">' +
-          '<div class="project-logo">' + dataImg(projectLogo) + '</div>' +
-        '</div>' +
-        '<div class="powered-by">' + dataImg(logo) + '</div>' +
-      '</section>';
-
-    document.getElementById('cover-slot').innerHTML = html;
-  }
-
-  function resolveImages() {
-    var base = cfg.assetBase || '../img/';
-    Array.prototype.forEach.call(document.querySelectorAll('img[data-src]'), function (el) {
-      el.src = base + el.getAttribute('data-src');
-    });
-  }
 
   function render(i) {
     cur = Math.max(0, Math.min(i, slides.length - 1));
 
     slides.forEach(function (s, idx) {
       s.classList.toggle('active', idx === cur);
+      s.setAttribute('aria-hidden', idx === cur ? 'false' : 'true');
+      s.inert = idx !== cur;
     });
 
-    if (num) num.textContent = (cur + 1) + ' / ' + slides.length;
-    if (btnP) btnP.disabled = cur === 0;
-    if (btnN) btnN.disabled = cur === slides.length - 1;
     if (bar) bar.style.width = ((cur + 1) / slides.length * 100) + '%';
   }
 
@@ -102,9 +71,6 @@
     }
   });
 
-  if (btnP) btnP.addEventListener('click', prev);
-  if (btnN) btnN.addEventListener('click', next);
-
   var touchX = 0;
 
   if (deck) {
@@ -133,11 +99,9 @@
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
 
-  buildCover();
-  resolveImages();
-
   slides = Array.prototype.slice.call(deck.querySelectorAll('.slide'));
 
-  goTo(0);
+  var requested = Number(new URLSearchParams(window.location.search).get('slide'));
+  goTo(Number.isInteger(requested) && requested > 0 ? requested - 1 : 0);
   resize();
 })();

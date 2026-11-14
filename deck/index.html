@@ -1,192 +1,74 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rumi — Stateless raster storage for AI4EO</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="GeoTIFF and Rumi storage contracts, then Rumi's CPU and GPU read paths.">
+  <title>Rumi · format and read path</title>
   <link rel="icon" href="../img/rumi-logo.svg">
-  <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=League+Spartan:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
   <script defer src="app.js"></script>
 </head>
 <body>
   <div class="progress" id="progress"></div>
+  <a class="site-back" href="../" aria-label="Back to the Rumi website">←</a>
 
-  <a class="site-back" href="../" aria-label="Back to the rumi website">
-    <span aria-hidden="true">&#8592;</span> rumi
-  </a>
+  <main class="deck" id="deck" aria-label="GeoTIFF, Rumi, and the read path">
+    <section class="slide cover active" aria-label="Rumi cover">
+      <img class="cover-asterisk" src="../img/asterisk_banner.svg" alt="Asterisk Labs">
+      <div class="cover-inner">
+        <img class="cover-logo" src="../img/rumi-logo.svg" alt="">
+        <div class="cover-copy">
+          <h1>rumi</h1>
+          <p>Stateless raster storage for AI4EO</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide intro" aria-label="GeoTIFF and Rumi file layouts">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 07</span></header>
+      <h1>GeoTIFF permits many layouts</h1>
+      <figure><img src="../img/problem-rumi-geotiff-flavours.svg?v=20261114" alt="A diagram of GeoTIFF's valid tile, interleave and compression arrangements."></figure>
+    </section>
+
+    <section class="slide intro" aria-label="Rumi file profile">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 07</span></header>
+      <h1>Rumi permits one container profile</h1>
+      <figure><img src="../img/approach-rumi-one-layout.svg?v=20261114" alt="One fixed Rumi container profile. Ten frame units choose tile or cell sample layout without changing the file structure."></figure>
+    </section>
+
+    <section class="slide intro" aria-label="Rumi write outputs">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 07</span></header>
+      <h1>rumi.write() → file + external header</h1>
+      <figure><img src="fig/write.svg?v=20261114c" alt="The call path, header equals rumi.write with compressed frames. It writes one scene.rumi file containing a file header, IFD, frames and trailer. Separately it returns external header bytes with 32 fixed bytes and packed frame counts, which can be stored in a Parquet column."></figure>
+    </section>
+
+    <section class="slide intro" aria-label="Stateless reads with a Parquet catalog">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 07</span></header>
+      <h1>A loader caches Parquet, then reads S3</h1>
+      <figure><img src="../img/approach-rumi-stateless.svg?v=20261114" alt="A data loader caches a Parquet catalog with URI and EXTERNAL HEADER columns. One row selects a Rumi object among several in Amazon S3. The window, band and time choose frame k; a prefix sum over header sizes gives its offset for a range GET."></figure>
+    </section>
+
+    <section class="slide" aria-label="Roles of Rumi, Karu and OpenZL">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 07</span></header>
+      <h1>Rumi → Karu → OpenZL → Rumi</h1>
+      <figure><img src="fig/libraries.svg?v=20261114f" alt="Rumi plans a read from the header and selection. Karu returns compressed frame bytes. OpenZL with GeoZL nodes returns decompressed bytes. The flow returns to Rumi, which crops and places the selected samples in the result tensor."></figure>
+    </section>
+
+    <section class="slide" aria-label="CPU and GPU decode paths">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 07</span></header>
+      <h1>CPU vs GPU decode · one tensor</h1>
+      <figure><img src="fig/modes.svg?v=20261114e" alt="Four selected Sentinel-2 frames enter RAM. CPU decode expands them before decoded samples cross PCIe; eligible GPU decode sends compressed bytes across PCIe and expands them there. Both paths return the same CUDA tensor through DLPack. GPU decode in auto mode needs single-chunk PFOR or PivCo frames with one- or two-byte samples."></figure>
+    </section>
+
+  </main>
 
   <script>
-    if (new URLSearchParams(window.location.search).has("embed")) {
-      document.documentElement.classList.add("is-embedded");
-    }
-
-    window.DECK = {
-      assetBase: "../img/",
-      project_logo: "rumi-white.svg",
-      brand_logo: "asterisk_banner.svg"
-    };
+    if (new URLSearchParams(window.location.search).has('embed')) document.documentElement.classList.add('is-embedded');
   </script>
-
-  <div class="deck" id="deck">
-    <div id="cover-slot"></div>
-
-    <!-- 01 — THE PROBLEM -->
-    <section class="slide" data-layout="section">
-      <div class="section-kicker">01</div>
-      <h1>The problem</h1>
-      <p class="section-subtitle">
-        GeoTIFF permits many layouts and records an offset and size for every tile.
-      </p>
-      <div class="section-bar"><span></span><span></span><span></span></div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>GeoTIFF permits many storage layouts</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="problem-rumi-geotiff-flavours.svg" alt="GeoTIFF creation options permit many storage layouts.">
-      </div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Every tile needs an offset and a size</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="problem-rumi-metadata-tax.svg" alt="Per-file indexes grow to gigabytes across one million files.">
-      </div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Each codec is a separate integration</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="problem-rumi-codecs-monolith.svg" alt="DEFLATE, Zstandard, and Brotli use separate codec integrations.">
-      </div>
-    </section>
-
-    <!-- 02 — THE APPROACH -->
-    <section class="slide" data-layout="section">
-      <div class="section-kicker">02</div>
-      <h1>The approach</h1>
-      <p class="section-subtitle">
-        Fixed container. Direct frame access.
-      </p>
-      <div class="section-bar"><span></span><span></span><span></span></div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>One container profile, two frame units</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="approach-rumi-one-layout.svg" alt="Rumi defines one container profile with tile and cell frame layouts.">
-      </div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>The index is a prefix sum</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="approach-rumi-index.svg" alt="Rumi stores packed frame sizes and derives offsets by prefix sum.">
-      </div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Gigabytes of index become megabytes</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="approach-rumi-metadata-tax.svg" alt="Rumi uses at most 288 bytes of index for 64 frames.">
-      </div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Compression is a graph, not a monolith</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="approach-rumi-openzl.svg" alt="Each OpenZL frame stores the compression graph used to decode it.">
-      </div>
-    </section>
-
-    <!-- 03 — BENCHMARK -->
-    <section class="slide" data-layout="section">
-      <div class="section-kicker">03</div>
-      <h1>Benchmark</h1>
-      <p class="section-subtitle">
-        One Sentinel-2 band, with ratio, write time, and read throughput measured together.
-      </p>
-      <div class="section-bar"><span></span><span></span><span></span></div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Benchmark I</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="approach-rumi-benchmark.svg" alt="Compression ratio, write time, and read throughput on one Sentinel-2 band.">
-      </div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Benchmark II</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container compact-figure">
-        <img data-src="approach-rumi-results-table.svg" alt="Measured compression results for JPEG2000, OpenZL, Zstandard, and DEFLATE.">
-      </div>
-      <a class="fig-link" href="https://colab.research.google.com/drive/1wK6qybf5cogi4z842Mja2oeB8PR60LPz?usp=sharing" target="_blank" rel="noopener">
-        reproduce every number on Google Colab
-      </a>
-    </section>
-
-    <!-- 04 — THE DATA MODEL -->
-    <section class="slide" data-layout="section">
-      <div class="section-kicker">04</div>
-      <h1>The data model</h1>
-      <p class="section-subtitle">
-        Rumi covers raster storage within the khipu data model.
-      </p>
-      <div class="section-bar"><span></span><span></span><span></span></div>
-    </section>
-
-    <section class="slide" data-layout="figure">
-      <div class="slide-header">
-        <h2>Rumi is part of the khipu data model</h2>
-        <img class="brand-mark" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-      <div class="fig-container">
-        <img data-src="approach-khipu-data-model.svg" alt="Rumi stores Images and Cubes; Rumikuna groups them into collections.">
-      </div>
-    </section>
-
-    <!-- CLOSING -->
-    <section class="slide closing" data-layout="figure">
-      <div class="closing-inner">
-        <img class="closing-logo" data-src="asterisk_banner.svg" alt="Asterisk">
-      </div>
-    </section>
-  </div>
-
-  <div class="nav">
-    <button id="btn-prev" aria-label="Previous slide">&#8592;</button>
-    <span id="slide-num"></span>
-    <button id="btn-next" aria-label="Next slide">&#8594;</button>
-  </div>
 </body>
 </html>

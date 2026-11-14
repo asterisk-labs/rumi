@@ -63,8 +63,8 @@
 <circle cx="470" cy="410" r="4" fill="#F8CE00" stroke="#1A1A1A" stroke-width="0.5"/>
 <circle cx="470" cy="425" r="4" fill="#F8CE00" stroke="#1A1A1A" stroke-width="0.5"/>
 <text class="sans" x="60" y="284" text-anchor="middle" font-size="12" fill="#6B7280">one array</text>
-<text class="mono" x="250" y="40" text-anchor="middle" font-size="13" fill="#1A1A1A">COMPRESS <tspan fill="#4E04EB">&#215;7</tspan></text>
-<text class="mono" x="470" y="40" text-anchor="middle" font-size="13" fill="#1A1A1A">INTERLEAVE <tspan fill="#CC9A00">&#215;3</tspan></text>
+<text class="mono" x="250" y="40" text-anchor="middle" font-size="13" fill="#1A1A1A">CODEC OPTIONS</text>
+<text class="mono" x="470" y="40" text-anchor="middle" font-size="13" fill="#1A1A1A">INTERLEAVE</text>
 <text class="mono" x="640" y="30" text-anchor="middle" font-size="10.5" fill="#9CA3AF">PREDICTOR &#183; BIGTIFF &#183; OVERVIEWS</text>
 <text class="mono" x="640" y="46" text-anchor="middle" font-size="10.5" fill="#9CA3AF">BLOCKSIZE &#183; SPARSE</text>
 <line x1="815" y1="110" x2="815" y2="410" stroke="#CBD5E1" stroke-width="1.5"/>

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" role="img" aria-labelledby="title desc">
+<title id="title">Rumi plans, Karu fetches, OpenZL decodes, and Rumi places</title>
+<desc id="desc">The read returns to Rumi. Rumi turns a header and selection into a FrameTask plan. Karu uses its range fields to return compressed frame bytes. OpenZL, with GeoZL raster codec nodes, returns decompressed numeric bytes. Rumi uses the plan's destination and crop to place selected samples in the result tensor.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9" fill="none" stroke="#667085" stroke-width="1.4"/></marker></defs>
+<style>
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif}
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace}
+.ink{fill:#1A1A1A}.dim{fill:#667085}.violet{fill:#4E04EB}.orange{fill:#FE6B37}.green{fill:#16A34A}
+.rule{stroke:#E5E7EB;stroke-width:1}.arrow{fill:none;stroke:#667085;stroke-width:1.8;marker-end:url(#arrow)}
+</style>
+<rect width="1000" height="430" fill="#FFFFFF"/>
+<text class="mono dim" x="345" y="24" font-size="12">INPUT</text>
+<text class="mono dim" x="675" y="24" font-size="12">OUTPUT</text>
+<line class="rule" x1="54" y1="36" x2="946" y2="36"/>
+
+<!-- 1. Rumi returns the read plan. -->
+<line x1="58" y1="48" x2="58" y2="116" stroke="#4E04EB" stroke-width="4"/>
+<text class="sans ink" x="78" y="77" font-size="27" font-weight="700">Rumi</text>
+<text class="mono violet" x="245" y="75" font-size="13" font-weight="700">PLAN</text>
+<text class="mono dim" x="78" y="101" font-size="13">raster reader</text>
+<text class="mono violet" x="345" y="55" font-size="12">HEADER + SELECTION</text>
+<rect x="345" y="65" width="53" height="44" fill="#FFFFFF" stroke="#B8C2D0" stroke-width="1.2"/>
+<path d="M362.7 65v44M380.3 65v44M345 87h53" stroke="#D7DFE9" stroke-width="1"/>
+<rect x="363" y="88" width="17" height="20" fill="#F8CE00" stroke="#FE6B37" stroke-width="1"/>
+<text class="mono ink" x="414" y="85" font-size="14">window · bands</text>
+<text class="mono ink" x="414" y="105" font-size="14">time · pattern</text>
+<path d="M594 83h53" class="arrow"/>
+<text class="mono violet" x="675" y="55" font-size="12">READ PLAN</text>
+<text class="sans ink" x="675" y="81" font-size="21" font-weight="700">FrameTask[]</text>
+<text class="mono ink" x="675" y="105" font-size="13">source · offset · size · dst</text>
+<line class="rule" x1="54" y1="127" x2="946" y2="127"/>
+
+<!-- 2. Karu returns compressed bytes. -->
+<line x1="58" y1="139" x2="58" y2="207" stroke="#FE6B37" stroke-width="4"/>
+<text class="sans ink" x="78" y="168" font-size="27" font-weight="700">Karu</text>
+<text class="mono orange" x="245" y="166" font-size="13" font-weight="700">FETCH</text>
+<text class="mono dim" x="78" y="192" font-size="13">byte-range transport</text>
+<text class="mono orange" x="345" y="146" font-size="12">FROM READ PLAN</text>
+<text class="mono ink" x="345" y="178" font-size="14">locator · offset · length</text>
+<path d="M594 174h53" class="arrow"/>
+<text class="mono orange" x="675" y="146" font-size="12">COMPRESSED BYTES</text>
+<g transform="translate(675 158)">
+  <rect width="198" height="35" fill="#FFFFFF" stroke="#FE6B37" stroke-width="1.4"/>
+  <path d="M39.6 0v35M79.2 0v35M118.8 0v35M158.4 0v35" stroke="#F5B79E" stroke-width="1"/>
+  <text class="mono ink" x="19" y="23" font-size="13" text-anchor="middle">9f</text><text class="mono ink" x="59" y="23" font-size="13" text-anchor="middle">2a</text><text class="mono ink" x="99" y="23" font-size="13" text-anchor="middle">03</text><text class="mono ink" x="139" y="23" font-size="13" text-anchor="middle">7e</text><text class="mono dim" x="178" y="23" font-size="16" text-anchor="middle">…</text>
+</g>
+<line class="rule" x1="54" y1="218" x2="946" y2="218"/>
+
+<!-- 3. OpenZL returns decoded numeric bytes. -->
+<line x1="58" y1="230" x2="58" y2="298" stroke="#16A34A" stroke-width="4"/>
+<text class="sans ink" x="78" y="259" font-size="27" font-weight="700">OpenZL</text>
+<text class="mono green" x="245" y="257" font-size="13" font-weight="700">DECODE</text>
+<text class="mono dim" x="78" y="283" font-size="13">GeoZL raster nodes</text>
+<text class="mono orange" x="345" y="237" font-size="12">COMPRESSED FRAME</text>
+<g transform="translate(345 249)">
+  <rect width="198" height="35" fill="#FFFFFF" stroke="#FE6B37" stroke-width="1.4"/>
+  <path d="M39.6 0v35M79.2 0v35M118.8 0v35M158.4 0v35" stroke="#F5B79E" stroke-width="1"/>
+  <text class="mono ink" x="19" y="23" font-size="13" text-anchor="middle">9f</text><text class="mono ink" x="59" y="23" font-size="13" text-anchor="middle">2a</text><text class="mono ink" x="99" y="23" font-size="13" text-anchor="middle">03</text><text class="mono ink" x="139" y="23" font-size="13" text-anchor="middle">7e</text><text class="mono dim" x="178" y="23" font-size="16" text-anchor="middle">…</text>
+</g>
+<path d="M594 265h53" class="arrow"/>
+<text class="mono green" x="675" y="237" font-size="12">DECOMPRESSED BYTES</text>
+<g transform="translate(675 249)">
+  <rect width="198" height="44" fill="#FFFFFF" stroke="#16A34A" stroke-width="1.4"/>
+  <path d="M49.5 0v44M99 0v44M148.5 0v44M0 22h198" stroke="#B4DCC0" stroke-width="1"/>
+  <text class="mono ink" x="25" y="16" font-size="12" text-anchor="middle">12</text><text class="mono ink" x="74" y="16" font-size="12" text-anchor="middle">15</text><text class="mono ink" x="124" y="16" font-size="12" text-anchor="middle">21</text><text class="mono ink" x="173" y="16" font-size="12" text-anchor="middle">24</text>
+  <text class="mono ink" x="25" y="38" font-size="12" text-anchor="middle">13</text><text class="mono ink" x="74" y="38" font-size="12" text-anchor="middle">16</text><text class="mono ink" x="124" y="38" font-size="12" text-anchor="middle">22</text><text class="mono ink" x="173" y="38" font-size="12" text-anchor="middle">25</text>
+</g>
+<line class="rule" x1="54" y1="309" x2="946" y2="309"/>
+
+<!-- 4. Rumi receives the decoded bytes and returns the tensor. -->
+<line x1="58" y1="321" x2="58" y2="417" stroke="#4E04EB" stroke-width="4"/>
+<text class="sans ink" x="78" y="350" font-size="27" font-weight="700">Rumi</text>
+<text class="mono violet" x="245" y="348" font-size="13" font-weight="700">PLACE</text>
+<text class="mono dim" x="78" y="375" font-size="13">crop + output layout</text>
+<text class="mono green" x="345" y="327" font-size="12">DECODED BYTES + PLAN DST</text>
+<g transform="translate(345 341)">
+  <rect width="100" height="50" fill="#FFFFFF" stroke="#16A34A" stroke-width="1.3"/>
+  <path d="M25 0v50M50 0v50M75 0v50M0 25h100" stroke="#B4DCC0" stroke-width="1"/>
+  <rect x="26" y="1" width="24" height="24" fill="#FFF0B3"/><rect x="51" y="1" width="24" height="24" fill="#FFF0B3"/>
+  <rect x="26" y="26" width="24" height="23" fill="#FFF0B3"/><rect x="51" y="26" width="24" height="23" fill="#FFF0B3"/>
+</g>
+<text class="mono ink" x="462" y="370" font-size="13">crop · dst</text>
+<path d="M594 366h53" class="arrow"/>
+<text class="mono violet" x="675" y="327" font-size="12">RESULT TENSOR</text>
+<g transform="translate(675 341)">
+  <rect width="100" height="50" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.5"/>
+  <path d="M50 0v50M0 25h100" stroke="#D6C8FA" stroke-width="1"/>
+  <text class="mono ink" x="25" y="18" font-size="12" text-anchor="middle">15</text><text class="mono ink" x="75" y="18" font-size="12" text-anchor="middle">21</text><text class="mono ink" x="25" y="43" font-size="12" text-anchor="middle">16</text><text class="mono ink" x="75" y="43" font-size="12" text-anchor="middle">22</text>
+</g>
+<text class="mono dim" x="794" y="370" font-size="13">framework tensor</text>
+</svg>

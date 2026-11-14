@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" role="img" aria-labelledby="title desc">
+<title id="title">A loader caches a Parquet catalog and reads one of many Rumi files in Amazon S3</title>
+<desc id="desc">A data loader caches a Parquet catalog with URI and EXTERNAL HEADER columns. One selected row identifies one Rumi object among many in Amazon S3, and its header gives the byte range for a range GET.</desc>
+<!-- Apache Parquet mark: https://github.com/apache/parquet-format/blob/master/logo/parquet-logos_3.svg (Apache-2.0). -->
+<!-- Amazon S3 icon: AWS Architecture Icons Q3 2026, https://aws.amazon.com/architecture/icons/. -->
+<style>
+.sans{font-family:'League Spartan','Futura','Century Gothic',system-ui,sans-serif}
+.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace}
+.ink{fill:#1A1A1A}.dim{fill:#6B7280}.violet{fill:#4E04EB}
+.rule{stroke:#E5E7EB;stroke-width:1}
+</style>
+<rect width="1000" height="430" fill="#FFFFFF"/>
+<g transform="translate(100 8) scale(0.80)">
+
+<!-- loader -->
+<circle cx="115" cy="137" r="24" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="2.5"/>
+<path d="M66 272v-53c0-27 22-49 49-49s49 22 49 49v53" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="2.5"/>
+<rect x="105" y="207" width="135" height="74" rx="5" fill="#FFFFFF" stroke="#4E04EB" stroke-width="2"/>
+<path d="M92 286h162" stroke="#4E04EB" stroke-width="3" stroke-linecap="round"/>
+<text class="mono" x="172" y="242" font-size="17" fill="#55ACEE" text-anchor="middle">Parquet</text>
+<text class="mono" x="172" y="263" font-size="12" fill="#55ACEE" text-anchor="middle">cached</text>
+<text class="sans ink" x="102" y="326" font-size="20" font-weight="700">data loader</text>
+<path d="M247 223h36" fill="none" stroke="#55ACEE" stroke-width="2"/>
+<path d="M242 223l8-5v10z" fill="#55ACEE"/>
+<text class="mono" x="265" y="205" font-size="12" fill="#55ACEE" text-anchor="middle">cache</text>
+
+<!-- official Apache Parquet mark -->
+<g transform="translate(282 29) scale(0.105)" fill="#55ACEE"><path d="M 410.308594 405.207031 L 322.476562 468.148438 L 364.417969 510.988281 L 453.078125 441.8125 L 410.308594 405.207031 M 641.769531 239.320312 L 426.347656 393.710938 L 469.195312 429.230469 L 683.628906 261.964844 L 641.769531 239.320312 M 524.183594 254.238281 L 272.402344 417.046875 L 309.363281 454.78125 L 562.71875 277.996094 L 524.183594 254.238281 M 590.300781 211.488281 L 535.859375 246.691406 L 574.347656 269.882812 L 628.453125 232.125 L 590.300781 211.488281 M 558.09375 382.554688 L 379.339844 526.21875 L 427.367188 575.226562 L 606.21875 417.046875 L 558.09375 382.554688 M 698.269531 269.882812 L 571.59375 371.703125 L 619.609375 405.207031 L 744.40625 294.828125 L 698.269531 269.882812 M 400.871094 269.882812 L 227.988281 371.703125 L 260.820312 405.226562 L 435.691406 294.828125 L 400.871094 269.882812 M 760.566406 303.582031 L 444.519531 592.761719 L 500 649.402344 L 811.664062 331.21875 L 760.566406 303.582031 M 543.230469 186.023438 L 414.316406 261.964844 L 449.207031 286.300781 L 578.152344 204.90625 L 543.230469 186.023438 M 500 162.640625 L 532.082031 180 L 217.667969 361.164062 L 188.335938 331.21875 Z M 500 162.640625 "/></g>
+<text class="sans ink" x="378" y="80" font-size="24" font-weight="700">Apache Parquet</text>
+<text class="mono dim" x="303" y="123" font-size="13">catalog.parquet</text>
+
+<!-- catalog table -->
+<rect x="291" y="139" width="325" height="194" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+<line class="rule" x1="291" y1="179" x2="616" y2="179"/>
+<line class="rule" x1="291" y1="235" x2="616" y2="235"/>
+<line class="rule" x1="291" y1="291" x2="616" y2="291"/>
+<line class="rule" x1="445" y1="139" x2="445" y2="333"/>
+<rect x="292" y="180" width="323" height="54" fill="#F9F8FF"/>
+<text class="mono ink" x="308" y="166" font-size="13" font-weight="700">URI</text>
+<text class="mono violet" x="461" y="166" font-size="13" font-weight="700">EXTERNAL HEADER</text>
+<text class="mono ink" x="308" y="211" font-size="12">s3://lake/a.rumi</text>
+<rect x="460" y="192" width="134" height="29" rx="3" fill="#FFFFFF" stroke="#4E04EB" stroke-width="1.4"/>
+<text class="mono violet" x="527" y="211" font-size="12" text-anchor="middle">32 B + counts</text>
+<text class="mono dim" x="308" y="268" font-size="12">s3://lake/b.rumi</text>
+<text class="mono dim" x="461" y="268" font-size="12">header bytes</text>
+<text class="sans dim" x="308" y="321" font-size="22">⋮</text>
+<text class="sans dim" x="461" y="321" font-size="22">⋮</text>
+
+<!-- official Amazon S3 service icon -->
+<g transform="translate(719 32) scale(0.72)"><rect width="80" height="80" fill="#7AA116"/><g transform="translate(12.999900 11.999600)" fill="#FFFFFF"><path d="M47.836,30.893 L48.22,28.189 C51.761,30.31 51.807,31.186 51.8060132,31.21 C51.8,31.215 51.196,31.719 47.836,30.893 L47.836,30.893 Z M45.893,30.353 C39.773,28.501 31.25,24.591 27.801,22.961 C27.801,22.947 27.805,22.934 27.805,22.92 C27.805,21.595 26.727,20.517 25.401,20.517 C24.077,20.517 22.999,21.595 22.999,22.92 C22.999,24.245 24.077,25.323 25.401,25.323 C25.983,25.323 26.511,25.106 26.928,24.761 C30.986,26.682 39.443,30.535 45.608,32.355 L43.17,49.561 C43.163,49.608 43.16,49.655 43.16,49.702 C43.16,51.217 36.453,54 25.494,54 C14.419,54 7.641,51.217 7.641,49.702 C7.641,49.656 7.638,49.611 7.632,49.566 L2.538,12.359 C6.947,15.394 16.43,17 25.5,17 C34.556,17 44.023,15.4 48.441,12.374 L45.893,30.353 Z M2,8.478 C2.072,7.162 9.634,2 25.5,2 C41.364,2 48.927,7.161 49,8.478 L49,8.927 C48.13,11.878 38.33,15 25.5,15 C12.648,15 2.843,11.868 2,8.913 L2,8.478 Z M51,8.5 C51,5.035 41.066,0 25.5,0 C9.934,0 0,5.035 0,8.5 L0.094,9.254 L5.642,49.778 C5.775,54.31 17.861,56 25.494,56 C34.966,56 45.029,53.822 45.159,49.781 L47.555,32.884 C48.888,33.203 49.985,33.366 50.866,33.366 C52.049,33.366 52.849,33.077 53.334,32.499 C53.732,32.025 53.884,31.451 53.77,30.84 C53.511,29.456 51.868,27.964 48.522,26.055 L50.898,9.293 L51,8.5 Z"/></g></g>
+<text class="sans ink" x="798" y="78" font-size="24" font-weight="700">Amazon S3</text>
+<text class="mono dim" x="704" y="120" font-size="12">Rumi objects in the lake</text>
+
+<!-- selected object and five neighbors -->
+<path d="M705 152h35l10 10v58h-45zM740 152v10h10" fill="#FFFFFF" stroke="#4E04EB" stroke-width="2" stroke-linejoin="round"/>
+<rect x="712" y="184" width="10" height="20" fill="#4E04EB"/>
+<rect x="724" y="184" width="9" height="20" fill="#E5E7EB"/>
+<rect x="735" y="184" width="8" height="20" fill="#E5E7EB"/>
+<text class="mono violet" x="727" y="240" font-size="12" text-anchor="middle">a.rumi</text>
+
+<path d="M797 152h35l10 10v58h-45zM832 152v10h10" fill="#FFFFFF" stroke="#AEB6C2" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M804 189h28M804 198h22" stroke="#CBD5E1" stroke-width="1.4"/>
+<text class="mono dim" x="819" y="240" font-size="12" text-anchor="middle">b.rumi</text>
+
+<path d="M889 152h35l10 10v58h-45zM924 152v10h10" fill="#FFFFFF" stroke="#AEB6C2" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M896 189h28M896 198h22" stroke="#CBD5E1" stroke-width="1.4"/>
+<text class="mono dim" x="911" y="240" font-size="12" text-anchor="middle">c.rumi</text>
+
+<path d="M705 267h35l10 10v58h-45zM740 267v10h10" fill="#FFFFFF" stroke="#AEB6C2" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M712 304h28M712 313h22" stroke="#CBD5E1" stroke-width="1.4"/>
+<text class="mono dim" x="727" y="354" font-size="12" text-anchor="middle">d.rumi</text>
+
+<path d="M797 267h35l10 10v58h-45zM832 267v10h10" fill="#FFFFFF" stroke="#AEB6C2" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M804 304h28M804 313h22" stroke="#CBD5E1" stroke-width="1.4"/>
+<text class="mono dim" x="819" y="354" font-size="12" text-anchor="middle">e.rumi</text>
+
+<path d="M889 267h35l10 10v58h-45zM924 267v10h10" fill="#FFFFFF" stroke="#AEB6C2" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M896 304h28M896 313h22" stroke="#CBD5E1" stroke-width="1.4"/>
+<text class="mono dim" x="911" y="354" font-size="12" text-anchor="middle">f.rumi</text>
+
+<!-- one row targets one object -->
+<path d="M616 205h80" fill="none" stroke="#4E04EB" stroke-width="2"/>
+<path d="M702 205l-8-5v10z" fill="#4E04EB"/>
+<text class="mono violet" x="657" y="191" font-size="12" text-anchor="middle">range GET</text>
+</g>
+<line x1="72" y1="325" x2="928" y2="325" stroke="#E5E7EB" stroke-width="1"/>
+<text class="mono dim" x="86" y="351" font-size="12">SELECT</text>
+<text class="mono ink" x="86" y="382" font-size="16">window, band, time → k</text>
+<text class="mono dim" x="382" y="351" font-size="12">LOCATE</text>
+<text class="mono ink" x="382" y="382" font-size="16">offset[k] = base + Σ size[0:k]</text>
+<text class="mono dim" x="702" y="351" font-size="12">FETCH</text>
+<text class="mono ink" x="702" y="382" font-size="16">GET range(offset[k], size[k])</text>
+</svg>
