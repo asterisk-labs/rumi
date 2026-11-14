@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="GeoZL planar prediction mark">
+  <rect x="18" y="18" width="44" height="44" fill="#7457FF" stroke="#16151C" stroke-width="4"/>
+  <rect x="118" y="18" width="44" height="44" fill="#91F2BC" stroke="#16151C" stroke-width="4"/>
+  <rect x="18" y="118" width="44" height="44" fill="#FFD54A" stroke="#16151C" stroke-width="4"/>
+  <rect x="118" y="118" width="44" height="44" fill="#FF7A4F" stroke="#16151C" stroke-width="4"/>
+  <path d="M140 68v42M68 140h42M68 68l42 42" fill="none" stroke="#16151C" stroke-width="4" stroke-linecap="round"/>
+</svg>

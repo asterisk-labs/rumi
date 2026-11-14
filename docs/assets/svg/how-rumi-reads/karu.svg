@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="310" viewBox="0 0 760 310" role="img" aria-labelledby="karu-title karu-desc">
+<title id="karu-title">Memory, local, and remote routes through Rumi and Karu</title>
+<desc id="karu-desc">Memory tasks are copied by MemorySource. Local path tasks are fetched positionally through Karu inside Rumi workers. Remote tasks are submitted together to Karu and returned as tagged completions. All routes become ready frame tasks.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+</style>
+<defs><marker id="arrow-karu" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<g class="figure-card accent"><rect x="18" y="112" width="116" height="60" rx="6"/><text x="76" y="136">FrameTask[]</text><text class="sub" x="76" y="155">execute_plan()</text></g>
+
+<text class="figure-stage" x="164" y="22">MEMORY OR LOCAL PATH</text>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M134 142H150V64H166"/>
+<g class="figure-card"><rect x="170" y="36" width="142" height="58" rx="6"/><text x="241" y="59">local_tasks[]</text><text class="sub" x="241" y="78">decode_tasks()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M312 65H326"/>
+<g class="figure-card"><rect x="330" y="36" width="170" height="58" rx="6"/><text x="415" y="59">execute_task()</text><text class="sub" x="415" y="78">calls Source::read()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M500 65H514"/>
+<g class="figure-card accent"><rect x="518" y="28" width="220" height="74" rx="6"/><text x="628" y="51">compressed bytes</text><text class="sub" x="628" y="69">MemorySource → bounded memcpy</text><text class="sub" x="628" y="86">TransportSource → karu_client_fetch()</text></g>
+
+<text class="figure-stage" x="164" y="139">REMOTE URI</text>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M134 142H166"/>
+<g class="figure-card"><rect x="170" y="151" width="142" height="58" rx="6"/><text x="241" y="174">karu_req[]</text><text class="sub" x="241" y="193">tag = &amp;FrameTask</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M312 180H326"/>
+<g class="figure-card accent"><rect x="330" y="151" width="170" height="58" rx="6"/><text x="415" y="174">karu_client_submit()</text><text class="sub" x="415" y="193">all remote ranges once</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M500 180H514"/>
+<g class="figure-card"><rect x="518" y="151" width="220" height="58" rx="6"/><text x="628" y="174">karu_batch_next()</text><text class="sub" x="628" y="193">buffer · tag · exact byte count</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M628 209V229H500"/>
+<g class="figure-card accent"><rect x="330" y="222" width="170" height="58" rx="6"/><text x="415" y="245">ready[]</text><text class="sub" x="415" y="264">decode_tasks() in waves</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-karu)" d="M330 251H298"/>
+<g class="figure-card"><rect x="150" y="222" width="144" height="58" rx="6"/><text x="222" y="245">execute_task()</text><text class="sub" x="222" y="264">compressed already attached</text></g>
+<text class="figure-note" x="380" y="303">Karu returns bytes and the original task tag. Rumi still owns frame semantics.</text>
+</svg>

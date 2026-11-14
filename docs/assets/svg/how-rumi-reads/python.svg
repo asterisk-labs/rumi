@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="250" viewBox="0 0 760 250" role="img" aria-labelledby="python-title python-desc">
+<title id="python-title">How Python prepares a Rumi read</title>
+<desc id="python-desc">Source bytes become a MemorySource, while a path or URI becomes a TransportSource resolved by Karu. The header becomes a parsed Spec, and selection helpers prepare the C API arguments.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+</style>
+<defs><marker id="arrow-python" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<text class="figure-stage" x="18" y="20">PUBLIC VALUES</text>
+<text class="figure-stage" x="230" y="20">PYTHON WRAPPERS</text>
+<text class="figure-stage" x="486" y="20">NATIVE OBJECTS</text>
+
+<g class="figure-card"><rect x="16" y="38" width="158" height="50" rx="6"/><text x="95" y="60">bytes / memoryview</text><text class="sub" x="95" y="76">source</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-python)" d="M174 63H222"/>
+<g class="figure-card accent"><rect x="226" y="38" width="178" height="50" rx="6"/><text x="315" y="60">_Source</text><text class="sub" x="315" y="76">rumi_source_memory()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-python)" d="M404 63H478"/>
+<g class="figure-card"><rect x="482" y="38" width="164" height="50" rx="6"/><text x="564" y="60">MemorySource</text><text class="sub" x="564" y="76">borrowed buffer</text></g>
+
+<g class="figure-card"><rect x="16" y="103" width="158" height="50" rx="6"/><text x="95" y="125">path / URI</text><text class="sub" x="95" y="141">source</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-python)" d="M174 128H222"/>
+<g class="figure-card accent"><rect x="226" y="103" width="178" height="50" rx="6"/><text x="315" y="125">_Source</text><text class="sub" x="315" y="141">rumi_source_file()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-python)" d="M404 128H478"/>
+<g class="figure-card"><rect x="482" y="103" width="250" height="50" rx="6"/><text x="607" y="125">TransportSource::open()</text><text class="sub" x="607" y="141">karu_resolve(path)</text></g>
+
+<g class="figure-card"><rect x="16" y="168" width="158" height="50" rx="6"/><text x="95" y="190">header + selection</text><text class="sub" x="95" y="206">time · bands · window</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-python)" d="M174 193H222"/>
+<g class="figure-card accent"><rect x="226" y="168" width="178" height="50" rx="6"/><text x="315" y="188">_Spec + helpers</text><text class="sub" x="315" y="204">parse and normalize</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-python)" d="M404 193H478"/>
+<g class="figure-card"><rect x="482" y="168" width="250" height="50" rx="6"/><text x="607" y="188">rumi_spec + C arguments</text><text class="sub" x="607" y="204">ready for rumi_read_dlpack()</text></g>
+</svg>

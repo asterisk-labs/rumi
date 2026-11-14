@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="250" viewBox="0 0 760 250" role="img" aria-labelledby="plan-title plan-desc">
+<title id="plan-title">How Rumi creates a frame plan</title>
+<desc id="plan-desc">read_window creates one ReadItem. read_items validates it and append_read_plan walks intersecting tiles. A Plan collects the resulting FrameTasks.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.diagram-panel{fill:#ffffff;stroke:#d9d5dd}
+</style>
+<defs><marker id="arrow-plan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<text class="figure-stage" x="18" y="20">CREATE ONE ITEM</text>
+<text class="figure-stage" x="282" y="20">WALK THE SELECTION</text>
+<text class="figure-stage" x="570" y="20">STORE THE WORK</text>
+
+<g class="figure-card accent"><rect x="16" y="37" width="190" height="82" rx="6"/><text x="111" y="59">read_window()</text><text class="sub" x="111" y="78">source + header</text><text class="sub" x="111" y="94">window offsets</text><text class="sub" x="111" y="108">one ReadItem</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-plan)" d="M206 78H254"/>
+<g class="figure-card"><rect x="258" y="37" width="220" height="82" rx="6"/><text x="368" y="59">read_items()</text><text class="sub" x="368" y="78">validate_request()</text><text class="sub" x="368" y="94">check readable size</text><text class="sub" x="368" y="108">append_read_plan()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-plan)" d="M478 78H526"/>
+<g class="figure-card accent"><rect x="530" y="37" width="214" height="82" rx="6"/><text x="637" y="59">Plan</text><text class="sub" x="637" y="78">FrameTask[]</text><text class="sub" x="637" y="94">source and destination offsets</text><text class="sub" x="637" y="108">largest decoded frame size</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-plan)" d="M637 119V143"/>
+<rect class="diagram-panel" x="104" y="148" width="552" height="80" rx="8"/>
+<text class="figure-stage" x="124" y="169">ONE FrameTask</text>
+<g class="figure-card"><rect x="122" y="180" width="150" height="34" rx="5"/><text x="197" y="195">FETCH</text><text class="sub" x="197" y="208">source · offset · size</text></g>
+<g class="figure-card"><rect x="305" y="180" width="150" height="34" rx="5"/><text x="380" y="195">DECODE</text><text class="sub" x="380" y="208">frame shape · type</text></g>
+<g class="figure-card"><rect x="488" y="180" width="150" height="34" rx="5"/><text x="563" y="195">PLACE</text><text class="sub" x="563" y="208">direct or crop offsets</text></g>
+</svg>

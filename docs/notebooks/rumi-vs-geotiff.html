@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Rumi against GeoTIFF, a Rumi example notebook.">
+<title>Rumi · Rumi against GeoTIFF</title>
+<link rel="icon" href="../assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reading.css?v=2">
+<link rel="stylesheet" href="../assets/css/notebook.css?v=1">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="../index.html" aria-label="Rumi home">
+      <img class="marksvg" src="../assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="../assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="../assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="../assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="../assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="../docs.html">Docs</a>
+      <a href="../api.html">API</a>
+      <a href="../examples.html" class="here">Examples</a>
+      <a href="../index.html#/spec">Spec</a>
+    </nav>
+  </header>
+  <main class="nb">
+    <article class="content">
+      <a class="nb-back" href="../examples.html#colab"><span aria-hidden="true">&larr;</span> Examples</a>
+      <h1>Rumi against GeoTIFF</h1>
+      <ul class="facts"><li>Python · CPU</li><li><a href="https://colab.research.google.com/github/asterisk-labs/rumi/blob/main/examples/rumi-vs-geotiff.ipynb" rel="noopener noreferrer">Open in Colab</a></li><li><a href="https://github.com/asterisk-labs/rumi/blob/main/examples/rumi-vs-geotiff.ipynb" rel="noopener noreferrer">Notebook on GitHub</a></li></ul>
+<p>Same pixels, same machine, decompress only. The encoded bytes are loaded into RAM before timing starts, so no page cache or GDAL block cache is in the measurement.</p>
+<div class="nb-cell"><pre><code class="language-python">!pip install -q "rumi-eo[write]" rasterio tifffile</code></pre></div>
+<div class="nb-cell"><pre><code class="language-python">import os
+os.environ["GDAL_CACHEMAX"] = "64"
+os.environ["GDAL_DISABLE_READDIR_ON_OPEN"] = "EMPTY_DIR"
+
+import hashlib, statistics as st, time
+import numpy as np, rasterio, tifffile, geozl, rumi
+
+THREADS = os.cpu_count()
+print(f"rumi {rumi.__version__}  geozl {geozl.__version__}  "
+      f"GDAL {rasterio.__gdal_version__}  {THREADS} cores")</code></pre></div>
+<h2 class="part">The scene</h2>
+<p>S2A_37MBV_20241029, true-colour, 318 MB on S3.</p>
+<div class="nb-cell"><pre><code class="language-python">URL = ("https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/"
+       "37/M/BV/2024/10/S2A_37MBV_20241029_0_L2A/TCI.tif")
+!wget -q -O TCI.tif {URL}
+
+with rasterio.open("TCI.tif") as ds:
+    print(ds.count, "x", ds.shape, ds.dtypes[0])
+    print("blocks    ", ds.block_shapes[0])
+    print("compress  ", ds.profile["compress"],
+          "predictor", ds.tags(ns="IMAGE_STRUCTURE")["PREDICTOR"])
+    print("interleave", ds.profile["interleave"])
+    print("overviews ", ds.overviews(1))
+    arr = ds.read()
+
+RAW_MB = arr.nbytes / 1e6
+print(f"\nuncompressed {RAW_MB:.1f} MB")</code></pre></div>
+<h2 class="part">Write it as Rumi</h2>
+<p>One frame per 1024x1024 tile holding all three bands. Two recipes: PFOR bit-packing, which has no entropy coder and is built for decode speed, and a MED predictor with an entropy coder, which trades that speed for a smaller file.</p>
+<div class="nb-cell"><pre><code class="language-python">TILE = 1024
+RECIPES = {"planar&gt;zigzag&gt;pfor": "pfor.rumi", "med&gt;zigzag&gt;entropy": "medent.rumi"}
+# TCI stores red, green and blue, rendered from B4, B3 and B2.
+BANDS = ["TCI red, from B4, 664.5nm (S2A)", "TCI green, from B3, 560nm (S2A)",
+         "TCI blue, from B2, 496.6nm (S2A)"]
+
+headers = {}
+for recipe, path in RECIPES.items():
+    frames = rumi.frames(arr, "b (row h) (col w) -&gt; row col (b h w)", tile_size=TILE)
+    graphs = {}
+    t0 = time.perf_counter()
+    for f in frames:
+        g = graphs.get(f.data.shape)
+        if g is None:
+            g = graphs[f.data.shape] = geozl.graph(f.data, recipe)
+        f.compressed = geozl.compress(f.data, graph=g)
+    encode_s = time.perf_counter() - t0
+    _, headers[recipe] = rumi.write(path, frames, bands=BANDS, time=["2024-10-29"])
+    print(f"{recipe:22s} {len(frames)} frames in {encode_s:5.1f}s")</code></pre></div>
+<h3>Size, counting the same pixels</h3>
+<p>The COG carries overview levels the Rumi files do not, so its size on disk is not the number to compare against. Summing the first IFD's tile byte counts gives the full resolution share.</p>
+<div class="nb-cell"><pre><code class="language-python">with tifffile.TiffFile("TCI.tif") as tif:
+    COG_MB = sum(tif.pages[0].databytecounts) / 1e6
+    overview_mb = sum(sum(p.databytecounts) for p in tif.pages[1:]) / 1e6
+
+print(f"GeoTIFF on disk        {os.path.getsize('TCI.tif') / 1e6:6.1f} MB")
+print(f"  full resolution      {COG_MB:6.1f} MB")
+print(f"  overviews            {overview_mb:6.1f} MB\n")
+for recipe, path in RECIPES.items():
+    mb = os.path.getsize(path) / 1e6
+    print(f"{recipe:22s} {mb:6.1f} MB   {100 * (mb - COG_MB) / COG_MB:+5.1f}% vs full resolution")</code></pre></div>
+<h2 class="part">Benchmark</h2>
+<p>Every file is read into RAM first. Each engine decodes five times; we keep the median.</p>
+<div class="nb-cell"><pre><code class="language-python">tif_bytes = open("TCI.tif", "rb").read()
+rumi_bytes = {r: open(p, "rb").read() for r, p in RECIPES.items()}
+
+def timeit(fn, n=5):
+    times, digest = [], None
+    for _ in range(n):
+        t0 = time.perf_counter()
+        out = np.asarray(fn())
+        times.append(time.perf_counter() - t0)
+        if digest is None:
+            digest = hashlib.sha256(np.ascontiguousarray(out)).hexdigest()[:12]
+        del out
+    return st.median(times), digest
+
+def gdal(driver, threads):
+    mf = rasterio.MemoryFile(tif_bytes)
+    ds = mf.open(driver=driver, NUM_THREADS=str(threads))
+    return timeit(ds.read)
+
+def rumi_read(recipe, threads):
+    rumi.set_num_threads(threads)
+    return timeit(lambda: rumi.read(rumi_bytes[recipe], headers[recipe]))</code></pre></div>
+<div class="nb-cell"><pre><code class="language-python">engines = [("GDAL GTiff", lambda t: gdal("GTiff", t)),
+           ("GDAL LIBERTIFF", lambda t: gdal("LIBERTIFF", t))]
+engines += [(f"rumi {r.split('&gt;')[0]}", (lambda r: lambda t: rumi_read(r, t))(r))
+            for r in RECIPES]
+
+results = {}
+for threads in (1, THREADS):
+    for label, run in engines:
+        os.environ["GDAL_NUM_THREADS"] = str(threads)
+        results[label, threads] = run(threads)
+
+print(f"{'':16s} {'threads':&gt;7} {'ms':&gt;8} {'MB/s':&gt;8}")
+for (label, threads), (secs, _) in results.items():
+    print(f"{label:16s} {threads:7d} {secs * 1000:8.1f} {RAW_MB / secs:8.0f}")
+
+assert len({d for _, d in results.values()}) == 1, "engines disagree"
+print("\nall engines produced identical pixels")</code></pre></div>
+<div class="nb-cell"><pre><code class="language-python">for threads in (1, THREADS):
+    base = results["GDAL LIBERTIFF", threads][0]
+    for label, _ in engines[2:]:
+        print(f"{threads:2d} threads: {label} is {base / results[label, threads][0]:4.2f}x "
+              f"the speed of GDAL LIBERTIFF")</code></pre></div>
+<h2 class="part">Caveats</h2>
+<p>The GeoTIFF is pixel-interleaved and DEFLATE-compressed; the Rumi files store each tile planar. Part of the gap is the codec and part is the layout. Colab gives you 2 vCPUs, so the multi-threaded column is much less interesting than on a real machine.</p>
+<p>Same notebook on an Apple M5 (4 performance + 6 efficiency cores):</p>
+<table class="nb-md"><thead><tr><th></th><th>size</th><th>1 thread</th><th>10 threads</th></tr></thead><tbody><tr><td>GDAL GTiff</td><td>237 MB</td><td>2708 ms</td><td>345 ms</td></tr><tr><td>GDAL LIBERTIFF</td><td>237 MB</td><td>1458 ms</td><td>211 ms</td></tr><tr><td>rumi, PFOR</td><td>250 MB</td><td>271 ms</td><td>64 ms</td></tr><tr><td>rumi, MED + entropy</td><td>210 MB</td><td>964 ms</td><td>213 ms</td></tr></tbody></table>
+      <a class="nb-back nb-back-end" href="../examples.html#colab"><span aria-hidden="true">&larr;</span> Back to the examples</a>
+    </article>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="../assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="../assets/js/code.js?v=1" defer></script>
+</body>
+</html>

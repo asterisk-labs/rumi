@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Write Rumi images and cubes, and read bands, times and windows back.">
+<title>Rumi · Read and write</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html" class="here">Docs</a>
+      <a href="api.html">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">Docs</p>
+      <ol class="toc-pages">
+        <li><a href="docs.html">Overview</a></li>
+        <li><a href="guide.html" class="here" aria-current="page">Read and write</a></li>
+        <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
+        <li><a href="index.html#/spec">Specification</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>Read and write</h1>
+      <ul class="facts">
+        <li>Python examples that write Images and Cubes, then read them back from local or remote storage.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">Docs, in 4 pages</p>
+        <ol>
+          <li><a href="docs.html">Overview</a></li>
+          <li class="here" aria-current="page">Read and write</li>
+          <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
+          <li><a href="index.html#/spec">Specification</a></li>
+        </ol>
+      </aside>
+      <p>These examples write an Image and a Cube, read part of a file back, run the same read against local and remote storage, and build training batches. The first four sections create data. If a catalog already gives you a source and its header, start at <a href="#selection">bands, times and windows</a>. R and Julia have readers of their own, described in the <a href="api-r.html">R</a> and <a href="api-julia.html">Julia</a> APIs.</p>
+
+      <h2 class="part" id="setup">Installation</h2>
+      <p>Python writes files with Rumi and GeoZL, then reads them through the Rumi core. Installing <code>rumi-eo</code> also installs GeoZL. R and Julia read the files Python writes, with native readers.</p>
+<pre><code class="language-sh">python -m pip install rumi-eo</code></pre>
+<pre><code class="language-python">import geozl
+import numpy as np
+import rumi</code></pre>
+      <div class="note"><p><b>Shapes and positions.</b> In Python an Image is <code>(B, Y, X)</code> and a temporal Cube is <code>(T, B, Y, X)</code>. Selections count from zero, and a window is <code>(row, column, height, width)</code>. R and Julia count from one and return Images as <code>(X, Y, Band)</code> and Cubes as <code>(X, Y, Band, Time)</code>.</p></div>
+
+      <h2 class="part" id="image">One Image</h2>
+      <p>This round trip stores a four-band Image in 256 &times; 256 spatial cells. Each frame holds all four bands of one cell.</p>
+<pre><code class="language-python">image = np.random.default_rng(0).integers(
+    0, 4096,
+    size=(4, 1024, 1024),
+    dtype=np.uint16,
+)
+
+frames = rumi.frames(
+    image,
+    "b (row h) (col w) -&gt; row col (b h w)",
+    tile_size=256,
+)
+
+for frame in frames:
+    graph = geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
+    frame.compressed = geozl.compress(frame.data, graph=graph)
+
+image_path, image_header = rumi.write(
+    "image.rumi",
+    frames,
+    bands=[
+        "B2, Blue, 496.6nm (S2A) / 492.1nm (S2B)",
+        "B3, Green, 560nm (S2A) / 559nm (S2B)",
+        "B4, Red, 664.5nm (S2A) / 665nm (S2B)",
+        "B8, NIR, 835.1nm (S2A) / 833nm (S2B)",
+    ],
+    time=["2026-01-01"],
+)
+image_again = rumi.read(image_path, image_header)</code></pre>
+      <p><code>image_path</code> points at the stored file. <code>image_header</code> is the small external index to keep with it, in a catalog or a dataset manifest.</p>
+      <p>Every file names each band and dates each time step. <code>bands</code> takes one text per band, in band order. A good text gives the band name, a short description and the wavelength.</p>
+      <div class="note"><p><b>Every frame is explicit.</b> <a href="api-python.html#frames"><code>rumi.frames</code></a> returns decoded views of the frames. The loop builds a GeoZL graph for each frame and assigns its compressed payload. <a href="api-python.html#write"><code>rumi.write</code></a> refuses a table in which any frame has no payload.</p></div>
+
+      <h2 class="part" id="layouts">Frame layouts</h2>
+      <p>The logical Image does not change. Only the right side of the pattern changes, and with it how many samples are fetched and decoded together.</p>
+<pre><code class="language-python"># One independently addressable frame per band and spatial tile.
+tile_frames = rumi.frames(
+    image,
+    "b (row h) (col w) -&gt; row col b (h w)",
+    tile_size=256,
+)
+
+# One band-planar cell frame at each spatial position.
+planar_cells = rumi.frames(
+    image,
+    "b (row h) (col w) -&gt; row col (b h w)",
+    tile_size=256,
+)
+
+# One pixel-interleaved cell frame at each spatial position.
+chunky_cells = rumi.frames(
+    image,
+    "b (row h) (col w) -&gt; row col (h w b)",
+    tile_size=256,
+)</code></pre>
+      <table class="spec">
+        <thead><tr><th>frame</th><th>selective reads</th><th>compression</th></tr></thead>
+        <tbody>
+          <tr><td><code>h w</code></td><td>bands you skip are never fetched or decoded</td><td>a frame holds one band, so the graph cannot use correlation between bands</td></tr>
+          <tr><td><code>b h w</code></td><td>reading one band decodes its whole cell</td><td>the band planes share one graph</td></tr>
+          <tr><td><code>h w b</code></td><td>reading one band decodes its whole cell</td><td>the interleaved pixels share one graph</td></tr>
+        </tbody>
+      </table>
+
+      <h2 class="part" id="cube">A temporal Cube</h2>
+      <p>This Cube has three time steps and four bands. Band and time sit outside each frame, so any one band at one step can be read without decoding the others.</p>
+<pre><code class="language-python">cube = np.random.default_rng(1).integers(
+    0, 4096,
+    size=(3, 4, 1024, 1024),
+    dtype=np.uint16,
+)
+
+cube_frames = rumi.frames(
+    cube,
+    "t b (row h) (col w) -&gt; row col b t (h w)",
+    tile_size=256,
+)
+
+for frame in cube_frames:
+    graph = geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
+    frame.compressed = geozl.compress(frame.data, graph=graph)
+
+cube_path, cube_header = rumi.write(
+    "cube.rumi",
+    cube_frames,
+    bands=[
+        "B2, Blue, 496.6nm (S2A) / 492.1nm (S2B)",
+        "B3, Green, 560nm (S2A) / 559nm (S2B)",
+        "B4, Red, 664.5nm (S2A) / 665nm (S2B)",
+        "B8, NIR, 835.1nm (S2A) / 833nm (S2B)",
+    ],
+    time=["2026-01-01", "2026-02-01", "2026-03-01"],
+)</code></pre>
+      <table class="spec">
+        <tr><th>tile frames</th><td><code>row col b t (h w)</code> or <code>row col t b (h w)</code> keeps band and time separately addressable.</td></tr>
+        <tr><th>cell frames</th><td><code>row col (b t h w)</code> lets one graph model the whole band and time block at each spatial position.</td></tr>
+      </table>
+      <p><code>time</code> takes dates, datetimes, ISO strings or NumPy <code>datetime64</code> values, or one <code>(start, end)</code> interval per step. Its length must equal <code>T</code>.</p>
+
+      <h2 class="part" id="selection">Bands, times and windows</h2>
+      <p>A list picks exact positions and may reorder them. A two-item tuple is a half-open range. The optional output <code>pattern</code> changes the order of the returned axes, not what is stored.</p>
+<pre><code class="language-python"># Exact positions, time 2 and bands 3 then 1.
+picked = rumi.read(
+    cube_path,
+    cube_header,
+    time=[2],
+    bands=[3, 1],
+    window=(100, 200, 128, 128),
+)
+
+# Half-open ranges and a model-specific output order.
+reordered = rumi.read(
+    cube_path,
+    cube_header,
+    time=(0, 2),
+    bands=(1, 4),
+    window=(100, 200, 128, 128),
+    pattern="t y x b",
+)</code></pre>
+      <p><code>time=[2]</code> keeps exactly one step and keeps its time axis, so <code>picked</code> is <code>(1, 2, 128, 128)</code>. <code>bands=[3, 1]</code> keeps two bands, in that order. <code>window=(100, 200, 128, 128)</code> returns 128 rows and 128 columns starting at row 100, column 200. With <code>pattern="t y x b"</code>, <code>reordered</code> comes back as <code>(2, 128, 128, 3)</code>.</p>
+
+      <h2 class="part" id="sources">Local and remote sources</h2>
+      <p>This example runs as it is against the public Rumi fixtures. It reads the same bands and window from Source Cooperative, Hugging Face, the S3-compatible endpoint of Source Cooperative and a downloaded local file, then checks that all four results are identical.</p>
+<pre><code class="language-python">import os
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+import numpy as np
+import rumi
+
+PRODUCT = "asterisk-labs/rumi-api-fixtures"
+NAME = "s2-00-tile"
+SOURCE_BASE = f"https://data.source.coop/{PRODUCT}"
+
+def fetch(url):
+    request = Request(url, headers={"User-Agent": "rumi-example"})
+    with urlopen(request) as response:
+        return response.read()
+
+header = fetch(f"{SOURCE_BASE}/headers/{NAME}.header")
+selection = dict(
+    bands=[3, 0],
+    window=(237, 233, 91, 107),
+)
+
+# Source Cooperative also serves an S3-compatible public endpoint.
+os.environ["AWS_ENDPOINT_URL"] = "https://data.source.coop"
+os.environ["AWS_NO_SIGN_REQUEST"] = "YES"
+os.environ["AWS_VIRTUAL_HOSTING"] = "NO"
+
+sources = {
+    "Source Cooperative": f"source://{PRODUCT}/data/{NAME}.rumi",
+    "Hugging Face": f"hf://datasets/{PRODUCT}@main/data/{NAME}.rumi",
+    "S3": f"s3://asterisk-labs/rumi-api-fixtures/data/{NAME}.rumi",
+}
+chips = {
+    label: np.asarray(rumi.read(uri, header, **selection))
+    for label, uri in sources.items()
+}
+
+# Download once to run the same read from a local path.
+local_dir = Path("rumi-api-fixtures")
+local_dir.mkdir(exist_ok=True)
+local_file = local_dir / f"{NAME}.rumi"
+local_file.write_bytes(fetch(f"{SOURCE_BASE}/data/{NAME}.rumi"))
+chips["Local"] = np.asarray(
+    rumi.read(local_file, header, **selection)
+)
+
+reference = chips["Source Cooperative"]
+assert reference.shape == (2, 91, 107)
+assert all(np.array_equal(reference, chip) for chip in chips.values())
+
+print({label: chip.shape for label, chip in chips.items()})</code></pre>
+      <table class="spec">
+        <thead><tr><th>source</th><th>address</th><th>configuration</th></tr></thead>
+        <tbody>
+          <tr><td>Source Cooperative</td><td><code>source://asterisk-labs/rumi-api-fixtures/&hellip;</code></td><td>none for public data</td></tr>
+          <tr><td>Hugging Face</td><td><code>hf://datasets/asterisk-labs/rumi-api-fixtures@main/&hellip;</code></td><td>none for this public dataset</td></tr>
+          <tr><td>S3-compatible</td><td><code>s3://asterisk-labs/rumi-api-fixtures/&hellip;</code></td><td>the Source endpoint and unsigned requests</td></tr>
+          <tr><td>local</td><td><code>rumi-api-fixtures/s2-00-tile.rumi</code></td><td>downloaded by the example</td></tr>
+        </tbody>
+      </table>
+      <div class="note"><p><b>One object, four transports.</b> The two mirrors hold byte-identical Rumi objects and headers. The S3 URI names the same Source Cooperative object as the <code>source://</code> URI, and only the backend configuration changes. Remote reads send range requests, and the local read uses positional file reads.</p></div>
+
+      <h2 class="part" id="batch">Training batches</h2>
+      <p><a href="api-python.html#read_many"><code>read_many</code></a> plans all the items together and returns them along a leading <code>n</code> axis. Positions may differ, but every window must have the same height and width.</p>
+<pre><code class="language-python"># Continue from the previous example.
+names = ["s2-00-tile", "s2-01-tile", "s2-02-tile"]
+headers = [
+    fetch(f"{SOURCE_BASE}/headers/{name}.header")
+    for name in names
+]
+sources = [
+    f"source://{PRODUCT}/data/{names[0]}.rumi",
+    f"hf://datasets/{PRODUCT}@main/data/{names[1]}.rumi",
+    f"s3://asterisk-labs/rumi-api-fixtures/data/{names[2]}.rumi",
+]
+windows = [
+    (0, 0, 128, 128),
+    (128, 192, 128, 128),
+    (320, 256, 128, 128),
+]
+
+batch = rumi.read_many(
+    sources,
+    headers,
+    windows=windows,
+    bands=[0, 1, 2, 3],
+)
+
+assert batch.shape == (3, 4, 128, 128)</code></pre>
+      <p>Sources may mix local and remote storage. They must agree on tile size, dtype, band and time counts, and which axes their frames hold. The result keeps the input order even when ranges arrive in another order.</p>
+      <div class="note"><p><b>Why not a Python loop?</b> A batch exposes the independent work of every item at once. Remote waits, local reads and OpenZL decoding then overlap while Rumi assembles one tensor of a known shape.</p></div>
+
+      <h2 class="part" id="frameworks">Frameworks and devices</h2>
+      <p>Choose the destination in the read call. Results pass through DLPack with no NumPy copy in between. A <code>device</code> such as <code>"cuda:0"</code> or <code>"mps"</code> decodes straight into CUDA or Metal memory, for any framework but NumPy.</p>
+<pre><code class="language-python">numpy_chip = rumi.read(cube_path, cube_header)
+torch_chip = rumi.read(
+    cube_path, cube_header, framework="torch"
+)
+jax_chip = rumi.read(
+    cube_path, cube_header, framework="jax"
+)
+tensorflow_chip = rumi.read(
+    cube_path, cube_header, framework="tensorflow"
+)
+dlpack_chip = rumi.read(
+    cube_path, cube_header, framework="dlpack"
+)
+cuda_chip = rumi.read(
+    cube_path, cube_header,
+    framework="torch", device="cuda:0"
+)
+jax_cuda_chip = rumi.read(
+    cube_path, cube_header,
+    framework="jax", device="cuda:0"
+)
+mps_chip = rumi.read(
+    cube_path, cube_header,
+    framework="torch", device="mps"
+)</code></pre>
+      <p><code>framework</code> sets what comes back.</p>
+      <table class="spec">
+        <tr><th><code>"numpy"</code></th><td>a NumPy array, the default</td></tr>
+        <tr><th><code>"torch"</code></th><td>a PyTorch tensor</td></tr>
+        <tr><th><code>"jax"</code></th><td>a JAX array. 64-bit dtypes need <code>jax_enable_x64</code>.</td></tr>
+        <tr><th><code>"tensorflow"</code></th><td>a TensorFlow tensor</td></tr>
+        <tr><th><code>"dlpack"</code></th><td>a <code>RumiArray</code>, a DLPack producer that exports once</td></tr>
+      </table>
+      <p>Every Rumi dtype maps exactly to a CPU dtype that PyTorch accepts. NumPy, JAX and TensorFlow accept exact subsets. Rumi checks the dtype before it reads a frame, and it never casts or returns a byte view.</p>
+      <p>CUDA reads run on a stream Rumi owns. Importing the result makes the framework's current stream wait for the read on the device, without blocking the host. When the array is released, its memory returns to Rumi in that stream's order. Metal reads finish before they return.</p>
+
+      <h2 class="part" id="metadata">Metadata and headers</h2>
+      <p>A Rumi file describes itself. If the external header is missing, <a href="api-python.html#info"><code>info</code></a> rebuilds the canonical header, and it also returns the band texts, time and georeferencing stored in the file.</p>
+<pre><code class="language-python">metadata = rumi.info(source="cube.rumi")
+recovered_header = metadata.header
+
+print(metadata.shape)         # (3, 4, 1024, 1024)
+print(metadata.tile)          # (256, 256)
+print(metadata.frame_layout)  # h w for the tile-frame Cube
+print(metadata.bands)         # the four band texts
+print(metadata.time)          # the three recorded dates
+
+# Supplying both checks the header against the source.
+checked = rumi.info(
+    source="cube.rumi",
+    header=recovered_header,
+)</code></pre>
+      <table class="spec">
+        <tr><th>header only</th><td><code>rumi.info(header=...)</code> describes the read index without opening the source.</td></tr>
+        <tr><th>with a source</th><td><code>rumi.info(source=...)</code> also returns band texts, time coordinates, transform, CRS and a rebuilt header.</td></tr>
+      </table>
+      <p><a href="how-rumi-reads.html">How Rumi reads</a> follows a read from the request to the tensor, and the <a href="index.html#/spec">specification</a> defines the file format.</p>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="docs.html"><span>Previous</span>Overview</a>
+        <a class="next" href="how-rumi-reads.html"><span>Next</span>How Rumi reads</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#setup">Installation</a></li>
+        <li><a href="#image">One Image</a></li>
+        <li><a href="#layouts">Frame layouts</a></li>
+        <li><a href="#cube">A temporal Cube</a></li>
+        <li><a href="#selection">Bands, times and windows</a></li>
+        <li><a href="#sources">Local and remote sources</a></li>
+        <li><a href="#batch">Training batches</a></li>
+        <li><a href="#frameworks">Frameworks and devices</a></li>
+        <li><a href="#metadata">Metadata and headers</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

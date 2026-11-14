@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="274" viewBox="0 0 760 274" role="img" aria-labelledby="parts-title parts-desc">
+<title id="parts-title">Rumi and the libraries used by a read</title>
+<desc id="parts-desc">Python calls Rumi. Rumi asks Karu for byte ranges and asks an OpenZL context containing GeoZL extensions to decode those bytes. Rumi places the resulting samples in an array.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+.diagram-panel{fill:#ffffff;stroke:#d9d5dd}
+</style>
+<defs><marker id="arrow-parts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+
+<g class="figure-card"><rect x="18" y="89" width="126" height="72" rx="6"/><text x="81" y="114">Python caller</text><text class="sub" x="81" y="134">source + header</text><text class="sub" x="81" y="148">selection</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-parts)" d="M144 125H182"/>
+<g class="figure-card accent"><rect x="186" y="79" width="150" height="92" rx="6"/><text x="261" y="105">Rumi</text><text class="sub" x="261" y="126">plans frames</text><text class="sub" x="261" y="142">coordinates work</text><text class="sub" x="261" y="157">places samples</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-parts)" d="M336 112H382V62H414"/>
+<g class="figure-card"><rect x="418" y="28" width="160" height="68" rx="6"/><text x="498" y="52">Karu</text><text class="sub" x="498" y="71">read-only byte-range</text><text class="sub" x="498" y="84">transport</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-parts)" d="M498 96V113"/>
+<text class="figure-note" x="624" y="69">compressed bytes</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-parts)" d="M336 138H382V194H414"/>
+<rect class="diagram-panel" x="418" y="116" width="210" height="130" rx="9"/>
+<text class="figure-stage" x="438" y="139">OPENZL DECODER CONTEXT</text>
+<g class="figure-card"><rect x="440" y="152" width="166" height="38" rx="5"/><text x="523" y="169">OpenZL runtime</text><text class="sub" x="523" y="183">executes the frame graph</text></g>
+<g class="figure-card accent"><rect x="440" y="198" width="166" height="34" rx="5"/><text x="523" y="213">GeoZL extensions</text><text class="sub" x="523" y="226">raster codec nodes</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-parts)" d="M628 181H666"/>
+<g class="figure-card accent"><rect x="670" y="146" width="76" height="70" rx="6"/><text x="708" y="170">array</text><text class="sub" x="708" y="188">requested</text><text class="sub" x="708" y="201">layout</text></g>
+<text class="figure-note" x="380" y="267">Rumi supplies meaning, Karu supplies ranges, and OpenZL with GeoZL supplies decoded values.</text>
+</svg>

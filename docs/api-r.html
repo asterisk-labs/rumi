@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="The Rumi R package.">
+<title>Rumi · R</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html">Docs</a>
+      <a href="api.html" class="here">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">API</p>
+      <ol class="toc-pages">
+        <li><a href="api.html">Overview</a></li>
+        <li class="toc-group">Languages</li>
+        <li><a href="api-python.html">Python</a></li>
+        <li><a href="api-c.html">C</a></li>
+        <li><a href="api-r.html" class="here" aria-current="page">R</a></li>
+        <li><a href="api-julia.html">Julia</a></li>
+        <li><a href="api-js.html">JavaScript</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>R</h1>
+      <ul class="facts">
+        <li>Package <code>rumi</code> for R 4.3 or newer, from the <a href="https://asterisk-labs.r-universe.dev" rel="noopener noreferrer">asterisk-labs r-universe</a>, sources in <a href="https://github.com/asterisk-labs/rumi/tree/main/bindings/r" rel="noopener noreferrer"><code>bindings/r</code></a>.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">API, in 6 pages</p>
+        <ol>
+          <li><a href="api.html">Overview</a></li>
+          <li><a href="api-python.html">Python</a></li>
+          <li><a href="api-c.html">C</a></li>
+          <li class="here" aria-current="page">R</li>
+          <li><a href="api-julia.html">Julia</a></li>
+          <li><a href="api-js.html">JavaScript</a></li>
+        </ol>
+      </aside>
+      <p>The R package reads Rumi Image and Cube files through the native Rumi library. It opens a source with its external header and returns windows, bands and time steps as native R arrays.</p>
+
+      <h2 class="part" id="install">Install</h2>
+<pre><code class="language-r">install.packages("rumi", repos = "https://asterisk-labs.r-universe.dev")
+
+# or from GitHub
+remotes::install_github("asterisk-labs/rumi", subdir = "bindings/r")</code></pre>
+      <p>A source install builds the bundled Rumi, GeoZL, OpenZL and Karu code with CMake 3.21 or newer. It needs C11 and C++23 compilers, and pkg-config to find libcurl 7.83 or newer and OpenSSL 3.0 or newer. No separate Rumi installation is needed.</p>
+<pre><code class="language-r">library(rumi)
+
+header &lt;- readBin("scene.header", "raw", file.info("scene.header")$size)
+file &lt;- rumi_open("scene.rumi", header)
+chip &lt;- rumi_read(file, bands = c(4, 8), time = 1:3,
+                  window = c(1, 1, 256, 256))
+dim(chip)                                    # 256 256 2 3
+rumi_close(file)</code></pre>
+
+      <h2 class="part" id="functions">Functions</h2>
+      <p>Every exported function is below. Bad arguments, a header that does not match its source and a read the library refuses stop with an R error.</p>
+
+      <h3 id="rumi_open">rumi_open</h3>
+<pre><code class="sig language-r">rumi_open(path, header)</code></pre>
+      <p>Opens a source with its external header. Opening checks the header against the source and reads the metadata, and every later read uses this pair.</p>
+      <table class="spec">
+        <tr><th>path</th><td>One local path, URI or VSI path. A leading <code>~</code> is expanded.</td></tr>
+        <tr><th>header</th><td>The external header as a raw vector, as <code>readBin()</code> returns it.</td></tr>
+      </table>
+      <p>Returns a <code>rumi_dataset</code> with the fields <code>pointer</code>, <code>path</code>, <code>header</code> and <code>metadata</code>. <code>print</code> shows the shape, dtype, tile, frame layout, bands, CRS and first time step. It wraps native state, so it does not survive saving and reloading. Garbage collection closes it, and <a href="#rumi_close"><code>rumi_close</code></a> closes it at once.</p>
+
+      <h3 id="rumi_info">rumi_info</h3>
+<pre><code class="sig language-r">rumi_info(file)</code></pre>
+      <p>Returns the metadata read by <code>rumi_open</code> as a <code>rumi_metadata</code> list. It reads nothing from the source.</p>
+      <table class="spec">
+        <tr><th>shape</th><td>Rumi's canonical <code>(Band, Y, X)</code> for an Image or <code>(Time, Band, Y, X)</code> for a Cube.</td></tr>
+        <tr><th>time_count</th><td>Number of time steps, 1 for an Image.</td></tr>
+        <tr><th>dtype</th><td>The sample type, such as <code>"uint16"</code>.</td></tr>
+        <tr><th>tile</th><td>Tile height and width.</td></tr>
+        <tr><th>frame_layout</th><td>The axes of one decoded frame, such as <code>"b h w"</code>.</td></tr>
+        <tr><th>index_order</th><td>The band and time axes the frame index walks, outermost first.</td></tr>
+        <tr><th>frames</th><td>Number of frames.</td></tr>
+        <tr><th>bands</th><td>Band descriptions.</td></tr>
+        <tr><th>time</th><td>UTC <code>POSIXct</code> values. Intervals are a matrix with the columns <code>start</code> and <code>end</code>.</td></tr>
+        <tr><th>time_kind</th><td><code>"instant"</code>, <code>"interval"</code> or <code>NULL</code>.</td></tr>
+        <tr><th>transform, crs</th><td>The six affine coefficients and the EPSG code, or <code>NULL</code> when the file has no CRS.</td></tr>
+        <tr><th>pixel_is_point</th><td><code>TRUE</code> for a PixelIsPoint raster, <code>FALSE</code> for PixelIsArea.</td></tr>
+        <tr><th>header</th><td>The header bytes.</td></tr>
+      </table>
+<pre><code class="language-r">info &lt;- rumi_info(file)
+info$shape                                   # 2 3 6 8
+info$bands                                   # "B02" "B03" "B04"</code></pre>
+
+      <h3 id="rumi_read">rumi_read</h3>
+<pre><code class="sig language-r">rumi_read(file, header = NULL, bands = NULL, time = NULL,
+    window = NULL, pattern = NULL)</code></pre>
+      <p>Reads a window and a selection of bands and time steps. Only the frames the read needs are fetched.</p>
+      <table class="spec">
+        <tr><th>file</th><td>A dataset from <code>rumi_open</code>, or a path. A path is opened with <code>header</code> and closed after the read.</td></tr>
+        <tr><th>header</th><td>The external header when <code>file</code> is a path. A dataset already carries one, so passing it there is an error.</td></tr>
+        <tr><th>bands</th><td>Whole one-based band indices in output order, or <code>NULL</code> for all.</td></tr>
+        <tr><th>time</th><td>Whole one-based time indices in output order, or <code>NULL</code> for all.</td></tr>
+        <tr><th>window</th><td><code>c(row, column, height, width)</code> with a one-based origin, or <code>NULL</code> for the whole image. It must lie inside the image.</td></tr>
+        <tr><th>pattern</th><td>An output pattern that arranges the result, as in <a href="#arrays">Arrays</a>. <code>NULL</code> keeps the native order.</td></tr>
+      </table>
+      <p>Returns an array shaped <code>(X, Y, Band)</code> for an Image or <code>(X, Y, Band, Time)</code> for a Cube. A Cube keeps its time dimension when one step is selected.</p>
+<pre><code class="language-r">chip &lt;- rumi_read(file, time = c(2, 1), bands = c(3, 1),
+                  window = c(2, 3, 3, 4))
+dim(chip)                                    # 4 3 2 2
+
+band &lt;- rumi_read("scene.rumi", header, bands = 1)</code></pre>
+
+      <h3 id="rumi_read_many">rumi_read_many</h3>
+<pre><code class="sig language-r">rumi_read_many(files, windows = NULL, bands = NULL, time = NULL,
+    pattern = NULL)</code></pre>
+      <p>Reads one window from each of several datasets in one call and stacks them along a last sample dimension, as a training batch needs.</p>
+      <table class="spec">
+        <tr><th>files</th><td>A list of datasets from <code>rumi_open</code>.</td></tr>
+        <tr><th>windows</th><td>One <code>c(row, column, height, width)</code> per dataset, as a list or as the rows of a matrix. All windows have the same height and width. <code>NULL</code> reads each whole image.</td></tr>
+        <tr><th>others</th><td>As in <a href="#rumi_read"><code>rumi_read</code></a>, applied to every dataset.</td></tr>
+      </table>
+      <p>Returns <code>(X, Y, Band, Sample)</code>, or <code>(X, Y, Band, Time, Sample)</code> when the first dataset is a Cube. Dimension names come from the first dataset.</p>
+<pre><code class="language-r">batch &lt;- rumi_read_many(list(file, file),
+                        windows = list(c(1, 1, 2, 3), c(3, 4, 2, 3)),
+                        bands = 2)
+dim(batch)                                   # 3 2 1 2 2</code></pre>
+
+      <h3 id="rumi_close">rumi_close</h3>
+<pre><code class="sig language-r">rumi_close(file)</code></pre>
+      <p>Releases the native source and header and returns <code>NULL</code> invisibly. A later read on the dataset stops with an error, and closing it again does nothing.</p>
+
+      <h2 class="part" id="arrays">Arrays</h2>
+      <p>R is column-major, so the axes run in reverse of Python. An Image reads as <code>(X, Y, Band)</code> and a Cube as <code>(X, Y, Band, Time)</code>, with the same memory as Python's <code>(Band, Y, X)</code> and <code>(Time, Band, Y, X)</code>. Indices and window origins are one-based, and <code>window</code> keeps the <code>(row, column, height, width)</code> order.</p>
+      <p>The result carries dimnames for bands and time steps, a <code>rumi_axes</code> attribute naming each dimension and a <code>rumi_metadata</code> attribute with the file's metadata. Time names are UTC timestamps, and an interval is written as <code>start/end</code>.</p>
+      <p>A pattern uses the axes <code>n</code>, <code>t</code>, <code>b</code>, <code>y</code> and <code>x</code> as in <a href="api-python.html">Python</a>, and R gets them in reverse. <code>"b x y"</code> gives a <code>(Y, X, Band)</code> array, the order of <code>terra::as.array()</code>. An axis left out must have length one after selection. A result read with a pattern has no dimnames and no Rumi attributes.</p>
+
+      <h2 class="part" id="types">Sample types</h2>
+      <p><code>bool</code> reads as logical, and <code>uint8</code>, <code>int8</code>, <code>uint16</code> and <code>int16</code> as integer. <code>complex32</code>, <code>complex64</code> and <code>complex128</code> read as complex. The other integer and float types read as double, and <code>float64</code> decodes straight into the R array. 64-bit integers above 2<sup>53</sup> lose precision and raise a warning.</p>
+      <p>R has no 8-bit float, so the five float8 types return their native bytes as a raw array of class <code>rumi_float8_array</code>.</p>
+
+      <h2 class="part" id="coverage">What it covers</h2>
+      <p>The R package has the <code>open</code>, <code>info</code>, <code>read</code> and <code>read_many</code> calls of the Python package. It does not write files, so cut and write them in <a href="api-python.html">Python</a> and read them here with their headers. It has no GPU reads and no thread or checksum setters.</p>
+      <p>Reads use one decode thread and skip OpenZL checksums unless <code>RUMI_NUM_THREADS</code> or <code>RUMI_VERIFY=1</code> is set before the first read. <code>RUMI_NUM_THREADS</code> takes a count or <code>ALL_CPUS</code>, and <code>Sys.setenv()</code> sets it from R.</p>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="api-c.html"><span>Previous</span>C</a>
+        <a class="next" href="api-julia.html"><span>Next</span>Julia</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#install">Install</a></li>
+        <li><a href="#functions">Functions</a></li>
+        <li><a href="#rumi_open">rumi_open</a></li>
+        <li><a href="#rumi_info">rumi_info</a></li>
+        <li><a href="#rumi_read">rumi_read</a></li>
+        <li><a href="#rumi_read_many">rumi_read_many</a></li>
+        <li><a href="#rumi_close">rumi_close</a></li>
+        <li><a href="#arrays">Arrays</a></li>
+        <li><a href="#types">Sample types</a></li>
+        <li><a href="#coverage">What it covers</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

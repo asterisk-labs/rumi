@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Every public function of the Rumi Python package.">
+<title>Rumi · Python</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html">Docs</a>
+      <a href="api.html" class="here">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">API</p>
+      <ol class="toc-pages">
+        <li><a href="api.html">Overview</a></li>
+        <li class="toc-group">Languages</li>
+        <li><a href="api-python.html" class="here" aria-current="page">Python</a></li>
+        <li><a href="api-c.html">C</a></li>
+        <li><a href="api-r.html">R</a></li>
+        <li><a href="api-julia.html">Julia</a></li>
+        <li><a href="api-js.html">JavaScript</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>Python</h1>
+      <ul class="facts">
+        <li>Package <code>rumi-eo</code> on <a href="https://pypi.org/project/rumi-eo/" rel="noopener noreferrer">PyPI</a>, with wheels for Linux x86-64 and macOS arm64 on Python 3.11 or newer.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">API, in 6 pages</p>
+        <ol>
+          <li><a href="api.html">Overview</a></li>
+          <li class="here" aria-current="page">Python</li>
+          <li><a href="api-c.html">C</a></li>
+          <li><a href="api-r.html">R</a></li>
+          <li><a href="api-julia.html">Julia</a></li>
+          <li><a href="api-js.html">JavaScript</a></li>
+        </ol>
+      </aside>
+      <pre><code class="language-sh">pip install rumi-eo</code></pre>
+      <p>The package imports as <code>rumi</code> and installs <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> with it, which compresses the frames before a write. The Linux wheels decode on CUDA and the macOS wheels on Metal, and both read on the CPU when no GPU is present.</p>
+
+      <h2 class="part" id="writing">Writing</h2>
+      <p>A file is written in three steps. <code>frames</code> cuts an array into tiles, you compress each tile with GeoZL, and <code>write</code> stores the payloads with the index and returns the external header.</p>
+
+      <h3 id="frames">frames</h3>
+<pre><code class="sig language-python">rumi.frames(arr, pattern, tile_size=512) -&gt; FrameTable</code></pre>
+      <p>Splits an array into frames and returns them in file order. Frames at the right and bottom edges are clipped.</p>
+      <table class="spec">
+        <tr><th>arr</th><td>Anything <code>np.asarray</code> accepts. Its axes can come in any order the pattern names.</td></tr>
+        <tr><th>pattern</th><td>An einops-style pattern. The left side names every input axis, and a pair such as <code>(row h)</code> splits an image axis into a grid coordinate and a frame axis. The group on the right lists the axes stored together in one frame. Only <code>b</code> and <code>t</code> are reserved.</td></tr>
+        <tr><th>tile_size</th><td>Height and width of a square tile, from 1 to 65535.</td></tr>
+      </table>
+<pre><code class="language-python">"b (row h) (col w) -&gt; row col (b h w)"     # every band in one frame, band by band
+"b (row h) (col w) -&gt; row col (h w b)"     # every band in one frame, interleaved
+"b (row h) (col w) -&gt; row col b (h w)"     # one band per frame</code></pre>
+      <p>Each frame is C-contiguous and follows the axis order on the right. The <a href="guide.html#layouts">guide</a> shows when each layout pays off.</p>
+
+      <h3 id="frametable">FrameTable</h3>
+      <p>The table <code>frames</code> returns. <code>len</code> gives the frame count, iteration and integer indexing give live <a href="#frame"><code>Frame</code></a> views, and assigning <code>frame.compressed</code> stores a payload in the table.</p>
+      <table class="spec">
+        <tr><th>tiles_across, tiles_down</th><td>The tile grid.</td></tr>
+        <tr><th>cells</th><td>Grid labels such as <code>"0.1"</code>, row by row.</td></tr>
+        <tr><th>layout</th><td>The axis order of a decoded frame.</td></tr>
+        <tr><th>dims</th><td>The columns that identify each frame.</td></tr>
+        <tr><th>done, nbytes</th><td>How many frames have a payload, and their total size in bytes.</td></tr>
+        <tr><th>attach(name, values)</th><td>Adds a column with one value per frame or per grid cell. It stays in memory and is not written to the file. Returns the table, so calls chain.</td></tr>
+        <tr><th>to_pandas()</th><td>The frame metadata as a pandas <code>DataFrame</code>, without the payloads. Needs pandas.</td></tr>
+      </table>
+
+      <h3 id="frame">Frame</h3>
+      <p>One frame of a <code>FrameTable</code>. <code>data</code> is the tile to compress and <code>shape</code> its shape. <code>index</code>, <code>row</code>, <code>col</code> and <code>cell</code> place it in the grid, and <code>band</code> and <code>time</code> are set when the pattern stores one band or one time step per frame. <code>compressed</code> holds the payload once you assign it.</p>
+<pre><code class="language-python">for frame in frames:
+    g = geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
+    frame.compressed = geozl.compress(frame.data, graph=g)</code></pre>
+      <p>Each frame can use its own recipe, so a land tile and an ocean tile in one file can compress differently.</p>
+
+      <h3 id="write">write</h3>
+<pre><code class="sig language-python">rumi.write(path, tf, *, bands, time, transform=None, crs=None,
+    pixel_is_point=False) -&gt; tuple[path, bytes]</code></pre>
+      <p>Writes a <code>FrameTable</code> to a local file. The payloads are stored as they are, without decoding or recompressing them.</p>
+      <table class="spec">
+        <tr><th>path</th><td>A local path, as text or a path-like object.</td></tr>
+        <tr><th>tf</th><td>A <code>FrameTable</code> with a non-empty payload on every frame.</td></tr>
+        <tr><th>bands</th><td>One unique, non-empty label per band, in band order, such as <code>"B4, Red, 665nm"</code>.</td></tr>
+        <tr><th>time</th><td>One entry per time step. An instant is a date, a datetime, an ISO string or a <code>numpy.datetime64</code>, and an interval is a <code>(start, end)</code> pair of them.</td></tr>
+        <tr><th>transform</th><td>Six affine coefficients in rasterio order, <code>(x_res, row_rot, x_origin, col_rot, y_res, y_origin)</code>. Give it together with <code>crs</code>.</td></tr>
+        <tr><th>crs</th><td>An EPSG code as an integer, a string such as <code>"EPSG:32718"</code>, or an object with <code>to_epsg()</code>.</td></tr>
+        <tr><th>pixel_is_point</th><td>Whether coordinates refer to pixel centres. The default refers to pixel corners.</td></tr>
+      </table>
+      <p>Returns <code>(path, header)</code>. The header is the external bytes that <code>read</code> and <code>read_many</code> need. A failure after the file is opened removes the partial file.</p>
+
+      <h3 id="frame_start">frame_start</h3>
+<pre><code class="sig language-python">rumi.frame_start(shape, pattern, tile_size=512) -&gt; int</code></pre>
+      <p>Returns the byte offset of the first frame, without building any frames. <code>shape</code> follows the axis order the pattern names. Everything before that offset is fixed by the shape, so it is known before anything is compressed.</p>
+
+      <h2 class="part" id="reading">Reading</h2>
+      <p>A source is a local path, a remote URI or the file's bytes. Remote reads go through <a href="https://github.com/asterisk-labs/karu" rel="noopener noreferrer">Karu</a>, which covers HTTP, S3, GCS, Azure, Hugging Face, Source Cooperative and <code>/vsisubfile/</code>. Indices are zero-based, and <code>time</code> and <code>bands</code> take a list of indices or a half-open <code>(start, stop)</code> range.</p>
+
+      <h3 id="read">read</h3>
+<pre><code class="sig language-python">rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
+    bands=None, window=None, device=None, decode_backend="auto")</code></pre>
+      <p>Reads one raster, or the part of it you select. Only the frames under the selection are fetched and decoded.</p>
+      <table class="spec">
+        <tr><th>source</th><td>A path, a URI, the file's bytes, or a <a href="#open"><code>Dataset</code></a>.</td></tr>
+        <tr><th>header</th><td>The header <code>write</code> returned. For an existing file, <code>info(source=...).header</code> rebuilds it. A <code>Dataset</code> carries its own.</td></tr>
+        <tr><th>window</th><td><code>(row, column, height, width)</code> in pixels.</td></tr>
+        <tr><th>time, bands</th><td>The time steps and bands to read.</td></tr>
+        <tr><th>pattern</th><td>The output axis order. The default is <code>(T, B, Y, X)</code>, without the time axis for an Image.</td></tr>
+        <tr><th>framework</th><td><code>"numpy"</code>, <code>"torch"</code>, <code>"jax"</code>, <code>"tensorflow"</code> or <code>"dlpack"</code>. The last returns a <a href="#rumiarray"><code>RumiArray</code></a>.</td></tr>
+        <tr><th>device</th><td><code>"cuda:N"</code> or <code>"mps"</code> decodes into GPU memory and hands it to the framework through DLPack, so it needs a framework other than <code>"numpy"</code>. A CUDA read makes the framework's current stream wait for it on the device.</td></tr>
+        <tr><th>decode_backend</th><td><code>"auto"</code> decodes supported frames on the GPU and the rest on the CPU, never splitting a frame. <code>"cpu"</code> decodes every frame on the CPU and only places the samples on the GPU.</td></tr>
+      </table>
+<pre><code class="language-python">chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256),
+                 framework="torch", device="cuda:0")</code></pre>
+      <p>GeoZL decodes on the GPU the frames that end in PFOR or PivCo, such as <code>planar&gt;zigzag&gt;lanes</code> or <code>planar&gt;zigzag&gt;pfor</code>. Other frames decode on the CPU and are copied over. <a href="https://asterisk.coop/geozl/gpu-codecs.html" rel="noopener noreferrer">What a GPU wants</a> explains why.</p>
+
+      <h3 id="read_many">read_many</h3>
+<pre><code class="sig language-python">rumi.read_many(sources, headers=None, *, windows=None, framework="numpy",
+    pattern=None, time=None, bands=None, device=None, decode_backend="auto")</code></pre>
+      <p>Reads one window from each source as a single plan and stacks the results along a leading <code>n</code> axis, in the order given. This is the call a training data loader makes.</p>
+      <table class="spec">
+        <tr><th>windows</th><td>One <code>(row, column, height, width)</code> per source. All windows must be the same size, only their positions differ. Without <code>windows</code>, every whole image is read, and the images must share a size.</td></tr>
+        <tr><th>headers</th><td>One header per source.</td></tr>
+        <tr><th>other arguments</th><td>As in <code>read</code>, applied to every item.</td></tr>
+      </table>
+      <p>The sources must agree on tile size, band count, dtype, time step count and frame layout. Their image sizes may differ when <code>windows</code> is given. To read one window from one file several times, repeat it once per item.</p>
+
+      <h3 id="info">info</h3>
+<pre><code class="sig language-python">rumi.info(source=None, *, header=None) -&gt; Metadata</code></pre>
+      <p>Inspects a source, a header, or both. From a source, Rumi reads the index, georeferencing, band labels and time, and rebuilds the external header. A header alone opens nothing and gives only what a reader needs. With both, Rumi checks that they match.</p>
+      <p>The returned <code>Metadata</code> has <code>header</code>, <code>shape</code> as <code>(B, Y, X)</code> or <code>(T, B, Y, X)</code>, <code>time_count</code>, <code>dtype</code>, <code>tile</code> as <code>(height, width)</code>, <code>frame_layout</code>, <code>index_order</code>, <code>frames</code>, <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code>. The last six are <code>None</code> without a source.</p>
+<pre><code class="language-python">header = rumi.info(source="s3://bucket/scene.rumi").header</code></pre>
+
+      <h3 id="open">open</h3>
+<pre><code class="sig language-python">rumi.open(source, header) -&gt; Dataset</code></pre>
+      <p>Pairs a source with its header and checks the metadata once. A <code>Dataset</code> has <code>source</code>, <code>header</code> and <code>metadata</code>, <code>info()</code> returns the metadata, and <code>read(**kwargs)</code> takes the arguments of <a href="#read"><code>read</code></a>. It works as a context manager and closes on exit.</p>
+<pre><code class="language-python">with rumi.open(path, header) as ds:
+    chip = ds.read(bands=[2, 3], window=(0, 0, 256, 256))</code></pre>
+
+      <h2 class="part" id="output">Output</h2>
+
+      <h3 id="rumiarray">RumiArray</h3>
+      <p>What <code>framework="dlpack"</code> returns. It holds the decoded samples once and hands them over a single time, through <code>__dlpack__</code> or one of <code>numpy()</code>, <code>torch()</code>, <code>jax()</code> and <code>tensorflow()</code>. Each keeps the exact dtype and consumes the array, so a second export raises <code>RuntimeError</code>. <code>shape</code> stays readable.</p>
+      <p>For a CUDA array, <code>__dlpack__(stream=...)</code> makes that stream wait on the device, and the memory returns to Rumi in that stream's order, so keep the stream alive while the tensor lives. JAX needs 64-bit types enabled for 64-bit samples.</p>
+
+      <h3 id="dtype">DType</h3>
+      <p>The sample type of a file, in <code>Metadata.dtype</code>. It has <code>name</code>, <code>bits</code>, <code>itemsize</code>, <code>component_size</code>, the DLPack type code and the matching <code>numpy_dtype</code>, which is <code>None</code> for types NumPy lacks, such as bfloat16 and float8. Those still reach PyTorch and JAX through DLPack.</p>
+
+      <h2 class="part" id="settings">Settings</h2>
+
+      <h3 id="set_num_threads">set_num_threads, get_num_threads</h3>
+<pre><code class="sig language-python">rumi.set_num_threads(n) -&gt; int
+rumi.get_num_threads() -&gt; int</code></pre>
+      <p>The size of the process-wide pool that reads, decodes and plans GPU work, from 1 to 1024. Set it before the first parallel read. Once the pool or a GPU context exists, changing it raises <code>RuntimeError</code>. <code>RUMI_NUM_THREADS</code> gives the starting value and also accepts <code>ALL_CPUS</code>. Without it, each process starts with one thread, and so does each DDP rank and each forked worker.</p>
+
+      <h3 id="set_checksum_verification">set_checksum_verification, get_checksum_verification</h3>
+<pre><code class="sig language-python">rumi.set_checksum_verification(on) -&gt; bool
+rumi.get_checksum_verification() -&gt; bool</code></pre>
+      <p>Whether OpenZL checks frame checksums while decoding. Set it before the first decoded frame, after which changing it raises <code>RuntimeError</code>. <code>RUMI_VERIFY</code> gives the starting value and accepts <code>0</code> or <code>1</code>, <code>false</code> or <code>true</code>, <code>off</code> or <code>on</code>, and <code>no</code> or <code>yes</code>.</p>
+
+      <h3 id="version">__version__</h3>
+      <p>The installed version of <code>rumi-eo</code>.</p>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="api.html"><span>Previous</span>Overview</a>
+        <a class="next" href="api-c.html"><span>Next</span>C</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#writing">Writing</a></li>
+        <li><a href="#frames">frames</a></li>
+        <li><a href="#frametable">FrameTable</a></li>
+        <li><a href="#frame">Frame</a></li>
+        <li><a href="#write">write</a></li>
+        <li><a href="#frame_start">frame_start</a></li>
+        <li><a href="#reading">Reading</a></li>
+        <li><a href="#read">read</a></li>
+        <li><a href="#read_many">read_many</a></li>
+        <li><a href="#info">info</a></li>
+        <li><a href="#open">open</a></li>
+        <li><a href="#output">Output</a></li>
+        <li><a href="#rumiarray">RumiArray</a></li>
+        <li><a href="#dtype">DType</a></li>
+        <li><a href="#settings">Settings</a></li>
+        <li><a href="#set_num_threads">set_num_threads, get_num_threads</a></li>
+        <li><a href="#set_checksum_verification">set_checksum_verification, get_checksum_verification</a></li>
+        <li><a href="#version">__version__</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

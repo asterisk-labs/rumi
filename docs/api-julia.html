@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="The Rumi Julia package.">
+<title>Rumi · Julia</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html">Docs</a>
+      <a href="api.html" class="here">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">API</p>
+      <ol class="toc-pages">
+        <li><a href="api.html">Overview</a></li>
+        <li class="toc-group">Languages</li>
+        <li><a href="api-python.html">Python</a></li>
+        <li><a href="api-c.html">C</a></li>
+        <li><a href="api-r.html">R</a></li>
+        <li><a href="api-julia.html" class="here" aria-current="page">Julia</a></li>
+        <li><a href="api-js.html">JavaScript</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>Julia</h1>
+      <ul class="facts">
+        <li>Package <code>Rumi</code> for Julia 1.10 or newer, installed from <a href="https://github.com/asterisk-labs/AsteriskRegistry" rel="noopener noreferrer">AsteriskRegistry</a>, sources in <a href="https://github.com/asterisk-labs/rumi/tree/main/bindings/julia" rel="noopener noreferrer"><code>bindings/julia</code></a>.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">API, in 6 pages</p>
+        <ol>
+          <li><a href="api.html">Overview</a></li>
+          <li><a href="api-python.html">Python</a></li>
+          <li><a href="api-c.html">C</a></li>
+          <li><a href="api-r.html">R</a></li>
+          <li class="here" aria-current="page">Julia</li>
+          <li><a href="api-js.html">JavaScript</a></li>
+        </ol>
+      </aside>
+      <p>The Julia package reads Rumi Image and Cube files into native Julia arrays. It opens a source with its external header, as the Python and R packages do.</p>
+
+      <h2 class="part" id="install">Install</h2>
+<pre><code class="language-julia">using Pkg
+Pkg.Registry.add(url = "https://github.com/asterisk-labs/AsteriskRegistry")
+Pkg.add("Rumi")</code></pre>
+      <p>The package calls <code>librumi</code> directly. It loads the library named by <code>RUMI_LIB</code>, then the one <code>make build</code> writes to <code>core/build</code> in a checkout, then the artifact a release publishes for Linux x86-64 and macOS arm64, downloaded on first use and kept in the Julia depot. Loading fails with a <code>librumi</code> built for another C API version.</p>
+<pre><code class="language-julia">using Rumi
+
+file = Rumi.open("scene.rumi", Base.read("scene.header"))
+chip = Rumi.read(file; bands = [4, 8], time = 1:3, window = (1, 1, 256, 256))
+size(chip)                                   # (256, 256, 2, 3)
+meta = info(file)
+close(file)</code></pre>
+
+      <h2 class="part" id="functions">Functions</h2>
+      <p>The module exports <code>Dataset</code>, <code>Metadata</code>, <code>RumiError</code>, <code>info</code> and <code>read_many</code>. <code>open</code> and <code>read</code> are not exported, so call them as <code>Rumi.open</code> and <code>Rumi.read</code>. Bad arguments throw <code>ArgumentError</code>, and a header, source or read that <code>librumi</code> refuses throws <code>RumiError</code>.</p>
+
+      <h3 id="open">open</h3>
+<pre><code class="sig language-julia">Rumi.open(source, header) -&gt; Dataset</code></pre>
+      <p>Pairs a local path or remote URI with its external header. Opening checks that the header matches the source and reads the transform, CRS, band descriptions and time axis. A leading <code>~</code> in the path is expanded.</p>
+      <table class="spec">
+        <tr><th>source</th><td>A local path or remote URI.</td></tr>
+        <tr><th>header</th><td>The external header bytes, any <code>AbstractVector{UInt8}</code>. The Dataset keeps its own copy.</td></tr>
+      </table>
+      <p>Returns a <a href="#types"><code>Dataset</code></a>. A header that is invalid or does not match the source throws <code>RumiError</code>.</p>
+
+      <h3 id="read">read</h3>
+<pre><code class="sig language-julia">Rumi.read(file::Dataset; time=nothing, bands=nothing, window=nothing,
+    pattern=nothing) -&gt; Array
+Rumi.read(source, header; kwargs...) -&gt; Array</code></pre>
+      <p>Reads a selection into a new array of the file's element type. The second form opens the source, reads it and closes it.</p>
+      <table class="spec">
+        <tr><th>time</th><td>One-based time steps, an integer or a collection of integers, kept in the order given. <code>nothing</code> reads every step.</td></tr>
+        <tr><th>bands</th><td>One-based bands, in the same form.</td></tr>
+        <tr><th>window</th><td><code>(row, column, height, width)</code> with a one-based origin. It must lie inside the image, and <code>nothing</code> reads the whole image.</td></tr>
+        <tr><th>pattern</th><td>The output axes, as in <a href="#arrays">Arrays</a>. <code>nothing</code> uses <code>"t b y x"</code> when the file has more than one time step, otherwise <code>"b y x"</code>.</td></tr>
+      </table>
+      <p>An empty selection, an index outside the file, a window past the image or a closed Dataset throws <code>ArgumentError</code>.</p>
+<pre><code class="language-julia">chip = Rumi.read(file; time = [2, 1], bands = [3, 1], window = (2, 3, 3, 4))
+size(chip)                                   # (4, 3, 2, 2)</code></pre>
+
+      <h3 id="read_many">read_many</h3>
+<pre><code class="sig language-julia">read_many(files::AbstractVector{&lt;:Dataset}; windows=nothing, time=nothing,
+    bands=nothing, pattern=nothing) -&gt; Array
+read_many(sources, headers; kwargs...) -&gt; Array</code></pre>
+      <p>Reads one window from each Dataset into one array, as a training batch needs. Every file takes the same time steps and bands, checked against the first file, and every window must have the same height and width. The second form opens each source with its header, reads them and closes them.</p>
+      <table class="spec">
+        <tr><th>windows</th><td>One window per Dataset, as in <a href="#read"><code>read</code></a>. An entry of <code>nothing</code> reads that whole image, and <code>nothing</code> alone reads every whole image.</td></tr>
+        <tr><th>time, bands</th><td>As in <code>read</code>.</td></tr>
+        <tr><th>pattern</th><td>As in <code>read</code>. <code>nothing</code> uses <code>"n t b y x"</code> or <code>"n b y x"</code>, which puts the item axis last in Julia. With one Dataset the default has no item axis.</td></tr>
+      </table>
+      <p>An empty list, a <code>windows</code> list of the wrong length, windows of different sizes, or sources and headers of different lengths throw <code>ArgumentError</code>.</p>
+<pre><code class="language-julia">batch = read_many([file, file]; windows = [(1, 1, 2, 3), (3, 4, 2, 3)], bands = [2])
+size(batch)                                  # (3, 2, 1, 2, 2)</code></pre>
+
+      <h3 id="info">info</h3>
+<pre><code class="sig language-julia">info(file::Dataset) -&gt; Metadata</code></pre>
+      <p>Returns the metadata <code>Rumi.open</code> read, with these fields.</p>
+      <table class="spec">
+        <tr><th>header</th><td>The canonical external header bytes.</td></tr>
+        <tr><th>shape</th><td><code>(band, y, x)</code>, or <code>(time, band, y, x)</code> when the file has more than one time step.</td></tr>
+        <tr><th>time_count</th><td>Time steps in the file.</td></tr>
+        <tr><th>dtype</th><td>The element type name, such as <code>"uint16"</code>.</td></tr>
+        <tr><th>tile</th><td>The tile <code>(height, width)</code>.</td></tr>
+        <tr><th>frame_layout</th><td>The axes inside one frame, such as <code>"b h w"</code>.</td></tr>
+        <tr><th>index_order</th><td>The band and time axes outside the frame, outermost first, as the symbols <code>:t</code> and <code>:b</code>. Axes of length one are left out.</td></tr>
+        <tr><th>frames</th><td>Frames in the file.</td></tr>
+        <tr><th>bands</th><td>Band descriptions, in band order.</td></tr>
+        <tr><th>time</th><td><code>DateTime</code> values, or <code>(start, stop)</code> pairs of them.</td></tr>
+        <tr><th>time_kind</th><td><code>:instant</code> or <code>:interval</code>.</td></tr>
+        <tr><th>transform</th><td>Six affine coefficients <code>(x_res, row_rotation, x_origin, column_rotation, y_res, y_origin)</code>, or <code>nothing</code> without a CRS.</td></tr>
+        <tr><th>crs</th><td>The EPSG code, or <code>nothing</code>.</td></tr>
+        <tr><th>pixel_is_point</th><td><code>true</code> for PixelIsPoint, <code>false</code> for PixelIsArea.</td></tr>
+      </table>
+<pre><code class="language-julia">meta = info(file)
+meta.shape                                   # (2, 3, 6, 8)
+meta.bands                                   # ["B02", "B03", "B04"]</code></pre>
+
+      <h3 id="types">Types</h3>
+      <table class="spec">
+        <tr><th>Dataset</th><td>What <code>Rumi.open</code> returns. <code>isopen(file)</code> tells whether it is open and <code>close(file)</code> frees it, which also happens when it is garbage collected. A closed Dataset throws <code>ArgumentError</code> on read.</td></tr>
+        <tr><th>Metadata</th><td>What <code>info</code> returns, with the fields above.</td></tr>
+        <tr><th>RumiError</th><td>Thrown when <code>librumi</code> refuses a header, a source or a read. Its message carries the library's.</td></tr>
+      </table>
+
+      <h2 class="part" id="arrays">Arrays</h2>
+      <p>Selections and window origins are one-based. Arrays use Julia's own memory order, so an Image reads as <code>(x, y, band)</code> and a Cube as <code>(x, y, band, time)</code>, and <code>read_many</code> adds the item axis last. A Cube read keeps its time axis when one step is selected. <code>Metadata.shape</code> keeps Rumi's <code>(band, y, x)</code> or <code>(time, band, y, x)</code>.</p>
+      <p>A pattern names the output axes from <code>n</code>, <code>t</code>, <code>b</code>, <code>y</code> and <code>x</code>, outermost first. Grouped axes become one dimension, and an axis may be left out only when its extent is one. The Julia array has the dimensions in reverse, so <code>pattern = "t y x b"</code> gives an array shaped <code>(b, x, y, t)</code>.</p>
+      <p>Integer, <code>Float16</code>, <code>Float32</code>, <code>Float64</code>, complex and <code>Bool</code> files read into Julia's own types. <code>bfloat16</code> reads into <code>Core.BFloat16</code> where Julia defines it and <code>Rumi.RumiBFloat16</code> otherwise. The five float8 dtypes read into the 8-bit types <code>Rumi.Float8E4M3FN</code>, <code>Rumi.Float8E5M2</code>, <code>Rumi.Float8E8M0FNU</code>, <code>Rumi.Float8E4M3FNUZ</code> and <code>Rumi.Float8E5M2FNUZ</code>.</p>
+
+      <h2 class="part" id="coverage">What it covers</h2>
+      <p>The Julia package reads files. It has no <code>frames</code>, <code>write</code> or <code>frame_start</code>, no GPU reads and no <code>set_num_threads</code>, so write files with the <a href="api-python.html">Python package</a>. <code>librumi</code> still reads <code>RUMI_NUM_THREADS</code>, an integer from 1 to 1024 or <code>ALL_CPUS</code>, and the first parallel read fixes the pool size.</p>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="api-r.html"><span>Previous</span>R</a>
+        <a class="next" href="api-js.html"><span>Next</span>JavaScript</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#install">Install</a></li>
+        <li><a href="#functions">Functions</a></li>
+        <li><a href="#open">open</a></li>
+        <li><a href="#read">read</a></li>
+        <li><a href="#read_many">read_many</a></li>
+        <li><a href="#info">info</a></li>
+        <li><a href="#types">Types</a></li>
+        <li><a href="#arrays">Arrays</a></li>
+        <li><a href="#coverage">What it covers</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

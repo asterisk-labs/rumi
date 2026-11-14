@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Rumi on a GPU, a Rumi example notebook.">
+<title>Rumi · Rumi on a GPU</title>
+<link rel="icon" href="../assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reading.css?v=2">
+<link rel="stylesheet" href="../assets/css/notebook.css?v=1">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="../index.html" aria-label="Rumi home">
+      <img class="marksvg" src="../assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="../assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="../assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="../assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="../assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="../docs.html">Docs</a>
+      <a href="../api.html">API</a>
+      <a href="../examples.html" class="here">Examples</a>
+      <a href="../index.html#/spec">Spec</a>
+    </nav>
+  </header>
+  <main class="nb">
+    <article class="content">
+      <a class="nb-back" href="../examples.html#colab"><span aria-hidden="true">&larr;</span> Examples</a>
+      <h1>Rumi on a GPU</h1>
+      <ul class="facts"><li>Python · GPU</li><li><a href="https://colab.research.google.com/github/asterisk-labs/rumi/blob/main/examples/rumi-gpu.ipynb" rel="noopener noreferrer">Open in Colab</a></li><li><a href="https://github.com/asterisk-labs/rumi/blob/main/examples/rumi-gpu.ipynb" rel="noopener noreferrer">Notebook on GitHub</a></li></ul>
+<p>This notebook writes a small Rumi image, reads a window directly into a CUDA tensor, and checks the result against the CPU reader. Select a GPU runtime before running it.</p>
+<div class="nb-cell"><pre><code class="language-python">%pip install -q --pre "geozl==0.20.0" "rumi-eo==0.27.0a4"</code></pre></div>
+<div class="nb-cell"><pre><code class="language-python">from pathlib import Path
+
+import geozl
+import numpy as np
+import rumi
+import torch
+
+assert torch.cuda.is_available(), "Select a GPU runtime in Colab"
+print("Rumi", rumi.__version__)
+print("GeoZL", geozl.__version__)
+print("GPU", torch.cuda.get_device_name(0))</code></pre></div>
+<h2 class="part">Write a small image</h2>
+<p>The <code>lanes</code> recipe below is supported by the CUDA decoder.</p>
+<div class="nb-cell"><pre><code class="language-python">rng = np.random.default_rng(42)
+data = rng.integers(0, 10_000, (4, 512, 512), dtype=np.uint16)
+
+frames = rumi.frames(
+    data,
+    "b (row h) (col w) -&gt; row col (b h w)",
+    tile_size=128,
+)
+for frame in frames:
+    graph = geozl.graph(
+        frame.data, "planar&gt;zigzag&gt;lanes"
+    )
+    frame.compressed = geozl.compress(frame.data, graph=graph)
+
+path, header = rumi.write(
+    Path("scene.rumi"),
+    frames,
+    bands=["B2", "B3", "B4", "B8"],
+    time=["2026-10-31"],
+)
+print(path, path.stat().st_size, "bytes")</code></pre></div>
+<h2 class="part">Read directly into CUDA</h2>
+<p>Rumi parses the header on the CPU, then writes the selected samples into a PyTorch tensor on <code>cuda:0</code>. The call to <code>cpu()</code> below is only for the correctness check.</p>
+<div class="nb-cell"><pre><code class="language-python">selection = dict(bands=[2, 3], window=(96, 80, 192, 224))
+cpu = rumi.read(path, header, **selection)
+gpu = rumi.read(
+    path,
+    header,
+    **selection,
+    framework="torch",
+    device="cuda:0",
+)
+
+assert gpu.is_cuda
+np.testing.assert_array_equal(gpu.cpu().numpy(), cpu)
+print(gpu.shape, gpu.dtype, gpu.device)</code></pre></div>
+<h2 class="part">Batch windows</h2>
+<p><code>read_many</code> keeps the batch on the same device.</p>
+<div class="nb-cell"><pre><code class="language-python">windows = [
+    (0, 0, 128, 128),
+    (128, 128, 128, 128),
+]
+batch = rumi.read_many(
+    [path, path],
+    [header, header],
+    windows=windows,
+    framework="torch",
+    device="cuda:0",
+)
+
+expected = np.stack([
+    data[:, row:row + height, col:col + width]
+    for row, col, height, width in windows
+])
+assert batch.is_cuda
+np.testing.assert_array_equal(batch.cpu().numpy(), expected)
+print(batch.shape, batch.dtype, batch.device)</code></pre></div>
+      <a class="nb-back nb-back-end" href="../examples.html#colab"><span aria-hidden="true">&larr;</span> Back to the examples</a>
+    </article>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="../assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="../assets/js/code.js?v=1" defer></script>
+</body>
+</html>

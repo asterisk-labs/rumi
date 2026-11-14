@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="350" viewBox="0 0 760 350" role="img" aria-labelledby="concurrency-title concurrency-desc">
+<title id="concurrency-title">Where work overlaps inside one synchronous Rumi read</title>
+<desc id="concurrency-desc">The caller plans and submits remote requests, Rumi workers process local tasks, and Karu's background threads perform remote I/O and credential or file work. The caller waits for completions, drains ready frames into waves, and returns only after all waves finish.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+</style>
+<defs><marker id="arrow-concurrency" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<text class="figure-stage" x="12" y="21">TIME →</text>
+<text class="figure-stage" x="12" y="60">CALLER</text>
+<text class="figure-stage" x="12" y="132">KARU I/O</text>
+<text class="figure-stage" x="12" y="204">RUMI POOL</text>
+<text class="figure-stage" x="12" y="276">KARU HELPERS</text>
+
+<path class="figure-arrow" d="M102 64H742M102 136H742M102 208H742M102 280H742"/>
+
+<g class="figure-card accent"><rect x="112" y="39" width="112" height="48" rx="5"/><text x="168" y="58">plan + submit</text><text class="sub" x="168" y="74">client_submit()</text></g>
+<g class="figure-card"><rect x="238" y="39" width="142" height="48" rx="5"/><text x="309" y="58">run local tasks</text><text class="sub" x="309" y="74">decode_tasks()</text></g>
+<g class="figure-card"><rect x="394" y="39" width="126" height="48" rx="5"/><text x="457" y="58">wait for first</text><text class="sub" x="457" y="74">batch_next(-1)</text></g>
+<g class="figure-card accent"><rect x="534" y="39" width="116" height="48" rx="5"/><text x="592" y="58">drain ready</text><text class="sub" x="592" y="74">batch_next(0)</text></g>
+<g class="figure-card"><rect x="664" y="39" width="72" height="48" rx="5"/><text x="700" y="58">repeat</text><text class="sub" x="700" y="74">then return</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M224 63H238M380 63H394M520 63H534M650 63H664"/>
+<path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M196 87V111H248"/>
+<g class="figure-card accent"><rect x="252" y="111" width="430" height="48" rx="5"/><text x="467" y="130">remote ranges progress independently</text><text class="sub" x="467" y="146">connection · retry · completion queues</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M309 87V183"/>
+<g class="figure-card"><rect x="246" y="183" width="140" height="48" rx="5"/><text x="316" y="202">local task wave</text><text class="sub" x="316" y="218">read + OpenZL decode</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-concurrency)" d="M592 87V175H566V183"/>
+<g class="figure-card accent"><rect x="536" y="183" width="116" height="48" rx="5"/><text x="594" y="202">ready wave 1</text><text class="sub" x="594" y="218">OpenZL decode</text></g>
+<g class="figure-card"><rect x="666" y="183" width="70" height="48" rx="5"/><text x="701" y="202">wave 2</text><text class="sub" x="701" y="218">decode</text></g>
+
+<g class="figure-card"><rect x="282" y="255" width="166" height="48" rx="5"/><text x="365" y="274">credential workers</text><text class="sub" x="365" y="290">blocking preparation</text></g>
+<g class="figure-card"><rect x="464" y="255" width="166" height="48" rx="5"/><text x="547" y="274">file workers</text><text class="sub" x="547" y="290">local Karu reads</text></g>
+<text class="figure-note" x="422" y="335">The Python caller sees one blocking function, and these lanes can overlap inside it.</text>
+</svg>

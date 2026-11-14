@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="280" viewBox="0 0 760 280" role="img" aria-labelledby="decode-title decode-desc">
+<title id="decode-title">OpenZL context with GeoZL raster extensions</title>
+<desc id="decode-desc">A compressed Rumi frame enters one worker-local OpenZL context. The context contains OpenZL built-in decoders and GeoZL raster codec extensions. decompressTyped produces a decoded frame that Rumi validates.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+.diagram-panel{fill:#ffffff;stroke:#d9d5dd}
+</style>
+<defs><marker id="arrow-decode" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<g class="figure-card"><rect x="20" y="103" width="150" height="70" rx="6"/><text x="95" y="127">compressed frame</text><text class="sub" x="95" y="147">Karu buffer or</text><text class="sub" x="95" y="160">worker scratch</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-decode)" d="M170 138H212"/>
+
+<rect class="diagram-panel" x="216" y="28" width="330" height="220" rx="10"/>
+<text class="figure-stage" x="236" y="52">WORKER-LOCAL OPENZL CONTEXT</text>
+<g class="figure-card"><rect x="238" y="68" width="132" height="52" rx="6"/><text x="304" y="89">OpenZL built-ins</text><text class="sub" x="304" y="106">native decoder set</text></g>
+<g class="figure-card accent"><rect x="392" y="68" width="132" height="52" rx="6"/><text x="458" y="89">GeoZL codecs</text><text class="sub" x="458" y="106">registered extensions</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-decode)" d="M304 120V146H362"/>
+<path class="figure-arrow" marker-end="url(#arrow-decode)" d="M458 120V146H400"/>
+<g class="figure-card accent"><rect x="272" y="150" width="218" height="58" rx="6"/><text x="381" y="173">ZL_DCtx_decompressTyped()</text><text class="sub" x="381" y="192">execute the graph stored in the frame</text></g>
+<text class="figure-note" x="381" y="231">GeoZL extends this context. Rumi invokes one decoder API.</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-decode)" d="M546 138H586"/>
+<g class="figure-card accent"><rect x="590" y="91" width="150" height="94" rx="6"/><text x="665" y="114">decoded frame</text><text class="sub" x="665" y="135">numeric type</text><text class="sub" x="665" y="150">sample width</text><text class="sub" x="665" y="165">exact byte size</text></g>
+</svg>

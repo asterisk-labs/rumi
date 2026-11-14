@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="220" viewBox="0 0 760 220" role="img" aria-labelledby="many-title many-desc">
+<title id="many-title">The read_many call path</title>
+<desc id="many-desc">Python pairs sources with specs and resolves either explicit windows or whole images. prepare_many validates the common output. The core creates ReadItems, builds one Plan of FrameTasks, uses one Karu batch and Rumi worker pool, and writes results under a leading n axis.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+</style>
+<defs><marker id="arrow-many" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<g class="figure-card"><rect x="16" y="68" width="135" height="82" rx="6"/><text x="83" y="91">Python items</text><text class="sub" x="83" y="110">source[i] + header[i]</text><text class="sub" x="83" y="125">window / full image</text><text class="sub" x="83" y="140">equal output size</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-many)" d="M151 109H174"/>
+<g class="figure-card accent"><rect x="178" y="68" width="135" height="82" rx="6"/><text x="245" y="91">prepare_many()</text><text class="sub" x="245" y="110">prepare_selection()</text><text class="sub" x="245" y="125">collect native handles</text><text class="sub" x="245" y="140">leading n axis</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-many)" d="M313 109H336"/>
+<g class="figure-card"><rect x="340" y="68" width="135" height="82" rx="6"/><text x="407" y="91">read_many()</text><text class="sub" x="407" y="110">compatible_headers()</text><text class="sub" x="407" y="125">ReadItem[]</text><text class="sub" x="407" y="140">read_items()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-many)" d="M475 109H498"/>
+<g class="figure-card accent"><rect x="502" y="68" width="135" height="82" rx="6"/><text x="569" y="91">one Plan</text><text class="sub" x="569" y="110">all FrameTask records</text><text class="sub" x="569" y="125">one Karu batch if remote</text><text class="sub" x="569" y="140">shared worker pool</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-many)" d="M637 109H660"/>
+<g class="figure-card"><rect x="664" y="68" width="80" height="82" rx="6"/><text x="704" y="91">tensor</text><text class="sub" x="704" y="112">n · ...</text><text class="sub" x="704" y="132">input order</text></g>
+<text class="figure-note" x="380" y="192">Batching changes the number of items, not the planning, transport, decode, or placement contracts.</text>
+</svg>

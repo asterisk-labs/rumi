@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="The Rumi JavaScript package.">
+<title>Rumi · JavaScript</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html">Docs</a>
+      <a href="api.html" class="here">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">API</p>
+      <ol class="toc-pages">
+        <li><a href="api.html">Overview</a></li>
+        <li class="toc-group">Languages</li>
+        <li><a href="api-python.html">Python</a></li>
+        <li><a href="api-c.html">C</a></li>
+        <li><a href="api-r.html">R</a></li>
+        <li><a href="api-julia.html">Julia</a></li>
+        <li><a href="api-js.html" class="here" aria-current="page">JavaScript</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>JavaScript</h1>
+      <ul class="facts">
+        <li>Package <code>@asterisk-labs/rumi</code> on <a href="https://www.npmjs.com/package/@asterisk-labs/rumi" rel="noopener noreferrer">npm</a>, for browsers and Node.js 24 or newer.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">API, in 6 pages</p>
+        <ol>
+          <li><a href="api.html">Overview</a></li>
+          <li><a href="api-python.html">Python</a></li>
+          <li><a href="api-c.html">C</a></li>
+          <li><a href="api-r.html">R</a></li>
+          <li><a href="api-julia.html">Julia</a></li>
+          <li class="here" aria-current="page">JavaScript</li>
+        </ol>
+      </aside>
+      <p>The JavaScript package reads Rumi Image and Cube files in browsers and Node.js. It opens the complete <code>.rumi</code> file, requests only the byte ranges a read needs, and decodes each frame with the GeoZL WebAssembly package. Indices are zero-based and a Cube reads as <code>(Time, Band, Y, X)</code>, as in Python.</p>
+
+      <h2 class="part" id="install">Install</h2>
+<pre><code class="language-sh">npm install @asterisk-labs/rumi</code></pre>
+      <p>The package is an ES module and installs <code>@asterisk-labs/geozl</code> as its decoder. GeoZL uses wasm64, so decoding needs WebAssembly Memory64. Use Node.js 24 or newer, or a browser with Memory64 support. TypeScript declarations ship in <code>index.d.ts</code>.</p>
+<pre><code class="language-ts">import {openRumi} from '@asterisk-labs/rumi';
+
+const dataset = await openRumi('https://example.com/cube.rumi');
+const chip = await dataset.read({
+  time: [3], bands: [4, 2, 1], window: [1024, 2048, 256, 256],
+});
+chip.shape;            // [1, 3, 256, 256]
+dataset.info().bands;  // band descriptions from the trailer
+dataset.info().time;   // POSIX seconds as bigint</code></pre>
+
+      <h2 class="part" id="opening">Opening a file</h2>
+      <p>Calls that fail throw, or reject their promise, with an <code>Error</code>, <code>TypeError</code> or <code>RangeError</code>. Errors from the decoder pass through unchanged.</p>
+
+      <h3 id="openRumi">openRumi</h3>
+<pre><code class="sig language-ts">openRumi(source: RumiSource, options?: OpenOptions): Promise&lt;RumiDataset&gt;</code></pre>
+      <p>Reads and checks the file header, the directory and the trailer, then resolves to a <a href="#RumiDataset"><code>RumiDataset</code></a>. It takes three reads and fetches no frame. Anything but a complete <code>.rumi</code> file is refused. GeoZL loads on the first <code>read</code>, and a failed load is tried again on the next one. Datasets opened without <code>geozl</code> options share one GeoZL module.</p>
+      <table class="spec">
+        <tr><th>decoder</th><td>A <a href="#Decoder"><code>Decoder</code></a> to use instead of GeoZL.</td></tr>
+        <tr><th>geozl</th><td>Options for GeoZL's <a href="https://asterisk.coop/geozl/api-js.html#createGeoZL" rel="noopener noreferrer"><code>createGeoZL</code></a>, such as <code>wasmUrl</code> and <code>locateFile</code>.</td></tr>
+        <tr><th>maxFrameBytes</th><td>Refuse a file whose largest decoded frame is bigger than this. Defaults to 1 GiB.</td></tr>
+        <tr><th>maxMetadataBytes</th><td>Refuse a directory, frame index or trailer bigger than this. Defaults to 64 MiB.</td></tr>
+        <tr><th>maxOutputBytes</th><td>Refuse a <code>read</code> whose result is bigger than this. Defaults to 1 GiB.</td></tr>
+        <tr><th>maxTimeCoordinates</th><td>Refuse a file with more time coordinates than this, counting an interval as two. Defaults to one million.</td></tr>
+        <tr><th>fetch</th><td>The <code>fetch</code> for URL sources. Defaults to <code>globalThis.fetch</code>.</td></tr>
+        <tr><th>signal</th><td>An <code>AbortSignal</code> passed to every range request of a URL source.</td></tr>
+      </table>
+      <p>Each limit must be a positive safe integer.</p>
+<pre><code class="language-ts">const dataset = await openRumi(file, {geozl: {wasmUrl: '/static/geozl.wasm'}});</code></pre>
+
+      <h3 id="RumiSource">RumiSource</h3>
+<pre><code class="sig language-ts">type RumiSource = ArrayBuffer | SharedArrayBuffer | ArrayBufferView | Blob | string | URL | {
+  read(offset: bigint, length: number): Promise&lt;Uint8Array&gt;;
+  size(): bigint | Promise&lt;bigint&gt;;
+};</code></pre>
+      <p>Bytes are read from memory and a <code>Blob</code> is sliced per range. A string or <code>URL</code> is fetched with HTTP range requests. Any other object needs <code>read</code>, which returns exactly <code>length</code> bytes as a <code>Uint8Array</code>, and <code>size</code>, which returns the size of the complete file as a bigint.</p>
+      <p>A server that ignores the range or answers with the wrong <code>Content-Range</code> is refused. Cross-origin responses must expose <code>Content-Range</code>. If they also expose a strong <code>ETag</code>, CORS must allow the <code>If-Match</code> request header, which pins later reads to that object version. An object that changes while it is read fails the read.</p>
+
+      <h3 id="Decoder">Decoder and GeoZLDecoder</h3>
+<pre><code class="sig language-ts">interface GeoZLDecoder {
+  decompress(frame: Uint8Array, options: {verify: boolean; maxOutputSize: number}):
+    ArrayBufferView | ArrayBuffer | SharedArrayBuffer
+    | Promise&lt;ArrayBufferView | ArrayBuffer | SharedArrayBuffer&gt;;
+}
+type Decoder = GeoZLDecoder | ((frame: Uint8Array, options: {verify: boolean; maxOutputSize: number})
+  =&gt; ArrayBufferView | ArrayBuffer | SharedArrayBuffer
+  | Promise&lt;ArrayBufferView | ArrayBuffer | SharedArrayBuffer&gt;);</code></pre>
+      <p>A decoder replaces GeoZL. It is an object with <code>decompress</code>, such as the one <code>createGeoZL</code> returns, or a bare function. Rumi calls it once per compressed frame, with <code>verify</code> from the read and <code>maxOutputSize</code> set to the frame's decoded size, and refuses a result of any other length.</p>
+
+      <h2 class="part" id="reading">Reading</h2>
+
+      <h3 id="RumiDataset">RumiDataset</h3>
+<pre><code class="sig language-ts">class RumiDataset {
+  readonly header: ParsedHeader;
+  info(): RumiInfo;
+  planRanges(options?: ReadOptions): FrameRange[];
+  read(options?: ReadOptions): Promise&lt;ReadResult&gt;;
+}</code></pre>
+      <p>An open file, made only by <code>openRumi</code>. It holds the frame index and no frame data. <code>header</code> is the external header that <code>openRumi</code> rebuilds from the file's directory, described under <a href="#ParsedHeader"><code>ParsedHeader</code></a>.</p>
+
+      <h3 id="info">info</h3>
+<pre><code class="sig language-ts">dataset.info(): RumiInfo</code></pre>
+      <p>Returns a frozen description of the array without reading the file. <code>RumiInfo</code> extends <code>RumiMetadata</code>, which adds the band and time fields to <code>RumiGeoreferencing</code>.</p>
+      <table class="spec">
+        <tr><th>shape</th><td><code>[bands, height, width]</code> for an Image and <code>[time, bands, height, width]</code> for a Cube.</td></tr>
+        <tr><th>axes</th><td><code>["band", "y", "x"]</code> or <code>["time", "band", "y", "x"]</code>.</td></tr>
+        <tr><th>dtype</th><td>The sample type, a <a href="#DType"><code>DType</code></a>.</td></tr>
+        <tr><th>tileShape</th><td>Tile height and width.</td></tr>
+        <tr><th>gridShape</th><td>Tiles down and across.</td></tr>
+        <tr><th>frameUnit</th><td>The <a href="index.html#/spec/frame_unit"><code>frame_unit</code></a> code, 0 to 9.</td></tr>
+        <tr><th>frameLayout</th><td>The axes of one decoded frame, such as <code>"h w t b"</code>.</td></tr>
+        <tr><th>frameCount</th><td>Number of frames in the file.</td></tr>
+        <tr><th>transform</th><td>The affine coefficients <code>[x_res, row_rot, x_origin, col_rot, y_res, y_origin]</code>, or <code>null</code> when the file has no CRS.</td></tr>
+        <tr><th>epsg</th><td>The EPSG code, or <code>null</code>.</td></tr>
+        <tr><th>crs</th><td>The code as a string such as <code>"EPSG:4326"</code>, or <code>null</code>.</td></tr>
+        <tr><th>pixelIsPoint</th><td><code>true</code> for PixelIsPoint and <code>false</code> for PixelIsArea.</td></tr>
+        <tr><th>bands</th><td>One description per band, from the trailer.</td></tr>
+        <tr><th>time</th><td>One <a href="#RumiTime"><code>RumiTime</code></a> per time step.</td></tr>
+        <tr><th>timeKind</th><td><code>"instant"</code> or <code>"interval"</code>.</td></tr>
+      </table>
+
+      <h3 id="read">read</h3>
+<pre><code class="sig language-ts">dataset.read(options?: ReadOptions): Promise&lt;ReadResult&gt;</code></pre>
+      <p>Fetches and decodes the frames a selection touches and copies the window out of them. Each frame is fetched once, and up to eight are read and decoded at a time. Selections keep their order and repeats, so <code>bands: [2, 0, 2]</code> returns three planes. An option left out selects the whole axis.</p>
+      <table class="spec">
+        <tr><th>time</th><td>Time indices. An Image accepts only one.</td></tr>
+        <tr><th>bands</th><td>Band indices.</td></tr>
+        <tr><th>window</th><td><code>[y, x, height, width]</code> in pixels. It must be non-empty and inside the image.</td></tr>
+        <tr><th>verify</th><td>Have GeoZL check the frame checksums. Defaults to <code>true</code>.</td></tr>
+      </table>
+      <p>An index list is an array or a typed array, the <code>IndexArray</code> type, and cannot be empty. The result is a frozen <code>ReadResult</code>.</p>
+      <table class="spec">
+        <tr><th>data</th><td>The samples as a <code>dtype.ArrayType</code> over the same buffer as <code>bytes</code>.</td></tr>
+        <tr><th>bytes</th><td>The samples as raw little-endian bytes.</td></tr>
+        <tr><th>shape</th><td><code>[bands, height, width]</code> for an Image and <code>[time, bands, height, width]</code> for a Cube, sized by the selection.</td></tr>
+        <tr><th>axes</th><td>As in <code>info</code>.</td></tr>
+        <tr><th>dtype</th><td>The sample type.</td></tr>
+      </table>
+      <p>It rejects an index out of range, a result bigger than <code>maxOutputBytes</code>, a short read from the source and a decoded frame of the wrong size.</p>
+<pre><code class="language-ts">const rgb = await dataset.read({bands: [3, 2, 1], window: [0, 0, 256, 256]});
+rgb.shape;  // [3, 256, 256] for an Image</code></pre>
+
+      <h3 id="planRanges">planRanges</h3>
+<pre><code class="sig language-ts">dataset.planRanges(options?: ReadOptions): FrameRange[]</code></pre>
+      <p>Returns the compressed frames that <code>read</code> would fetch for the same options, without fetching or decoding them. Each frame appears once, in file order.</p>
+      <table class="spec">
+        <tr><th>frameIndex</th><td>The frame's position in the frame index.</td></tr>
+        <tr><th>offset</th><td>Its byte offset in the file, as a bigint.</td></tr>
+        <tr><th>length</th><td>Its compressed size in bytes.</td></tr>
+      </table>
+
+      <h2 class="part" id="types">Types</h2>
+
+      <h3 id="DType">DType</h3>
+<pre><code class="sig language-ts">interface DType {
+  readonly code: number;
+  readonly name: string;
+  readonly sampleFormat: number;
+  readonly bits: number;
+  readonly bytes: number;
+  readonly componentBytes: number;
+  readonly ArrayType: TypedArrayConstructor;
+}</code></pre>
+      <p>A frozen sample type, one of the 21 in the <a href="index.html#/spec/sample-encodings">spec</a>. <code>code</code> is the <code>rumi_dtype</code> value of the <a href="api-c.html">C API</a> and <code>name</code> its name, such as <code>"uint16"</code> or <code>"bfloat16"</code>. <code>sampleFormat</code> and <code>bits</code> are the SampleFormat and BitsPerSample values stored in the file. <code>bytes</code> is the size of one decoded sample and <code>componentBytes</code> the size of one element of <code>ArrayType</code>, the typed array behind <code>data</code>.</p>
+      <table class="spec">
+        <tr><th>native</th><td>The eight integer types, float32 and float64 use their own typed array, with <code>BigUint64Array</code> and <code>BigInt64Array</code> for 64-bit integers.</td></tr>
+        <tr><th>float16, bfloat16</th><td><code>Uint16Array</code> of the raw bits.</td></tr>
+        <tr><th>float8, bool</th><td><code>Uint8Array</code> for the five float8 types and bool. A bool read refuses a byte other than 0 or 1.</td></tr>
+        <tr><th>complex</th><td>The component array, two elements per sample with the real part first. <code>Uint16Array</code> for complex32, <code>Float32Array</code> for complex64 and <code>Float64Array</code> for complex128.</td></tr>
+      </table>
+      <p><code>TypedArray</code> is the union of the ten typed arrays <code>data</code> can be, and <code>TypedArrayConstructor</code> the type of <code>ArrayType</code>. <code>data</code> needs a little-endian host.</p>
+
+      <h3 id="RumiTime">RumiTime</h3>
+<pre><code class="sig language-ts">type RumiTime = bigint | readonly [start: bigint, end: bigint];</code></pre>
+      <p>A time coordinate in exact POSIX seconds. A file of instants holds one bigint per time step, and a file of intervals holds a <code>[start, end]</code> pair.</p>
+
+      <h3 id="ParsedHeader">ParsedHeader</h3>
+<pre><code class="sig language-ts">header.frameOffset(index: number): bigint
+header.frameByteCount(index: number): number
+header.frameIndex(spatial: number, band: number, time: number): number</code></pre>
+      <p>The frozen header behind <code>dataset.header</code>. The methods give a frame's byte offset in the file, its compressed size, and the frame that holds a tile, band and time, where <code>spatial</code> is <code>row * tilesAcross + column</code>. The first two refuse an index out of range.</p>
+      <table class="spec">
+        <tr><th>width, height</th><td>Image size in pixels.</td></tr>
+        <tr><th>bands, timeCount</th><td>Number of bands and time steps. An Image has one time step.</td></tr>
+        <tr><th>dtype</th><td>The sample type.</td></tr>
+        <tr><th>tileWidth, tileHeight</th><td>Tile size in pixels.</td></tr>
+        <tr><th>tilesAcross, tilesDown</th><td>The tile grid.</td></tr>
+        <tr><th>frameUnit</th><td>The <code>frame_unit</code> code.</td></tr>
+        <tr><th>frameAxes, frameLayout</th><td>The axes of one decoded frame, as names such as <code>["y", "x", "band"]</code> and as letters such as <code>"h w b"</code>.</td></tr>
+        <tr><th>timeFirst</th><td><code>true</code> for <code>frame_unit</code> 9, whose index walks time before band.</td></tr>
+        <tr><th>frameCount</th><td>Number of frames.</td></tr>
+        <tr><th>maxDecodedFrame</th><td>Bytes in the largest decoded frame.</td></tr>
+        <tr><th>baseFrameOffset</th><td>Byte offset of the first frame, as a bigint.</td></tr>
+        <tr><th>countMin, countBits</th><td>The smallest frame byte count and the bit width of the packed residuals.</td></tr>
+      </table>
+
+      <h2 class="part" id="playground">Playground</h2>
+      <p>The package has a small MapLibre viewer in <a href="https://github.com/asterisk-labs/rumi/tree/main/bindings/javascript/playground" rel="noopener noreferrer"><code>bindings/javascript/playground</code></a>. Paste a public <code>.rumi</code> URL or drop a local file, choose bands and render it over the map. The viewer reads band descriptions, time coordinates, frame layout, tile grid and georeferencing from the file.</p>
+<pre><code class="language-sh">cd bindings/javascript
+npm install
+npm run playground</code></pre>
+      <p>Then open <code>http://127.0.0.1:4321/</code>. From the repository root, <code>make playground</code> starts it too. To view a local file, start the server with <code>node playground/server.mjs --sample /path/to/image.rumi</code> and open <code>http://127.0.0.1:4321/?url=/sample.rumi</code>. <code>GEOZL_WASM_DIR</code> points the server at a local GeoZL build holding <code>geozl_api.js</code>, <code>geozl.js</code> and <code>geozl.wasm</code>.</p>
+
+      <h2 class="part" id="coverage">What it covers</h2>
+      <p>The JavaScript package reads complete <code>.rumi</code> files only. It exposes the array shape, dtype, tile grid, frame index, affine transform, EPSG CRS, band descriptions and time coordinates. It does not write files, and it does not open a source with a separate external <code>LOVE</code> header as Python, R and Julia do. It has no <code>read_many</code> and no GPU reads.</p>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="api-julia.html"><span>Previous</span>Julia</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#install">Install</a></li>
+        <li><a href="#opening">Opening a file</a></li>
+        <li><a href="#openRumi">openRumi</a></li>
+        <li><a href="#RumiSource">RumiSource</a></li>
+        <li><a href="#Decoder">Decoder and GeoZLDecoder</a></li>
+        <li><a href="#reading">Reading</a></li>
+        <li><a href="#RumiDataset">RumiDataset</a></li>
+        <li><a href="#info">info</a></li>
+        <li><a href="#read">read</a></li>
+        <li><a href="#planRanges">planRanges</a></li>
+        <li><a href="#types">Types</a></li>
+        <li><a href="#DType">DType</a></li>
+        <li><a href="#RumiTime">RumiTime</a></li>
+        <li><a href="#ParsedHeader">ParsedHeader</a></li>
+        <li><a href="#playground">Playground</a></li>
+        <li><a href="#coverage">What it covers</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

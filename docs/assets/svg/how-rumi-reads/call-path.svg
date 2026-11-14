@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="210" viewBox="0 0 760 210" role="img" aria-labelledby="whole-title whole-desc">
+<title id="whole-title">The complete Rumi read call path</title>
+<desc id="whole-desc">The Python read function calls the C API, which invokes the core planner and executor. Karu supplies compressed ranges, an OpenZL context with GeoZL extensions decodes frames, and Rumi exports the result.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+</style>
+<defs><marker id="arrow-whole" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<text class="figure-stage" x="14" y="21">PYTHON</text>
+<text class="figure-stage" x="166" y="21">C API</text>
+<text class="figure-stage" x="318" y="21">RUMI CORE</text>
+<text class="figure-stage" x="470" y="21">EXECUTION</text>
+<text class="figure-stage" x="622" y="21">RESULT</text>
+
+<g class="figure-card accent"><rect x="12" y="36" width="126" height="72" rx="6"/><text x="75" y="63">read()</text><text class="sub" x="75" y="82">_read_one()</text><text class="sub" x="75" y="96">selection</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M138 72H160"/>
+<g class="figure-card"><rect x="164" y="36" width="126" height="72" rx="6"/><text x="227" y="59">rumi_read_</text><text x="227" y="74">dlpack()</text><text class="sub" x="227" y="94">prepare_selection()</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M290 72H312"/>
+<g class="figure-card accent"><rect x="316" y="36" width="126" height="72" rx="6"/><text x="379" y="59">read_window()</text><text class="sub" x="379" y="79">read_items()</text><text class="sub" x="379" y="94">Plan + FrameTask[]</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M442 72H464"/>
+<g class="figure-card"><rect x="468" y="36" width="126" height="72" rx="6"/><text x="531" y="59">execute_plan()</text><text class="sub" x="531" y="79">Karu ranges</text><text class="sub" x="531" y="94">decode workers</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M594 72H616"/>
+<g class="figure-card accent"><rect x="620" y="36" width="128" height="72" rx="6"/><text x="684" y="59">RumiArray</text><text class="sub" x="684" y="79">DLPack</text><text class="sub" x="684" y="94">framework array</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M492 112V142H417"/>
+<g class="figure-card"><rect x="285" y="135" width="132" height="55" rx="6"/><text x="351" y="158">Karu</text><text class="sub" x="351" y="176">compressed ranges</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M417 163H444"/>
+<g class="figure-card accent"><rect x="448" y="126" width="190" height="64" rx="6"/><text x="543" y="149">OpenZL context</text><text class="sub" x="543" y="167">built-ins + GeoZL extensions</text><text class="sub" x="543" y="180">decoded frame</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-whole)" d="M638 158H684V114"/>
+</svg>

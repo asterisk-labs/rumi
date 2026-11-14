@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="The Rumi C API in rumi.h.">
+<title>Rumi · C</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html">Docs</a>
+      <a href="api.html" class="here">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">API</p>
+      <ol class="toc-pages">
+        <li><a href="api.html">Overview</a></li>
+        <li class="toc-group">Languages</li>
+        <li><a href="api-python.html">Python</a></li>
+        <li><a href="api-c.html" class="here" aria-current="page">C</a></li>
+        <li><a href="api-r.html">R</a></li>
+        <li><a href="api-julia.html">Julia</a></li>
+        <li><a href="api-js.html">JavaScript</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>C</h1>
+      <ul class="facts">
+        <li>Header in <a href="https://github.com/asterisk-labs/rumi/blob/main/core/include/rumi/rumi.h" rel="noopener noreferrer"><code>core/include/rumi/rumi.h</code></a>, with GeoZL, OpenZL and Karu linked statically into <code>librumi</code>.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">API, in 6 pages</p>
+        <ol>
+          <li><a href="api.html">Overview</a></li>
+          <li><a href="api-python.html">Python</a></li>
+          <li class="here" aria-current="page">C</li>
+          <li><a href="api-r.html">R</a></li>
+          <li><a href="api-julia.html">Julia</a></li>
+          <li><a href="api-js.html">JavaScript</a></li>
+        </ol>
+      </aside>
+<pre><code class="language-sh">make submodules
+make build                       # core/build/librumi
+make install PREFIX=/usr/local   # the library and its headers</code></pre>
+      <p>Include <code>rumi/rumi.h</code>, which pulls in <code>dlpack/dlpack.h</code>, and link <code>librumi</code>. The library exports only the <code>rumi_*</code> symbols, and <code>make install</code> installs it with <code>rumi.h</code>, <code>rumi_dtypes.def</code> and <code>dlpack/dlpack.h</code>. GPU reads need a build configured with <code>-DRUMI_BUILD_GPU=ON</code>, such as <code>make configure CMAKE_FLAGS=-DRUMI_BUILD_GPU=ON</code> before <code>make build</code>.</p>
+
+      <h2 class="part" id="errors">Version and errors</h2>
+      <p>Calls that can fail return a <code>rumi_status</code>, and <a href="#rumi_last_error"><code>rumi_last_error</code></a> then describes the failure for the calling thread. The C API and ABI are not stable before 1.0. <code>RUMI_API_VERSION</code> and the library's SONAME stay at 1 until then, so recompile after every update, as <a href="https://github.com/asterisk-labs/rumi/blob/main/COMPATIBILITY.md" rel="noopener noreferrer">Compatibility</a> sets out.</p>
+<pre><code class="language-c">typedef enum {
+    RUMI_OK              = 0,
+    RUMI_ERR_INVALID     = 1,
+    RUMI_ERR_IO          = 2,
+    RUMI_ERR_PARSE       = 3,
+    RUMI_ERR_FORMAT      = 4,
+    RUMI_ERR_DECODE      = 5,
+    RUMI_ERR_OOM         = 6,
+    RUMI_ERR_UNSUPPORTED = 7,
+    RUMI_ERR_STATE       = 8,
+    RUMI_ERR_INTERNAL    = 99
+} rumi_status;</code></pre>
+      <table class="spec">
+        <tr><th>RUMI_OK</th><td>Success.</td></tr>
+        <tr><th>RUMI_ERR_INVALID</th><td>A bad argument, selection, pattern or buffer size, or an external header that does not match its source.</td></tr>
+        <tr><th>RUMI_ERR_IO</th><td>A source could not be opened or read.</td></tr>
+        <tr><th>RUMI_ERR_PARSE</th><td>An external header blob is malformed.</td></tr>
+        <tr><th>RUMI_ERR_FORMAT</th><td>The file is malformed, such as frame data that runs past the end of the source.</td></tr>
+        <tr><th>RUMI_ERR_DECODE</th><td>A frame did not decode or decoded to an unexpected size, or a GPU call failed.</td></tr>
+        <tr><th>RUMI_ERR_OOM</th><td>An allocation failed or its size cannot be represented.</td></tr>
+        <tr><th>RUMI_ERR_UNSUPPORTED</th><td>The build or the machine lacks something the call needs, such as GPU support or a codec the file uses.</td></tr>
+        <tr><th>RUMI_ERR_STATE</th><td>A process-wide setting is already pinned to another value.</td></tr>
+        <tr><th>RUMI_ERR_INTERNAL</th><td>An unexpected internal error.</td></tr>
+      </table>
+
+      <h3 id="rumi_api_version">rumi_api_version</h3>
+<pre><code class="sig language-c">#define RUMI_API_VERSION 1
+int rumi_api_version(void);</code></pre>
+      <p>Returns the C API version the library was built with, to compare with <code>RUMI_API_VERSION</code> in the header you compiled against.</p>
+
+      <h3 id="rumi_version_string">rumi_version_string</h3>
+<pre><code class="sig language-c">const char* rumi_version_string(void);</code></pre>
+      <p>Returns the library version as a static string, such as <code>"0.30.0"</code>.</p>
+
+      <h3 id="rumi_openzl_format_version">rumi_openzl_format_version</h3>
+<pre><code class="sig language-c">int rumi_openzl_format_version(void);</code></pre>
+      <p>Returns the newest OpenZL frame format version the linked decoder accepts.</p>
+
+      <h3 id="rumi_last_error">rumi_last_error, rumi_clear_error</h3>
+<pre><code class="sig language-c">const char* rumi_last_error(void);
+void        rumi_clear_error(void);</code></pre>
+      <p>Returns the message from the last status-returning call on this thread, or <code>NULL</code>. Each such call clears the previous message first. The pointer stays valid until the next one or until <code>rumi_clear_error</code> clears it.</p>
+
+      <h3 id="rumi_free">rumi_free</h3>
+<pre><code class="sig language-c">void rumi_free(void* ptr);</code></pre>
+      <p>Releases a buffer returned by <code>rumi_plan_ranges</code>, <code>rumi_write</code> or <code>rumi_geokeys</code>. Accepts <code>NULL</code>.</p>
+
+      <h2 class="part" id="settings">Process settings</h2>
+      <p>These settings apply to the whole process. The thread count and checksum verification are pinned once reads start, so set them before the first read.</p>
+
+      <h3 id="rumi_set_max_frame_bytes">rumi_set_max_frame_bytes, rumi_get_max_frame_bytes</h3>
+<pre><code class="sig language-c">uint64_t rumi_set_max_frame_bytes(uint64_t n);
+uint64_t rumi_get_max_frame_bytes(void);</code></pre>
+      <p>Set and read the safety limit for a decoded frame and other allocations sized from the input. 0 restores the default of one gibibyte. Both return the limit in effect.</p>
+
+      <h3 id="rumi_set_num_threads">rumi_set_num_threads, rumi_get_num_threads</h3>
+<pre><code class="sig language-c">rumi_status rumi_set_num_threads(int n);
+rumi_status rumi_get_num_threads(int* out);</code></pre>
+      <p>Set and read the read thread count, from 1 to 1024. Without a call it comes from <code>RUMI_NUM_THREADS</code>, an integer in that range or <code>ALL_CPUS</code>, and is 1 when that is unset. The first parallel read fixes the pool size, and a different count after that returns <code>RUMI_ERR_STATE</code>. A forked child starts with its own setting.</p>
+      <p>Returns <code>RUMI_ERR_INVALID</code> for a count out of range, and <code>rumi_get_num_threads</code> does the same when <code>RUMI_NUM_THREADS</code> holds any other value.</p>
+
+      <h3 id="rumi_set_checksum_verification">rumi_set_checksum_verification, rumi_get_checksum_verification</h3>
+<pre><code class="sig language-c">rumi_status rumi_set_checksum_verification(int on);
+rumi_status rumi_get_checksum_verification(int* out);</code></pre>
+      <p>Turn OpenZL checksum verification on or off. <code>on</code> must be 0 or 1. Without a call the setting comes from <code>RUMI_VERIFY</code>, which takes 0 or 1, false or true, off or on, and no or yes, and is off when that is unset. The first decoded frame pins it, and a different value after that returns <code>RUMI_ERR_STATE</code>.</p>
+      <p><code>rumi_get_checksum_verification</code> returns <code>RUMI_ERR_INVALID</code> when <code>RUMI_VERIFY</code> holds any other value. GPU contexts cannot be created while verification is on.</p>
+
+      <h2 class="part" id="dtypes">Dtypes</h2>
+      <p>A <code>rumi_dtype</code> is the sample type of a file. The values are generated from <code>rumi_dtypes.def</code>, and the codes missing from the list are reserved and never reused.</p>
+<pre><code class="language-c">typedef enum {
+    RUMI_DT_UNKNOWN         = 0,
+    RUMI_DT_UINT8           = 1,  RUMI_DT_INT8            = 2,
+    RUMI_DT_UINT16          = 3,  RUMI_DT_INT16           = 4,
+    RUMI_DT_UINT32          = 5,  RUMI_DT_INT32           = 6,
+    RUMI_DT_UINT64          = 7,  RUMI_DT_INT64           = 8,
+    RUMI_DT_FLOAT16         = 9,  RUMI_DT_FLOAT32         = 10,
+    RUMI_DT_FLOAT64         = 11, RUMI_DT_COMPLEX32       = 14,
+    RUMI_DT_COMPLEX64       = 15, RUMI_DT_COMPLEX128      = 16,
+    RUMI_DT_FLOAT8_E4M3FN   = 17, RUMI_DT_FLOAT8_E5M2     = 18,
+    RUMI_DT_BFLOAT16        = 19, RUMI_DT_BOOL            = 24,
+    RUMI_DT_FLOAT8_E8M0FNU  = 25, RUMI_DT_FLOAT8_E4M3FNUZ = 29,
+    RUMI_DT_FLOAT8_E5M2FNUZ = 30
+} rumi_dtype;
+
+typedef struct {
+    uint8_t     code;
+    uint8_t     sample_format;
+    uint8_t     bits;
+    uint8_t     storage_bytes;
+    uint8_t     component_bytes;
+    uint8_t     dl_code;
+    uint8_t     dl_bits;
+    uint16_t    dl_lanes;
+    const char* name;
+    const char* numpy;
+} rumi_dtype_info;</code></pre>
+      <p>In a registry row <code>sample_format</code> and <code>bits</code> are the file encoding, and <code>storage_bytes</code> is the size of one decoded sample, which output buffers are sized by. <code>component_bytes</code> is smaller only for complex types, which OpenZL may decode as a stream of components. <code>dl_code</code>, <code>dl_bits</code> and <code>dl_lanes</code> give the DLPack type, and <code>numpy</code> is <code>NULL</code> when NumPy has no exact scalar for it.</p>
+
+      <h3 id="rumi_dtype_registry">rumi_dtype_registry</h3>
+<pre><code class="sig language-c">size_t rumi_dtype_registry(const rumi_dtype_info** out);</code></pre>
+      <p>Returns the number of rows in the dtype registry and, when <code>out</code> is not <code>NULL</code>, points it at the rows. The registry lives as long as the process and the caller does not own it. <code>RUMI_DT_UNKNOWN</code> has no row.</p>
+
+      <h3 id="rumi_dtype_info_size">rumi_dtype_info_size</h3>
+<pre><code class="sig language-c">size_t rumi_dtype_info_size(void);</code></pre>
+      <p>Returns the size of one registry row as the library was built, so a binding can check its copy of <code>rumi_dtype_info</code>.</p>
+
+      <h3 id="rumi_check_samples">rumi_check_samples</h3>
+<pre><code class="sig language-c">rumi_status rumi_check_samples(const void* data, size_t n_bytes,
+                               rumi_dtype dtype);</code></pre>
+      <p>Checks that <code>dtype</code> is a known type. For <code>RUMI_DT_BOOL</code> it also checks that each of the <code>n_bytes</code> bytes is 0 or 1. Returns <code>RUMI_ERR_INVALID</code> otherwise, naming the first bad sample.</p>
+
+      <h2 class="part" id="read-patterns">Read patterns</h2>
+      <p>A read pattern sets the axis order of a read's output. It names <code>n</code> for the item, <code>t</code> for time, <code>b</code> for band, and <code>y</code> and <code>x</code> for the window, with the rightmost axis changing fastest. Parentheses merge axes into one dimension, as in <code>y x b</code> or <code>n (t b) y x</code>. A pattern must name <code>y</code> and <code>x</code>, and an axis it leaves out must have extent 1.</p>
+<pre><code class="language-c">#define RUMI_OUT_N 0
+#define RUMI_OUT_T 1
+#define RUMI_OUT_B 2
+#define RUMI_OUT_Y 3
+#define RUMI_OUT_X 4
+#define RUMI_OUT_NDIM 5
+
+typedef struct {
+    int64_t shape[5];
+    int     ndim;
+    int64_t stride[5];
+    int     native;
+} rumi_layout;</code></pre>
+      <p><code>shape[0..ndim)</code> follows the pattern, with each merged group as one dimension, and the remaining entries are zero. <code>stride</code> is indexed by <code>RUMI_OUT_*</code> and counts elements. <code>native</code> is nonzero when the axes come in <code>n t b y x</code> order, ignoring the ones left out.</p>
+
+      <h3 id="rumi_default_pattern">rumi_default_pattern</h3>
+<pre><code class="sig language-c">const char* rumi_default_pattern(size_t n_items, uint32_t times);</code></pre>
+      <p>Returns the static pattern a read uses when <code>pattern</code> is <code>NULL</code>. That is <code>b y x</code> for an Image and <code>t b y x</code> for a Cube, with a leading <code>n</code> when <code>n_items</code> is above 1. <code>times</code> is the file's <code>time_count</code>, not the number of selected steps.</p>
+
+      <h3 id="rumi_compile_layout">rumi_compile_layout</h3>
+<pre><code class="sig language-c">rumi_status rumi_compile_layout(const char* pattern,
+                                int64_t n, int64_t t, int64_t b,
+                                int64_t y, int64_t x, rumi_layout* out);</code></pre>
+      <p>Compiles a pattern for the selected extents and writes its shape and strides to <code>out</code>. Every extent must be positive. <code>NULL</code> uses the default pattern for <code>n</code> and <code>t</code>. Returns <code>RUMI_ERR_INVALID</code> for an unknown, repeated or missing axis, or a left-out axis with an extent above 1.</p>
+
+      <h2 class="part" id="frames">Frame patterns and units</h2>
+      <p>These helpers cut an array into frames without passing the array to C. A frame pattern such as <code>b (row h) (col w) -&gt; row col (b h w)</code> splits the image axes into a tile grid and names what one frame holds. It resolves to a <code>frame_unit</code>, the layout number the file stores, which the <a href="index.html#/spec">specification</a> lists.</p>
+<pre><code class="language-c">typedef enum {
+    RUMI_AXIS_BAND = 0,
+    RUMI_AXIS_Y    = 1,
+    RUMI_AXIS_X    = 2,
+    RUMI_AXIS_H    = 3,
+    RUMI_AXIS_W    = 4,
+    RUMI_AXIS_TIME = 5
+} rumi_axis;
+
+#define RUMI_MAX_AXES 4
+
+typedef struct {
+    uint8_t input[RUMI_MAX_AXES];
+    int     input_ndim;
+    uint8_t frame[RUMI_MAX_AXES];
+    int     frame_ndim;
+    uint8_t index[2];
+    int     index_ndim;
+} rumi_frame_pattern;</code></pre>
+      <p><code>Y</code> and <code>X</code> are the full image axes, and <code>H</code> and <code>W</code> are their tile-local parts after the split. In a compiled pattern <code>input</code> is the source array's axis order, <code>frame</code> is the decoded frame's axis order, and <code>index</code> lists the band and time axes outside the frame, outermost first.</p>
+
+      <h3 id="rumi_compile_frame_pattern">rumi_compile_frame_pattern</h3>
+<pre><code class="sig language-c">rumi_status rumi_compile_frame_pattern(const char* pattern,
+                                       rumi_frame_pattern* out);</code></pre>
+      <p>Compiles a frame pattern. Spatial splits use ceiling division, so edge frames may be smaller than the tile. Returns <code>RUMI_ERR_INVALID</code> for a pattern that names no frame layout rumi defines.</p>
+
+      <h3 id="rumi_frame_unit">rumi_frame_unit</h3>
+<pre><code class="sig language-c">rumi_status rumi_frame_unit(const rumi_frame_pattern* pattern,
+                            uint16_t bands, uint32_t times,
+                            uint8_t* out);</code></pre>
+      <p>Resolves a compiled pattern to the <code>frame_unit</code> for these band and time counts. A band or time axis of size 1 is dropped here. Returns <code>RUMI_ERR_INVALID</code> when no unit fits.</p>
+
+      <h3 id="rumi_unit_from_name">rumi_unit_from_name</h3>
+<pre><code class="sig language-c">rumi_status rumi_unit_from_name(const char* name, uint16_t bands,
+                                uint32_t times, uint8_t* out);</code></pre>
+      <p>Resolves frame axes written as text, such as <code>"b h w"</code>, to the <code>frame_unit</code> for these band and time counts.</p>
+
+      <h3 id="rumi_unit_name">rumi_unit_name</h3>
+<pre><code class="sig language-c">rumi_status rumi_unit_name(uint8_t unit, uint16_t bands, uint32_t times,
+                           char* out, size_t out_size);</code></pre>
+      <p>Writes the unit's frame axes, such as <code>"b h w"</code>, to <code>out</code> as a NUL-terminated string. Eight bytes hold every valid result. Returns <code>RUMI_ERR_INVALID</code> when the unit does not fit the counts or <code>out_size</code> is too small.</p>
+
+      <h3 id="rumi_unit_index_axes">rumi_unit_index_axes</h3>
+<pre><code class="sig language-c">rumi_status rumi_unit_index_axes(uint8_t unit, uint16_t bands,
+                                 uint32_t times, uint8_t* out,
+                                 int* out_ndim);</code></pre>
+      <p>Writes the band and time axes outside the frame as <code>rumi_axis</code> values, outermost first. <code>out</code> must hold two, <code>*out_ndim</code> says how many were written, and axes of size 1 are left out.</p>
+
+      <h3 id="rumi_axis_name">rumi_axis_name</h3>
+<pre><code class="sig language-c">const char* rumi_axis_name(uint8_t axis);</code></pre>
+      <p>Returns the static pattern name of an axis, <code>"b"</code>, <code>"t"</code>, <code>"y"</code>, <code>"x"</code>, <code>"h"</code> or <code>"w"</code>, or <code>NULL</code> for an invalid one.</p>
+
+      <h3 id="rumi_frame_count">rumi_frame_count</h3>
+<pre><code class="sig language-c">rumi_status rumi_frame_count(uint8_t unit, uint32_t width,
+                             uint32_t length, uint16_t tile,
+                             uint16_t bands, uint32_t times,
+                             uint32_t* out_across, uint32_t* out_down,
+                             uint64_t* out_frames);</code></pre>
+      <p>Returns the tile grid and the total frame count of a raster. Any output pointer may be <code>NULL</code>.</p>
+      <table class="spec">
+        <tr><th>unit</th><td>A <code>frame_unit</code> valid for <code>bands</code> and <code>times</code>.</td></tr>
+        <tr><th>width, length</th><td>Image size in pixels.</td></tr>
+        <tr><th>tile</th><td>Height and width of a square tile, at least 1.</td></tr>
+        <tr><th>bands, times</th><td>Band and time step counts, at least 1.</td></tr>
+      </table>
+      <p>Returns <code>RUMI_ERR_INVALID</code> when an argument is out of range or the count overflows.</p>
+
+      <h3 id="rumi_frame_locate">rumi_frame_locate</h3>
+<pre><code class="language-c">typedef struct {
+    uint32_t row, col, band, time, h, w;
+    int64_t  dims[RUMI_MAX_AXES];
+    uint8_t  perm[RUMI_MAX_AXES];
+    int      ndim;
+} rumi_frame_at;</code></pre>
+<pre><code class="sig language-c">rumi_status rumi_frame_locate(uint8_t unit, uint32_t width,
+                              uint32_t length, uint16_t tile,
+                              uint16_t bands, uint32_t times,
+                              uint64_t index, rumi_frame_at* out);</code></pre>
+      <p>Resolves a zero-based frame index to its place in the raster and its decoded shape. The arguments before <code>index</code> follow <code>rumi_frame_count</code>. <code>row</code>, <code>col</code>, <code>band</code> and <code>time</code> are zero-based, and <code>h</code> and <code>w</code> are the frame's size after clipping at the edge.</p>
+      <p><code>dims</code> holds the decoded frame shape in its first <code>ndim</code> entries. <code>perm</code> reorders a cut taken as held band, held time, <code>h</code> and <code>w</code> into <code>dims</code> order, as a transpose would. Returns <code>RUMI_ERR_INVALID</code> for an index past the last frame.</p>
+
+      <h2 class="part" id="headers">External headers</h2>
+      <p>The external header is the small blob <code>rumi_write</code> returns. It holds the raster fields and the frame byte counts, so a reader can locate any frame without parsing the file. A <code>rumi_spec</code> is a parsed copy, independent of any source and reusable across reads.</p>
+<pre><code class="language-c">typedef struct rumi_spec rumi_spec;
+
+typedef struct {
+    uint32_t   image_width;
+    uint32_t   image_length;
+    uint32_t   time_count;
+    uint16_t   tile_width;
+    uint16_t   tile_length;
+    uint16_t   samples_per_pixel;
+    uint8_t    bits_per_sample;
+    uint8_t    sample_format;
+    uint8_t    frame_unit;
+    uint32_t   tiles_across;
+    uint32_t   tiles_down;
+    uint64_t   base_frame_offset;
+    rumi_dtype dtype;
+} rumi_header;</code></pre>
+      <p>A <code>time_count</code> of 1 is an Image and more is a Cube. <code>samples_per_pixel</code> is the band count. <code>bits_per_sample</code> and <code>sample_format</code> are the on-disk encoding of <code>dtype</code>, and <a href="#rumi_unit_name"><code>rumi_unit_name</code></a> resolves <code>frame_unit</code> to its axes. <code>base_frame_offset</code> is the byte offset of the first frame.</p>
+
+      <h3 id="rumi_spec_parse">rumi_spec_parse, rumi_spec_destroy</h3>
+<pre><code class="sig language-c">rumi_status rumi_spec_parse(const unsigned char* blob, size_t blob_size,
+                            rumi_spec** out);
+void        rumi_spec_destroy(rumi_spec* spec);</code></pre>
+      <p>Parses and copies a header blob, which may be released after the call. <code>*out</code> is unchanged on error. Release the spec with <code>rumi_spec_destroy</code>. Returns <code>RUMI_ERR_INVALID</code> for a <code>NULL</code> or empty argument and <code>RUMI_ERR_PARSE</code> for a malformed blob.</p>
+
+      <h3 id="rumi_spec_header">rumi_spec_header</h3>
+<pre><code class="sig language-c">rumi_status rumi_spec_header(const rumi_spec* spec, rumi_header* out);</code></pre>
+      <p>Copies the parsed fields into <code>out</code>.</p>
+
+      <h3 id="rumi_plan_ranges">rumi_plan_ranges</h3>
+<pre><code class="sig language-c">typedef struct { uint64_t offset; uint64_t length; } rumi_range;
+
+rumi_status rumi_plan_ranges(const rumi_spec* spec,
+                             const int* times, size_t n_times,
+                             const int* bands, size_t n_bands,
+                             int y_off, int y_size,
+                             int x_off, int x_size,
+                             rumi_range** out, size_t* out_count);</code></pre>
+      <p>Returns the unique byte ranges of the frames a read needs, in frame-index order, without any I/O. The selection and window follow <a href="#reading"><code>rumi_read</code></a>. Release <code>*out</code> with <code>rumi_free</code>.</p>
+
+      <h2 class="part" id="sources">Sources and metadata</h2>
+      <p>A <code>rumi_source</code> is the byte source of one file, and concurrent reads may share it.</p>
+<pre><code class="language-c">typedef struct rumi_source rumi_source;</code></pre>
+
+      <h3 id="rumi_source_file">rumi_source_file</h3>
+<pre><code class="sig language-c">rumi_status rumi_source_file(const char* path, rumi_source** out);</code></pre>
+      <p>Opens a local path or a remote URI through <a href="https://github.com/asterisk-labs/karu" rel="noopener noreferrer">Karu</a>, rumi's internal transport. A remote read normally takes its external header from a manifest. Returns <code>RUMI_ERR_IO</code> when the source cannot be opened.</p>
+
+      <h3 id="rumi_source_memory">rumi_source_memory</h3>
+<pre><code class="sig language-c">rumi_status rumi_source_memory(const void* data, size_t size,
+                               rumi_source** out);</code></pre>
+      <p>Wraps a buffer the caller owns. Keep it alive for the life of the source.</p>
+
+      <h3 id="rumi_source_free">rumi_source_free</h3>
+<pre><code class="sig language-c">void rumi_source_free(rumi_source* src);</code></pre>
+      <p>Releases a source. Accepts <code>NULL</code>.</p>
+
+      <h3 id="rumi_info">rumi_info</h3>
+<pre><code class="language-c">typedef struct {
+    rumi_header    fields;
+    unsigned char* blob;
+    size_t         blob_size;
+    int            has_source;
+    double         transform[6];
+    uint32_t       epsg;
+    int            pixel_is_point;
+    char**         band_texts;
+    size_t         band_text_count;
+    uint8_t        time_type;
+    int64_t*       time;
+    size_t         time_coords;
+} rumi_metadata;</code></pre>
+<pre><code class="sig language-c">rumi_status rumi_info(rumi_source* source,
+                      const unsigned char* header, size_t header_size,
+                      rumi_metadata* out);</code></pre>
+      <p>Inspects a source, parses an external header, or both. With both, the header must exactly match the canonical header rebuilt from the source. That checks the index, not the payloads, so sources with the same structure and compressed frame sizes share a header. At least one input is required, and <code>out</code> is unchanged on error.</p>
+      <table class="spec">
+        <tr><th>fields</th><td>The parsed <code>rumi_header</code>.</td></tr>
+        <tr><th>blob, blob_size</th><td>The canonical external header.</td></tr>
+        <tr><th>has_source</th><td>Nonzero when the georeferencing, band texts and time were read from a source. An external header alone does not hold them, and they stay zero or <code>NULL</code> without one.</td></tr>
+        <tr><th>transform, epsg</th><td>The six affine coefficients, in the order <a href="#writing"><code>rumi_write_desc</code></a> uses, and the EPSG code.</td></tr>
+        <tr><th>pixel_is_point</th><td>Nonzero for PixelIsPoint.</td></tr>
+        <tr><th>band_texts, band_text_count</th><td>One NUL-terminated UTF-8 text per band, in band order.</td></tr>
+        <tr><th>time_type</th><td>1 for intervals and 2 for instants.</td></tr>
+        <tr><th>time, time_coords</th><td>The time coordinates in POSIX seconds, one per step for instants and two for intervals.</td></tr>
+      </table>
+      <p>Returns <code>RUMI_ERR_INVALID</code> when neither input is given or the header does not match the source, and <code>RUMI_ERR_PARSE</code> for a malformed header. A source that cannot be read returns <code>RUMI_ERR_IO</code> or <code>RUMI_ERR_FORMAT</code>.</p>
+
+      <h3 id="rumi_metadata_free">rumi_metadata_free</h3>
+<pre><code class="sig language-c">void rumi_metadata_free(rumi_metadata* metadata);</code></pre>
+      <p>Releases the blob, band texts and time a <code>rumi_metadata</code> owns and zeroes it, so a second call is safe. Accepts <code>NULL</code>.</p>
+
+      <h2 class="part" id="reading">Reading on the CPU</h2>
+      <p>Every read entry point may be called concurrently. Parsed specs and sources may be shared between calls, destination buffers must not overlap, and a borrowed source buffer must stay alive. Reads decode on the process-wide thread pool, so set its size before the first one. The read functions share these parameters.</p>
+      <table class="spec">
+        <tr><th>times, n_times</th><td>1-based time steps in output order. <code>NULL</code> and 0 select every step in file order.</td></tr>
+        <tr><th>bands, n_bands</th><td>1-based bands in output order. <code>NULL</code> and 0 select every band in file order.</td></tr>
+        <tr><th>y_off, y_size, x_off, x_size</th><td>A zero-based window, which must lie inside the image.</td></tr>
+        <tr><th>pattern</th><td>A <a href="#read-patterns">read pattern</a>, or <code>NULL</code> for the default Image or Cube layout.</td></tr>
+        <tr><th>dst, dst_size</th><td>The output buffer. It must hold every selected sample at the dtype's <code>storage_bytes</code>.</td></tr>
+      </table>
+      <p>A pointer and its count must both be set or both be empty. A read returns <code>RUMI_ERR_INVALID</code> for a bad selection, window or pattern or a buffer that is too small, <code>RUMI_ERR_IO</code> when a frame cannot be fetched, and <code>RUMI_ERR_DECODE</code> or <code>RUMI_ERR_UNSUPPORTED</code> when one cannot be decoded.</p>
+
+      <h3 id="rumi_read">rumi_read</h3>
+<pre><code class="sig language-c">rumi_status rumi_read(rumi_source* src, const rumi_spec* spec,
+                      const int* times, size_t n_times,
+                      const int* bands, size_t n_bands,
+                      int y_off, int y_size, int x_off, int x_size,
+                      const char* pattern, void* dst, size_t dst_size);</code></pre>
+      <p>Reads one window from one source into <code>dst</code>, fetching only the frames it covers.</p>
+<pre><code class="language-c">rumi_spec* spec = NULL;
+rumi_source* src = NULL;
+int bands[] = {2, 3};
+uint16_t chip[2 * 256 * 256];       /* bands 2 and 3, uint16 Image */
+
+if (rumi_spec_parse(blob, blob_size, &amp;spec) != RUMI_OK
+    || rumi_source_file("scene.rumi", &amp;src) != RUMI_OK
+    || rumi_read(src, spec, NULL, 0, bands, 2, 0, 256, 0, 256,
+                 NULL, chip, sizeof chip) != RUMI_OK) {
+    fprintf(stderr, "%s\n", rumi_last_error());
+}
+rumi_source_free(src);
+rumi_spec_destroy(spec);</code></pre>
+
+      <h3 id="rumi_read_many">rumi_read_many</h3>
+<pre><code class="language-c">typedef struct {
+    rumi_source*     source;
+    const rumi_spec* spec;
+    int              y_off;
+    int              x_off;
+} rumi_read_item;</code></pre>
+<pre><code class="sig language-c">rumi_status rumi_read_many(const rumi_read_item* items, size_t n_items,
+                           const int* times, size_t n_times,
+                           const int* bands, size_t n_bands,
+                           int y_size, int x_size, const char* pattern,
+                           void* dst, size_t dst_size);</code></pre>
+      <p>Reads one window per item into <code>dst</code>, in <code>n</code> order. Each item names a source, its parsed header and the zero-based window origin, and the caller keeps them alive for the call. Every window shares <code>y_size</code> and <code>x_size</code>, and <code>times</code> and <code>bands</code> apply to every item.</p>
+      <p>The headers must agree on tile size, band count, dtype, time step count, and which of band and time a frame holds. Image sizes may differ, so one batch can draw from scenes of different extents. The default pattern keeps <code>n</code> even for one item, and a custom pattern must include <code>n</code> for more than one.</p>
+
+      <h2 class="part" id="gpu">Reading on the GPU</h2>
+      <p>A GPU read plans the frames and the window on the CPU, then GeoZL writes the decoded samples into device memory. It needs a build with <code>RUMI_BUILD_GPU</code>, which drives CUDA on Linux and Metal on macOS. The device types follow DLPack.</p>
+<pre><code class="language-c">#define RUMI_DEVICE_CUDA 2
+#define RUMI_DEVICE_METAL 8
+#define RUMI_GPU_DECODE_AUTO 0
+#define RUMI_GPU_DECODE_CPU 1
+
+typedef struct rumi_gpu rumi_gpu;</code></pre>
+
+      <h3 id="rumi_gpu_available">rumi_gpu_available</h3>
+<pre><code class="sig language-c">int rumi_gpu_available(int device_type);</code></pre>
+      <p>Returns nonzero when this build can drive <code>device_type</code>.</p>
+
+      <h3 id="rumi_gpu_create">rumi_gpu_create, rumi_gpu_destroy</h3>
+<pre><code class="sig language-c">rumi_status rumi_gpu_create(int device_type, int device, size_t threads,
+                            size_t max_decoded_bytes, rumi_gpu** out);
+void        rumi_gpu_destroy(rumi_gpu* gpu);</code></pre>
+      <p>Creates a context on one device. A context is not safe for concurrent calls.</p>
+      <table class="spec">
+        <tr><th>device_type</th><td><code>RUMI_DEVICE_CUDA</code> or <code>RUMI_DEVICE_METAL</code>.</td></tr>
+        <tr><th>device</th><td>The device index.</td></tr>
+        <tr><th>threads</th><td>Sets and pins the process-wide read thread count, up to 1024. 0 uses the current count.</td></tr>
+        <tr><th>max_decoded_bytes</th><td>Bounds the decoded frame bytes staged per batch. It must be nonzero.</td></tr>
+      </table>
+      <p>Returns <code>RUMI_ERR_STATE</code> when <code>threads</code> differs from a count already pinned, and <code>RUMI_ERR_UNSUPPORTED</code> when the build has no GPU support, the device is unavailable or checksum verification is on.</p>
+
+      <h3 id="rumi_gpu_synchronize">rumi_gpu_synchronize</h3>
+<pre><code class="sig language-c">rumi_status rumi_gpu_synchronize(rumi_gpu* gpu);</code></pre>
+      <p>Waits for queued work and releases any target the context retains. Returns <code>RUMI_ERR_DECODE</code> when that work failed.</p>
+
+      <h3 id="rumi_gpu_current_device">rumi_gpu_current_device</h3>
+<pre><code class="sig language-c">rumi_status rumi_gpu_current_device(int device_type, int* out);</code></pre>
+      <p>Writes the device of the CUDA context current on the calling thread, as a framework's set-device call leaves it, or 0 when none is current. Metal reports 0.</p>
+
+      <h3 id="rumi_read_gpu">rumi_read_gpu</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_gpu(rumi_gpu* gpu, rumi_source* src,
+                          const rumi_spec* spec,
+                          const int* times, size_t n_times,
+                          const int* bands, size_t n_bands,
+                          int y_off, int y_size, int x_off, int x_size,
+                          const char* pattern,
+                          void* dst, size_t dst_size,
+                          void* stream, int decode_backend);</code></pre>
+      <p>The GPU form of <a href="#rumi_read"><code>rumi_read</code></a>, with the same selection.</p>
+      <table class="spec">
+        <tr><th>dst, dst_size</th><td>The backend's native destination, a CUDA device pointer or a Metal <code>MTLBuffer</code> object, and its size in bytes.</td></tr>
+        <tr><th>stream</th><td>The native CUDA stream. <code>NULL</code> for Metal.</td></tr>
+        <tr><th>decode_backend</th><td><code>RUMI_GPU_DECODE_AUTO</code> decodes supported complete frames on the GPU and the rest on the host. <code>RUMI_GPU_DECODE_CPU</code> decodes every frame on the host, then places the samples on <code>dst</code>. Either way <code>dst</code> stays on the GPU.</td></tr>
+      </table>
+      <p>On CUDA the work may still be pending when the call returns. Consume <code>dst</code> on <code>stream</code>, or make another stream wait on an event recorded after the read, and keep <code>dst</code> alive until the consumer finishes. On Metal, finish earlier work that touches <code>dst</code> before the call. The call finishes its own Metal work before it returns and retains <code>dst</code> until <code>rumi_gpu_synchronize</code>, the next read or <code>rumi_gpu_destroy</code>.</p>
+      <p>Boolean samples return <code>RUMI_ERR_UNSUPPORTED</code>.</p>
+
+      <h3 id="rumi_read_many_gpu">rumi_read_many_gpu</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_many_gpu(rumi_gpu* gpu,
+                               const rumi_read_item* items,
+                               size_t n_items,
+                               const int* times, size_t n_times,
+                               const int* bands, size_t n_bands,
+                               int y_size, int x_size,
+                               const char* pattern,
+                               void* dst, size_t dst_size,
+                               void* stream, int decode_backend);</code></pre>
+      <p>The GPU form of <a href="#rumi_read_many"><code>rumi_read_many</code></a>. <code>dst</code>, <code>stream</code> and <code>decode_backend</code> follow <code>rumi_read_gpu</code>.</p>
+
+      <h2 class="part" id="dlpack">DLPack</h2>
+      <p>These forms allocate the output and return it as a <code>DLManagedTensorVersioned</code>, shaped by the pattern with C-contiguous strides. Release a tensor with its deleter or <code>rumi_dlpack_free</code>.</p>
+
+      <h3 id="rumi_read_dlpack">rumi_read_dlpack</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
+                             const int* times, size_t n_times,
+                             const int* bands, size_t n_bands,
+                             int y_off, int y_size,
+                             int x_off, int x_size,
+                             const char* pattern,
+                             DLManagedTensorVersioned** out);</code></pre>
+      <p>The DLPack form of <code>rumi_read</code>. It returns a CPU tensor whose data is 256-byte aligned.</p>
+
+      <h3 id="rumi_read_many_dlpack">rumi_read_many_dlpack</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_many_dlpack(const rumi_read_item* items,
+                                  size_t n_items,
+                                  const int* times, size_t n_times,
+                                  const int* bands, size_t n_bands,
+                                  int y_size, int x_size,
+                                  const char* pattern,
+                                  DLManagedTensorVersioned** out);</code></pre>
+      <p>The DLPack form of <code>rumi_read_many</code>.</p>
+
+      <h3 id="rumi_read_gpu_dlpack">rumi_read_gpu_dlpack</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_gpu_dlpack(rumi_gpu* gpu, rumi_source* src,
+                                 const rumi_spec* spec,
+                                 const int* times, size_t n_times,
+                                 const int* bands, size_t n_bands,
+                                 int y_off, int y_size,
+                                 int x_off, int x_size,
+                                 const char* pattern, int decode_backend,
+                                 DLManagedTensorVersioned** out);</code></pre>
+      <p>The DLPack form of <code>rumi_read_gpu</code>. It allocates the output on the context's device and returns a <code>kDLCUDA</code> or <code>kDLMetal</code> tensor. On CUDA the work is queued on a stream the context owns and may still be pending, so call <code>rumi_dlpack_wait</code> before using the tensor on another stream. Metal work has finished.</p>
+
+      <h3 id="rumi_read_many_gpu_dlpack">rumi_read_many_gpu_dlpack</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_many_gpu_dlpack(rumi_gpu* gpu,
+                                      const rumi_read_item* items,
+                                      size_t n_items,
+                                      const int* times, size_t n_times,
+                                      const int* bands, size_t n_bands,
+                                      int y_size, int x_size,
+                                      const char* pattern,
+                                      int decode_backend,
+                                      DLManagedTensorVersioned** out);</code></pre>
+      <p>The DLPack form of <code>rumi_read_many_gpu</code>, following <code>rumi_read_gpu_dlpack</code>.</p>
+
+      <h3 id="rumi_dlpack_wait">rumi_dlpack_wait</h3>
+<pre><code class="sig language-c">rumi_status rumi_dlpack_wait(DLManagedTensorVersioned* t, void* stream);</code></pre>
+      <p>Hands a GPU tensor to the CUDA stream that will use it, as DLPack's <code>__dlpack__(stream=...)</code> does. The stream waits on the device for the read, and the tensor's memory returns to rumi's pool in stream order when it is released, so keep the stream alive until then. <code>NULL</code> waits on the host now and for the whole device at release. Call it once, before the first use. CPU and Metal tensors are ready and need no call.</p>
+
+      <h3 id="rumi_dlpack_free">rumi_dlpack_free</h3>
+<pre><code class="sig language-c">void rumi_dlpack_free(DLManagedTensorVersioned* t);</code></pre>
+      <p>Releases a tensor rumi returned, with its data. Accepts <code>NULL</code>.</p>
+
+      <h3 id="rumi_dlpack_legacy">rumi_dlpack_legacy, rumi_dlpack_legacy_free</h3>
+<pre><code class="sig language-c">DLManagedTensor* rumi_dlpack_legacy(DLManagedTensorVersioned* t);
+void             rumi_dlpack_legacy_free(DLManagedTensor* t);</code></pre>
+      <p>Wraps a versioned tensor for a DLPack 0.x consumer. On success the wrapper owns <code>t</code>, and <code>rumi_dlpack_legacy_free</code> releases both. On failure it returns <code>NULL</code> and the caller still owns <code>t</code>. <code>rumi_dlpack_legacy_free</code> accepts <code>NULL</code>.</p>
+
+      <h3 id="rumi_dlpack_capsule_api">rumi_dlpack_capsule_api, rumi_dlpack_capsule_destructor</h3>
+<pre><code class="sig language-c">typedef int   (*rumi_capsule_is_valid_fn)(void* capsule,
+                                         const char* name);
+typedef void* (*rumi_capsule_pointer_fn)(void* capsule,
+                                         const char* name);
+
+void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
+                             rumi_capsule_pointer_fn  pointer);
+void rumi_dlpack_capsule_destructor(void* capsule);</code></pre>
+      <p>For bindings that do not include <code>Python.h</code>. Register <code>PyCapsule_IsValid</code> and <code>PyCapsule_GetPointer</code> once, then pass <code>rumi_dlpack_capsule_destructor</code> to <code>PyCapsule_New</code>. The destructor releases a capsule no consumer claimed, and it can do so only after the registration. A renamed capsule belongs to the consumer.</p>
+
+      <h2 class="part" id="writing">Writing</h2>
+      <p>A file is written in three steps. The frame helpers give the frames in frame-index order with their decoded shapes, you compress each one with <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a>, and <code>rumi_write</code> stores the payloads and returns the external header.</p>
+<pre><code class="language-c">typedef struct {
+    uint32_t           image_width;
+    uint32_t           image_length;
+    uint32_t           time_count;
+    uint16_t           tile_size;
+    uint16_t           samples_per_pixel;
+    rumi_dtype         dtype;
+    const double*      transform;
+    uint32_t           epsg;
+    int                pixel_is_point;
+    uint8_t            frame_unit;
+    const char* const* band_texts;
+    uint64_t           band_text_count;
+    uint8_t            time_type;
+    const int64_t*     time;
+    uint64_t           time_coords;
+} rumi_write_desc;</code></pre>
+      <table class="spec">
+        <tr><th>image_width, image_length</th><td>Image size in pixels.</td></tr>
+        <tr><th>time_count</th><td>Time steps. 1 is an Image and more is a Cube.</td></tr>
+        <tr><th>tile_size</th><td>Height and width of a square tile.</td></tr>
+        <tr><th>samples_per_pixel</th><td>The band count.</td></tr>
+        <tr><th>transform, epsg</th><td>Six affine coefficients in the order <code>(x_res, row_rotation, x_origin, column_rotation, y_res, y_origin)</code>, and an EPSG code. Give both, or <code>NULL</code> and 0 for no CRS.</td></tr>
+        <tr><th>pixel_is_point</th><td>Nonzero for PixelIsPoint, 0 for PixelIsArea.</td></tr>
+        <tr><th>frame_unit</th><td>Normally from <a href="#rumi_frame_unit"><code>rumi_frame_unit</code></a>.</td></tr>
+        <tr><th>band_texts, band_text_count</th><td>One NUL-terminated UTF-8 text per band, in band order. Each text is non-empty and differs from the others.</td></tr>
+        <tr><th>time_type</th><td>1 for intervals and 2 for instants.</td></tr>
+        <tr><th>time, time_coords</th><td>POSIX seconds, <code>time_count</code> values for instants and twice that for intervals. rumi derives the storage scale.</td></tr>
+      </table>
+
+      <h3 id="rumi_write">rumi_write</h3>
+<pre><code class="sig language-c">rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
+                       const unsigned char* const* frames,
+                       const size_t* sizes, size_t frame_count,
+                       unsigned char** out_blob, size_t* out_size);</code></pre>
+      <p>Writes the compressed frames to a local file and returns the external header. <code>frames[i]</code> points at the <code>sizes[i]</code> bytes of frame <code>i</code>, in frame-index order. <code>*out_blob</code> holds <code>*out_size</code> bytes the caller releases with <code>rumi_free</code>. On failure the partial file is removed and the outputs are unchanged.</p>
+      <p>Returns <code>RUMI_ERR_INVALID</code> when the frame count does not match the grid, a frame is empty, or the band texts or time coordinates do not match <code>desc</code>.</p>
+<pre><code class="language-c">const char* names[] = {"B2", "B3", "B4", "B8"};
+int64_t when = 1724544000;                  /* 2024-08-25, an instant */
+const unsigned char* frames[4];
+size_t sizes[4];
+rumi_frame_pattern fp;
+uint8_t unit;
+uint64_t n;
+
+rumi_compile_frame_pattern("b (row h) (col w) -&gt; row col (b h w)", &amp;fp);
+rumi_frame_unit(&amp;fp, 4, 1, &amp;unit);
+rumi_frame_count(unit, 1024, 1024, 512, 4, 1, NULL, NULL, &amp;n);   /* 4 */
+for (uint64_t i = 0; i &lt; n; i++) {
+    rumi_frame_at at;
+    rumi_frame_locate(unit, 1024, 1024, 512, 4, 1, i, &amp;at);
+    /* cut tile (at.row, at.col) to at.dims, compress it with GeoZL,
+       and store the payload in frames[i] and sizes[i] */
+}
+
+rumi_write_desc desc = {
+    .image_width = 1024, .image_length = 1024, .time_count = 1,
+    .tile_size = 512, .samples_per_pixel = 4, .dtype = RUMI_DT_UINT16,
+    .frame_unit = unit, .band_texts = names, .band_text_count = 4,
+    .time_type = 2, .time = &amp;when, .time_coords = 1,
+};
+unsigned char* header = NULL;
+size_t header_size = 0;
+if (rumi_write("scene.rumi", &amp;desc, frames, sizes, n,
+               &amp;header, &amp;header_size) == RUMI_OK) {
+    /* keep header with the file, then */
+    rumi_free(header);
+}</code></pre>
+
+      <h3 id="rumi_write_base_offset">rumi_write_base_offset</h3>
+<pre><code class="sig language-c">rumi_status rumi_write_base_offset(const rumi_write_desc* desc,
+                                   uint64_t* out);</code></pre>
+      <p>Validates the layout in <code>desc</code> and writes the offset of the first frame, without writing a file. Band texts and time coordinates are not read.</p>
+
+      <h3 id="rumi_frame_start">rumi_frame_start</h3>
+<pre><code class="sig language-c">rumi_status rumi_frame_start(uint32_t samples_per_pixel,
+                             uint64_t frame_count, uint64_t* out);</code></pre>
+      <p>Returns the byte offset of the first frame, which is also the size of everything before it. No frame payloads are needed. <code>samples_per_pixel</code> must be 1 to 65535 and <code>frame_count</code> 1 to 4294967295.</p>
+
+      <h3 id="rumi_geokeys">rumi_geokeys</h3>
+<pre><code class="sig language-c">rumi_status rumi_geokeys(uint32_t epsg, int pixel_is_point,
+                         unsigned char** out_dir, size_t* out_dir_size,
+                         unsigned char** out_dbl, size_t* out_dbl_size,
+                         unsigned char** out_ascii,
+                         size_t* out_ascii_size);</code></pre>
+      <p>Builds the fixed GeoKeyDirectory rumi writes for an EPSG code. <code>pixel_is_point</code> selects PixelIsArea (0) or PixelIsPoint (nonzero). Release <code>*out_dir</code> with <code>rumi_free</code>. <code>*out_dbl</code> and <code>*out_ascii</code> come back <code>NULL</code> with size 0. Every output pointer is required and unchanged on error.</p>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="api-python.html"><span>Previous</span>Python</a>
+        <a class="next" href="api-r.html"><span>Next</span>R</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#errors">Version and errors</a></li>
+        <li><a href="#rumi_api_version">rumi_api_version</a></li>
+        <li><a href="#rumi_version_string">rumi_version_string</a></li>
+        <li><a href="#rumi_openzl_format_version">rumi_openzl_format_version</a></li>
+        <li><a href="#rumi_last_error">rumi_last_error, rumi_clear_error</a></li>
+        <li><a href="#rumi_free">rumi_free</a></li>
+        <li><a href="#settings">Process settings</a></li>
+        <li><a href="#rumi_set_max_frame_bytes">rumi_set_max_frame_bytes, rumi_get_max_frame_bytes</a></li>
+        <li><a href="#rumi_set_num_threads">rumi_set_num_threads, rumi_get_num_threads</a></li>
+        <li><a href="#rumi_set_checksum_verification">rumi_set_checksum_verification, rumi_get_checksum_verification</a></li>
+        <li><a href="#dtypes">Dtypes</a></li>
+        <li><a href="#rumi_dtype_registry">rumi_dtype_registry</a></li>
+        <li><a href="#rumi_dtype_info_size">rumi_dtype_info_size</a></li>
+        <li><a href="#rumi_check_samples">rumi_check_samples</a></li>
+        <li><a href="#read-patterns">Read patterns</a></li>
+        <li><a href="#rumi_default_pattern">rumi_default_pattern</a></li>
+        <li><a href="#rumi_compile_layout">rumi_compile_layout</a></li>
+        <li><a href="#frames">Frame patterns and units</a></li>
+        <li><a href="#rumi_compile_frame_pattern">rumi_compile_frame_pattern</a></li>
+        <li><a href="#rumi_frame_unit">rumi_frame_unit</a></li>
+        <li><a href="#rumi_unit_from_name">rumi_unit_from_name</a></li>
+        <li><a href="#rumi_unit_name">rumi_unit_name</a></li>
+        <li><a href="#rumi_unit_index_axes">rumi_unit_index_axes</a></li>
+        <li><a href="#rumi_axis_name">rumi_axis_name</a></li>
+        <li><a href="#rumi_frame_count">rumi_frame_count</a></li>
+        <li><a href="#rumi_frame_locate">rumi_frame_locate</a></li>
+        <li><a href="#headers">External headers</a></li>
+        <li><a href="#rumi_spec_parse">rumi_spec_parse, rumi_spec_destroy</a></li>
+        <li><a href="#rumi_spec_header">rumi_spec_header</a></li>
+        <li><a href="#rumi_plan_ranges">rumi_plan_ranges</a></li>
+        <li><a href="#sources">Sources and metadata</a></li>
+        <li><a href="#rumi_source_file">rumi_source_file</a></li>
+        <li><a href="#rumi_source_memory">rumi_source_memory</a></li>
+        <li><a href="#rumi_source_free">rumi_source_free</a></li>
+        <li><a href="#rumi_info">rumi_info</a></li>
+        <li><a href="#rumi_metadata_free">rumi_metadata_free</a></li>
+        <li><a href="#reading">Reading on the CPU</a></li>
+        <li><a href="#rumi_read">rumi_read</a></li>
+        <li><a href="#rumi_read_many">rumi_read_many</a></li>
+        <li><a href="#gpu">Reading on the GPU</a></li>
+        <li><a href="#rumi_gpu_available">rumi_gpu_available</a></li>
+        <li><a href="#rumi_gpu_create">rumi_gpu_create, rumi_gpu_destroy</a></li>
+        <li><a href="#rumi_gpu_synchronize">rumi_gpu_synchronize</a></li>
+        <li><a href="#rumi_gpu_current_device">rumi_gpu_current_device</a></li>
+        <li><a href="#rumi_read_gpu">rumi_read_gpu</a></li>
+        <li><a href="#rumi_read_many_gpu">rumi_read_many_gpu</a></li>
+        <li><a href="#dlpack">DLPack</a></li>
+        <li><a href="#rumi_read_dlpack">rumi_read_dlpack</a></li>
+        <li><a href="#rumi_read_many_dlpack">rumi_read_many_dlpack</a></li>
+        <li><a href="#rumi_read_gpu_dlpack">rumi_read_gpu_dlpack</a></li>
+        <li><a href="#rumi_read_many_gpu_dlpack">rumi_read_many_gpu_dlpack</a></li>
+        <li><a href="#rumi_dlpack_wait">rumi_dlpack_wait</a></li>
+        <li><a href="#rumi_dlpack_free">rumi_dlpack_free</a></li>
+        <li><a href="#rumi_dlpack_legacy">rumi_dlpack_legacy, rumi_dlpack_legacy_free</a></li>
+        <li><a href="#rumi_dlpack_capsule_api">rumi_dlpack_capsule_api, rumi_dlpack_capsule_destructor</a></li>
+        <li><a href="#writing">Writing</a></li>
+        <li><a href="#rumi_write">rumi_write</a></li>
+        <li><a href="#rumi_write_base_offset">rumi_write_base_offset</a></li>
+        <li><a href="#rumi_frame_start">rumi_frame_start</a></li>
+        <li><a href="#rumi_geokeys">rumi_geokeys</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

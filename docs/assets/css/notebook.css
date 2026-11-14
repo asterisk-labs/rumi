@@ -1,0 +1,132 @@
+/* Notebook pages written by tools/render_notebooks.py. */
+
+.nb {
+  width: min(100%, 820px);
+  margin-inline: auto;
+  padding-block: 40px 112px;
+}
+
+.content a.nb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 28px;
+  color: var(--dim);
+  font: 500 13px var(--mono);
+  text-decoration: none;
+  line-height: 1.4;
+  transition: color 160ms ease;
+}
+
+.content a.nb-back:hover {
+  color: var(--violet);
+}
+
+.content a.nb-back-end {
+  margin: 56px 0 0;
+}
+
+.nb-cell {
+  margin: 1.6em 0;
+}
+
+.nb-cell pre {
+  margin: 0;
+}
+
+.nb-form summary {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border: 1px solid var(--wash-deep);
+  border-radius: 6px 6px 0 0;
+  color: var(--dim);
+  font: 500 12px var(--mono);
+  list-style: none;
+  cursor: pointer;
+}
+
+.nb-form summary::-webkit-details-marker {
+  display: none;
+}
+
+.nb-form .nb-show::before {
+  content: "\25B8  ";
+}
+
+.nb-form details[open] .nb-show::before {
+  content: "\25BE  ";
+}
+
+.nb-form details pre {
+  border-radius: 0;
+}
+
+.nb-form:not(:has(.nb-out)) summary {
+  border-radius: 6px;
+}
+
+.nb-out {
+  padding: 14px 20px;
+  border: 1px solid var(--wash-deep);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  overflow-x: auto;
+}
+
+.nb-cell pre:has(+ .nb-out) {
+  border-radius: 6px 6px 0 0;
+}
+
+.nb-out > * + * {
+  margin-top: 12px;
+}
+
+pre.nb-text {
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: var(--dim);
+  font-size: 12.5px;
+}
+
+.nb-figure {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.nb-table table,
+.content table.nb-md {
+  border-collapse: collapse;
+}
+
+.nb-table table {
+  font: 400 13px var(--mono);
+}
+
+.nb-table th,
+.nb-table td {
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--edge);
+  text-align: right;
+}
+
+.content table.nb-md {
+  margin: 1.4em 0 1.8em;
+  font-size: 15px;
+}
+
+.content table.nb-md th,
+.content table.nb-md td {
+  padding: 8px 14px 8px 0;
+  border-bottom: 1px solid var(--edge);
+  text-align: left;
+  vertical-align: top;
+}
+
+.nb-table thead th,
+.content table.nb-md th {
+  color: var(--dim);
+  font-weight: 500;
+}

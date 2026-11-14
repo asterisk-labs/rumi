@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="286" viewBox="0 0 760 286" role="img" aria-labelledby="output-title output-desc">
+<title id="output-title">Direct and cropped output paths</title>
+<desc id="output-desc">A direct FrameTask decodes into the final output buffer. A non-direct task decodes into worker scratch and copy_rect moves the requested planes and pixels. Both paths become a DLPack tensor wrapped by RumiArray.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+</style>
+<defs><marker id="arrow-output" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<g class="figure-card accent"><rect x="18" y="106" width="146" height="64" rx="6"/><text x="91" y="130">ready FrameTask</text><text class="sub" x="91" y="150">direct?</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-output)" d="M164 138H196V61H226"/>
+<text class="figure-stage" x="250" y="29">YES · FULL CONTIGUOUS FRAME</text>
+<g class="figure-card"><rect x="230" y="42" width="186" height="58" rx="6"/><text x="323" y="65">decompressTyped(output)</text><text class="sub" x="323" y="84">then validate frame</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-output)" d="M416 71H446"/>
+<g class="figure-card"><rect x="450" y="42" width="126" height="58" rx="6"/><text x="513" y="65">final bytes</text><text class="sub" x="513" y="84">no frame copy</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-output)" d="M164 138H196V214H226"/>
+<text class="figure-stage" x="250" y="171">NO · CROP OR STRIDED LAYOUT</text>
+<g class="figure-card"><rect x="230" y="184" width="186" height="58" rx="6"/><text x="323" y="207">decompressTyped(scratch)</text><text class="sub" x="323" y="226">then validate frame</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-output)" d="M416 213H446"/>
+<g class="figure-card"><rect x="450" y="184" width="126" height="58" rx="6"/><text x="513" y="207">copy_rect()</text><text class="sub" x="513" y="226">place samples</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-output)" d="M576 71H598V138H612"/>
+<path class="figure-arrow" marker-end="url(#arrow-output)" d="M576 213H598V138H612"/>
+<g class="figure-card accent"><rect x="616" y="91" width="126" height="94" rx="6"/><text x="679" y="115">output</text><text class="sub" x="679" y="135">build_dlpack()</text><text class="sub" x="679" y="152">RumiArray</text><text class="sub" x="679" y="169">framework</text></g>
+<text class="figure-note" x="380" y="276">The plan fixes every destination before transport completions can arrive out of order.</text>
+</svg>

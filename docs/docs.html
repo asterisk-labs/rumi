@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="What Rumi is, how a file is laid out and how a read works.">
+<title>Rumi · Docs</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=2">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html" class="here">Docs</a>
+      <a href="api.html">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="index.html#/spec">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">Docs</p>
+      <ol class="toc-pages">
+        <li><a href="docs.html" class="here" aria-current="page">Overview</a></li>
+        <li><a href="guide.html">Read and write</a></li>
+        <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
+        <li><a href="index.html#/spec">Specification</a></li>
+      </ol>
+    </nav>
+
+    <article class="content">
+      <h1>Rumi</h1>
+      <ul class="facts">
+        <li>Rumi 0.30.0, GPL-3.0 licence. The format may change before 1.0.</li>
+      </ul>
+      <aside class="series" aria-label="Section">
+        <p class="series-title">Docs, in 4 pages</p>
+        <ol>
+          <li class="here" aria-current="page">Overview</li>
+          <li><a href="guide.html">Read and write</a></li>
+          <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
+          <li><a href="index.html#/spec">Specification</a></li>
+        </ol>
+      </aside>
+      <p>Training on Earth observation data means reading thousands of small windows, from many files, as fast as a GPU can take them. Rumi is a raster format built for that read. A file holds an <b>Image</b> <code>(B, Y, X)</code> or a temporal <b>Cube</b> <code>(T, B, Y, X)</code>, cut into tiles. Each tile is compressed on its own by <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a>, so a read fetches and decodes only the tiles under its window.</p>
+      <figure class="diagram wide">
+        <img src="img/rumi-layout.svg" alt="An array is written as a Rumi file and its external header." loading="lazy">
+        <figcaption>A write produces the file and a small header that locates every frame in it.</figcaption>
+      </figure>
+
+      <h2 class="part" id="frames">Frames</h2>
+      <p>A <b>frame</b> is one compressed piece of the file. The writer chooses what a frame holds. It can be one band of one tile, or every band and time step at one grid position. The choice is written as a pattern, such as <code>b (row h) (col w) -&gt; row col (b h w)</code>, and fixed for the whole file.</p>
+      <figure class="diagram wide">
+        <img src="img/rumi-data-model.svg" alt="The Rumi data model. A tile is one band at one grid position, a cell is every sample at that position, an Image is one rumi file at one time step and a Cube is a temporal one. Collections of images or cubes need not share a grid." loading="lazy">
+        <figcaption>A frame holds a tile, one band at one grid position, or a whole cell.</figcaption>
+      </figure>
+      <p>Every frame is a complete OpenZL frame that carries its own codec graph. A land tile and an ocean tile in the same file can use different GeoZL recipes, and a reader needs nothing else to decode either one.</p>
+
+      <h2 class="part" id="header">The external header</h2>
+      <p>A write returns the file and a <b>header</b> of a few dozen bytes. The header holds the shape, the dtype, the tile size, the frame layout and the size of every frame. With it, a reader computes the byte range of any frame without opening the file first, so a read is one round of range requests and no state is kept between reads.</p>
+      <p>Keep the header beside the path, in a catalog or a dataset index. For a file that arrives without one, <a href="api-python.html#info"><code>rumi.info</code></a> rebuilds it from the file.</p>
+
+      <h2 class="part" id="reading">Reading a window</h2>
+      <p>A read names the bands, the time steps and a window in pixels. Rumi turns that into the frames it touches, fetches their byte ranges in parallel, decodes them and copies out the requested rectangle.</p>
+      <figure class="diagram wide">
+        <img src="img/rumi-selection-to-frames.svg" alt="A selected window intersects some tiles, and only their frames are fetched and decoded." loading="lazy">
+        <figcaption>Only the frames under the window are fetched and decoded.</figcaption>
+      </figure>
+      <p>The file can sit on a local disk, behind HTTP, or in S3, GCS, Azure, Hugging Face or Source Cooperative. <code>read_many</code> reads one window from each of many files as a single plan, which is what a training loader needs. With a GPU, GeoZL decodes the frames that end in PFOR or PivCo on the device and writes the samples straight into the tensor.</p>
+
+      <h2 class="part" id="pages">Where to go next</h2>
+      <table class="spec">
+        <tr><th><a href="guide.html">Read and write</a></th><td>Worked code for images, cubes, layouts, windows, sources and batches.</td></tr>
+        <tr><th><a href="how-rumi-reads.html">How Rumi reads</a></th><td>One read followed through the code, from the Python call to the decoded tensor.</td></tr>
+        <tr><th><a href="index.html#/spec">Specification</a></th><td>The file format, with everything needed to write a reader.</td></tr>
+        <tr><th><a href="api.html">API</a></th><td>Every call, in Python, C, R, Julia and JavaScript.</td></tr>
+      </table>
+
+      <nav class="pager" aria-label="Pages">
+        <a class="next" href="guide.html"><span>Next</span>Read and write</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <li><a href="#frames">Frames</a></li>
+        <li><a href="#header">The external header</a></li>
+        <li><a href="#reading">Reading a window</a></li>
+        <li><a href="#pages">Where to go next</a></li>
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

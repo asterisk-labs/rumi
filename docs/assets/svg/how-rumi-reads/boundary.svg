@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="250" viewBox="0 0 760 250" role="img" aria-labelledby="boundary-title boundary-desc">
+<title id="boundary-title">The Python to C++ boundary of a normal Rumi read</title>
+<desc id="boundary-desc">Python passes native handles and normalized values to rumi_read_dlpack. prepare_selection validates the request, creates the layout, and calculates the exact size. The C API allocates output, calls the C++ reader, and wraps the completed allocation as DLPack.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.figure-card rect{fill:#ffffff;stroke:#d4d0d9}
+.figure-card text{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.figure-card.accent rect{stroke:#6249d8;stroke-width:1.4}
+.figure-card .sub{fill:#706b76;font-size:9px;font-weight:400}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.figure-note{fill:#716c77;font-size:9px;text-anchor:middle}
+</style>
+<defs><marker id="arrow-boundary" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+<text class="figure-stage" x="18" y="20">PYTHON / CFFI</text>
+<text class="figure-stage" x="201" y="20">PUBLIC C API</text>
+<text class="figure-stage" x="506" y="20">C++ CORE</text>
+
+<g class="figure-card"><rect x="16" y="38" width="152" height="76" rx="6"/><text x="92" y="61">handles + selection</text><text class="sub" x="92" y="80">source · spec · axes</text><text class="sub" x="92" y="96">window · pattern</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M168 76H192"/>
+<g class="figure-card accent"><rect x="196" y="38" width="168" height="76" rx="6"/><text x="280" y="61">rumi_read_dlpack()</text><text class="sub" x="280" y="80">prepare_selection()</text><text class="sub" x="280" y="96">SelectionSetup</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M364 76H388"/>
+<g class="figure-card"><rect x="392" y="38" width="126" height="76" rx="6"/><text x="455" y="61">malloc(need)</text><text class="sub" x="455" y="80">exact checked</text><text class="sub" x="455" y="96">output size</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M518 76H542"/>
+<g class="figure-card accent"><rect x="546" y="38" width="198" height="76" rx="6"/><text x="645" y="61">read_window()</text><text class="sub" x="645" y="80">source + header + setup</text><text class="sub" x="645" y="96">write completed output</text></g>
+
+<path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M645 114V145H516"/>
+<g class="figure-card"><rect x="340" y="134" width="176" height="62" rx="6"/><text x="428" y="157">finish_dlpack()</text><text class="sub" x="428" y="176">wrap, do not copy</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M340 165H310"/>
+<g class="figure-card accent"><rect x="164" y="134" width="142" height="62" rx="6"/><text x="235" y="157">RumiArray</text><text class="sub" x="235" y="176">owns native tensor</text></g>
+<path class="figure-arrow" marker-end="url(#arrow-boundary)" d="M196 213H546"/>
+<text class="figure-note" x="371" y="232">On failure, C++ exception → C status → Python exception, and the allocation is freed.</text>
+</svg>

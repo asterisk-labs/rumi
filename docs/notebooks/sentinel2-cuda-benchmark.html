@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Sentinel-2 into a GPU tensor, a Rumi example notebook.">
+<title>Rumi · Sentinel-2 into a GPU tensor</title>
+<link rel="icon" href="../assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reading.css?v=2">
+<link rel="stylesheet" href="../assets/css/notebook.css?v=1">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="../index.html" aria-label="Rumi home">
+      <img class="marksvg" src="../assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="../assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="../assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="../assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="../assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="../docs.html">Docs</a>
+      <a href="../api.html">API</a>
+      <a href="../examples.html" class="here">Examples</a>
+      <a href="../index.html#/spec">Spec</a>
+    </nav>
+  </header>
+  <main class="nb">
+    <article class="content">
+      <a class="nb-back" href="../examples.html#colab"><span aria-hidden="true">&larr;</span> Examples</a>
+      <h1>Sentinel-2 into a GPU tensor</h1>
+      <ul class="facts"><li>Python · GPU</li><li><a href="https://colab.research.google.com/github/asterisk-labs/rumi/blob/main/examples/sentinel2-cuda-benchmark.ipynb" rel="noopener noreferrer">Open in Colab</a></li><li><a href="https://github.com/asterisk-labs/rumi/blob/main/examples/sentinel2-cuda-benchmark.ipynb" rel="noopener noreferrer">Notebook on GitHub</a></li></ul>
+<p>Sentinel-2 ships its bands as JPEG2000. The files are small, but decoding them is slow and it all happens on the CPU. In training you pay that cost on every read of every epoch, while the GPU waits for data.</p>
+<p>Rumi stores the same pixels, also lossless, in small chunks that the GPU can decode by itself. The CPU only reads the file and sends the compressed bytes.</p>
+<p>This notebook reads one whole scene into a GPU tensor with a single CPU thread, from JPEG2000, GeoTIFF and Rumi, and compares the time and the file size. Select a GPU runtime before you start. JPEG2000 takes a few minutes to finish.</p>
+<div class="nb-cell nb-form"><details><summary><span>Install</span><span class="nb-show">code</span></summary><pre><code class="language-python">%pip install -q "rumi-eo==0.28.1" "geozl==0.21.1" rasterio</code></pre></details></div>
+<h2 class="part">The scene</h2>
+<p>Tile 32TPT over the Alps, 28 September 2023, with almost no clouds. We use the red, green and blue bands at 10 m, 10980x10980 pixels in <code>uint16</code>, about 723 MB uncompressed.</p>
+<div class="nb-cell"><pre><code class="language-python">import os
+import time
+import urllib.request
+
+os.environ["GDAL_NUM_THREADS"] = os.environ["OPJ_NUM_THREADS"] = "1"
+
+import geozl
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import rasterio
+import rumi
+import torch
+
+rumi.set_num_threads(1)
+
+URL = "https://sentinel-s2-l2a.s3.amazonaws.com/tiles/32/T/PT/2023/9/28/0/R10m/{}.jp2"
+names = ["B04", "B03", "B02"]
+jp2 = [f"{band}.jp2" for band in names]
+
+bands = []
+for band, path in zip(names, jp2):
+    urllib.request.urlretrieve(URL.format(band), path)
+    with rasterio.open(path) as src:
+        bands.append(src.read(1))
+        crs, transform = src.crs, src.transform
+rgb = np.stack(bands)
+
+preview = np.moveaxis(rgb[:, ::8, ::8], 0, -1).astype(np.float32)
+low, high = np.percentile(preview, (2, 98), axis=(0, 1))
+plt.figure(figsize=(8, 8))
+plt.imshow(np.clip((preview - low) / (high - low), 0, 1))
+plt.axis("off");</code></pre></div>
+<h2 class="part">Write the files</h2>
+<p>The GeoTIFF is the usual choice for tiled rasters: 512x512 chunks per band, ZSTD and a horizontal predictor. It decodes on the CPU.</p>
+<p>Rumi also cuts each band into 512x512 chunks, and GeoZL compresses each chunk. We write the scene twice, with two codecs that decode on the GPU:</p>
+<ul><li><strong>PFOR</strong> packs the values into blocks of bits.</li><li><strong>PivCo</strong> adds entropy coding, so the file is smaller. Its recipe, <code>planar&gt;zigzag&gt;lanes</code>, codes each byte lane with PivCo.</li></ul>
+<div class="nb-cell"><pre><code class="language-python">with rasterio.open(
+    "rgb.tif", "w", driver="GTiff", height=rgb.shape[1], width=rgb.shape[2], count=3, dtype="uint16",
+    crs=crs, transform=transform, tiled=True, blockxsize=512, blockysize=512, interleave="band",
+    compress="zstd", predictor=2, zstd_level=9,
+) as dst:
+    dst.write(rgb)
+
+headers = {}
+for name, recipe in (("pfor", "planar&gt;zigzag&gt;pfor"), ("pivco", "planar&gt;zigzag&gt;lanes")):
+    frames = rumi.frames(rgb, "b (row h) (col w) -&gt; row col b (h w)", tile_size=512)
+    graphs = {}
+    for frame in frames:
+        if frame.shape not in graphs:
+            graphs[frame.shape] = geozl.graph(frame.data, recipe)
+        frame.compressed = geozl.compress(frame.data, graph=graphs[frame.shape])
+    _, headers[name] = rumi.write(f"{name}.rumi", frames, bands=names, time=["2023-09-28T10:27:44Z"], crs=crs, transform=transform)
+os.sync()</code></pre></div>
+<h2 class="part">Compare</h2>
+<p>Each read ends when the tensor is ready on the GPU.</p>
+<ul><li><strong>Cold</strong> drops the file from the page cache first, so it has to come from disk, like a first epoch.</li><li><strong>Warm</strong> finds the file already in memory, like later epochs.</li></ul>
+<div class="nb-cell"><pre><code class="language-python">def read_jp2():
+    for band, path in enumerate(jp2):
+        with rasterio.open(path) as src:
+            src.read(1, out=rgb[band])
+    return torch.from_numpy(rgb).cuda()
+
+
+def read_tif():
+    with rasterio.open("rgb.tif") as src:
+        src.read(out=rgb)
+    return torch.from_numpy(rgb).cuda()
+
+
+def read_rumi(name):
+    return rumi.read(f"{name}.rumi", headers[name], framework="torch", device="cuda:0")
+
+
+def timed(read, paths, cold):
+    if cold:
+        for path in paths:
+            fd = os.open(path, os.O_RDONLY)
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+            os.close(fd)
+    start = time.perf_counter()
+    out = read()
+    torch.cuda.synchronize()
+    return round((time.perf_counter() - start) * 1000)
+
+
+formats = {
+    "JPEG2000": (read_jp2, jp2),
+    "GeoTIFF": (read_tif, ["rgb.tif"]),
+    "PFOR": (lambda: read_rumi("pfor"), ["pfor.rumi"]),
+    "PivCo": (lambda: read_rumi("pivco"), ["pivco.rumi"]),
+}
+read_rumi("pfor")
+torch.cuda.synchronize()
+
+rows = []
+for name, (read, paths) in formats.items():
+    cold = timed(read, paths, cold=True)
+    warm = timed(read, paths, cold=False)
+    rows.append((name, sum(map(os.path.getsize, paths)) &gt;&gt; 20, cold, warm))
+
+results = pd.DataFrame(rows, columns=["format", "MiB", "cold ms", "warm ms"]).set_index("format")
+results</code></pre></div>
+<h2 class="part">Summary</h2>
+<p><img class="nb-figure" src="https://raw.githubusercontent.com/asterisk-labs/rumi/main/examples/sentinel2-cuda-benchmark.png" alt="File size and read time"></p>
+<p>On Colab with one CPU thread, JPEG2000 takes about 80 s per scene and GeoTIFF about 3 s. Rumi reads the scene in about 1 s or less because the GPU does the decoding. PFOR takes 0.29 s warm and PivCo 0.42 s.</p>
+<p>JPEG2000 is still the smallest file, but PivCo is only 7% bigger. Choose PFOR for speed and PivCo for size.</p>
+      <a class="nb-back nb-back-end" href="../examples.html#colab"><span aria-hidden="true">&larr;</span> Back to the examples</a>
+    </article>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="../assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="../assets/js/code.js?v=1" defer></script>
+</body>
+</html>
