@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=2">
+<link rel="stylesheet" href="assets/css/reading.css?v=15">
 </head>
 <body>
 <div class="page">
@@ -42,7 +42,7 @@
       <a href="docs.html" class="here">Docs</a>
       <a href="api.html">API</a>
       <a href="examples.html">Examples</a>
-      <a href="index.html#/spec">Spec</a>
+      <a href="spec.html">Spec</a>
     </nav>
   </header>
 
@@ -53,7 +53,7 @@
         <li><a href="docs.html" class="here" aria-current="page">Overview</a></li>
         <li><a href="guide.html">Read and write</a></li>
         <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
-        <li><a href="index.html#/spec">Specification</a></li>
+        <li><a href="spec.html">Specification</a></li>
       </ol>
     </nav>
 
@@ -68,40 +68,275 @@
           <li class="here" aria-current="page">Overview</li>
           <li><a href="guide.html">Read and write</a></li>
           <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
-          <li><a href="index.html#/spec">Specification</a></li>
+          <li><a href="spec.html">Specification</a></li>
         </ol>
       </aside>
-      <p>Training on Earth observation data means reading thousands of small windows, from many files, as fast as a GPU can take them. Rumi is a raster format built for that read. A file holds an <b>Image</b> <code>(B, Y, X)</code> or a temporal <b>Cube</b> <code>(T, B, Y, X)</code>, cut into tiles. Each tile is compressed on its own by <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a>, so a read fetches and decodes only the tiles under its window.</p>
+      <h2 class="part" id="example">The example</h2>
+      <p>This page follows one example from start to end. It is a crop of Lake Annecy, in the French Alps, from the Sentinel-2 image of 8 August 2025. The crop is 1280 by 1280 pixels at 10 m, in four bands (blue, green, red and near infrared).</p>
+      <figure class="diagram">
+        <img src="assets/hero/rgb.webp" width="800" height="800" alt="Lake Annecy and the mountains around it, seen from above in true colour." loading="lazy">
+        <figcaption>Lake Annecy on 8 August 2025, in true colour from bands B04, B03 and B02.</figcaption>
+      </figure>
+      <p>The code reads the four bands from the public Sentinel-2 archive and writes them as a Rumi file.</p>
+<pre><code class="language-python">import geozl
+import numpy as np
+import rasterio
+import rumi
+from rasterio.windows import Window
+
+scene = (
+    "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/"
+    "31/T/GL/2025/8/S2A_31TGL_20250808_0_L2A/"
+)
+names = ["B02", "B03", "B04", "B08"]
+window = Window(3980, 1244, 1280, 1280)
+
+bands = []
+for name in names:
+    with rasterio.open(scene + name + ".tif") as src:
+        bands.append(src.read(1, window=window))
+        transform = src.window_transform(window)
+        crs = src.crs
+image = np.stack(bands)
+
+frames = rumi.frames(
+    image,
+    "b (row h) (col w) -&gt; row col b (h w)",
+    tile_size=256,
+)
+
+for frame in frames:
+    payloads = [
+        geozl.compress(frame.data, graph=geozl.graph(frame.data, recipe))
+        for recipe in ("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes")
+    ]
+    frame.compressed = min(payloads, key=len)
+
+path, header = rumi.write(
+    "annecy.rumi",
+    frames,
+    bands=names,
+    time=["2025-08-08"],
+    transform=transform,
+    crs=crs,
+)</code></pre>
+      <p><a href="api-python.html#frames"><code>rumi.frames</code></a> cuts the image into frames of one band and one tile of 256 pixels. <a href="https://asterisk.coop/geozl/api-python.html#graph" rel="noopener noreferrer"><code>geozl.graph</code></a> and <a href="https://asterisk.coop/geozl/api-python.html#compress" rel="noopener noreferrer"><code>geozl.compress</code></a> compress each frame with two recipes that decode on the GPU, and the smaller result is kept. <a href="api-python.html#write"><code>rumi.write</code></a> writes the file and returns its header.</p>
+      <p>The file, <code>annecy.rumi</code>, is 7,274,593 bytes. The <code>header</code> is 232 bytes. The rest of the page takes both apart.</p>
+
+      <h2 class="part" id="what">What Rumi is</h2>
+      <p>Training efficiently on Earth observation data means reading thousands of small windows, from many files, as fast as a GPU can take them. Rumi is a raster format built for that read.</p>
+      <p>A Rumi file holds an <b>Image</b> <code>(B, Y, X)</code> or a temporal <b>Cube</b> <code>(T, B, Y, X)</code>, cut into tiles. Each tile is compressed on its own by <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a>, so a read fetches and decodes only the tiles under its window.</p>
+      <p><a href="api-python.html#write"><code>rumi.write</code></a> returns the file and a small <b>header</b>. You keep the header outside the file, in a catalog or a dataset index. It locates every tile, so a reader goes straight to the bytes it needs without opening the file first.</p>
       <figure class="diagram wide">
         <img src="img/rumi-layout.svg" alt="An array is written as a Rumi file and its external header." loading="lazy">
         <figcaption>A write produces the file and a small header that locates every frame in it.</figcaption>
       </figure>
 
       <h2 class="part" id="frames">Frames</h2>
-      <p>A <b>frame</b> is one compressed piece of the file. The writer chooses what a frame holds. It can be one band of one tile, or every band and time step at one grid position. The choice is written as a pattern, such as <code>b (row h) (col w) -&gt; row col (b h w)</code>, and fixed for the whole file.</p>
+      <p>A <b>frame</b> is one compressed piece of the file. The writer chooses what a frame holds. It can be one band of one tile, or every band and time step at one grid position.</p>
+      <p>That choice is a <b>pattern</b>, written in the notation of <a href="https://einops.rocks/" rel="noopener noreferrer">einops</a> and given to <a href="api-python.html#frames"><code>rumi.frames</code></a>. The left side names the axes of the array, and <code>(row h)</code> splits the image rows into the tile row and the row inside the tile, as <code>(col w)</code> does for columns.</p>
+      <p>On the right, the axes outside the brackets number the frames, and the axes inside the brackets are stored together in one frame. So <code>b (row h) (col w) -&gt; row col (b h w)</code> keeps every band of a tile in one frame, and <code>b (row h) (col w) -&gt; row col b (h w)</code> gives each band its own frame. The pattern is fixed for the whole file.</p>
       <figure class="diagram wide">
         <img src="img/rumi-data-model.svg" alt="The Rumi data model. A tile is one band at one grid position, a cell is every sample at that position, an Image is one rumi file at one time step and a Cube is a temporal one. Collections of images or cubes need not share a grid." loading="lazy">
         <figcaption>A frame holds a tile, one band at one grid position, or a whole cell.</figcaption>
       </figure>
       <p>Every frame is a complete OpenZL frame that carries its own codec graph. A land tile and an ocean tile in the same file can use different GeoZL recipes, and a reader needs nothing else to decode either one.</p>
 
-      <h2 class="part" id="header">The external header</h2>
-      <p>A write returns the file and a <b>header</b> of a few dozen bytes. The header holds the shape, the dtype, the tile size, the frame layout and the size of every frame. With it, a reader computes the byte range of any frame without opening the file first, so a read is one round of range requests and no state is kept between reads.</p>
-      <p>Keep the header beside the path, in a catalog or a dataset index. For a file that arrives without one, <a href="api-python.html#info"><code>rumi.info</code></a> rebuilds it from the file.</p>
+      <h3 id="frame-unit">The frame unit</h3>
+      <p>The file does not keep the pattern as text. It keeps one number, the <b>frame unit</b>, in the IFD and in the external header.</p>
+      <p>The frame unit says what one frame holds. When a frame holds one tile, it also says in which order the frames are numbered. When a frame holds a cell, it says in which order the samples sit inside the frame.</p>
+      <table class="spec">
+        <tr><th>frame unit</th><th>one frame holds</th><th>right side of the pattern</th></tr>
+        <tr><td>0</td><td>one tile, frames numbered by band, then by time step</td><td><code>row col b t (h w)</code></td></tr>
+        <tr><td>9</td><td>one tile, frames numbered by time step, then by band</td><td><code>row col t b (h w)</code></td></tr>
+        <tr><td>1</td><td>a cell, with the bands, or the time steps, as planes</td><td><code>row col (b h w)</code></td></tr>
+        <tr><td>2</td><td>a cell, with the bands, or the time steps, side by side in each pixel</td><td><code>row col (h w b)</code></td></tr>
+        <tr><td>3 to 8</td><td>a cell of a Cube, with bands and time steps in one of the six orders</td><td><code>row col (b t h w)</code>, <code>row col (t b h w)</code> and so on</td></tr>
+      </table>
+      <p>The order inside a cell frame changes only how well it compresses. A reader still fetches the whole frame. Not every unit fits every file. A file with one band and one time step always uses 0, and units 3 to 9 need a Cube with more than one band.</p>
+      <p>The Lake Annecy file uses frame unit 0, one band of one tile per frame. Its 25 grid positions and 4 bands give 100 frames. With frame unit 1, the same image would have 25 frames, each holding the 4 bands of one tile.</p>
+      <p>A reader needs the frame unit twice. It gives the number of frames, and it turns a grid position, a band and a time step into a frame index. Both steps are in <a href="#ranges">From a tile to its bytes</a>.</p>
 
-      <h2 class="part" id="reading">Reading a window</h2>
-      <p>A read names the bands, the time steps and a window in pixels. Rumi turns that into the frames it touches, fetches their byte ranges in parallel, decodes them and copies out the requested rectangle.</p>
+      <h2 class="part" id="rule">Predictable first, unpredictable last</h2>
+      <p>Every choice in the layout serves one task. A read asks for a window, and the reader must find the bytes of every frame under it.</p>
+      <p>A frame, remember, is one compressed piece of the file. It holds one tile or a whole cell, as the <a href="#frame-unit">frame unit</a> says. Either way it is one run of bytes, and the reader needs two numbers to fetch it. Its <b>offset</b> is the byte where it starts, and its <b>length</b> is how many bytes it has.</p>
+      <p>Rumi lets a reader get both numbers with arithmetic alone, without searching the file. For that, the layout follows one rule. A part whose size can be predicted goes first, at a fixed place. A part whose size cannot be predicted goes after it, where its size moves nothing that came before.</p>
+      <p>The rule holds in every Rumi file. The figure below steps through it on the Lake Annecy file. The parts in <span class="tint-sure">green</span> have a size that is known before anything is compressed (<a href="#header-size">The size of the internal header</a>). The parts in <span class="tint-unsure">orange</span> have a size that is known only after.</p>
+      <div class="filemap" data-map="write"></div>
+      <noscript>
+      <table class="spec">
+        <tr><th>file header</th><td>Always 16 bytes.</td></tr>
+        <tr><th>IFD</th><td>Always 276 bytes, with the same 13 tags in every file.</td></tr>
+        <tr><th>IFD values</th><td>A size that follows from the number of bands and frames alone. The first frame starts at byte 1,652 before anything is compressed.</td></tr>
+        <tr><th>frames</th><td>Sizes known only after compressing. Each frame starts where the one before it ends.</td></tr>
+        <tr><th>trailer</th><td>Band names and dates of any length. It goes last and starts where the last frame ends.</td></tr>
+      </table>
+      </noscript>
+      <p>A reader walks the same path. It knows where everything in the first 1,652 bytes sits before it reads them. It finds a frame by adding up the sizes of the frames before it. And it never needs the trailer to find a frame.</p>
+
+      <h2 class="part" id="file">Inside the file</h2>
+      <p>The file is complete on its own. Everything a reader needs, from the shape to the CRS to the band names, is inside it.</p>
       <figure class="diagram wide">
-        <img src="img/rumi-selection-to-frames.svg" alt="A selected window intersects some tiles, and only their frames are fetched and decoded." loading="lazy">
-        <figcaption>Only the frames under the window are fetched and decoded.</figcaption>
+        <img src="img/rumi-layout-file.svg" alt="An array is written as a Rumi file and its external header. The file is highlighted." loading="lazy">
+        <figcaption>The file is the first thing a write returns.</figcaption>
       </figure>
-      <p>The file can sit on a local disk, behind HTTP, or in S3, GCS, Azure, Hugging Face or Source Cooperative. <code>read_many</code> reads one window from each of many files as a single plan, which is what a training loader needs. With a GPU, GeoZL decodes the frames that end in PFOR or PivCo on the device and writes the samples straight into the tensor.</p>
+      <p>Every Rumi file has the same five parts, in the same order. They are the file header, the IFD, the IFD values, the frames and the trailer. Each part starts right where the previous one ends, with no empty bytes between them. The figure below shows them in the Lake Annecy file. Move the mouse over a part, or over one of its 100 frames, to see what it holds and at which bytes it sits.</p>
+      <div class="filemap" data-map="file"></div>
+      <noscript>
+      <table class="spec">
+        <tr><th>file header</th><td>16 bytes. The magic <code>RUMI</code>, the format version and the offset of the IFD, which is always 16.</td></tr>
+        <tr><th>IFD</th><td>276 bytes. A table of exactly 13 tags, each in a 20 byte entry laid out like BigTIFF.</td></tr>
+        <tr><th>IFD values</th><td>The tag values too long to fit in their entry. That is the offset and size of every frame and the 160 bytes of georeferencing.</td></tr>
+        <tr><th>frames</th><td>One after another, in frame index order. Each one is a complete OpenZL frame with its own GeoZL graph.</td></tr>
+        <tr><th>trailer</th><td>After the last frame. The magic <code>TAIL</code> and its version, one text per band and the time of every step.</td></tr>
+      </table>
+      </noscript>
+
+      <h3 id="ifd">The fixed IFD</h3>
+      <p>The IFD is the table that describes the file. Rumi borrows its layout from BigTIFF, but a Rumi file is not a TIFF.</p>
+      <p>Unlike in a TIFF, the IFD is fixed. It always starts at byte 16, always has the same 13 tags in the same order, and is always 276 bytes long. A reader does not have to parse it to know where a tag is.</p>
+      <p>Each tag gets an entry of 20 bytes with room for 8 bytes of value. A value that fits, such as the image width, sits inside its entry. A longer one, such as the offsets of 100 frames, goes right after the IFD, and its entry holds only the byte where it starts. Those long values, one after another, are the <b>IFD values</b>.</p>
+
+      <h3 id="tags">The 13 tags</h3>
+      <p>Every file carries all of them, in this order, and no other. Point at an entry to see its value in the Lake Annecy file.</p>
+      <div class="filemap" data-map="ifd"></div>
+      <noscript>
+      <table class="spec">
+        <thead><tr><th>tag</th><th>name</th><th>what it holds</th></tr></thead>
+        <tr><td>256</td><td><code>ImageWidth</code></td><td>the image width in pixels</td></tr>
+        <tr><td>257</td><td><code>ImageLength</code></td><td>the image height in pixels</td></tr>
+        <tr><td>258</td><td><code>BitsPerSample</code></td><td>the bits of one sample, once per band</td></tr>
+        <tr><td>277</td><td><code>SamplesPerPixel</code></td><td>the number of bands</td></tr>
+        <tr><td>322</td><td><code>TileWidth</code></td><td>the tile width in pixels</td></tr>
+        <tr><td>323</td><td><code>TileLength</code></td><td>the tile height in pixels</td></tr>
+        <tr><td>324</td><td><code>TileOffsets</code></td><td>the byte offset of every frame</td></tr>
+        <tr><td>325</td><td><code>TileByteCounts</code></td><td>the byte size of every frame</td></tr>
+        <tr><td>339</td><td><code>SampleFormat</code></td><td>unsigned, signed or floating point, once per band</td></tr>
+        <tr><td>34264</td><td><code>ModelTransformationTag</code></td><td>the affine transform, as 16 doubles</td></tr>
+        <tr><td>34735</td><td><code>GeoKeyDirectoryTag</code></td><td>the CRS, as an EPSG code in 16 shorts</td></tr>
+        <tr><td>65000</td><td><code>FrameUnit</code></td><td>the <a href="#frame-unit">frame unit</a>, what one frame holds</td></tr>
+        <tr><td>65001</td><td><code>TimeCount</code></td><td>the number of time steps</td></tr>
+      </table>
+      </noscript>
+      <p>The CRS is an EPSG code in the <code>GeoKeyDirectoryTag</code>, together with whether it is projected or geographic and whether a pixel is an area or a point. The affine transform is a 4 by 4 matrix of doubles in the <code>ModelTransformationTag</code>. The two always take 160 bytes, and a file with no georeferencing stores a defined placeholder, so the layout never changes.</p>
+      <p>Rumi supports only EPSG codes. A CRS given as WKT or as a PROJ string is not supported.</p>
+
+      <h3 id="trailer">The trailer</h3>
+      <p>The trailer describes the data without locating it. It holds the text of every band and the date of every time step. The figure below shows the 48 bytes of the Lake Annecy trailer, in its four groups. Move the mouse over a field to see its value.</p>
+      <div class="filemap" data-map="trailer"></div>
+      <noscript>
+      <table class="spec">
+        <tr><th>magic and version</th><td>6 bytes. The magic <code>TAIL</code> and the trailer version, 1.</td></tr>
+        <tr><th>band texts</th><td>One text per band, stored as its length and then its bytes.</td></tr>
+        <tr><th>time fields</th><td>22 bytes. Whether a step is an instant or an interval, the bits of each residual, the first date, the step between dates and whether dates count days or seconds.</td></tr>
+        <tr><th>time residuals</th><td>How far each date falls from a regular line of dates, packed in as few bits as they need.</td></tr>
+      </table>
+      </noscript>
+      <p>Each band text is stored as its length in 2 bytes, then its bytes. A reader reads the length, then that many bytes, and the next length starts right after them. The IFD gives the number of bands, so the reader knows when the texts end. The recommended text names the band, describes it and gives its wavelength, such as <code>B4, Red, 665nm</code>. The Lake Annecy file uses short names, so its four texts take 20 bytes.</p>
+
+      <p><b>Why it goes last.</b> A text can have any length, so nobody can predict the size of the trailer. Type a longer text for a band in the figure below. With the trailer last, the first frame stays where it is. If the trailer came before the frames, the first frame would move with every letter, and every frame after it would move too.</p>
+      <div class="filemap" data-map="last"></div>
+      <p>Finding the trailer takes no extra field. It starts where the last frame ends and runs to the end of the file.</p>
+
+      <p><b>How the dates stay small.</b> The trailer does not store each date in full. It stores the first date and a step, which together draw a regular line of dates. Each real date is then stored as its <b>residual</b>, how far it falls from its place on that line.</p>
+      <p>A zigzag code turns the signed residuals 0, -1, 1, -2, 2 into 0, 1, 2, 3, 4, and they are packed in as few bits as the largest one needs. The figure below is a Cube of eight dates five days apart. Click a date to drop it, as a cloudy date would be dropped. With all eight kept, every date sits on the line and the residuals take no bytes at all.</p>
+      <div class="filemap" data-map="times"></div>
+      <p>A reader never uses the trailer to find or decode a frame. <a href="api-python.html#info"><code>rumi.info</code></a> reads it to report the band names and dates.</p>
+
+      <h3 id="header-size">The size of the internal header</h3>
+      <p>Everything before the frames, the file header, the IFD and its values, is the internal header. Its size depends only on the number of bands <code>B</code> and the number of frames <code>N</code>, never on how well the frames compress. Only values longer than 8 bytes add to the 292 bytes of the file header and the IFD.</p>
+<pre><code class="language-python">size     = 16 + 276 + values
+values   = 128                    # ModelTransformationTag
+         + 32                     # GeoKeyDirectoryTag
+         + (8 * N  if N >= 2)     # TileOffsets
+         + (4 * N  if N >= 3)     # TileByteCounts
+         + (4 * B  if B >= 5)     # BitsPerSample and SampleFormat</code></pre>
+      <p>A file with 4 bands in 4 frames starts its frames at byte 500, and one with 4 bands in 100 frames at byte 1,652. <a href="api-python.html#frame_start"><code>rumi.frame_start</code></a> returns that byte from the shape, the pattern and the tile size, before anything is compressed.</p>
+
+      <h2 class="part" id="header">The external header</h2>
+      <p>The external header is a small record that tells a reader where every frame of a file is. A write returns it next to the file, and you keep it outside the file, next to the path in your dataset index.</p>
+      <figure class="diagram wide">
+        <img src="img/rumi-layout-header.svg" alt="An array is written as a Rumi file and its external header. The external header is highlighted." loading="lazy">
+        <figcaption>The second thing a write returns.</figcaption>
+      </figure>
+
+      <h3 id="header-why">Why it exists</h3>
+      <p>The file alone is enough to read. But a reader that starts from the file needs two requests. The first fetches the IFD to learn where the frames are. The second fetches the frames.</p>
+      <p>A training loader reads windows from thousands of files. From the files alone, each one costs that first request, or a cache of IFDs in every worker. The external header removes the first request. It is a shortcut built for training.</p>
+
+      <h3 id="header-fields">What it holds</h3>
+      <p>A fixed part of 32 bytes, then the size of every frame. The figure below shows the 232 bytes of the Lake Annecy header. Point at a field, or at the size of one frame.</p>
+      <div class="filemap" data-map="blob"></div>
+      <noscript>
+      <table class="spec">
+        <tr><th>magic, version</th><td>what the record is, and which version of the format wrote it</td></tr>
+        <tr><th>shape</th><td>the image width and height in pixels, and the number of time steps</td></tr>
+        <tr><th>tile</th><td>the tile width and height</td></tr>
+        <tr><th>dtype</th><td>the number of bands, the bits per sample and the sample format</td></tr>
+        <tr><th>frame unit</th><td>the <a href="#frame-unit">frame unit</a>, what one frame holds</td></tr>
+        <tr><th>frame sizes</th><td>the size of every frame, stored as its difference from the smallest and packed in as few bits as they need</td></tr>
+      </table>
+      </noscript>
+      <p>There are no offsets in it, and no band names, dates or CRS. Those stay in the file.</p>
+
+      <h3 id="header-small">Why it stores no offsets</h3>
+      <p>The figure below compares three headers that locate the same 100 frames. The first is a GeoTIFF of the Lake Annecy data, written by GDAL as a BigTIFF, with offsets of 8 bytes like Rumi. The second is the internal header of the Rumi file. The third is its external header. Point at a part to see what it holds.</p>
+      <div class="filemap" data-map="compare"></div>
+      <noscript>
+      <table class="spec">
+        <tr><th>GeoTIFF</th><td>1,758 bytes. Header 16, IFD 376, offsets 800, sizes 400, georeferencing 166.</td></tr>
+        <tr><th>Rumi, internal header</th><td>1,652 bytes. Header 16, IFD 276, offsets 800, sizes 400, georeferencing 160.</td></tr>
+        <tr><th>Rumi, external header</th><td>232 bytes. Fixed part 32, sizes 200.</td></tr>
+      </table>
+      </noscript>
+      <p>The GeoTIFF and the internal header are almost the same. Both store an offset and a size for every frame, which is 1,200 of their bytes. Written as a classic TIFF, with offsets of 4 bytes that limit a file to 4 GB, the GeoTIFF header would take 1,218 bytes. The external header stores no offsets at all.</p>
+      <p>A GeoTIFF has to store every offset, because its tiles can sit anywhere in the file, in any order and with gaps between them. A Rumi file has no such freedom. Its frames start right after the internal header, in frame order, with no gaps. So every offset follows from the sizes before it.</p>
+<pre><code class="language-python">offset[0] = 16 + 276 + values      # 1,652 here
+offset[k] = offset[k-1] + size[k-1]
+          = offset[0] + size[0] + ... + size[k-1]</code></pre>
+      <p>In the Lake Annecy file, frame 2 starts at <code>1,652 + 80,707 + 80,328 = 162,687</code>. A reader adds up the sizes once, in memory, and never needs a stored offset.</p>
+      <p>The sizes shrink too. No frame is smaller than 38,991 bytes, so the header stores that number once, as <code>count_min</code>, and each size as how far it is above it. The largest difference, 51,867, fits in 16 bits, so the 100 sizes take 200 bytes instead of 400. With its fixed part of 32 bytes, the external header is 232 bytes.</p>
+<pre><code class="language-python">size[k] = count_min + residual[k]  # count_bits bits each</code></pre>
+
+      <h3 id="ranges">From a tile to its bytes</h3>
+      <p>With the header, a reader finds the bytes of any tile with arithmetic alone. Pick a tile on the image and a band, and the steps fill in with the numbers of the Lake Annecy file.</p>
+      <div class="filemap" data-map="ranges"></div>
+      <noscript>
+      <p>The tile at row 2 and column 1 of band B04 is frame <code>k = (2 * 5 + 1) * 4 + 2 = 46</code>. Its offset is <code>1652 + 46 * 38991 + 1510358 = 3305596</code> and its length is <code>38991 + 33160 = 72151</code> bytes.</p>
+      </noscript>
+      <p>The same steps hold for any file. Only the frame index changes. When a frame holds a tile, as here, the band and the time step are part of the index. When a frame holds a cell, the index is the grid position alone. The reader then fetches the whole cell, decodes it, and keeps the bands and time steps it asked for.</p>
+<pre><code class="language-python">tiles_across = ceil(image_width / tile_width)
+tiles_down   = ceil(image_length / tile_length)
+g            = tiles_across * tiles_down
+N            = g * B * T if frame_unit in (0, 9) else g
+
+size[i]   = count_min + residual[i]     # residuals of count_bits bits each
+base      = 16 + 276 + values           # the size of the internal header
+offset[k] = base + k * count_min + sum(residual[0:k])
+length[k] = size[k]
+
+spatial = row * tiles_across + col
+k = (spatial * B + b) * T + t           # frame unit 0
+k = (spatial * T + t) * B + b           # frame unit 9
+k = spatial                             # a frame holds a cell</code></pre>
+
+      <h3 id="stateless">Stateless reads</h3>
+      <p>With the header in hand, a read needs no state. The reader keeps no open files and no cache.</p>
+      <p><a href="api-python.html#read"><code>rumi.read</code></a> takes a path, its header and a window, works out the byte ranges, and fetches them in one round of range requests. <a href="api-python.html#read_many"><code>rumi.read_many</code></a> reads one window from each of many files as a single batch.</p>
+      <p>That works the same on a local disk and in object storage. Any worker of a data loader can read any window of any file, in any order, with nothing to warm up first.</p>
+
+      <h3 id="rebuild">Always rebuilt from the file</h3>
+      <p>Every field of the external header is also in the IFD of the file. So the external header can always be rebuilt from the file, and <a href="api-python.html#info"><code>rumi.info</code></a> does exactly that. A file never depends on its external header.</p>
+      <figure class="diagram wide">
+        <img src="img/rumi-external-header.svg" alt="The IFD at the start of a Rumi file holds the shape, the tile and every frame size. rumi.info reads it and rebuilds the external header, a fixed part of 32 bytes followed by the packed frame sizes, with no offsets, names or dates." loading="lazy">
+        <figcaption>The IFD holds everything the external header needs.</figcaption>
+      </figure>
 
       <h2 class="part" id="pages">Where to go next</h2>
       <table class="spec">
         <tr><th><a href="guide.html">Read and write</a></th><td>Worked code for images, cubes, layouts, windows, sources and batches.</td></tr>
         <tr><th><a href="how-rumi-reads.html">How Rumi reads</a></th><td>One read followed through the code, from the Python call to the decoded tensor.</td></tr>
-        <tr><th><a href="index.html#/spec">Specification</a></th><td>The file format, with everything needed to write a reader.</td></tr>
+        <tr><th><a href="spec.html">Specification</a></th><td>The file format, with everything needed to write a reader.</td></tr>
         <tr><th><a href="api.html">API</a></th><td>Every call, in Python, C, R, Julia and JavaScript.</td></tr>
       </table>
 
@@ -113,9 +348,12 @@
     <nav class="toc onpage" aria-label="On this page">
       <p class="toc-title">On this page</p>
       <ol class="toc-sections">
+        <li><a href="#example">The example</a></li>
+        <li><a href="#what">What Rumi is</a></li>
         <li><a href="#frames">Frames</a></li>
+        <li><a href="#rule">Predictable first</a></li>
+        <li><a href="#file">Inside the file</a></li>
         <li><a href="#header">The external header</a></li>
-        <li><a href="#reading">Reading a window</a></li>
         <li><a href="#pages">Where to go next</a></li>
       </ol>
     </nav>
@@ -132,5 +370,7 @@
 </div>
 <script src="assets/js/toc.js" defer></script>
 <script src="assets/js/code.js" defer></script>
+<script src="assets/js/annecy.js" defer></script>
+<script src="assets/js/file-map.js?v=13" defer></script>
 </body>
 </html>

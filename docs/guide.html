@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=2">
+<link rel="stylesheet" href="assets/css/reading.css?v=15">
 </head>
 <body>
 <div class="page">
@@ -42,7 +42,7 @@
       <a href="docs.html" class="here">Docs</a>
       <a href="api.html">API</a>
       <a href="examples.html">Examples</a>
-      <a href="index.html#/spec">Spec</a>
+      <a href="spec.html">Spec</a>
     </nav>
   </header>
 
@@ -53,7 +53,7 @@
         <li><a href="docs.html">Overview</a></li>
         <li><a href="guide.html" class="here" aria-current="page">Read and write</a></li>
         <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
-        <li><a href="index.html#/spec">Specification</a></li>
+        <li><a href="spec.html">Specification</a></li>
       </ol>
     </nav>
 
@@ -68,7 +68,7 @@
           <li><a href="docs.html">Overview</a></li>
           <li class="here" aria-current="page">Read and write</li>
           <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
-          <li><a href="index.html#/spec">Specification</a></li>
+          <li><a href="spec.html">Specification</a></li>
         </ol>
       </aside>
       <p>These examples write an Image and a Cube, read part of a file back, run the same read against local and remote storage, and build training batches. The first four sections create data. If a catalog already gives you a source and its header, start at <a href="#selection">bands, times and windows</a>. R and Julia have readers of their own, described in the <a href="api-r.html">R</a> and <a href="api-julia.html">Julia</a> APIs.</p>
@@ -355,7 +355,7 @@ checked = rumi.info(
         <tr><th>header only</th><td><code>rumi.info(header=...)</code> describes the read index without opening the source.</td></tr>
         <tr><th>with a source</th><td><code>rumi.info(source=...)</code> also returns band texts, time coordinates, transform, CRS and a rebuilt header.</td></tr>
       </table>
-      <p><a href="how-rumi-reads.html">How Rumi reads</a> follows a read from the request to the tensor, and the <a href="index.html#/spec">specification</a> defines the file format.</p>
+      <p><a href="how-rumi-reads.html">How Rumi reads</a> follows a read from the request to the tensor, and the <a href="spec.html">specification</a> defines the file format.</p>
 
       <nav class="pager" aria-label="Pages">
         <a class="prev" href="docs.html"><span>Previous</span>Overview</a>

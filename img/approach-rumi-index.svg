@@ -8,8 +8,8 @@
 <line x1="500" y1="36" x2="500" y2="300" stroke="#E5E7EB" stroke-width="1"/>
 
 <!-- LEFT: generic GeoTIFF -->
-<text class="sans" x="48" y="46" font-size="16" font-weight="600" fill="#1A1A1A">Generic GeoTIFF</text>
-<text class="sans" x="48" y="66" font-size="12" fill="#9CA3AF">the whole IFD, then two arrays</text>
+<text class="sans" x="48" y="46" font-size="16" font-weight="600" fill="#1A1A1A">Tiled GeoTIFF</text>
+<text class="sans" x="48" y="66" font-size="12" fill="#9CA3AF">IFD contains or references both arrays</text>
 <rect x="48" y="80" width="404" height="44" rx="10" fill="#F1F3F5" stroke="#CBD5E1" stroke-width="1"/>
 <text class="mono" x="66" y="102" font-size="13" font-weight="700" fill="#1A1A1A">TIFF IFD</text>
 <text class="sans" x="66" y="118" font-size="11" fill="#9CA3AF">width, length, tile size, compression, &#8230;</text>

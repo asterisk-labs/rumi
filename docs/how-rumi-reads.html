@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=2">
+<link rel="stylesheet" href="assets/css/reading.css?v=15">
 </head>
 <body>
 <div class="page">
@@ -42,7 +42,7 @@
       <a href="docs.html" class="here">Docs</a>
       <a href="api.html">API</a>
       <a href="examples.html">Examples</a>
-      <a href="index.html#/spec">Spec</a>
+      <a href="spec.html">Spec</a>
     </nav>
   </header>
 
@@ -53,7 +53,7 @@
         <li><a href="docs.html">Overview</a></li>
         <li><a href="guide.html">Read and write</a></li>
         <li><a href="how-rumi-reads.html" class="here" aria-current="page">How Rumi reads</a></li>
-        <li><a href="index.html#/spec">Specification</a></li>
+        <li><a href="spec.html">Specification</a></li>
       </ol>
     </nav>
 
@@ -68,7 +68,7 @@
           <li><a href="docs.html">Overview</a></li>
           <li><a href="guide.html">Read and write</a></li>
           <li class="here" aria-current="page">How Rumi reads</li>
-          <li><a href="index.html#/spec">Specification</a></li>
+          <li><a href="spec.html">Specification</a></li>
         </ol>
       </aside>
       <p>No knowledge of Rumi, Karu, OpenZL, GeoZL or C++ is assumed. The call normalizes its arguments, plans the frames it needs, fetches and decodes them, and hands the result to the framework.</p>
@@ -111,7 +111,7 @@
         <img src="assets/svg/how-rumi-reads/call-path.svg" alt="The Python read function calls the C API, which invokes the core planner and executor. Karu supplies compressed ranges, an OpenZL context with GeoZL extensions decodes frames, and Rumi exports the result." loading="lazy">
         <figcaption>Rumi owns the meaning of the selection and the placement of samples. Karu moves byte ranges. OpenZL owns the decoder runtime, and GeoZL registers raster codecs into that same runtime.</figcaption>
       </figure>
-      <div class="note"><p><b>The boundary to keep in mind.</b> The external header tells Rumi which frames hold the request and where their bytes begin. It does no I/O and no decoding. The <a href="index.html#/spec">specification</a> defines that arithmetic, and this page explains the functions that run it.</p></div>
+      <div class="note"><p><b>The boundary to keep in mind.</b> The external header tells Rumi which frames hold the request and where their bytes begin. It does no I/O and no decoding. The <a href="spec.html">specification</a> defines that arithmetic, and this page explains the functions that run it.</p></div>
 
       <h2 class="part" id="python">The Python call</h2>
       <p><code>rumi.read()</code> is synchronous. It returns a finished array or raises an exception. Its arguments describe three different things, the bytes to read, the samples to keep and the array to return.</p>
@@ -166,7 +166,7 @@ return consumer.convert(arr)</code></pre>
 task.offset = h.frame_offset(idx)
 task.compressed_size = h.frame_byte_count(idx)</code></pre>
       <p>When a whole decoded frame maps byte for byte to one contiguous region of the output, the task stores a <code>direct</code> destination. Otherwise it stores crop coordinates and strides for a later <code>copy_rect()</code>. No transport decision has been made yet.</p>
-      <div class="note"><p><b>Where the format math went.</b> The tile grid, the frame-unit rules, the frame-index formula and the prefix sum that rebuilds the offsets are in the <a href="index.html#/spec">specification</a>, with their diagrams. What matters here is that those calculations become concrete <code>FrameTask</code> records before any frame bytes are requested.</p></div>
+      <div class="note"><p><b>Where the format math went.</b> The tile grid, the frame-unit rules, the frame-index formula and the prefix sum that rebuilds the offsets are in the <a href="spec.html">specification</a>, with their diagrams. What matters here is that those calculations become concrete <code>FrameTask</code> records before any frame bytes are requested.</p></div>
 
       <h2 class="part" id="karu">Byte ranges from Karu</h2>
       <p>Karu is a read-only transport library. Rumi gives it a locator, an <code>offset</code> and a <code>length</code>, and Karu returns exactly that byte range. It knows nothing about bands, tiles, frames or output arrays.</p>
@@ -268,10 +268,11 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
         </tbody>
       </table>
       <div class="note"><p><b>The shortest debugging route.</b> If the wrong frames are requested, start in <code>append_read_plan()</code>. If ranges fail, start in <code>execute_plan()</code> and <code>source.cpp</code>. If compressed bytes arrive but decoding or placement fails, start in <code>execute_task()</code>. If the native result is correct but the Python object fails, start in <code>RumiArray</code>.</p></div>
-      <p>The <a href="index.html#/spec">specification</a> has the binary layout and the frame-index formulas. The <a href="examples.html">examples</a> show the public API in use.</p>
+      <p>The <a href="spec.html">specification</a> has the binary layout and the frame-index formulas. The <a href="examples.html">examples</a> show the public API in use.</p>
 
       <nav class="pager" aria-label="Pages">
         <a class="prev" href="guide.html"><span>Previous</span>Read and write</a>
+        <a class="next" href="spec.html"><span>Next</span>Specification</a>
       </nav>
     </article>
 

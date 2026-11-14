@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="The Rumi file format, with everything needed to write a reader or a writer.">
+<title>Rumi · Specification</title>
+<link rel="icon" href="assets/svg/rumi-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reading.css?v=15">
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <a class="lockup" href="index.html" aria-label="Rumi home">
+      <img class="marksvg" src="assets/svg/rumi-mark.svg" alt="">
+      <span class="wm-sm">rumi</span>
+    </a>
+
+    <div class="offsite" aria-label="Project links">
+      <a href="https://github.com/asterisk-labs/rumi" title="GitHub" aria-label="Rumi on GitHub" rel="noopener noreferrer">
+        <svg class="github" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+      </a>
+      <a class="pypi" href="https://pypi.org/project/rumi-eo/" title="PyPI" aria-label="Rumi on PyPI" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3 14.3 4.7v6.6L8 14.7l-6.3-3.4V4.7Z"></path><path d="M1.7 4.7 8 8.1l6.3-3.4M8 8.1v6.6"></path></svg>
+        <img class="mark-color" src="assets/svg/pypi-color.svg" alt="" width="18" height="16">
+      </a>
+      <a class="rumi" href="https://asterisk.coop/geozl/" title="GeoZL" aria-label="GeoZL, the codec Rumi compresses with" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 1.5h4v4h-4zM10.5 1.5h4v4h-4zM1.5 10.5h4v4h-4zM10.5 10.5h4v4h-4z"></path></svg>
+        <img class="mark-color" src="assets/svg/geozl-color.svg" alt="" width="16" height="16">
+      </a>
+      <a class="asterisk" href="https://asterisk.coop" title="asterisk labs" aria-label="asterisk labs" rel="noopener noreferrer">
+        <img class="mark-mono" src="assets/svg/asterisk-mark-black.svg" alt="" width="16" height="18">
+        <img class="mark-color" src="assets/svg/asterisk-mark-color.svg" alt="" width="16" height="18">
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="docs.html">Docs</a>
+      <a href="api.html">API</a>
+      <a href="examples.html">Examples</a>
+      <a href="spec.html" class="here">Spec</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">Docs</p>
+      <ol class="toc-pages">
+        <li><a href="docs.html">Overview</a></li>
+        <li><a href="guide.html">Read and write</a></li>
+        <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
+        <li><a href="spec.html" class="here" aria-current="page">Specification</a></li>
+      </ol>
+    </nav>
+
+    <article class="content spec-text">
+      <h1>Specification</h1>
+      <!-- RUMI_SPEC_FACTS_START -->
+<ul class="facts">
+<li>Specification 0.1.0</li>
+<li>Status Draft</li>
+<li>Date 2026-09-24</li>
+<li>License GPLv3</li>
+</ul>
+<!-- RUMI_SPEC_FACTS_END -->
+      <aside class="series" aria-label="Section">
+        <p class="series-title">Docs, in 4 pages</p>
+        <ol>
+          <li><a href="docs.html">Overview</a></li>
+          <li><a href="guide.html">Read and write</a></li>
+          <li><a href="how-rumi-reads.html">How Rumi reads</a></li>
+          <li class="here" aria-current="page">Specification</li>
+        </ol>
+      </aside>
+      <!-- RUMI_SPEC_BODY_START -->
+<p>rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
+compressed raster tensors with up to four dimensions. A file contains either an
+Image <code>(B, Y, X)</code> or a temporal Cube <code>(T, B, Y, X)</code>.</p>
+<p>The format has the following properties:</p>
+<ul class="list">
+<li><strong>Stateless reads.</strong> The external binary header locates every compressed frame
+without parsing the <code>.rumi</code> file or retaining state between requests.</li>
+<li><strong>OpenZL compression.</strong> Stores each frame as an independent, self-contained
+OpenZL frame.</li>
+<li><strong>Predictable layout.</strong> Files with the same band and frame counts begin their
+frame data at the same byte.</li>
+<li><strong>Described bands and time.</strong> Names every band and labels every time step in
+a trailer after the frame data.</li>
+<li><strong>Canonical structure.</strong> Restricts the file to one fixed IFD, one frame order,
+and contiguous frame data.</li>
+<li><strong>Fixed-size georeferencing.</strong> Stores an EPSG CRS and affine transform in a
+160-byte block derived from GeoTIFF tags, with a defined value for
+ungeoreferenced rasters.</li>
+</ul>
+<p>The filename extension for the format is <code>.rumi</code>.</p>
+<p><img src="img/rumi-layout.svg" alt="A raster array is encoded as a rumi file and a rumi header blob" /></p>
+<p>The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as described
+in RFC 2119 when, and only when, they appear in capitals.</p>
+<h2 class="part" id="scope">Scope</h2>
+<p>This document defines:</p>
+<ul class="list">
+<li>the rumi data model and frame layouts;</li>
+<li>the GeoTIFF-inspired rumi file profile;</li>
+<li>the band descriptions and time coordinates every file carries; and</li>
+<li>the binary layout of the external rumi header blob.</li>
+</ul>
+<p>It does not define the OpenZL frame format or a catalogue format.</p>
+<p>This document contains everything needed to implement a rumi reader. The only
+supported writer is the one provided by rumi; independent writers are outside
+the <a href="https://github.com/asterisk-labs/rumi/blob/main/COMPATIBILITY.md">compatibility policy</a>.</p>
+<p>Unless a section says otherwise, all integer arithmetic used to validate or
+derive sizes, counts, and offsets is exact. A reader MUST reject an input when a
+required result cannot be represented by its implementation.</p>
+<p>All multi-byte numeric values defined by rumi are little-endian. This includes
+the file header, directory entries and values, decoded sample components, the
+trailer, and the external header blob. OpenZL defines the bytes inside a
+compressed frame; after decoding, each multi-byte sample component is
+little-endian. An API may convert decoded samples to the host's native byte
+order.</p>
+<h2 class="part" id="selective-read-model">Selective read model</h2>
+<p>This section is informative. A selective read combines band and time positions,
+a spatial window, the external header that belongs to the file, and access to
+the <code>.rumi</code> file.</p>
+<ol class="list">
+<li>The window identifies the tile rows and columns it intersects.</li>
+<li><code>frame_unit</code> determines which band and time positions are part of each frame
+index and which are decoded inside a frame.</li>
+<li>The header's packed byte counts reconstruct the offset and length of every
+required frame.</li>
+<li>Each selected range is decoded as an independent OpenZL frame and its
+requested samples are placed in the output array.</li>
+</ol>
+<p>For example, consider a Cube with shape <code>(T=3, B=4, Y=1024, X=1024)</code>, nominal
+tiles of <code>256 × 256</code>, and <code>frame_unit = 0</code>. Its spatial grid is <code>4 × 4</code>, so
+<code>g = 16</code> and <code>N = g * B * T = 192</code>.</p>
+<p>A request for time position <code>t = 2</code>, bands <code>b = 1</code> and <code>b = 3</code>, and the window
+<code>y = [512, 768)</code>, <code>x = [256, 512)</code> covers the tile at <code>row = 2</code>, <code>col = 1</code>.</p>
+<pre><code class="language-text">spatial = row * tiles_across + col
+        = 2 * 4 + 1
+        = 9
+
+index(b=1, t=2) = (9 * 4 + 1) * 3 + 2 = 113
+index(b=3, t=2) = (9 * 4 + 3) * 3 + 2 = 119
+</code></pre>
+<p><img src="img/rumi-selection-to-frames.svg" alt="A spatial, band, and time selection becomes two frame ranges" /></p>
+<p>The reader reconstructs the offsets of frames <code>113</code> and <code>119</code> as defined in
+<a href="#offset-reconstruction">Offset reconstruction</a>, fetches those two ranges, and
+leaves the other <code>190</code> frames untouched.</p>
+<h2 class="part" id="data-model">Data model</h2>
+<p>rumi uses the following data model.</p>
+<p><img src="img/rumi-data-model.svg" alt="Deep Learning Raster Data Model" /></p>
+<table class="spec">
+<thead>
+<tr>
+<th>term</th>
+<th>shape</th>
+<th>definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tile</td>
+<td><code>(h, w)</code></td>
+<td>one band and time step at one tile location</td>
+</tr>
+<tr>
+<td>cell</td>
+<td><code>(B, h, w)</code> or <code>(T, B, h, w)</code></td>
+<td>all samples at one tile location</td>
+</tr>
+<tr>
+<td>Image</td>
+<td><code>(B, Y, X)</code></td>
+<td>one raster grid; a rumi file with <code>T = 1</code></td>
+</tr>
+<tr>
+<td>Cube</td>
+<td><code>(T, B, Y, X)</code></td>
+<td><code>T</code> time-ordered, grid-aligned Images in one file</td>
+</tr>
+<tr>
+<td>ImageCollection</td>
+<td>—</td>
+<td>a set of Images that need not share a grid</td>
+</tr>
+<tr>
+<td>CubeCollection</td>
+<td>—</td>
+<td>a set of Cubes that need not share a grid</td>
+</tr>
+</tbody>
+</table>
+<p><code>T</code>, <code>B</code>, <code>Y</code>, and <code>X</code> denote time count, band count, image length, and image
+width. <code>h</code> and <code>w</code> denote the actual dimensions of a tile; they may be smaller
+than the nominal tile dimensions at the image boundary.</p>
+<p>The bands and time steps of an Image or Cube are described in the
+<a href="#trailer">Trailer</a>.</p>
+<p>Collections are represented outside the file, for example by a catalogue of
+rumi files. Their representation is out of scope.</p>
+<h2 class="part" id="frames">Frames</h2>
+<p><code>tile</code> and <code>cell</code> belong to the logical raster model. A frame is the physical
+unit of compression and random access. Each frame is a self-contained OpenZL
+frame that carries its own graph and codec parameters; neither is stored in the
+IFD or external header. Its decoded shape and sample order are specified by
+<a href="#frame_unit"><code>frame_unit</code></a>.</p>
+<p>A frame MUST contain exactly one of:</p>
+<ul class="list">
+<li>one tile for one <code>(b, t)</code> pair at one tile location; or</li>
+<li>one cell at one tile location.</li>
+</ul>
+<p><img src="img/rumi-model-to-frame.svg" alt="Tiles and cells are data model units; a frame is their compressed storage unit" /></p>
+<h3 id="frame_unit">frame_unit</h3>
+<p><code>frame_unit</code> selects one of the decoded layouts below. <code>b</code>, <code>t</code>, <code>h</code>, and <code>w</code>
+mean band, time, height, and width. The rightmost axis changes fastest.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>frame_unit</th>
+<th>decoded frame</th>
+<th>valid when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td><code>h w</code></td>
+<td>any <code>B</code> and <code>T</code></td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td><code>b h w</code> or <code>t h w</code></td>
+<td>exactly one of <code>B</code>, <code>T</code> exceeds <code>1</code></td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td><code>h w b</code> or <code>h w t</code></td>
+<td>exactly one of <code>B</code>, <code>T</code> exceeds <code>1</code></td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td><code>b t h w</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td><code>t b h w</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td><code>b h w t</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td><code>t h w b</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+<tr>
+<td><code>7</code></td>
+<td><code>h w b t</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+<tr>
+<td><code>8</code></td>
+<td><code>h w t b</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+<tr>
+<td><code>9</code></td>
+<td><code>h w</code></td>
+<td><code>B &gt; 1</code> and <code>T &gt; 1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Units <code>1</code> and <code>2</code> place one non-spatial axis around <code>h w</code>. That axis is <code>b</code> when
+<code>B &gt; 1</code>, and <code>t</code> when <code>T &gt; 1</code>.</p>
+<p>Units <code>0</code> and <code>9</code> differ only in the order the index walks the two axes at one
+tile location: <code>b</code> then <code>t</code> for <code>0</code>, <code>t</code> then <code>b</code> for <code>9</code>. That order is
+observable only when both <code>B</code> and <code>T</code> exceed <code>1</code>, which is why <code>9</code> is valid
+nowhere else.</p>
+<p>The diagram shows how the two frame types use the band and time axes. For a
+tile, <code>b</code> and <code>t</code> select the frame. For a cell, they are part of the decoded
+frame.</p>
+<p><img src="img/rumi-frame-unit.svg" alt="frame_unit keeps band and time outside a tile frame or places them around h w for cell storage" /></p>
+<p>Within a decoded frame, <code>h w</code> MUST stay together and in that order.</p>
+<p>The registry is complete and append-only; existing values MUST NOT be
+reassigned. A reader MUST reject any <code>frame_unit</code> value or <code>(B, T)</code> combination
+not listed above. A valid <code>frame_unit</code> determines the decoded sample order and
+the number of frames <code>N</code>; it does not otherwise change the file structure.</p>
+<h4 id="choosing-a-frame-unit">Choosing a frame unit</h4>
+<p>This section is informative. Units <code>0</code> and <code>9</code> provide the finest access: one
+frame contains one tile for one band and one time step. Every other unit places
+one cell in each frame, allowing OpenZL to model correlation between bands,
+time steps, or both.</p>
+<p>A frame is the smallest unit a reader decodes, so the order of samples inside
+it changes only compression. A frame is a tile or a whole cell, never an
+intermediate group, and the index order of units <code>0</code> and <code>9</code> decides which
+tiles sit next to each other.</p>
+<p>An axis before <code>h w</code> is stored as contiguous planes. An axis after <code>h w</code> is
+interleaved within each pixel. When both axes precede <code>h w</code>, the axis next to
+<code>h w</code> varies between adjacent planes.</p>
+<p>The best unit depends on the expected reads and the data. Compression SHOULD be
+measured when more than one unit fits the access pattern.</p>
+<h3 id="frame-index">Frame index</h3>
+<p><code>row</code> and <code>col</code> select a tile location in the spatial grid. Tile locations are
+traversed in row-major order.</p>
+<pre><code class="language-text">tiles_across = ceil(image_width / tile_width)
+tiles_down   = ceil(image_length / tile_length)
+g            = tiles_across * tiles_down
+</code></pre>
+<p>When a frame holds a cell, there is one frame per tile location.</p>
+<pre><code class="language-text">frame_index(row, col) = row * tiles_across + col
+N                     = g
+</code></pre>
+<p>When a frame holds a tile, the index also walks the band and time axes.</p>
+<pre><code class="language-text">spatial = row * tiles_across + col
+
+frame_unit 0:  frame_index = (spatial * B + b) * T + t
+frame_unit 9:  frame_index = (spatial * T + t) * B + b
+
+N = g * B * T
+</code></pre>
+<h3 id="validating-frame_unit">Validating frame_unit</h3>
+<p>Tag <code>65000</code> stores <code>frame_unit</code> in the file. Its value MUST be registered and
+valid for <code>B</code> and <code>T</code>.</p>
+<p>The entry counts of <code>TileOffsets</code> and <code>TileByteCounts</code> MUST also match the frame
+unit:</p>
+<pre><code class="language-text">count == g * B * T   when the frame holds a tile
+count == g           when the frame holds a cell
+</code></pre>
+<p>A reader MUST reject a file when either count is wrong. The counts do not
+distinguish <code>0</code> from <code>9</code>, or one full-frame layout from another; tag <code>65000</code>
+does.</p>
+<h3 id="frame-order">Frame order</h3>
+<p>Frames MUST be stored in increasing <code>frame_index</code> order. <code>TileOffsets</code> and
+<code>TileByteCounts</code> MUST use the same order.</p>
+<p>This order allows the external header to reconstruct offsets with a prefix sum.
+A reader MUST reject a file whose <code>TileOffsets</code> do not match the reconstructed
+offsets in frame-index order.</p>
+<h2 class="part" id="sample-encodings">Sample encodings</h2>
+<p><code>sample_format</code> gives the sample type and <code>bits_per_sample</code> its width in bits.
+Unsigned integers use ordinary binary representation, and signed integers use
+two's-complement representation. IEEE formats use the IEEE 754 binary16,
+binary32, or binary64 encoding named in the table. Boolean samples use one
+decoded byte whose value is <code>0</code> or <code>1</code>, although their logical width is one bit.</p>
+<p>A complex sample stores two equal-width components: real first, then imaginary.
+For complex formats, <code>bits_per_sample</code> is their combined width.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>sample_format</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1</code></td>
+<td>unsigned integer</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>signed integer</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>IEEE floating point</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>complex IEEE floating point</td>
+</tr>
+<tr>
+<td><code>100</code>..<code>103</code>, <code>107</code>, <code>108</code></td>
+<td>rumi-private ML floating point types</td>
+</tr>
+</tbody>
+</table>
+<p>Only the following pairs are valid:</p>
+<table class="spec">
+<thead>
+<tr>
+<th>sample_format</th>
+<th>bits_per_sample</th>
+<th style="text-align:right">decoded bytes</th>
+<th>encoding</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1</td>
+<td style="text-align:right">1</td>
+<td>boolean</td>
+</tr>
+<tr>
+<td>1</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>unsigned 8-bit integer</td>
+</tr>
+<tr>
+<td>1</td>
+<td>16</td>
+<td style="text-align:right">2</td>
+<td>unsigned 16-bit integer</td>
+</tr>
+<tr>
+<td>1</td>
+<td>32</td>
+<td style="text-align:right">4</td>
+<td>unsigned 32-bit integer</td>
+</tr>
+<tr>
+<td>1</td>
+<td>64</td>
+<td style="text-align:right">8</td>
+<td>unsigned 64-bit integer</td>
+</tr>
+<tr>
+<td>2</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>signed 8-bit integer</td>
+</tr>
+<tr>
+<td>2</td>
+<td>16</td>
+<td style="text-align:right">2</td>
+<td>signed 16-bit integer</td>
+</tr>
+<tr>
+<td>2</td>
+<td>32</td>
+<td style="text-align:right">4</td>
+<td>signed 32-bit integer</td>
+</tr>
+<tr>
+<td>2</td>
+<td>64</td>
+<td style="text-align:right">8</td>
+<td>signed 64-bit integer</td>
+</tr>
+<tr>
+<td>3</td>
+<td>16</td>
+<td style="text-align:right">2</td>
+<td>IEEE 16-bit floating point</td>
+</tr>
+<tr>
+<td>3</td>
+<td>32</td>
+<td style="text-align:right">4</td>
+<td>IEEE 32-bit floating point</td>
+</tr>
+<tr>
+<td>3</td>
+<td>64</td>
+<td style="text-align:right">8</td>
+<td>IEEE 64-bit floating point</td>
+</tr>
+<tr>
+<td>6</td>
+<td>32</td>
+<td style="text-align:right">4</td>
+<td>complex IEEE floating point, 16-bit components</td>
+</tr>
+<tr>
+<td>6</td>
+<td>64</td>
+<td style="text-align:right">8</td>
+<td>complex IEEE floating point, 32-bit components</td>
+</tr>
+<tr>
+<td>6</td>
+<td>128</td>
+<td style="text-align:right">16</td>
+<td>complex IEEE floating point, 64-bit components</td>
+</tr>
+<tr>
+<td>100</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E4M3FN</td>
+</tr>
+<tr>
+<td>101</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E5M2</td>
+</tr>
+<tr>
+<td>102</td>
+<td>16</td>
+<td style="text-align:right">2</td>
+<td>bfloat16</td>
+</tr>
+<tr>
+<td>103</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E8M0FNU</td>
+</tr>
+<tr>
+<td>107</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E4M3FNUZ</td>
+</tr>
+<tr>
+<td>108</td>
+<td>8</td>
+<td style="text-align:right">1</td>
+<td>float8 E5M2FNUZ</td>
+</tr>
+</tbody>
+</table>
+<p>A reader MUST reject any pair not listed above.</p>
+<p>The pairs <code>(1, 2)</code>, <code>(1, 4)</code>, <code>(2, 2)</code>, <code>(2, 4)</code>, <code>(5, 32)</code>, <code>(5, 64)</code>,
+<code>(104, 6)</code>, <code>(105, 6)</code>, and <code>(106, 4)</code> are reserved. The <code>sample_format</code>
+values <code>5</code>, <code>104</code>, <code>105</code>, and <code>106</code> are also reserved and MUST NOT be assigned
+another meaning.</p>
+<p><code>bfloat16</code> has one sign bit, eight exponent bits, and seven fraction bits, with
+the exponent and special values of IEEE binary32. <code>E4M3FN</code>, <code>E4M3FNUZ</code>,
+<code>E5M2</code>, and <code>E5M2FNUZ</code> use the
+<a href="https://onnx.ai/onnx/technical/float8.html">ONNX float8 encodings</a>.
+<code>E8M0FNU</code> uses the corresponding encoding in
+the <a href="https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf">OCP Microscaling Formats (MX) Specification
+1.0</a>.</p>
+<p>All bands and time steps in a file MUST use the same pair.</p>
+<p><code>bits_per_sample</code> is the logical width of a sample, not necessarily its storage
+stride. Boolean samples occupy one decoded byte and every byte MUST be <code>0</code> or
+<code>1</code>. Packed boolean storage MUST NOT be used.</p>
+<p>The decoded frame size is defined by:</p>
+<pre><code class="language-text">decoded_samples  = h * w           when the frame holds a tile
+                   B * T * h * w   when the frame holds a cell
+
+bytes_per_sample = the decoded bytes in the sample-encoding table
+
+decoded_frame_bytes = decoded_samples * bytes_per_sample
+</code></pre>
+<p>An absent axis contributes a factor of one. <a href="#resource-limits">Resource limits</a>
+applies to <code>decoded_frame_bytes</code>.</p>
+<h3 id="dlpack-representation">DLPack representation</h3>
+<p>An implementation that exports decoded samples through DLPack MUST use the
+following <code>(code, bits, lanes)</code> values. Every tensor is native-endian CPU memory
+and one tensor element corresponds to one rumi sample. The float8 codes require
+DLPack 1.1 or newer.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>encoding</th>
+<th>DLPack <code>(code, bits, lanes)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>signed integers</td>
+<td><code>(kDLInt=0, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>unsigned integers</td>
+<td><code>(kDLUInt=1, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>boolean</td>
+<td><code>(kDLBool=6, 8, 1)</code></td>
+</tr>
+<tr>
+<td>IEEE floats</td>
+<td><code>(kDLFloat=2, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>complex IEEE floats</td>
+<td><code>(kDLComplex=5, bits_per_sample, 1)</code></td>
+</tr>
+<tr>
+<td>bfloat16</td>
+<td><code>(kDLBfloat=4, 16, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E4M3FN</td>
+<td><code>(kDLFloat8_e4m3fn=10, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E4M3FNUZ</td>
+<td><code>(kDLFloat8_e4m3fnuz=11, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E5M2</td>
+<td><code>(kDLFloat8_e5m2=12, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E5M2FNUZ</td>
+<td><code>(kDLFloat8_e5m2fnuz=13, 8, 1)</code></td>
+</tr>
+<tr>
+<td>float8 E8M0FNU</td>
+<td><code>(kDLFloat8_e8m0fnu=14, 8, 1)</code></td>
+</tr>
+</tbody>
+</table>
+<p>The file's logical width and DLPack's element width differ for boolean data;
+the decoded storage width connects them. A reader MUST NOT silently cast,
+reinterpret, or widen a sample to satisfy a consumer.</p>
+<h2 class="part" id="bit-packed-arrays">Bit-packed arrays</h2>
+<p>Time residuals and frame byte-count residuals use the same bit packing.</p>
+<p>Values are stored consecutively using <code>bits</code> bits each. Bit <code>j</code> of value <code>i</code>
+occupies bit position <code>i * bits + j</code>, with bits numbered from the least
+significant bit of each byte. For <code>n</code> values, the region is exactly
+<code>ceil(n * bits / 8)</code> bytes. Unused bits in the final byte MUST be zero.</p>
+<p>When <code>bits</code> is <code>0</code>, the region is empty and every value is zero.</p>
+<h2 class="part" id="file-profile">File profile</h2>
+<p>A file is rumi compliant when all of the following hold.</p>
+<ul class="list">
+<li>It begins with the rumi file header and contains exactly one rumi IFD.</li>
+<li>It is tiled and has no overviews, masks, strips, or auxiliary IFDs.</li>
+<li>Its IFD precedes the frame data, and its tags, values, and frame placement
+follow <a href="#fixed-ifd">Fixed IFD</a>, without gaps or padding.</li>
+<li>Its sample encoding is listed in <a href="#sample-encodings">Sample encodings</a>.</li>
+<li>Its georeferencing follows <a href="#georeferencing">Georeferencing</a>.</li>
+<li>Each frame is a self-contained OpenZL frame.</li>
+<li><code>FrameUnit</code>, <code>TileOffsets</code>, and <code>TileByteCounts</code> satisfy
+<a href="#validating-frame_unit">Validating frame_unit</a>.</li>
+<li>Every frame is present, every byte count is greater than zero, and the frames
+form one contiguous run in frame-index order.</li>
+<li>It ends with the trailer defined in <a href="#trailer">Trailer</a>.</li>
+</ul>
+<h2 class="part" id="file-header">File header</h2>
+<p>Every rumi file begins with this 16-byte header.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>offset</th>
+<th>size</th>
+<th>type</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>4</td>
+<td>bytes</td>
+<td>magic</td>
+</tr>
+<tr>
+<td>4</td>
+<td>2</td>
+<td>uint16</td>
+<td>version</td>
+</tr>
+<tr>
+<td>6</td>
+<td>2</td>
+<td>uint16</td>
+<td>reserved</td>
+</tr>
+<tr>
+<td>8</td>
+<td>8</td>
+<td>uint64</td>
+<td>ifd_offset</td>
+</tr>
+</tbody>
+</table>
+<p>The magic bytes spell ASCII <code>RUMI</code>: <code>52 55 4D 49</code>. The current version is <code>1</code>,
+<code>reserved</code> is zero, and <code>ifd_offset</code> is <code>16</code>. A reader MUST reject any other
+value.</p>
+<p>The IFD uses the 20-byte entry layout and tag numbers derived from BigTIFF, but
+rumi defines its own tags, placement, and alignment. A rumi file is not a TIFF,
+BigTIFF, or GeoTIFF file.</p>
+<h2 class="part" id="fixed-ifd">Fixed IFD</h2>
+<p>A rumi IFD MUST contain exactly the tags below, in rising tag order. A reader
+that validates the file or builds an external header from it MUST reject any
+other tag.</p>
+<p><code>B</code> is <code>samples_per_pixel</code>, <code>T</code> is <code>time_count</code>, and <code>N</code> is the frame count.</p>
+<p>The IFD begins with the eight-byte entry count <code>13</code> and ends with an eight-byte
+zero offset for the next IFD. Each entry has this layout:</p>
+<table class="spec">
+<thead>
+<tr>
+<th>offset</th>
+<th>size</th>
+<th>type</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>2</td>
+<td>uint16</td>
+<td>tag</td>
+</tr>
+<tr>
+<td>2</td>
+<td>2</td>
+<td>uint16</td>
+<td>type</td>
+</tr>
+<tr>
+<td>4</td>
+<td>8</td>
+<td>uint64</td>
+<td>count</td>
+</tr>
+<tr>
+<td>12</td>
+<td>8</td>
+<td>bytes</td>
+<td>value or offset</td>
+</tr>
+</tbody>
+</table>
+<p>The type codes are <code>3</code> for <code>SHORT</code>, <code>4</code> for <code>LONG</code>, <code>12</code> for <code>DOUBLE</code>, and <code>16</code>
+for <code>LONG8</code>. These represent <code>uint16</code>, <code>uint32</code>, IEEE 754 binary64, and <code>uint64</code>,
+respectively.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>tag</th>
+<th>name</th>
+<th>type</th>
+<th>count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>256</td>
+<td>ImageWidth</td>
+<td>LONG</td>
+<td>1</td>
+</tr>
+<tr>
+<td>257</td>
+<td>ImageLength</td>
+<td>LONG</td>
+<td>1</td>
+</tr>
+<tr>
+<td>258</td>
+<td>BitsPerSample</td>
+<td>SHORT</td>
+<td>B</td>
+</tr>
+<tr>
+<td>277</td>
+<td>SamplesPerPixel</td>
+<td>SHORT</td>
+<td>1</td>
+</tr>
+<tr>
+<td>322</td>
+<td>TileWidth</td>
+<td>SHORT</td>
+<td>1</td>
+</tr>
+<tr>
+<td>323</td>
+<td>TileLength</td>
+<td>SHORT</td>
+<td>1</td>
+</tr>
+<tr>
+<td>324</td>
+<td>TileOffsets</td>
+<td>LONG8</td>
+<td>N</td>
+</tr>
+<tr>
+<td>325</td>
+<td>TileByteCounts</td>
+<td>LONG</td>
+<td>N</td>
+</tr>
+<tr>
+<td>339</td>
+<td>SampleFormat</td>
+<td>SHORT</td>
+<td>B</td>
+</tr>
+<tr>
+<td>34264</td>
+<td>ModelTransformationTag</td>
+<td>DOUBLE</td>
+<td>16</td>
+</tr>
+<tr>
+<td>34735</td>
+<td>GeoKeyDirectoryTag</td>
+<td>SHORT</td>
+<td>16</td>
+</tr>
+<tr>
+<td>65000</td>
+<td>FrameUnit</td>
+<td>SHORT</td>
+<td>1</td>
+</tr>
+<tr>
+<td>65001</td>
+<td>TimeCount</td>
+<td>LONG</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>Every file carries all 13 tags.</p>
+<p><code>ImageWidth</code>, <code>ImageLength</code>, <code>TimeCount</code>, <code>TileWidth</code>, <code>TileLength</code>, and
+<code>SamplesPerPixel</code> MUST be greater than zero.</p>
+<p><code>BitsPerSample</code> and <code>SampleFormat</code> MUST contain <code>B</code> repetitions of one pair
+listed in <a href="#sample-encodings">Sample encodings</a>.</p>
+<h3 id="placement">Placement</h3>
+<p>The IFD starts at byte <code>16</code>, immediately after the rumi file header. Its size is
+<code>8 + 20 * 13 + 8 = 276</code> bytes: an eight-byte entry count, 13 entries, and an
+eight-byte zero offset for the next IFD.</p>
+<p>Values of 8 bytes or less MUST be stored in the IFD entry. Larger values MUST
+follow the IFD in rising tag order, without gaps. Unused bytes in an inline
+value MUST be zero. For an external value, the last eight bytes of the entry
+store its <code>uint64</code> file offset.</p>
+<p>The frame data starts immediately after the last external value. Padding or
+alignment bytes MUST NOT be inserted in the external area.</p>
+<h3 id="deriving-base_frame_offset">Deriving base_frame_offset</h3>
+<p>The IFD size is fixed. Only values larger than 8 bytes contribute to the
+external area before the frames.</p>
+<pre><code class="language-text">external = (2 * B  if B &gt;= 5 else 0)      # 258 BitsPerSample
+         + (8 * N  if N &gt;= 2 else 0)      # 324 TileOffsets
+         + (4 * N  if N &gt;= 3 else 0)      # 325 TileByteCounts
+         + (2 * B  if B &gt;= 5 else 0)      # 339 SampleFormat
+         + 128                            # 34264 ModelTransformationTag
+         + 32                             # 34735 GeoKeyDirectoryTag
+
+base_frame_offset = 16 + 276 + external
+                  = 292 + external
+</code></pre>
+<p>The result MUST match the first entry of <code>TileOffsets</code>. Files with the same <code>B</code>
+and <code>N</code> start their frame data at the same byte.</p>
+<h2 class="part" id="georeferencing">Georeferencing</h2>
+<p>Every rumi file carries <code>ModelTransformationTag</code> and <code>GeoKeyDirectoryTag</code>.
+<code>ModelPixelScaleTag</code> (33550), <code>ModelTiepointTag</code> (33922),
+<code>GeoDoubleParamsTag</code> (34736), and <code>GeoAsciiParamsTag</code> (34737) MUST NOT appear.
+Files without georeferencing use the values in
+<a href="#undefined-georeferencing">Undefined georeferencing</a>.</p>
+<h3 id="modeltransformationtag">ModelTransformationTag</h3>
+<p><code>ModelTransformationTag</code> stores a 4 × 4 matrix as 16 doubles in row-major order.
+North-up rasters set the rotation terms to zero.</p>
+<p>Given affine coefficients
+<code>(x_res, row_rot, x_origin, col_rot, y_res, y_origin)</code>, the matrix is</p>
+<pre><code class="language-text">x_res    row_rot  0  x_origin
+col_rot  y_res    0  y_origin
+0        0        0  0
+0        0        0  1
+</code></pre>
+<p>The third row MUST be zero.</p>
+<h3 id="geokeydirectorytag">GeoKeyDirectoryTag</h3>
+<p>rumi represents a CRS by EPSG code. <code>GeoKeyDirectoryTag</code> contains a four-short
+header followed by three four-short keys, for a total of 16 shorts.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>key</th>
+<th>id</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GTModelTypeGeoKey</td>
+<td>1024</td>
+<td><code>1</code> projected or <code>2</code> geographic</td>
+</tr>
+<tr>
+<td>GTRasterTypeGeoKey</td>
+<td>1025</td>
+<td><code>1</code> PixelIsArea or <code>2</code> PixelIsPoint</td>
+</tr>
+<tr>
+<td>GeographicTypeGeoKey or ProjectedCSTypeGeoKey</td>
+<td>2048 or 3072</td>
+<td>EPSG code</td>
+</tr>
+</tbody>
+</table>
+<p>The four-short header MUST be <code>(1, 1, 0, 3)</code>. Each key is stored as
+<code>(key_id, 0, 1, value)</code>, in the order shown above.</p>
+<p>A geographic CRS uses key <code>2048</code>; a projected CRS uses key <code>3072</code>. The key MUST
+agree with <code>GTModelTypeGeoKey</code>. The EPSG code MUST be defined by the EPSG
+registry and fall between <code>1024</code> and <code>32766</code>.</p>
+<p>A writer MUST obtain the CRS type from the EPSG registry or a PROJ database. It
+MUST NOT infer the type from the numeric code. A reader obtains the type from
+<code>GTModelTypeGeoKey</code>.</p>
+<h3 id="undefined-georeferencing">Undefined georeferencing</h3>
+<p>An ungeoreferenced file still carries both georeferencing tags.</p>
+<p><code>ModelTransformationTag</code> uses the following matrix.</p>
+<pre><code class="language-text">1  0  0  0
+0  1  0  0
+0  0  0  0
+0  0  0  1
+</code></pre>
+<p><code>GeoKeyDirectoryTag</code> uses the same header and key representation:</p>
+<table class="spec">
+<thead>
+<tr>
+<th>key</th>
+<th>id</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GTModelTypeGeoKey</td>
+<td>1024</td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td>GTRasterTypeGeoKey</td>
+<td>1025</td>
+<td><code>1</code> or <code>2</code></td>
+</tr>
+<tr>
+<td>GeographicTypeGeoKey</td>
+<td>2048</td>
+<td><code>0</code></td>
+</tr>
+</tbody>
+</table>
+<p>A reader MUST interpret <code>GTModelTypeGeoKey = 0</code> as no CRS and MUST ignore the
+transformation matrix.</p>
+<p>The two tags always occupy 160 bytes.</p>
+<p>No other CRS representation is permitted. This excludes WKT, PROJ strings,
+ESRI codes, user-defined CRS values, engineering, compound and vertical CRSs,
+and coordinate epochs.</p>
+<h2 class="part" id="trailer">Trailer</h2>
+<p>Every rumi file ends with one trailer. It begins immediately after the last
+frame, and the file ends immediately after it. The trailer describes every band
+and labels every time step.</p>
+<p>The trailer follows the frame data so that its size never moves a frame. A
+reader MUST NOT use it to locate, decode, or convert frames. The external header
+contains no band descriptions or time coordinates.</p>
+<pre><code class="language-text">+----------------+---------------+-------------+-------------------------------+
+| magic, version | band_texts[B] | time fields | time_residuals[C]             |
++----------------+---------------+-------------+-------------------------------+
+  6 bytes          S bytes         22 bytes      ceil(C * time_bits / 8) bytes
+</code></pre>
+<p><code>S</code> is the size of the band texts, defined in
+<a href="#band-descriptions">Band descriptions</a>. The trailer size MUST be exactly
+<code>28 + S + ceil(C * time_bits / 8)</code> bytes and MUST contain no padding. All
+multi-byte fields are little-endian.</p>
+<h3 id="magic-and-version">Magic and version</h3>
+<table class="spec">
+<thead>
+<tr>
+<th>offset</th>
+<th>size</th>
+<th>type</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>4</td>
+<td>uint32</td>
+<td>magic</td>
+</tr>
+<tr>
+<td>4</td>
+<td>2</td>
+<td>uint16</td>
+<td>version</td>
+</tr>
+</tbody>
+</table>
+<p>The four magic bytes spell ASCII <code>TAIL</code>: <code>54 41 49 4C</code>. Read as a little-endian
+<code>uint32</code>, they equal <code>0x4C494154</code>. A reader MUST reject any other value.</p>
+<p>The current trailer version is <code>1</code>. A reader that implements version <code>1</code> MUST
+reject any other value.</p>
+<h3 id="band-descriptions">Band descriptions</h3>
+<p>The version is followed by one text for each of the <code>B</code> bands, in band order.
+Each text is stored as its length in bytes followed by the bytes themselves.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>size</th>
+<th>type</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>uint16</td>
+<td>n[b]</td>
+</tr>
+<tr>
+<td>n[b]</td>
+<td>bytes</td>
+<td>text</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">S = sum(2 + n[b])   for 0 &lt;= b &lt; B
+</code></pre>
+<p>Each text MUST be valid UTF-8, at least one byte long, and free of the byte
+<code>0x00</code>. Two texts in one file MUST NOT be equal as byte sequences. A reader MUST
+reject a trailer whose texts break these rules.</p>
+<p>This paragraph is informative. The recommended text gives the band name, a short
+description, and the wavelength, as in this text for the Sentinel-2 red band:</p>
+<pre><code class="language-text">B4, Red, 664.5nm (S2A) / 665nm (S2B)
+</code></pre>
+<h3 id="time-coordinates">Time coordinates</h3>
+<p>The time fields follow the last band text. Every time step has a coordinate. An
+Image without a single acquisition instant, such as a DEM or an annual
+composite, uses an interval.</p>
+<p>Let <code>C</code> be the number of coordinates stored in the trailer:</p>
+<pre><code class="language-text">C = T       when time_type is 2 (instant)
+C = 2 * T   when time_type is 1 (interval)
+</code></pre>
+<p>For instants, <code>time(i)</code> is the coordinate of time step <code>i</code>.</p>
+<p>For intervals, time step <code>i</code> covers <code>[time(2i), time(2i + 1))</code>. Each step stores
+its own start and end, so intervals may leave gaps.</p>
+<p>Offsets are relative to the first byte after the last band text.</p>
+<table class="spec">
+<thead>
+<tr>
+<th>offset</th>
+<th>size</th>
+<th>type</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>1</td>
+<td>uint8</td>
+<td>time_type</td>
+</tr>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>uint8</td>
+<td>time_bits</td>
+</tr>
+<tr>
+<td>2</td>
+<td>8</td>
+<td>int64</td>
+<td>time_epoch</td>
+</tr>
+<tr>
+<td>10</td>
+<td>8</td>
+<td>int64</td>
+<td>time_step</td>
+</tr>
+<tr>
+<td>18</td>
+<td>4</td>
+<td>uint32</td>
+<td>time_scale</td>
+</tr>
+</tbody>
+</table>
+<h4 id="time_type">time_type</h4>
+<table class="spec">
+<thead>
+<tr>
+<th>value</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1</code></td>
+<td>interval; each step is bounded by two coordinates</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>instant; the step is a point in time</td>
+</tr>
+</tbody>
+</table>
+<p>A reader MUST reject any other value.</p>
+<p>Instant coordinates MUST be non-decreasing.</p>
+<p>Interval coordinates MUST satisfy:</p>
+<pre><code class="language-text">time(2i) &lt; time(2i + 1)         for 0 &lt;= i &lt; T
+time(2i + 1) &lt;= time(2i + 2)    for 0 &lt;= i &lt; T - 1
+</code></pre>
+<p>Intervals may meet or leave gaps, but MUST NOT overlap.</p>
+<h4 id="time_epoch-time_step-and-time_scale">time_epoch, time_step and time_scale</h4>
+<p><code>time_scale</code> is the number of seconds represented by one coordinate unit. It
+MUST be <code>86400</code> when every instant or interval endpoint is an exact whole-day
+offset from <code>1970-01-01T00:00:00Z</code>; otherwise it MUST be <code>1</code>. A reader MUST
+reject any other value.</p>
+<p>Coordinate <code>time(i)</code> is a signed offset of <code>time(i) * time_scale</code> seconds from
+<code>1970-01-01T00:00:00Z</code>; negative values represent times before that epoch. rumi
+follows POSIX time and does not represent leap seconds.</p>
+<p><code>time_epoch</code> MUST equal <code>time(0)</code>. <code>time_step</code> is the slope of the prediction
+line used to encode the remaining coordinates:</p>
+<pre><code class="language-text">time_step = 0                                      if C &lt; 2
+time_step = round((time(C-1) - time(0)) / (C-1))  otherwise
+</code></pre>
+<p><code>round</code> chooses the nearest integer; exact halves round toward positive
+infinity.</p>
+<h4 id="time_bits">time_bits</h4>
+<p>The number of bits used to encode each residual, as defined in
+<a href="#time-residuals">Time residuals</a>. It MUST be between <code>0</code> and <code>64</code>.</p>
+<h3 id="time-residuals">Time residuals</h3>
+<p>After the time fields, the trailer stores the <code>C</code> coordinates as residuals
+against a straight line through <code>time_epoch</code> and <code>time_step</code>.</p>
+<p>An axis whose coordinates lie on this line requires no packed region. Otherwise,
+the trailer stores their deviations from the line.</p>
+<h4 id="encoding">Encoding</h4>
+<p>Let <code>time(i)</code> be coordinate <code>i</code> in <code>time_scale</code> units.</p>
+<pre><code class="language-text">predicted(i) = time_epoch + i * time_step
+residual(i)  = time(i) - predicted(i)
+</code></pre>
+<p>A residual MUST fit in <code>int64</code>. It is mapped to an unsigned integer with zigzag
+encoding:</p>
+<pre><code class="language-text">zigzag(x) = 2 * x       if x &gt;= 0
+            -2 * x - 1  otherwise
+
+packed(i) = zigzag(residual(i))
+time_bits = bit_length(max(packed))
+</code></pre>
+<p><code>bit_length(0)</code> is <code>0</code>.</p>
+<p>A writer MUST use the minimum <code>time_bits</code> that represents the largest packed
+residual. <code>residual(0)</code> is always zero.</p>
+<p>A reader MUST reject a trailer unless <code>time_scale</code> satisfies the rule above and
+the decoded coordinates reproduce the recorded <code>time_epoch</code>, <code>time_step</code>, and
+minimum <code>time_bits</code>. Every decoded coordinate MUST fit in <code>int64</code> and satisfy
+the ordering required by <code>time_type</code>.</p>
+<h4 id="packing">Packing</h4>
+<p>The <code>C</code> packed values are stored as defined in
+<a href="#bit-packed-arrays">Bit-packed arrays</a>, at <code>time_bits</code> bits each.</p>
+<h4 id="decoding">Decoding</h4>
+<pre><code class="language-text">residual(i) = packed(i) &gt;&gt; 1              if packed(i) is even
+              -((packed(i) &gt;&gt; 1) + 1)     otherwise
+time(i)     = time_epoch + i * time_step + residual(i)
+</code></pre>
+<h2 class="part" id="header-blob">Header blob</h2>
+<p>The header blob is a binary record stored outside the rumi file. It contains the
+raster fields and frame byte counts needed to locate a frame without parsing the
+file.</p>
+<p>The blob consists of a fixed 32-byte header followed by packed frame byte counts.
+All multi-byte fields are little-endian.</p>
+<pre><code class="language-text">+---------------+----------------------------------+
+| Header        | frame_byte_counts[N]             |
++---------------+----------------------------------+
+  32 bytes        ceil(N * count_bits / 8) bytes
+</code></pre>
+<p><code>N</code> is derived as defined in <a href="#frame-index">Frame index</a>.</p>
+<p>The blob size MUST be exactly <code>32 + ceil(N * count_bits / 8)</code> bytes and contain
+no padding.</p>
+<p>The blob stores no offsets. They are reconstructed as defined in
+<a href="#deriving-base_frame_offset">Deriving base_frame_offset</a> and
+<a href="#offset-reconstruction">Offset reconstruction</a>.</p>
+<h3 id="header-fields">Header fields</h3>
+<table class="spec">
+<thead>
+<tr>
+<th>offset</th>
+<th>size</th>
+<th>type</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>4</td>
+<td>uint32</td>
+<td>magic</td>
+</tr>
+<tr>
+<td>4</td>
+<td>2</td>
+<td>uint16</td>
+<td>version</td>
+</tr>
+<tr>
+<td>6</td>
+<td>4</td>
+<td>uint32</td>
+<td>image_width</td>
+</tr>
+<tr>
+<td>10</td>
+<td>4</td>
+<td>uint32</td>
+<td>image_length</td>
+</tr>
+<tr>
+<td>14</td>
+<td>4</td>
+<td>uint32</td>
+<td>time_count</td>
+</tr>
+<tr>
+<td>18</td>
+<td>2</td>
+<td>uint16</td>
+<td>tile_width</td>
+</tr>
+<tr>
+<td>20</td>
+<td>2</td>
+<td>uint16</td>
+<td>tile_length</td>
+</tr>
+<tr>
+<td>22</td>
+<td>2</td>
+<td>uint16</td>
+<td>samples_per_pixel</td>
+</tr>
+<tr>
+<td>24</td>
+<td>1</td>
+<td>uint8</td>
+<td>bits_per_sample</td>
+</tr>
+<tr>
+<td>25</td>
+<td>1</td>
+<td>uint8</td>
+<td>sample_format</td>
+</tr>
+<tr>
+<td>26</td>
+<td>1</td>
+<td>uint8</td>
+<td>frame_unit</td>
+</tr>
+<tr>
+<td>27</td>
+<td>4</td>
+<td>uint32</td>
+<td>count_min</td>
+</tr>
+<tr>
+<td>31</td>
+<td>1</td>
+<td>uint8</td>
+<td>count_bits</td>
+</tr>
+</tbody>
+</table>
+<h4 id="magic">magic</h4>
+<p>The magic value is <code>0x45564F4C</code>, represented on the wire as <code>4C 4F 56 45</code>. A
+reader MUST reject any other value.</p>
+<h4 id="version">version</h4>
+<p>The current binary format version is <code>1</code>. A reader that implements version <code>1</code>
+MUST reject any other value.</p>
+<h4 id="image_width-image_length-and-time_count">image_width, image_length and time_count</h4>
+<p>The raster dimensions. Width and length are in pixels and match <code>ImageWidth</code> and
+<code>ImageLength</code>. <code>time_count</code> matches the value of <code>TimeCount</code>.</p>
+<p>All three MUST be greater than zero. A <code>time_count</code> of <code>1</code> is an Image; anything
+larger is a Cube.</p>
+<h4 id="tile_width-and-tile_length">tile_width and tile_length</h4>
+<p>The nominal tile dimensions in pixels. They match <code>TileWidth</code> and <code>TileLength</code>.</p>
+<p>Both values MUST be greater than zero.</p>
+<p>The grid size is defined in <a href="#frame-index">Frame index</a>.</p>
+<p>Edge tiles are clipped to the image bounds and are not padded. A reader MUST
+derive their dimensions from the image shape and grid position.</p>
+<h4 id="samples_per_pixel">samples_per_pixel</h4>
+<p>The band count <code>B</code>. This matches <code>SamplesPerPixel</code> in the IFD and MUST be at least <code>1</code>.</p>
+<h4 id="bits_per_sample-and-sample_format">bits_per_sample and sample_format</h4>
+<p>The sample type and width, as defined in
+<a href="#sample-encodings">Sample encodings</a>.</p>
+<h4 id="frame_unit-1">frame_unit</h4>
+<p>The frame layout, as defined in <a href="#frame_unit">frame_unit</a>. Together with the
+image shape it determines <code>N</code>. Tag <code>65000</code> carries the same value inside the
+file.</p>
+<h4 id="count_min-and-count_bits">count_min and count_bits</h4>
+<p>The frame byte count encoding, as defined in
+<a href="#frame-byte-counts">Frame byte counts</a>. <code>count_bits</code> MUST be between <code>0</code> and
+<code>32</code>.</p>
+<h3 id="frame-byte-counts">Frame byte counts</h3>
+<p>After the fixed header, the blob stores the compressed size of each frame in
+frame-index order. Every count MUST be greater than zero. Each count is encoded
+as a residual from the minimum count.</p>
+<h4 id="encoding-1">Encoding</h4>
+<p>Let <code>c[i]</code> be the byte count of frame <code>i</code>.</p>
+<pre><code class="language-text">count_min  = min(c)
+count_bits = 0 if max(c) == count_min else bit_length(max(c) - count_min)
+</code></pre>
+<p><code>bit_length(x)</code> is the minimum number of bits required to represent <code>x</code>.</p>
+<p>A writer MUST use these values. A reader MUST reject a blob if <code>count_min</code> is
+not the minimum decoded count or <code>count_bits</code> is not the minimum required width.</p>
+<p>A file with one frame always has <code>count_bits = 0</code>.</p>
+<h4 id="packing-1">Packing</h4>
+<p>The <code>N</code> residuals <code>c[i] - count_min</code> are stored as defined in
+<a href="#bit-packed-arrays">Bit-packed arrays</a>, at <code>count_bits</code> bits each.</p>
+<h4 id="decoding-1">Decoding</h4>
+<pre><code class="language-text">c[i] = count_min + residual[i]
+</code></pre>
+<p>Every reconstructed count MUST fit in <code>uint32</code>.</p>
+<h3 id="creating-the-header-blob">Creating the header blob</h3>
+<p>A writer or header builder MUST create the blob from the finalized rumi file.
+Every duplicated value MUST match:</p>
+<table class="spec">
+<thead>
+<tr>
+<th>header blob</th>
+<th>rumi IFD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image_width</code></td>
+<td><code>ImageWidth</code></td>
+</tr>
+<tr>
+<td><code>image_length</code></td>
+<td><code>ImageLength</code></td>
+</tr>
+<tr>
+<td><code>time_count</code></td>
+<td><code>TimeCount</code></td>
+</tr>
+<tr>
+<td><code>tile_width</code></td>
+<td><code>TileWidth</code></td>
+</tr>
+<tr>
+<td><code>tile_length</code></td>
+<td><code>TileLength</code></td>
+</tr>
+<tr>
+<td><code>samples_per_pixel</code></td>
+<td><code>SamplesPerPixel</code></td>
+</tr>
+<tr>
+<td><code>bits_per_sample</code></td>
+<td>every <code>BitsPerSample</code> value</td>
+</tr>
+<tr>
+<td><code>sample_format</code></td>
+<td>every <code>SampleFormat</code> value</td>
+</tr>
+<tr>
+<td><code>frame_unit</code></td>
+<td><code>FrameUnit</code></td>
+</tr>
+<tr>
+<td><code>frame_byte_counts[i]</code></td>
+<td><code>TileByteCounts[i]</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>frame_byte_counts</code> and <code>TileByteCounts</code> MUST each contain <code>N</code> entries. The
+writer or header builder MUST NOT produce the blob if any comparison fails.</p>
+<p>This check happens when the blob is created. A stateless reader can then treat
+the blob as authoritative and does not need to read or compare the IFD,
+<code>TileOffsets</code>, <code>TileByteCounts</code>, the trailer, or the total file size before
+reading a frame. How an application keeps a blob associated with its file is
+outside the scope of this specification.</p>
+<h3 id="offset-reconstruction">Offset reconstruction</h3>
+<p>The blob stores no frame offsets. A reader derives <code>base_frame_offset</code> and
+reconstructs the offsets in frame-index order.</p>
+<pre><code class="language-text">offset[0]     = base_frame_offset
+offset[idx+1] = offset[idx] + frame_byte_counts[idx]
+</code></pre>
+<p><img src="img/rumi-offset-reconstruction.svg" alt="Frame offsets are prefix sums over the frame byte counts" /></p>
+<p>Every reconstructed offset MUST fit in <code>uint64</code>.</p>
+<p>A reader passes <code>frame_byte_counts[idx]</code> bytes at <code>offset[idx]</code> to the OpenZL
+decoder.</p>
+<p>The byte just past the last frame is where the trailer begins.</p>
+<pre><code class="language-text">trailer_offset = offset[N-1] + frame_byte_counts[N-1]
+</code></pre>
+<p><code>trailer_offset</code> locates the band descriptions and time coordinates. Reading a
+frame does not require parsing the trailer.</p>
+<p>The offset of frame <code>k</code> can also be expressed as</p>
+<pre><code class="language-text">offset[k] = base_frame_offset
+          + k * count_min
+          + sum(residual[0:k])
+</code></pre>
+<h2 class="part" id="resource-limits">Resource limits</h2>
+<p>A reader MUST check derived sizes before allocating memory or decoding a frame.
+This includes the band text lengths and the coordinate count <code>C</code> in the trailer.
+An operation that exceeds the reader's resource limits MUST fail before the
+allocation or decode. This does not make the rumi file invalid.</p>
+<h2 class="part" id="changelog">Changelog</h2>
+<ul class="list">
+<li>0.1.0. Initial draft.</li>
+</ul>
+<!-- RUMI_SPEC_BODY_END -->
+
+      <nav class="pager" aria-label="Pages">
+        <a class="prev" href="how-rumi-reads.html"><span>Previous</span>How Rumi reads</a>
+      </nav>
+    </article>
+
+    <nav class="toc onpage" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <ol class="toc-sections">
+        <!-- RUMI_SPEC_TOC_START -->
+<li><a href="#scope">Scope</a></li>
+<li><a href="#selective-read-model">Selective read model</a></li>
+<li><a href="#data-model">Data model</a></li>
+<li><a href="#frames">Frames</a></li>
+<li><a href="#sample-encodings">Sample encodings</a></li>
+<li><a href="#bit-packed-arrays">Bit-packed arrays</a></li>
+<li><a href="#file-profile">File profile</a></li>
+<li><a href="#file-header">File header</a></li>
+<li><a href="#fixed-ifd">Fixed IFD</a></li>
+<li><a href="#georeferencing">Georeferencing</a></li>
+<li><a href="#trailer">Trailer</a></li>
+<li><a href="#header-blob">Header blob</a></li>
+<li><a href="#resource-limits">Resource limits</a></li>
+<li><a href="#changelog">Changelog</a></li>
+<!-- RUMI_SPEC_TOC_END -->
+      </ol>
+    </nav>
+  </main>
+
+  <footer class="colophon">
+    <span>Made with</span>
+    <span class="heart" role="img" aria-label="love"></span>
+    <span>by</span>
+    <a class="by" href="https://asterisk.coop" rel="noopener noreferrer" aria-label="Asterisk Labs">
+      <img src="assets/svg/asterisk-mark.svg" alt="Asterisk Labs">
+    </a>
+  </footer>
+</div>
+<script src="assets/js/toc.js" defer></script>
+<script src="assets/js/code.js" defer></script>
+</body>
+</html>

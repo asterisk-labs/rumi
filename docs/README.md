@@ -9,13 +9,14 @@ python -m http.server 8000
 
 ## Layout
 
-The landing page keeps its own styles and scripts, and holds the
-specification and the deck as hash routes. The docs, API and example pages use
-the reading layout of the GeoZL site, from `assets/css/reading.css`.
+The landing page keeps its own styles and scripts, and holds the deck as a
+hash route. The docs, specification, API and example pages use the reading
+layout of the GeoZL site, from `assets/css/reading.css`.
 
 ```
-index.html            landing page, with the spec and deck routes as <template>s
-docs.html             what Rumi is, frames, the external header and a read
+index.html            landing page, with the deck route as a <template>
+docs.html             what Rumi is, frames, the external header and the file
+spec.html             SPEC.md, rendered into the reading layout
 guide.html            worked code for writing and reading
 how-rumi-reads.html   one read followed through the source, from API call to tensor
 api.html              API overview and one line per language
@@ -38,9 +39,11 @@ assets/hero/          band images of the landing figure, made by tools/make_hero
 Run `python3 tools/render_notebooks.py` after changing a notebook in
 `examples/`, and `--check` to confirm the pages are current.
 
-The `spec` template contains marked regions generated from the repository's
-`SPEC.md`. The generated copy is kept in the source page too, so the complete
-route works when `docs/index.html` is opened directly.
+`spec.html` contains marked regions generated from the repository's `SPEC.md`.
+The build fills them in the published site. Run
+`python3 tools/build_docs.py --sync-spec --output _site --clean` after changing
+`SPEC.md` to write the same copy into the source page, so it reads the same
+when opened directly. Old `index.html#/spec` links redirect to it.
 
 The deploy build mounts the root `deck/` and `img/` directories below the docs
 website. The presentation and generated specification therefore use the same

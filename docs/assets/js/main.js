@@ -93,10 +93,6 @@
   function wireSourcePreviewPaths() {
     if (location.protocol !== 'file:' || !/\/docs\/index\.html$/.test(location.pathname)) return;
 
-    document.querySelectorAll('.spec-content img[src^="img/"]').forEach(function (image) {
-      image.setAttribute('src', '../' + image.getAttribute('src'));
-    });
-
     var deck = document.querySelector('.deck-frame iframe');
     if (deck && deck.getAttribute('src').indexOf('deck/') === 0) {
       deck.setAttribute('src', '../' + deck.getAttribute('src'));

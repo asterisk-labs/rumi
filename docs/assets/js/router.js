@@ -6,6 +6,10 @@
 
   var HOME = 'home';
 
+  // the specification has its own page now; an old #/spec link goes there
+  var spec = location.hash.match(/^#\/spec(?:\/(.*))?$/);
+  if (spec) location.replace('spec.html' + (spec[1] ? '#' + spec[1] : ''));
+
   function decodeAnchor(value) {
     try {
       return decodeURIComponent(value);

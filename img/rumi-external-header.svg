@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="270"
+     viewBox="0 0 720 270" role="img" aria-labelledby="title desc">
+  <title id="title">The external header, rebuilt from the file</title>
+  <desc id="desc">A Rumi file starts with a 16 byte header and an IFD that holds the shape, the tile, the dtype and every frame size, then the frames and a trailer. rumi.info reads the IFD and rebuilds the external header from it, a fixed part of 32 bytes followed by the packed frame sizes.</desc>
+  <style>
+    svg {
+      --ink: #222;
+      --muted: #666;
+      --line: #777;
+      --surface: #fff;
+      --accent: #492ae8;
+      --accent-soft: #ece9fd;
+      --internal-soft: #f6f4fe;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --ink: #e6edf3;
+        --muted: #9198a1;
+        --line: #8b949e;
+        --surface: #0d1117;
+        --accent: #a594ff;
+        --accent-soft: #241d4d;
+        --internal-soft: #17142e;
+      }
+    }
+    text {
+      font-family: system-ui, sans-serif;
+      fill: var(--ink);
+    }
+    .cell {
+      fill: var(--surface);
+      stroke: var(--line);
+      stroke-width: 1.5;
+    }
+    .internal {
+      fill: var(--internal-soft);
+      stroke: var(--accent);
+      stroke-width: 1.5;
+      stroke-dasharray: 5 4;
+    }
+    .external {
+      fill: var(--accent-soft);
+      stroke: var(--accent);
+      stroke-width: 2.5;
+    }
+    .arrow {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2;
+      marker-end: url(#arrowhead);
+    }
+    .title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .title.accent {
+      fill: var(--accent);
+    }
+    .label {
+      font-size: 14px;
+      text-anchor: middle;
+    }
+    .small {
+      font-size: 12px;
+      fill: var(--muted);
+      text-anchor: middle;
+    }
+    .note {
+      font-size: 13px;
+      fill: var(--accent);
+    }
+    .note.muted {
+      fill: var(--muted);
+    }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8"
+            refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="var(--accent)"/>
+    </marker>
+  </defs>
+
+  <!-- The file, with its internal header -->
+  <text class="title" x="40" y="26">rumi file</text>
+  <rect class="cell" x="40" y="38" width="70" height="56"/>
+  <text class="label" x="75" y="62">header</text>
+  <text class="small" x="75" y="81">16 B</text>
+
+  <rect class="internal" x="110" y="38" width="170" height="56"/>
+  <text class="label" x="195" y="62">IFD, 13 tags</text>
+  <text class="small" x="195" y="81">shape, tile, frame sizes</text>
+
+  <rect class="cell" x="280" y="38" width="90" height="56"/>
+  <text class="label" x="325" y="70">frame 0</text>
+  <rect class="cell" x="370" y="38" width="90" height="56"/>
+  <text class="label" x="415" y="70">frame 1</text>
+  <rect class="cell" x="460" y="38" width="80" height="56"/>
+  <text class="label" x="500" y="70">…</text>
+  <rect class="cell" x="540" y="38" width="140" height="56"/>
+  <text class="label" x="610" y="62">trailer</text>
+  <text class="small" x="610" y="81">band names, dates</text>
+
+  <!-- rebuilt from the file -->
+  <path class="arrow" d="M195 96 C195 140, 230 140, 230 176"/>
+  <text class="note" x="244" y="136">rumi.info rebuilds it from the file</text>
+
+  <!-- The external header -->
+  <rect class="external" x="110" y="182" width="230" height="56"/>
+  <text class="label" x="225" y="206">fixed part, 32 B</text>
+  <text class="small" x="225" y="225">shape, tile, dtype, frame unit</text>
+
+  <rect class="external" x="340" y="182" width="190" height="56"/>
+  <text class="label" x="435" y="206">frame sizes</text>
+  <text class="small" x="435" y="225">packed in a few bits each</text>
+
+  <text class="title accent" x="110" y="260">external header</text>
+  <text class="note muted" x="548" y="215">no offsets,</text>
+  <text class="note muted" x="548" y="232">no names or dates</text>
+</svg>

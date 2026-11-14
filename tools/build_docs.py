@@ -1,4 +1,8 @@
-"""Build the GitHub Pages artifact from docs/ and render SPEC.md into it."""
+"""Build the GitHub Pages artifact from docs/ and render SPEC.md into it.
+
+With --sync-spec, write the rendered specification into docs/spec.html too, so
+the page reads the same when opened from the source tree.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ from markdown_it import MarkdownIt
 ROOT = Path(__file__).resolve().parents[1]
 DOCS_SOURCE = ROOT / "docs"
 SPEC_SOURCE = ROOT / "SPEC.md"
+SPEC_PAGE = "spec.html"
 
 
 class DocumentParser(HTMLParser):
@@ -53,11 +58,26 @@ def inline_text(token) -> str:
     )
 
 
-def render_spec() -> tuple[str, str]:
+def render_spec() -> dict[str, str]:
+    """Render SPEC.md for the reading layout of docs/spec.html.
+
+    The page has its own title, so the document heading is dropped, and the
+    list under it becomes the facts line. Sections, lists and tables take the
+    classes the other docs pages use.
+    """
     md = MarkdownIt("commonmark", {"html": False, "linkify": False})
     md.enable("table")
     md.enable("strikethrough")
     tokens = md.parse(SPEC_SOURCE.read_text(encoding="utf-8"))
+
+    if tokens[0].type != "heading_open" or tokens[0].tag != "h1":
+        raise ValueError("SPEC.md must start with its title")
+    tokens = tokens[3:]
+    if tokens[0].type != "bullet_list_open":
+        raise ValueError("SPEC.md must list its version and status under the title")
+    facts_end = next(i for i, t in enumerate(tokens) if t.type == "bullet_list_close") + 1
+    facts, tokens = tokens[:facts_end], tokens[facts_end:]
+    facts[0].attrSet("class", "facts")
 
     headings: list[tuple[int, str, str]] = []
     used_slugs: dict[str, int] = {}
@@ -65,7 +85,13 @@ def render_spec() -> tuple[str, str]:
     local_anchor_links: list[str] = []
 
     for index, token in enumerate(tokens):
+        if token.type in {"bullet_list_open", "ordered_list_open"}:
+            token.attrSet("class", "list")
+        elif token.type == "table_open":
+            token.attrSet("class", "spec")
         if token.type == "heading_open":
+            if token.tag == "h2":
+                token.attrSet("class", "part")
             title = inline_text(tokens[index + 1])
             base = slugify(title)
             seen = used_slugs.get(base, 0)
@@ -82,24 +108,22 @@ def render_spec() -> tuple[str, str]:
                 continue
             href = child.attrGet("href") or ""
             if href.startswith("#"):
-                anchor = href[1:]
-                local_anchor_links.append(anchor)
-                child.attrSet("href", f"#/spec/{anchor}")
+                local_anchor_links.append(href[1:])
 
     missing = sorted(set(local_anchor_links) - anchors)
     if missing:
         raise ValueError(f"SPEC.md links to missing headings: {', '.join(missing)}")
 
-    body = md.renderer.render(tokens, md.options, {})
-    items = []
-    for level, title, anchor in headings:
-        if level != 2:
-            continue
-        items.append(
-            f'<li class="toc-level-{level}"><a href="#/spec/{html.escape(anchor)}">'
-            f"{html.escape(title)}</a></li>"
-        )
-    return body, '<ul class="spec-toc">\n' + "\n".join(items) + "\n</ul>"
+    items = [
+        f'<li><a href="#{html.escape(anchor)}">{html.escape(title)}</a></li>'
+        for level, title, anchor in headings
+        if level == 2
+    ]
+    return {
+        "FACTS": md.renderer.render(facts, md.options, {}),
+        "BODY": md.renderer.render(tokens, md.options, {}),
+        "TOC": "\n".join(items),
+    }
 
 
 def replace_generated_region(document: str, name: str, content: str) -> str:
@@ -108,8 +132,16 @@ def replace_generated_region(document: str, name: str, content: str) -> str:
     start_index = document.find(start)
     end_index = document.find(end)
     if start_index < 0 or end_index < 0 or end_index < start_index:
-        raise ValueError(f"docs/index.html is missing the {name.lower()} markers")
-    return document[:start_index] + content.rstrip() + document[end_index + len(end) :]
+        raise ValueError(f"docs/{SPEC_PAGE} is missing the {name.lower()} markers")
+    head = document[: start_index + len(start)]
+    return f"{head}\n{content.rstrip()}\n{document[end_index:]}"
+
+
+def write_spec(page: Path) -> None:
+    document = page.read_text(encoding="utf-8")
+    for name, content in render_spec().items():
+        document = replace_generated_region(document, name, content)
+    page.write_text(document, encoding="utf-8")
 
 
 def spec_integer(document: str, pattern: str, label: str) -> int:
@@ -167,6 +199,7 @@ def assert_local_assets(output: Path) -> None:
     required = (
         output / "index.html",
         output / "docs.html",
+        output / SPEC_PAGE,
         output / "guide.html",
         output / "how-rumi-reads.html",
         output / "api.html",
@@ -276,14 +309,7 @@ def build(output: Path, *, clean: bool = False) -> None:
     shutil.copytree(ROOT / "deck", output / "deck")
     (output / ".nojekyll").touch()
 
-    body, toc = render_spec()
-    index = output / "index.html"
-    document = index.read_text(encoding="utf-8")
-    document = replace_generated_region(document, "TOC", toc)
-    document = replace_generated_region(document, "BODY", body)
-    if "RUMI_SPEC_" in document:
-        raise ValueError("unresolved specification marker in docs/index.html")
-    index.write_text(document, encoding="utf-8")
+    write_spec(output / SPEC_PAGE)
 
     assert_local_assets(output)
     assert_local_links(output)
@@ -293,12 +319,19 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "_site")
     parser.add_argument("--clean", action="store_true", help="replace an existing _site")
+    parser.add_argument(
+        "--sync-spec",
+        action="store_true",
+        help=f"also write the rendered SPEC.md into docs/{SPEC_PAGE}",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
+        if args.sync_spec:
+            write_spec(DOCS_SOURCE / SPEC_PAGE)
         build(args.output.resolve(), clean=args.clean)
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         print(f"docs build failed: {exc}", file=sys.stderr)

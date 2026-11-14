@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=2">
+<link rel="stylesheet" href="assets/css/reading.css?v=15">
 </head>
 <body>
 <div class="page">
@@ -42,7 +42,7 @@
       <a href="docs.html">Docs</a>
       <a href="api.html" class="here">API</a>
       <a href="examples.html">Examples</a>
-      <a href="index.html#/spec">Spec</a>
+      <a href="spec.html">Spec</a>
     </nav>
   </header>
 
@@ -222,7 +222,7 @@ typedef struct {
       <p>Compiles a pattern for the selected extents and writes its shape and strides to <code>out</code>. Every extent must be positive. <code>NULL</code> uses the default pattern for <code>n</code> and <code>t</code>. Returns <code>RUMI_ERR_INVALID</code> for an unknown, repeated or missing axis, or a left-out axis with an extent above 1.</p>
 
       <h2 class="part" id="frames">Frame patterns and units</h2>
-      <p>These helpers cut an array into frames without passing the array to C. A frame pattern such as <code>b (row h) (col w) -&gt; row col (b h w)</code> splits the image axes into a tile grid and names what one frame holds. It resolves to a <code>frame_unit</code>, the layout number the file stores, which the <a href="index.html#/spec">specification</a> lists.</p>
+      <p>These helpers cut an array into frames without passing the array to C. A frame pattern such as <code>b (row h) (col w) -&gt; row col (b h w)</code> splits the image axes into a tile grid and names what one frame holds. It resolves to a <code>frame_unit</code>, the layout number the file stores, which the <a href="spec.html">specification</a> lists.</p>
 <pre><code class="language-c">typedef enum {
     RUMI_AXIS_BAND = 0,
     RUMI_AXIS_Y    = 1,

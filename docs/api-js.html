@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=2">
+<link rel="stylesheet" href="assets/css/reading.css?v=15">
 </head>
 <body>
 <div class="page">
@@ -42,7 +42,7 @@
       <a href="docs.html">Docs</a>
       <a href="api.html" class="here">API</a>
       <a href="examples.html">Examples</a>
-      <a href="index.html#/spec">Spec</a>
+      <a href="spec.html">Spec</a>
     </nav>
   </header>
 
@@ -149,7 +149,7 @@ type Decoder = GeoZLDecoder | ((frame: Uint8Array, options: {verify: boolean; ma
         <tr><th>dtype</th><td>The sample type, a <a href="#DType"><code>DType</code></a>.</td></tr>
         <tr><th>tileShape</th><td>Tile height and width.</td></tr>
         <tr><th>gridShape</th><td>Tiles down and across.</td></tr>
-        <tr><th>frameUnit</th><td>The <a href="index.html#/spec/frame_unit"><code>frame_unit</code></a> code, 0 to 9.</td></tr>
+        <tr><th>frameUnit</th><td>The <a href="spec.html#frame_unit"><code>frame_unit</code></a> code, 0 to 9.</td></tr>
         <tr><th>frameLayout</th><td>The axes of one decoded frame, such as <code>"h w t b"</code>.</td></tr>
         <tr><th>frameCount</th><td>Number of frames in the file.</td></tr>
         <tr><th>transform</th><td>The affine coefficients <code>[x_res, row_rot, x_origin, col_rot, y_res, y_origin]</code>, or <code>null</code> when the file has no CRS.</td></tr>
@@ -203,7 +203,7 @@ rgb.shape;  // [3, 256, 256] for an Image</code></pre>
   readonly componentBytes: number;
   readonly ArrayType: TypedArrayConstructor;
 }</code></pre>
-      <p>A frozen sample type, one of the 21 in the <a href="index.html#/spec/sample-encodings">spec</a>. <code>code</code> is the <code>rumi_dtype</code> value of the <a href="api-c.html">C API</a> and <code>name</code> its name, such as <code>"uint16"</code> or <code>"bfloat16"</code>. <code>sampleFormat</code> and <code>bits</code> are the SampleFormat and BitsPerSample values stored in the file. <code>bytes</code> is the size of one decoded sample and <code>componentBytes</code> the size of one element of <code>ArrayType</code>, the typed array behind <code>data</code>.</p>
+      <p>A frozen sample type, one of the 21 in the <a href="spec.html#sample-encodings">spec</a>. <code>code</code> is the <code>rumi_dtype</code> value of the <a href="api-c.html">C API</a> and <code>name</code> its name, such as <code>"uint16"</code> or <code>"bfloat16"</code>. <code>sampleFormat</code> and <code>bits</code> are the SampleFormat and BitsPerSample values stored in the file. <code>bytes</code> is the size of one decoded sample and <code>componentBytes</code> the size of one element of <code>ArrayType</code>, the typed array behind <code>data</code>.</p>
       <table class="spec">
         <tr><th>native</th><td>The eight integer types, float32 and float64 use their own typed array, with <code>BigUint64Array</code> and <code>BigInt64Array</code> for 64-bit integers.</td></tr>
         <tr><th>float16, bfloat16</th><td><code>Uint16Array</code> of the raw bits.</td></tr>

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="180"
+     viewBox="0 0 720 180" role="img" aria-labelledby="title desc">
+  <title id="title">Rumi write outputs, external header</title>
+  <desc id="desc">An array is written as a Rumi file and its external header, which is highlighted.</desc>
+  <style>
+    svg {
+      --ink: #222;
+      --muted: #666;
+      --line: #777;
+      --surface: #fff;
+      --accent: #492ae8;
+      --accent-soft: #ece9fd;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --ink: #e6edf3;
+        --muted: #9198a1;
+        --line: #8b949e;
+        --surface: #0d1117;
+        --accent: #a594ff;
+        --accent-soft: #241d4d;
+      }
+    }
+    text {
+      font-family: system-ui, sans-serif;
+      fill: var(--ink);
+    }
+    .box {
+      fill: var(--surface);
+      stroke: var(--line);
+      stroke-width: 2;
+      rx: 8;
+    }
+    .faded {
+      opacity: 0.45;
+    }
+    .header {
+      fill: var(--accent-soft);
+      stroke: var(--accent);
+      stroke-width: 2.5;
+      rx: 8;
+    }
+    .arrow {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 2;
+      marker-end: url(#arrowhead);
+    }
+    .arrow.to-header {
+      stroke: var(--accent);
+      marker-end: url(#arrowhead-accent);
+    }
+    .label {
+      font-size: 16px;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+    .label.accent {
+      fill: var(--accent);
+      font-weight: 600;
+    }
+    .small {
+      font-size: 13px;
+      fill: var(--muted);
+      text-anchor: middle;
+    }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8"
+            refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="var(--line)"/>
+    </marker>
+    <marker id="arrowhead-accent" markerWidth="8" markerHeight="8"
+            refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="var(--accent)"/>
+    </marker>
+  </defs>
+
+  <!-- Input -->
+  <rect class="box" x="30" y="55" width="150" height="70"/>
+  <text class="label" x="105" y="82">Array</text>
+  <text class="small" x="105" y="108">(B, Y, X)</text>
+
+  <!-- Split -->
+  <path class="arrow" d="M180 90 H255"/>
+  <circle cx="270" cy="90" r="4" fill="var(--line)"/>
+
+  <g class="faded">
+    <path class="arrow" d="M274 88 C320 88, 320 48, 370 48"/>
+    <rect class="box" x="375" y="18" width="250" height="60"/>
+    <text class="label" x="500" y="48">rumi file</text>
+  </g>
+
+  <path class="arrow to-header" d="M274 92 C320 92, 320 132, 370 132"/>
+
+  <!-- The output this section is about -->
+  <rect class="header" x="375" y="102" width="250" height="60"/>
+  <text class="label accent" x="500" y="125">external header</text>
+  <text class="small" x="500" y="148">kept outside the file</text>
+</svg>
