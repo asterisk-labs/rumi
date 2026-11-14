@@ -51,7 +51,7 @@ pre {
 }
 
 ::selection {
-  background: rgba(116, 87, 255, 0.35);
+  background: rgba(73, 42, 232, 0.2);
   color: var(--ink);
 }
 

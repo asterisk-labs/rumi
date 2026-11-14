@@ -2,11 +2,12 @@
   position: relative;
   isolation: isolate;
   min-width: 0;
-  padding-block: clamp(24px, 4vh, 52px);
+  min-height: clamp(520px, calc(100svh - 150px), 650px);
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1fr);
-  gap: clamp(32px, 4.5vw, 72px);
+  grid-template-columns: minmax(330px, 0.88fr) minmax(500px, 1.12fr);
   align-items: center;
+  gap: clamp(36px, 5vw, 72px);
+  padding-block: clamp(12px, 2vh, 24px);
 }
 
 .hero::before {
@@ -34,11 +35,11 @@ html[data-route="home"] .hero::before {
   width: max-content;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 22px;
-  color: var(--mint);
+  gap: 10px;
+  margin-bottom: 19px;
+  color: var(--violet);
   font-family: var(--mono);
-  font-size: clamp(13px, 1vw, 14px);
+  font-size: clamp(12px, 1vw, 14px);
   font-weight: 650;
   letter-spacing: 0.09em;
   line-height: 1;
@@ -50,14 +51,12 @@ html[data-route="home"] .hero::before {
   height: 7px;
   flex: 0 0 auto;
   content: '';
-  border-radius: 1px;
-  background: var(--mint);
-  box-shadow: 0 0 0 4px var(--mint-soft);
+  background: var(--violet);
 }
 
 .hero h1 {
   max-width: none;
-  font-size: clamp(48px, 5.3vw, 70px);
+  font-size: clamp(54px, 5.9vw, 80px);
   font-weight: 650;
   letter-spacing: -0.065em;
   line-height: 0.96;
@@ -80,19 +79,15 @@ html[data-route="home"] .hero::before {
   z-index: -1;
   content: '';
   border-radius: 0.12em;
-  background: linear-gradient(90deg, rgba(116, 87, 255, 0.94), rgba(139, 107, 255, 0.62));
+  background: #c4ffc2;
   transform: rotate(-0.8deg);
-}
-
-html[data-route="home"] .hero h1 .hero-highlight::before {
-  background: linear-gradient(90deg, rgba(98, 73, 216, 0.88), rgba(126, 101, 220, 0.48));
 }
 
 .hero-summary {
   max-width: 46ch;
   margin-top: 28px;
   color: var(--ink-soft);
-  font-size: clamp(18px, 1.45vw, 21px);
+  font-size: clamp(19px, 1.5vw, 22px);
   letter-spacing: -0.018em;
   line-height: 1.42;
 }
@@ -115,49 +110,70 @@ html[data-route="home"] .hero h1 .hero-highlight::before {
   z-index: -1;
   content: '';
   border-radius: 0.14em;
-  background: linear-gradient(90deg, rgba(255, 122, 79, 0.72), rgba(255, 122, 79, 0.36));
+  background: #f7cc09;
   transform: rotate(0.6deg);
-}
-
-html[data-route="home"] .hero-summary-highlight::before {
-  background: linear-gradient(90deg, rgba(161, 71, 48, 0.42), rgba(161, 71, 48, 0.16));
 }
 
 .install {
   position: relative;
-  width: min(100%, 510px);
-  min-height: 52px;
+  width: max-content;
+  max-width: 100%;
   margin-top: 28px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: stretch;
-  border-block: 1px solid var(--edge);
-}
-
-.install-label {
-  padding-right: 16px;
-  display: flex;
-  align-items: center;
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .install-command {
   min-width: 0;
-  min-height: 52px;
-  padding-left: 14px;
+  min-height: 44px;
+  padding: 0 6px 0 15px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  border-left: 1px solid var(--rule);
+  gap: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.045);
+  transition: background-color 180ms ease;
+}
+
+.install-command:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.install-command {
+  cursor: pointer;
+}
+
+.install-command.is-copied {
+  animation: install-flash 900ms ease-out;
+}
+
+@keyframes install-flash {
+  0%, 30% { transform: scale(1); }
+  12% { transform: scale(1.03); }
+}
+
+.copy-toast {
+  position: absolute;
+  top: -8px;
+  right: 6px;
+  padding: 5px 9px;
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--bg);
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.03em;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+
+.install.is-copied .copy-toast {
+  opacity: 1;
+  transform: translateY(-100%);
 }
 
 .install-command .prompt {
-  color: var(--mint);
+  color: var(--violet);
   font-family: var(--mono);
   font-size: 13px;
   user-select: none;
@@ -167,31 +183,30 @@ html[data-route="home"] .hero-summary-highlight::before {
   min-width: 0;
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .copy-command {
-  align-self: stretch;
-  padding: 0 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
   border: 0;
-  border-left: 1px solid var(--rule);
+  border-radius: 50%;
   background: transparent;
   color: var(--dim);
   cursor: pointer;
-  font-family: var(--mono);
-  font-size: 11px;
   transition: color 160ms ease, background-color 160ms ease;
 }
 
-.copy-command:hover {
+.copy-command:hover,
+.copy-command:focus-visible {
   color: var(--ink);
-  background: var(--panel-soft);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .copy-command svg {
@@ -204,8 +219,38 @@ html[data-route="home"] .hero-summary-highlight::before {
   stroke-width: 1.7;
 }
 
+.copy-command .icon-copy,
+.copy-command .icon-check {
+  grid-area: 1 / 1;
+  transition: opacity 180ms ease, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.copy-command .icon-check {
+  opacity: 0;
+  transform: scale(0.4);
+  stroke-width: 2.2;
+}
+
 .copy-command.is-copied {
-  color: var(--mint);
+  color: var(--ink);
+}
+
+.copy-command.is-copied .icon-copy {
+  opacity: 0;
+  transform: scale(0.4);
+}
+
+.copy-command.is-copied .icon-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.copy-command span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .copy-feedback {
@@ -735,11 +780,12 @@ html[data-route="spec"] .spec-content img {
 
 @media (max-width: 1000px) {
   .hero {
-    gap: clamp(24px, 3.5vw, 48px);
+    grid-template-columns: minmax(290px, 0.82fr) minmax(430px, 1.18fr);
+    gap: 36px;
   }
 
   .hero h1 {
-    font-size: clamp(44px, 5.8vw, 60px);
+    font-size: clamp(48px, 6.1vw, 64px);
   }
 }
 
@@ -759,8 +805,10 @@ html[data-route="spec"] .spec-content img {
   }
 
   .hero {
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr);
-    gap: 48px;
+    gap: 18px;
+    padding-block: 34px 12px;
   }
 
   .hero-copy {
@@ -797,38 +845,17 @@ html[data-route="spec"] .spec-content img {
 }
 
 @media (max-width: 560px) {
-  .eyebrow {
-    margin-bottom: 17px;
-  }
-
   .hero h1 {
-    font-size: clamp(44px, 13vw, 58px);
+    font-size: clamp(48px, 13.5vw, 62px);
   }
 
   .hero-summary {
     margin-top: 20px;
+    font-size: 19px;
   }
 
   .install {
     margin-top: 25px;
-  }
-
-  .install-label {
-    padding-right: 12px;
-    font-size: 9px;
-  }
-
-  .copy-command span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-  }
-
-  .copy-command {
-    padding-inline: 14px;
   }
 
   .spec-toc {
@@ -852,19 +879,18 @@ html[data-route="spec"] .spec-content img {
 
 }
 
-@media (max-width: 390px) {
-  .install-command code {
-    font-size: 12px;
-  }
-}
-
 @media (min-width: 861px) and (max-height: 760px) {
+  .hero {
+    min-height: 500px;
+    padding-block: 8px;
+  }
+
   .hero h1 {
-    font-size: clamp(46px, 5.4vw, 66px);
+    font-size: clamp(52px, 5.9vw, 76px);
   }
 
   .hero-summary {
-    margin-top: 18px;
+    margin-top: 20px;
   }
 
   .install {

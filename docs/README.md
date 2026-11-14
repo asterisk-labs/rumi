@@ -9,24 +9,34 @@ python -m http.server 8000
 
 ## Layout
 
+The landing page keeps its own styles and scripts, and holds the
+specification and the deck as hash routes. The docs, API and example pages use
+the reading layout of the GeoZL site, from `assets/css/reading.css`.
+
 ```
-index.html            shell and one <template> per route
-how-rumi-reads.html   zero-to-hero source tour from API call to decoded tensor
-examples.html         working examples for writing, reading, and batching
+index.html            landing page, with the spec and deck routes as <template>s
+docs.html             what Rumi is, frames, the external header and a read
+guide.html            worked code for writing and reading
+how-rumi-reads.html   one read followed through the source, from API call to tensor
+api.html              API overview and one line per language
+api-python.html, api-c.html, api-r.html, api-julia.html, api-js.html
+examples.html         example notebooks that open in Colab
+notebooks/*.html      the notebooks in examples/, rendered by tools/render_notebooks.py
 assets/css/
-  tokens.css          design tokens
-  base.css            reset and global defaults
-  shell.css           page frame, header, navigation, footer, transitions
-  content.css         home page, file diagram, specification
-  guide.css           standalone How Rumi Reads manual
+  tokens.css, base.css, shell.css, content.css, diagram.css   the landing page
+  reading.css         docs, API and example pages
+  notebook.css        notebook cells and outputs
 assets/js/
-  backdrop.js         the animated tile grid
-  router.js           hash router over the templates
-  main.js             navigation state, copy control, boot
-  reader.js           interactive frame-selection diagram
-  examples.js         example code cards and copy controls
+  backdrop.js, router.js, main.js, reader.js   the landing page
+  toc.js              highlights the current section in the sidebar
+  code.js             colors the code blocks and adds their copy buttons
 assets/svg/           project marks and icons, one file each
+assets/svg/how-rumi-reads/   the figures of how-rumi-reads.html
+assets/hero/          band images of the landing figure, made by tools/make_hero.py
 ```
+
+Run `python3 tools/render_notebooks.py` after changing a notebook in
+`examples/`, and `--check` to confirm the pages are current.
 
 The `spec` template contains marked regions generated from the repository's
 `SPEC.md`. The generated copy is kept in the source page too, so the complete
@@ -34,7 +44,8 @@ route works when `docs/index.html` is opened directly.
 
 The deploy build mounts the root `deck/` and `img/` directories below the docs
 website. The presentation and generated specification therefore use the same
-source assets as the repository.
+source assets as the repository. `docs.html` shows figures from `img/`, so
+they appear only in the built site.
 
 ## Build
 
