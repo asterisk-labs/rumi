@@ -1001,7 +1001,7 @@ pre code {
 
 .hl-cells {
   display: flex;
-  gap: 2px;
+  gap: 6px;
   height: 150px;
 }
 
@@ -1034,13 +1034,13 @@ pre code {
    under the names */
 .hl-groups {
   display: flex;
-  gap: 10px;
+  gap: 18px;
   height: 120px;
 }
 
 .hl-group {
   display: flex;
-  gap: 2px;
+  gap: 6px;
 }
 
 .hl-group .hl-field,
@@ -1081,14 +1081,14 @@ pre code {
   .fm-label { font-size: 11px; }
   .fm-sub { display: none; }
   .hl-line { column-gap: 8px; }
-  .hl-cells { gap: 1px; height: 132px; }
+  .hl-cells { gap: 3px; height: 132px; }
   .im-cell.hl-field { width: 17px; padding: 6px 0; }
   .hl-field .im-name { font-size: 11px; }
   .hl-field .im-tag { font-size: 10px; }
   .hl-line .hm-sizes { height: 132px; }
   .hl-cells.hl-fit { height: auto; }
-  .hl-groups { gap: 6px; height: 110px; }
-  .hl-group { gap: 1px; }
+  .hl-groups { gap: 8px; height: 110px; }
+  .hl-group { gap: 3px; }
 }
 
 @media (max-width: 480px) {
