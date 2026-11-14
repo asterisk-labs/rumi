@@ -661,6 +661,47 @@ pre code {
 .tok-str { color: var(--code-string); }
 .tok-num { color: var(--code-number); }
 
+/* One example in several languages, a tab for each, inserted by code.js. */
+
+.code-tabs {
+  margin: 1.6em 0;
+}
+
+.code-tabs pre {
+  margin: 0;
+}
+
+.code-tabs-bar {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+
+.code-tab {
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.code-tab:hover { color: var(--ink); }
+
+.code-tab:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 3px;
+}
+
+.code-tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
 /* Code copy control. */
 
 .code-block {

@@ -295,4 +295,75 @@
       });
     });
   });
+
+  /* Show one example in several languages, a tab for each, and keep the
+     chosen language on every example of the site. */
+
+  var LANG_KEY = 'rumi-code-lang';
+  var groups = [];
+
+  function remembered() {
+    try { return window.localStorage.getItem(LANG_KEY); } catch (error) { return null; }
+  }
+
+  function remember(lang) {
+    try { window.localStorage.setItem(LANG_KEY, lang); } catch (error) { /* storage is off */ }
+  }
+
+  function choose(lang) {
+    groups.forEach(function (group) { group.select(lang); });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.code-tabs'), function (host, g) {
+    var panels = Array.prototype.filter.call(host.children, function (child) {
+      return child.classList.contains('code-block');
+    });
+    var bar = document.createElement('div');
+    bar.className = 'code-tabs-bar';
+    bar.setAttribute('role', 'tablist');
+    bar.setAttribute('aria-label', 'Language');
+    host.insertBefore(bar, host.firstChild);
+
+    var tabs = panels.map(function (panel, k) {
+      var tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'code-tab';
+      tab.id = 'code-tab-' + g + '-' + k;
+      tab.textContent = panel.querySelector('pre').getAttribute('data-lang');
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', tab.id + '-panel');
+      panel.id = tab.id + '-panel';
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+      tab.addEventListener('click', function () {
+        remember(tab.textContent);
+        choose(tab.textContent);
+      });
+      tab.addEventListener('keydown', function (event) {
+        var next = { ArrowRight: k + 1, ArrowLeft: k - 1, Home: 0, End: tabs.length - 1 }[event.key];
+        if (next === undefined) return;
+        event.preventDefault();
+        var target = tabs[(next + tabs.length) % tabs.length];
+        target.focus();
+        target.click();
+      });
+      bar.appendChild(tab);
+      return tab;
+    });
+
+    function select(lang) {
+      var k = tabs.map(function (tab) { return tab.textContent; }).indexOf(lang);
+      if (k < 0) return;
+      tabs.forEach(function (tab, j) {
+        tab.setAttribute('aria-selected', String(j === k));
+        tab.tabIndex = j === k ? 0 : -1;
+        panels[j].hidden = j !== k;
+      });
+    }
+
+    select(tabs[0].textContent);
+    groups.push({ select: select });
+  });
+
+  if (remembered()) choose(remembered());
 })();

@@ -61,7 +61,7 @@ CMAKE_FLAGS ?=
 CMAKE_OPTS  := -G $(GEN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
                -DRUMI_BUILD_SHARED_LIB=ON $(CMAKE_FLAGS)
 
-.PHONY: all build configure lib stage-lib python geozl-python py-test test js-install js-test playground lint ctest docs \
+.PHONY: all build configure lib stage-lib python geozl-python py-test test js-install js-test playground lint ctest docs docs-examples \
         r r-vendor r-vendor-check r-check julia bindings-test bindings-fixtures sync \
         fuzz-build fuzz-seed fuzz fuzz-report fuzz-check fuzz-replay clean-fuzz \
         install submodules clean help
@@ -246,6 +246,12 @@ clean-fuzz:
 docs:
 	$(PYTHON) tools/build_docs.py --output _site --clean
 
+# Run the Python, R and Julia examples on the docs pages. They read public data
+# over the network, and JULIA_PROJECT names an environment with Rumi, GeoZL and
+# ArchGDAL.
+docs-examples:
+	$(PYTHON) tools/check_docs_examples.py $(DOCS_EXAMPLES_ARGS)
+
 r-vendor: $(GEOZL)/core/CMakeLists.txt $(KARU)/CMakeLists.txt
 	$(PYTHON) tools/sync_r_vendor.py
 
@@ -337,6 +343,7 @@ help:
 	@echo "make fuzz-check build and run the libFuzzer harnesses"
 	@echo "make fuzz-replay replay the versioned and cached fuzz inputs"
 	@echo "make docs       render SPEC.md into a deployable copy of docs/"
+	@echo "make docs-examples run every Python, R and Julia example on the docs pages"
 	@echo "make r          build and install the standalone R source package"
 	@echo "make r-vendor   copy native sources into the R source package"
 	@echo "make r-vendor-check verify that the copied R sources are current"

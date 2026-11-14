@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=16">
+<link rel="stylesheet" href="assets/css/reading.css?v=17">
 </head>
 <body>
 <div class="page">
@@ -99,7 +99,7 @@
 
       <h2 class="part" id="start">One read from end to end</h2>
       <p>Suppose a model asks for one spatial window, one time position and two bands. The public call is small because the implementation carries those choices through every layer.</p>
-      <pre><code class="language-python">chip = rumi.read(
+      <pre data-run="skip"><code class="language-python">chip = rumi.read(
     "scene.rumi",
     header,
     time=[2],
@@ -128,7 +128,7 @@
       </table>
       <p>The data file and the header are separate on purpose. Rumi can plan exact byte ranges from the small header before it touches the data source, which may be large. A caller that already has the header can start a remote read without first downloading metadata from the data object.</p>
       <p><code>read()</code> in <code>bindings/python/rumi/_read.py</code> parses the external header, validates the selection and resolves the framework consumer before it opens the source. The native handle wrappers live in <code>bindings/python/rumi/_native.py</code>. The CFFI declarations and library loading stay apart in <code>_ffi.py</code>.</p>
-      <pre><code class="language-python">spec = _Spec(header)
+      <pre data-run="skip"><code class="language-python">spec = _Spec(header)
 consumer = resolve_framework(framework, spec.fields.dtype)
 times = _resolve_axis(time, "time", spec.fields.time_count)
 bands = _resolve_axis(bands, "bands", spec.fields.samples_per_pixel)
@@ -233,7 +233,7 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
 
       <h2 class="part" id="many">Several images in one plan</h2>
       <p><code>read_many()</code> does not loop over <code>read()</code>. It pairs each source with its header and, when given, its window. Then it sends the whole batch through one <code>read_items()</code> call and one execution plan. Without windows, it reads every image in full.</p>
-      <pre><code class="language-python">batch = rumi.read_many(
+      <pre data-run="skip"><code class="language-python">batch = rumi.read_many(
     ["north.rumi", "south.rumi"],
     [north_header, south_header],
     windows=[(0, 0, 256, 256), (512, 0, 256, 256)],
@@ -304,6 +304,6 @@ task.compressed_size = h.frame_byte_count(idx)</code></pre>
   </footer>
 </div>
 <script src="assets/js/toc.js" defer></script>
-<script src="assets/js/code.js" defer></script>
+<script src="assets/js/code.js?v=2" defer></script>
 </body>
 </html>

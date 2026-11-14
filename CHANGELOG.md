@@ -6,6 +6,11 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- R and Julia can cut arrays into frames and write local `.rumi` files from
+  compressed payloads. Both writers return the external header and accept band
+  texts, time coordinates and EPSG georeferencing.
+- The docs now show the same write and read workflow in Python, R and Julia.
+  `make docs-examples` runs the executable examples in the docs pages.
 - `rumi_read_gpu_dlpack` and `rumi_read_many_gpu_dlpack` allocate the output on
   the GPU and return a `kDLCUDA` or `kDLMetal` DLPack tensor. CUDA reads run on
   a stream the context owns and take memory from a stream-ordered pool, so

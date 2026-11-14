@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=16">
+<link rel="stylesheet" href="assets/css/reading.css?v=17">
 </head>
 <body>
 <div class="page">
@@ -100,8 +100,8 @@ chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256))</code></pr
       <table class="spec">
         <tr><th><a href="api-python.html">Python</a></th><td>Write and read, with windows, batches and GPU reads into PyTorch, JAX or TensorFlow. <code>pip install rumi-eo</code></td></tr>
         <tr><th><a href="api-c.html">C</a></th><td>The library every binding calls, in <code>rumi.h</code>, with CPU, GPU and DLPack reads and the writer.</td></tr>
-        <tr><th><a href="api-r.html">R</a></th><td>A reader with one-based indices and native <code>(X, Y, Band, Time)</code> arrays.</td></tr>
-        <tr><th><a href="api-julia.html">Julia</a></th><td>A reader with one-based indices and native <code>(X, Y, Band, Time)</code> arrays.</td></tr>
+        <tr><th><a href="api-r.html">R</a></th><td>Write and read, with one-based indices and native <code>(X, Y, Band, Time)</code> arrays.</td></tr>
+        <tr><th><a href="api-julia.html">Julia</a></th><td>Write and read, with one-based indices and native <code>(X, Y, Band, Time)</code> arrays.</td></tr>
         <tr><th><a href="api-js.html">JavaScript</a></th><td>A reader that opens a whole <code>.rumi</code> file and fetches only the byte ranges it needs. <code>npm install @asterisk-labs/rumi</code></td></tr>
       </table>
       <p>Python and JavaScript count from zero and return <code>(Time, Band, Y, X)</code>. R and Julia count from one and return <code>(X, Y, Band, Time)</code>, the order their arrays use.</p>
@@ -130,6 +130,6 @@ chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256))</code></pr
   </footer>
 </div>
 <script src="assets/js/toc.js" defer></script>
-<script src="assets/js/code.js" defer></script>
+<script src="assets/js/code.js?v=2" defer></script>
 </body>
 </html>

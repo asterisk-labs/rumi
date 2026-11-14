@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=16">
+<link rel="stylesheet" href="assets/css/reading.css?v=17">
 </head>
 <body>
 <div class="page">
@@ -109,7 +109,7 @@
 
       <h3 id="frame">Frame</h3>
       <p>One frame of a <code>FrameTable</code>. <code>data</code> is the tile to compress and <code>shape</code> its shape. <code>index</code>, <code>row</code>, <code>col</code> and <code>cell</code> place it in the grid, and <code>band</code> and <code>time</code> are set when the pattern stores one band or one time step per frame. <code>compressed</code> holds the payload once you assign it.</p>
-<pre><code class="language-python">for frame in frames:
+<pre data-run="skip"><code class="language-python">for frame in frames:
     g = geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
     frame.compressed = geozl.compress(frame.data, graph=g)</code></pre>
       <p>Each frame can use its own recipe, so a land tile and an ocean tile in one file can compress differently.</p>
@@ -150,7 +150,7 @@
         <tr><th>device</th><td><code>"cuda:N"</code> or <code>"mps"</code> decodes into GPU memory and hands it to the framework through DLPack, so it needs a framework other than <code>"numpy"</code>. A CUDA read makes the framework's current stream wait for it on the device.</td></tr>
         <tr><th>decode_backend</th><td><code>"auto"</code> decodes supported frames on the GPU and the rest on the CPU, never splitting a frame. <code>"cpu"</code> decodes every frame on the CPU and only places the samples on the GPU.</td></tr>
       </table>
-<pre><code class="language-python">chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256),
+<pre data-run="skip"><code class="language-python">chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256),
                  framework="torch", device="cuda:0")</code></pre>
       <p>GeoZL decodes on the GPU the frames that end in PFOR or PivCo, such as <code>planar&gt;zigzag&gt;lanes</code> or <code>planar&gt;zigzag&gt;pfor</code>. Other frames decode on the CPU and are copied over. <a href="https://asterisk.coop/geozl/gpu-codecs.html" rel="noopener noreferrer">What a GPU wants</a> explains why.</p>
 
@@ -169,12 +169,12 @@
 <pre><code class="sig language-python">rumi.info(source=None, *, header=None) -&gt; Metadata</code></pre>
       <p>Inspects a source, a header, or both. From a source, Rumi reads the index, georeferencing, band labels and time, and rebuilds the external header. A header alone opens nothing and gives only what a reader needs. With both, Rumi checks that they match.</p>
       <p>The returned <code>Metadata</code> has <code>header</code>, <code>shape</code> as <code>(B, Y, X)</code> or <code>(T, B, Y, X)</code>, <code>time_count</code>, <code>dtype</code>, <code>tile</code> as <code>(height, width)</code>, <code>frame_layout</code>, <code>index_order</code>, <code>frames</code>, <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code>. The last six are <code>None</code> without a source.</p>
-<pre><code class="language-python">header = rumi.info(source="s3://bucket/scene.rumi").header</code></pre>
+<pre data-run="skip"><code class="language-python">header = rumi.info(source="s3://bucket/scene.rumi").header</code></pre>
 
       <h3 id="open">open</h3>
 <pre><code class="sig language-python">rumi.open(source, header) -&gt; Dataset</code></pre>
       <p>Pairs a source with its header and checks the metadata once. A <code>Dataset</code> has <code>source</code>, <code>header</code> and <code>metadata</code>, <code>info()</code> returns the metadata, and <code>read(**kwargs)</code> takes the arguments of <a href="#read"><code>read</code></a>. It works as a context manager and closes on exit.</p>
-<pre><code class="language-python">with rumi.open(path, header) as ds:
+<pre data-run="skip"><code class="language-python">with rumi.open(path, header) as ds:
     chip = ds.read(bands=[2, 3], window=(0, 0, 256, 256))</code></pre>
 
       <h2 class="part" id="output">Output</h2>
@@ -242,6 +242,6 @@ rumi.get_checksum_verification() -&gt; bool</code></pre>
   </footer>
 </div>
 <script src="assets/js/toc.js" defer></script>
-<script src="assets/js/code.js" defer></script>
+<script src="assets/js/code.js?v=2" defer></script>
 </body>
 </html>

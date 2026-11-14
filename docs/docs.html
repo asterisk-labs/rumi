@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=16">
+<link rel="stylesheet" href="assets/css/reading.css?v=17">
 </head>
 <body>
 <div class="page">
@@ -77,8 +77,9 @@
         <img src="assets/hero/rgb.webp" width="800" height="800" alt="Lake Annecy and the mountains around it, seen from above in true colour." loading="lazy">
         <figcaption>Lake Annecy on 8 August 2025, in true colour from bands B04, B03 and B02.</figcaption>
       </figure>
-      <p>The code reads the four bands from the public Sentinel-2 archive and writes them as a Rumi file.</p>
-<pre><code class="language-python">import geozl
+      <p>The code reads the four bands from the public Sentinel-2 archive and writes them as a Rumi file, in Python, R or Julia.</p>
+<div class="code-tabs">
+<pre data-lang="Python"><code class="language-python">import geozl
 import numpy as np
 import rasterio
 import rumi
@@ -119,9 +120,109 @@ path, header = rumi.write(
     time=["2025-08-08"],
     transform=transform,
     crs=crs,
-)</code></pre>
-      <p><a href="api-python.html#frames"><code>rumi.frames</code></a> cuts the image into frames of one band and one tile of 256 pixels. <a href="https://asterisk.coop/geozl/api-python.html#graph" rel="noopener noreferrer"><code>geozl.graph</code></a> and <a href="https://asterisk.coop/geozl/api-python.html#compress" rel="noopener noreferrer"><code>geozl.compress</code></a> compress each frame with two recipes that decode on the GPU, and the smaller result is kept. <a href="api-python.html#write"><code>rumi.write</code></a> writes the file and returns its header.</p>
-      <p>The file, <code>annecy.rumi</code>, is 7,274,593 bytes. The <code>header</code> is 232 bytes. The rest of the page takes both apart.</p>
+)
+
+with open("annecy.header", "wb") as f:
+    f.write(header)</code></pre>
+<pre data-lang="R"><code class="language-r">library(geozl)
+library(rumi)
+library(terra)
+
+scene &lt;- paste0(
+  "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/",
+  "31/T/GL/2025/8/S2A_31TGL_20250808_0_L2A/"
+)
+names &lt;- c("B02", "B03", "B04", "B08")
+bands &lt;- rast(paste0(scene, names, ".tif"))
+x0 &lt;- xmin(bands) + 3980 * 10
+y0 &lt;- ymax(bands) - 1244 * 10
+window &lt;- crop(bands, ext(x0, x0 + 12800, y0 - 12800, y0))
+image &lt;- aperm(as.array(window), c(2, 1, 3))
+
+frames &lt;- rumi_frames(image, "b (row h) (col w) -&gt; row col b (h w)",
+                      tile_size = 256, datatype = "uint16")
+
+for (i in seq_along(frames$data)) {
+  tile &lt;- frames$data[[i]]
+  payloads &lt;- lapply(c("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes"), function(recipe)
+    geozl_compress(tile, geozl_graph(tile, recipe, datatype = "uint16")))
+  frames$compressed[[i]] &lt;- payloads[[which.min(lengths(payloads))]]
+}
+
+header &lt;- rumi_write(
+  "annecy.rumi",
+  frames,
+  bands = names,
+  time = "2025-08-08",
+  transform = c(10, 0, x0, 0, -10, y0),
+  crs = crs(window, describe = TRUE)$code
+)
+
+writeBin(header, "annecy.header")</code></pre>
+<pre data-lang="Julia"><code class="language-julia">using ArchGDAL, GeoZL, Rumi
+
+scene = "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/" *
+        "31/T/GL/2025/8/S2A_31TGL_20250808_0_L2A/"
+names = ["B02", "B03", "B04", "B08"]
+
+bands = map(names) do name
+    ArchGDAL.read(scene * name * ".tif") do src
+        ArchGDAL.read(src, 1, 1245:2524, 3981:5260)
+    end
+end
+image = cat(bands...; dims = 3)
+
+transform, crs = ArchGDAL.read(scene * "B02.tif") do src
+    x0, xres, _, y0, _, yres = ArchGDAL.getgeotransform(src)
+    ref = ArchGDAL.importWKT(ArchGDAL.getproj(src))
+    (xres, 0.0, x0 + 3980 * xres, 0.0, yres, y0 + 1244 * yres),
+        ArchGDAL.getattrvalue(ref, "AUTHORITY", 1)
+end
+
+frames = Rumi.frames(image, "b (row h) (col w) -&gt; row col b (h w)"; tile_size = 256)
+
+for (i, tile) in enumerate(frames.data)
+    payloads = [GeoZL.compress(tile, GeoZL.graph(tile, recipe))
+                for recipe in ("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes")]
+    frames.compressed[i] = argmin(length, payloads)
+end
+
+header = Rumi.write(
+    "annecy.rumi",
+    frames;
+    bands = names,
+    time = ["2025-08-08"],
+    transform = transform,
+    crs = crs,
+)
+
+write("annecy.header", header)</code></pre>
+</div>
+      <p>The three versions take the same steps. <a href="api-python.html#frames"><code>rumi.frames</code></a> cuts the image into frames of one band and one tile of 256 pixels, as <code>rumi_frames</code> and <code>Rumi.frames</code> do in R and Julia. <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> compresses each frame with two recipes that decode on the GPU, and the smaller result is kept. <a href="api-python.html#write"><code>rumi.write</code></a> writes the file and returns its header, and the last lines save the header as <code>annecy.header</code>.</p>
+      <p>R and Julia hold the image as <code>(x, y, band)</code>, the reverse of Python's <code>(band, y, x)</code>, and the same pattern cuts the same frames from it. All three write the same file. <code>annecy.rumi</code> is 7,274,593 bytes and its header is 232 bytes.</p>
+      <p>Reading it back needs the file and its header. <a href="api-python.html#read"><code>rumi.read</code></a>, <a href="api-r.html#rumi_read"><code>rumi_read</code></a> and <a href="api-julia.html#read"><code>Rumi.read</code></a> each return one tile of 256 pixels in all four bands.</p>
+<div class="code-tabs">
+<pre data-lang="Python"><code class="language-python">import rumi
+
+with open("annecy.header", "rb") as f:
+    header = f.read()
+
+chip = rumi.read("annecy.rumi", header, window=(256, 512, 256, 256))
+chip.shape                                   # (4, 256, 256)</code></pre>
+<pre data-lang="R"><code class="language-r">library(rumi)
+
+header &lt;- readBin("annecy.header", "raw", file.info("annecy.header")$size)
+
+chip &lt;- rumi_read("annecy.rumi", header, window = c(257, 513, 256, 256))
+dim(chip)                                    # 256 256 4</code></pre>
+<pre data-lang="Julia"><code class="language-julia">using Rumi
+
+header = Base.read("annecy.header")
+
+chip = Rumi.read("annecy.rumi", header; window = (257, 513, 256, 256))
+size(chip)                                   # (256, 256, 4)</code></pre>
+</div>
+      <p>Python counts from 0 and puts the bands first. R and Julia count from 1 and put the bands last, so the same tile starts at row 257 and column 513. The rest of the page takes the file and its header apart.</p>
 
       <h2 class="part" id="what">What Rumi is</h2>
       <p>Training efficiently on Earth observation data means reading thousands of small windows, from many files, as fast as a GPU can take them. Rumi is a raster format built for that read.</p>
@@ -245,7 +346,7 @@ path, header = rumi.write(
 
       <h3 id="header-size">The size of the internal header</h3>
       <p>Everything before the frames, the file header, the IFD and its values, is the internal header. Its size depends only on the number of bands <code>B</code> and the number of frames <code>N</code>, never on how well the frames compress. Only values longer than 8 bytes add to the 292 bytes of the file header and the IFD.</p>
-<pre><code class="language-python">size     = 16 + 276 + values
+<pre data-run="skip"><code class="language-python">size     = 16 + 276 + values
 values   = 128                    # ModelTransformationTag
          + 32                     # GeoKeyDirectoryTag
          + (8 * N  if N >= 2)     # TileOffsets
@@ -291,12 +392,12 @@ values   = 128                    # ModelTransformationTag
       </noscript>
       <p>The GeoTIFF and the internal header are almost the same. Both store an offset and a size for every frame, which is 1,200 of their bytes. Written as a classic TIFF, with offsets of 4 bytes that limit a file to 4 GB, the GeoTIFF header would take 1,218 bytes. The external header stores no offsets at all.</p>
       <p>A GeoTIFF has to store every offset, because its tiles can sit anywhere in the file, in any order and with gaps between them. A Rumi file has no such freedom. Its frames start right after the internal header, in frame order, with no gaps. So every offset follows from the sizes before it.</p>
-<pre><code class="language-python">offset[0] = 16 + 276 + values      # 1,652 here
+<pre data-run="skip"><code class="language-python">offset[0] = 16 + 276 + values      # 1,652 here
 offset[k] = offset[k-1] + size[k-1]
           = offset[0] + size[0] + ... + size[k-1]</code></pre>
       <p>In the Lake Annecy file, frame 2 starts at <code>1,652 + 80,707 + 80,328 = 162,687</code>. A reader adds up the sizes once, in memory, and never needs a stored offset.</p>
       <p>The sizes shrink too. No frame is smaller than 38,991 bytes, so the header stores that number once, as <code>count_min</code>, and each size as how far it is above it. The largest difference, 51,867, fits in 16 bits, so the 100 sizes take 200 bytes instead of 400. With its fixed part of 32 bytes, the external header is 232 bytes.</p>
-<pre><code class="language-python">size[k] = count_min + residual[k]  # count_bits bits each</code></pre>
+<pre data-run="skip"><code class="language-python">size[k] = count_min + residual[k]  # count_bits bits each</code></pre>
 
       <h3 id="ranges">From a tile to its bytes</h3>
       <p>With the header, a reader finds the bytes of any tile with arithmetic alone. Pick a tile on the image and a band, and the steps fill in with the numbers of the Lake Annecy file.</p>
@@ -305,7 +406,7 @@ offset[k] = offset[k-1] + size[k-1]
       <p>The tile at row 2 and column 1 of band B04 is frame <code>k = (2 * 5 + 1) * 4 + 2 = 46</code>. Its offset is <code>1652 + 46 * 38991 + 1510358 = 3305596</code> and its length is <code>38991 + 33160 = 72151</code> bytes.</p>
       </noscript>
       <p>The same steps hold for any file. Only the frame index changes. When a frame holds a tile, as here, the band and the time step are part of the index. When a frame holds a cell, the index is the grid position alone. The reader then fetches the whole cell, decodes it, and keeps the bands and time steps it asked for.</p>
-<pre><code class="language-python">tiles_across = ceil(image_width / tile_width)
+<pre data-run="skip"><code class="language-python">tiles_across = ceil(image_width / tile_width)
 tiles_down   = ceil(image_length / tile_length)
 g            = tiles_across * tiles_down
 N            = g * B * T if frame_unit in (0, 9) else g
@@ -369,7 +470,7 @@ k = spatial                             # a frame holds a cell</code></pre>
   </footer>
 </div>
 <script src="assets/js/toc.js" defer></script>
-<script src="assets/js/code.js" defer></script>
+<script src="assets/js/code.js?v=2" defer></script>
 <script src="assets/js/annecy.js" defer></script>
 <script src="assets/js/file-map.js?v=13" defer></script>
 </body>
