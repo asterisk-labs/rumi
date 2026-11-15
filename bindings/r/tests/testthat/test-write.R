@@ -3,6 +3,9 @@ library(rumi)
 # An Image of 5 columns, 3 rows and 2 bands, as R holds it, (x, y, band).
 image <- array(seq_len(5 * 3 * 2) - 1L, c(5, 3, 2))
 
+# The samples of one frame, without the datatype rumi_frames() attaches.
+samples <- function(frames, i) structure(frames$data[[i]], rumi_datatype = NULL)
+
 test_that("frames cut one band of one tile, clipped at the edges", {
   frames <- rumi_frames(image, "b (row h) (col w) -> row col b (h w)",
                         tile_size = 2, datatype = "uint16")
@@ -10,10 +13,11 @@ test_that("frames cut one band of one tile, clipped at the edges", {
   expect_identical(frames$layout, "h w")
   expect_length(frames$data, 12)
   expect_length(frames$compressed, 12)
-  expect_identical(frames$data[[1]], image[1:2, 1:2, 1])
-  expect_identical(frames$data[[2]], image[1:2, 1:2, 2])
-  expect_identical(frames$data[[5]], array(image[5, 1:2, 1], c(1, 2)))
-  expect_identical(frames$data[[12]], array(image[5, 3, 2], c(1, 1)))
+  expect_identical(samples(frames, 1), image[1:2, 1:2, 1])
+  expect_identical(samples(frames, 2), image[1:2, 1:2, 2])
+  expect_identical(samples(frames, 5), array(image[5, 1:2, 1], c(1, 2)))
+  expect_identical(samples(frames, 12), array(image[5, 3, 2], c(1, 1)))
+  expect_identical(attr(frames$data[[12]], "rumi_datatype"), "uint16")
   expect_match(paste(capture.output(print(frames)), collapse = ""),
                "12 frames of h w, 5 x 3 in tiles of 2, uint16, 0 compressed")
 })
@@ -24,7 +28,7 @@ test_that("cell frames keep every band, with the planes last", {
   expect_identical(frames$layout, "b h w")
   expect_identical(frames$datatype, "int32")
   expect_length(frames$data, 6)
-  expect_identical(frames$data[[1]], image[1:2, 1:2, ])
+  expect_identical(samples(frames, 1), image[1:2, 1:2, ])
   expect_identical(dim(frames$data[[6]]), c(1L, 1L, 2L))
 })
 

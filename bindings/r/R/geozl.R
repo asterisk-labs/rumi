@@ -8,10 +8,17 @@
   Float16 = "float16", Float32 = "float32", Float64 = "float64"
 )
 
+.canonical <- function(name) {
+  if (name %in% names(.aliases)) .aliases[[name]] else name
+}
+
+# A frame from rumi_frames() names the type it is written as, so a graph takes
+# that type and refuses another.
 .geozl_datatype <- function(datatype, x = NULL) {
-  name <- .datatype(datatype, x)
-  if (name %in% names(.aliases))
-    name <- .aliases[[name]]
+  framed <- attr(x, "rumi_datatype", exact = TRUE)
+  name <- .canonical(.datatype(if (is.null(datatype)) framed else datatype, x))
+  if (!is.null(framed) && !identical(name, .canonical(framed)))
+    stop("`datatype` is not the one rumi_frames() gave this frame", call. = FALSE)
   list(name = name, itemsize = .rumi_call(rumi_r_geozl_itemsize, name))
 }
 
@@ -90,9 +97,10 @@
 #' @param nodata A sentinel for missing samples. Pass `NaN` to mark all NaNs;
 #'   float rasters with NaNs also detect them when `nodata` is `NULL`.
 #' @param datatype Storage type, as [rumi_frames()] takes it. terra's
-#'   `"INT2U"` and GDAL's `"UInt16"` names are accepted too. Defaults to
-#'   `"int32"` for integer, `"float64"` for double, `"uint8"` for raw and
-#'   `"bool"` for logical input.
+#'   `"INT2U"` and GDAL's `"UInt16"` names are accepted too. A frame from
+#'   [rumi_frames()] uses its own datatype and refuses another. Otherwise it
+#'   defaults to `"int32"` for integer, `"float64"` for double, `"uint8"` for
+#'   raw and `"bool"` for logical input.
 #' @return A `rumi_geozl_graph`. Its native context is not safe for concurrent
 #'   calls and does not survive a new R session.
 #' @examples
@@ -139,6 +147,9 @@ print.rumi_geozl_graph <- function(x, ...) {
 rumi_geozl_compress <- function(x, graph) {
   if (!inherits(graph, "rumi_geozl_graph"))
     stop("`graph` must come from rumi_geozl_graph()", call. = FALSE)
+  framed <- attr(x, "rumi_datatype", exact = TRUE)
+  if (!is.null(framed) && !identical(.canonical(framed), graph$datatype))
+    stop("this frame's datatype is not the graph's", call. = FALSE)
   dt <- .geozl_datatype(graph$datatype)
   .rumi_call(rumi_r_geozl_compress, graph$ptr, .pack(x, dt, graph$nodata),
              dt$name)

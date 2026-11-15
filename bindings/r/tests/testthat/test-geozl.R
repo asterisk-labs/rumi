@@ -97,6 +97,30 @@ test_that("compressed frames write and read back", {
   expect_lte(max(abs(as.vector(back) - as.vector(reflectance))), 0.01 + 1e-7)
 })
 
+test_that("a frame compresses as the datatype rumi_frames() gave it", {
+  frames <- rumi_frames(counts, "b (row h) (col w) -> row col (b h w)",
+                        tile_size = 16, datatype = "uint16")
+  for (i in seq_along(frames$data)) {
+    graph <- rumi_geozl_graph(frames$data[[i]], "planar>zigzag>pfor")
+    expect_identical(graph$datatype, "uint16")
+    frames$compressed[[i]] <- rumi_geozl_compress(frames$data[[i]], graph)
+  }
+  path <- tempfile(fileext = ".rumi")
+  on.exit(unlink(path))
+  header <- rumi_write(path, frames, bands = c("B02", "B03", "B04"),
+                       time = "2026-01-01")
+  expect_equal(as.vector(rumi_read(path, header)), as.vector(counts))
+
+  tile <- frames$data[[1]]
+  expect_identical(rumi_geozl_graph(tile, "planar>zigzag>zstd",
+                                    datatype = "UInt16")$datatype, "uint16")
+  expect_error(rumi_geozl_graph(tile, "planar>zigzag>zstd", datatype = "int32"),
+               "not the one rumi_frames\\(\\) gave this frame")
+  other <- rumi_geozl_graph(as.vector(tile), "planar>zigzag>zstd", width = 16,
+                            datatype = "int32")
+  expect_error(rumi_geozl_compress(tile, other), "datatype is not the graph's")
+})
+
 test_that("a graph prints its recipe and keeps its geometry", {
   graph <- rumi_geozl_graph(counts, "planar>zigzag>zstd", datatype = "UInt16")
   expect_s3_class(graph, "rumi_geozl_graph")

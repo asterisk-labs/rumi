@@ -175,7 +175,7 @@ dim(batch)                                   # 3 2 1 2 2</code></pre>
         <tr><th>tile_size</th><td>Height and width of a square tile, from 1 to 65535.</td></tr>
         <tr><th>datatype</th><td>The sample type the payloads are compressed as, such as <code>"uint16"</code>. <code>NULL</code> takes <code>"int32"</code> for an integer array, <code>"float64"</code> for double, <code>"uint8"</code> for raw, <code>"bool"</code> for logical and <code>"complex128"</code> for complex.</td></tr>
       </table>
-      <p>The returned <code>rumi_frames</code> list has <code>data</code>, <code>compressed</code> and layout fields. Fill each <code>compressed</code> entry with raw bytes. A <code>b h w</code> frame is an R array shaped <code>(w, h, band)</code>.</p>
+      <p>The returned <code>rumi_frames</code> list has <code>data</code>, <code>compressed</code> and layout fields. Fill each <code>compressed</code> entry with raw bytes. A <code>b h w</code> frame is an R array shaped <code>(w, h, band)</code>, and every frame carries <code>datatype</code> as its <code>rumi_datatype</code> attribute, so <a href="#rumi_geozl_graph"><code>rumi_geozl_graph</code></a> compresses it as that type.</p>
 <pre data-run="skip"><code class="language-r">frames &lt;- rumi_frames(image, "b (row h) (col w) -&gt; row col b (h w)",
                       tile_size = 256, datatype = "uint16")
 for (i in seq_along(frames$data)) {
@@ -195,7 +195,7 @@ rumi_geozl_compress(x, graph)</code></pre>
         <tr><th>width, planes</th><td>Row width in samples and the number of stacked images. They default to <code>dim(x)[1]</code> and, for three or more dimensions, the last one, which is the planes of a <code>b h w</code> frame.</td></tr>
         <tr><th>error</th><td><code>NULL</code> or <code>0</code> for lossless, a positive number for an absolute bound, a percentage such as <code>"1%"</code> for a relative one, or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe.</td></tr>
         <tr><th>nodata</th><td>A sentinel value. <code>NA</code> and <code>NaN</code> in <code>x</code> are stored as it, and <code>NaN</code> selects NaN handling, which float rasters with missing values get without asking.</td></tr>
-        <tr><th>datatype</th><td>The storage type, as <code>rumi_frames</code> takes it, or terra's <code>"INT2U"</code> and GDAL's <code>"UInt16"</code> names. The default follows the type of <code>x</code>.</td></tr>
+        <tr><th>datatype</th><td>The storage type, as <code>rumi_frames</code> takes it, or terra's <code>"INT2U"</code> and GDAL's <code>"UInt16"</code> names. A frame from <code>rumi_frames</code> uses its own datatype and refuses another. Otherwise the default follows the type of <code>x</code>.</td></tr>
       </table>
       <p><code>rumi_geozl_compress</code> returns the frame as a raw vector for a <code>compressed</code> entry. A graph wraps native state, so it is not thread-safe and does not survive saving and reloading.</p>
 

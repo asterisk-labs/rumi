@@ -20,6 +20,8 @@ double, \code{"uint8"} for raw and \code{"bool"} for logical.}
 \value{
 A \code{rumi_frames} list with \code{data}, one array per frame in file
 order, \code{compressed}, a list of \code{NULL} to fill, and the layout of the file.
+Each frame carries \code{datatype} as its \code{rumi_datatype} attribute, which
+\code{\link[=rumi_geozl_graph]{rumi_geozl_graph()}} uses.
 }
 \description{
 The pattern names axes in C order; R holds them in reverse. For example,

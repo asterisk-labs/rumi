@@ -216,6 +216,8 @@ rumi_read_many <- function(files, windows = NULL, bands = NULL, time = NULL,
 #'   double, `"uint8"` for raw and `"bool"` for logical.
 #' @return A `rumi_frames` list with `data`, one array per frame in file
 #'   order, `compressed`, a list of `NULL` to fill, and the layout of the file.
+#'   Each frame carries `datatype` as its `rumi_datatype` attribute, which
+#'   [rumi_geozl_graph()] uses.
 #' @export
 rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
   if (is.null(dim(x)))
@@ -231,7 +233,8 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
   if (tile_size > 65535)
     stop("`tile_size` must be at most 65535", call. = FALSE)
   datatype <- .datatype(datatype, x)
-  value <- .rumi_call(rumi_r_frames, x, enc2utf8(pattern), as.integer(tile_size))
+  value <- .rumi_call(rumi_r_frames, x, enc2utf8(pattern), as.integer(tile_size),
+                      datatype)
   value$compressed <- vector("list", length(value$data))
   value$datatype <- datatype
   class(value) <- "rumi_frames"

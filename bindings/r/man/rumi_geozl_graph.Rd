@@ -29,9 +29,10 @@ and zero mean lossless.}
 float rasters with NaNs also detect them when \code{nodata} is \code{NULL}.}
 
 \item{datatype}{Storage type, as \code{\link[=rumi_frames]{rumi_frames()}} takes it. terra's
-\code{"INT2U"} and GDAL's \code{"UInt16"} names are accepted too. Defaults to
-\code{"int32"} for integer, \code{"float64"} for double, \code{"uint8"} for raw and
-\code{"bool"} for logical input.}
+\code{"INT2U"} and GDAL's \code{"UInt16"} names are accepted too. A frame from
+\code{\link[=rumi_frames]{rumi_frames()}} uses its own datatype and refuses another. Otherwise it
+defaults to \code{"int32"} for integer, \code{"float64"} for double, \code{"uint8"} for
+raw and \code{"bool"} for logical input.}
 }
 \value{
 A \code{rumi_geozl_graph}. Its native context is not safe for concurrent

@@ -566,7 +566,7 @@ static uint8_t *elements(SEXP x) {
 }
 
 // R stores the pattern's axes, and each frame's axes, in reverse order.
-SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s) {
+SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
   size_t width = element_size(x);
   rumi_frame_pattern p;
   fail(rumi_compile_frame_pattern(Rf_translateCharUTF8(STRING_ELT(pattern_s, 0)),
@@ -656,6 +656,8 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s) {
     for (int d = 0; d < at.ndim; ++d)
       INTEGER(frame_dims)[d] = (int)at.dims[at.ndim - 1 - d];
     Rf_setAttrib(frame, R_DimSymbol, frame_dims);
+    // rumi_geozl_graph() reads it, so a frame compresses as the type it is written as.
+    Rf_setAttrib(frame, Rf_install("rumi_datatype"), datatype_s);
     SET_VECTOR_ELT(frames, (R_xlen_t)k, frame);
     UNPROTECT(2);
   }
@@ -753,7 +755,7 @@ static const R_CallMethodDef calls[] = {
     {"rumi_r_close", (DL_FUNC)&rumi_r_close, 1},
     {"rumi_r_read", (DL_FUNC)&rumi_r_read, 5},
     {"rumi_r_read_many", (DL_FUNC)&rumi_r_read_many, 5},
-    {"rumi_r_frames", (DL_FUNC)&rumi_r_frames, 3},
+    {"rumi_r_frames", (DL_FUNC)&rumi_r_frames, 4},
     {"rumi_r_write", (DL_FUNC)&rumi_r_write, 10},
     {"rumi_r_geozl_pack", (DL_FUNC)&rumi_r_geozl_pack, 3},
     {"rumi_r_geozl_itemsize", (DL_FUNC)&rumi_r_geozl_itemsize, 1},
