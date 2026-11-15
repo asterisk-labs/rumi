@@ -1,6 +1,7 @@
 #include "rumi/rumi.hpp"
 
 #include <cerrno>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -155,6 +156,13 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
                     d.time_count);
     if ((d.transform == nullptr) != (d.epsg == 0))
         return errf("transform and a CRS must be given together");
+    static constexpr const char* COEFFICIENT[6] = {
+        "x_res", "row_rot", "x_origin", "col_rot", "y_res", "y_origin"};
+    for (int i = 0; d.transform && i < 6; ++i) {
+        if (!std::isfinite(d.transform[i]))
+            return errf("transform %s is %g; every coefficient must be finite",
+                        COEFFICIENT[i], d.transform[i]);
+    }
 
     Grid g{};
     if (!sample_encoding(d.dtype, &g.sample_format, &g.bits))
@@ -240,13 +248,15 @@ try {
 
     for (std::size_t i = 0; i < frame_count; ++i) {
         if (!frames[i])
-            return failf(RUMI_ERR_INVALID, "frame %zu is null", i);
+            return failf(RUMI_ERR_INVALID, "the %s frame is null",
+                         ordinal(i + 1).c_str());
         if (sizes[i] == 0)
-            return failf(RUMI_ERR_INVALID, "frame %zu has an empty payload", i);
+            return failf(RUMI_ERR_INVALID, "the %s frame has an empty payload",
+                         ordinal(i + 1).c_str());
         if (sizes[i] > 0xFFFFFFFFu)
             return failf(RUMI_ERR_INVALID,
-                         "frame %zu is %zu bytes, over the uint32 the header holds",
-                         i, sizes[i]);
+                         "the %s frame is %zu bytes, over the uint32 the header holds",
+                         ordinal(i + 1).c_str(), sizes[i]);
     }
 
     const std::uint16_t spp = d.samples_per_pixel;

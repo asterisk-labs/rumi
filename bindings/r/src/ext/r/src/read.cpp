@@ -772,6 +772,8 @@ execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
     });
 }
 
+}  // namespace
+
 std::expected<void, std::string>
 compatible_headers(std::span<const Header* const> headers)
 {
@@ -809,6 +811,8 @@ compatible_headers(std::span<const Header* const> headers)
     }
     return {};
 }
+
+namespace {
 
 std::expected<Plan, Error>
 build_read_plan(std::span<const ReadItem> items,
@@ -936,22 +940,32 @@ validate_request(const Header& h, std::span<const int> times,
                  std::span<const int> bands,
                  int y_off, int y_size, int x_off, int x_size)
 {
-    if (bands.empty()) return err("no bands selected");
+    if (bands.empty()) return err("bands selects no band");
     for (int b : bands) {
-        if (b < 1 || b > h.samples_per_pixel) {
-            return errf("band %d out of range [1, %u]", b, h.samples_per_pixel);
+        if (b < 1) return err("bands selects a band before the first");
+        if (b > h.samples_per_pixel) {
+            return errf("bands selects the %s band, but this file has %u",
+                        ordinal(static_cast<std::uint64_t>(b)).c_str(),
+                        h.samples_per_pixel);
         }
     }
-    if (times.empty()) return err("no time steps selected");
+    if (times.empty()) return err("time selects no time step");
     for (int t : times) {
-        if (t < 1 || static_cast<std::uint32_t>(t) > h.time_count) {
-            return errf("t=%d out of range [1, %u]", t, h.time_count);
+        if (t < 1) return err("time selects a time step before the first");
+        if (static_cast<std::uint32_t>(t) > h.time_count) {
+            return errf("time selects the %s time step, but this file has %u",
+                        ordinal(static_cast<std::uint64_t>(t)).c_str(),
+                        h.time_count);
         }
     }
-    if (x_off < 0 || y_off < 0 || x_size <= 0 || y_size <= 0 ||
-        static_cast<std::int64_t>(x_off) + x_size > h.image_width ||
+    if (x_size <= 0 || y_size <= 0) {
+        return err("the window height and width must be positive");
+    }
+    if (x_off < 0 || y_off < 0) return err("the window starts before the image");
+    if (static_cast<std::int64_t>(x_off) + x_size > h.image_width ||
         static_cast<std::int64_t>(y_off) + y_size > h.image_length) {
-        return err("requested window out of bounds");
+        return errf("the window extends past the image, which is %u rows by "
+                    "%u columns", h.image_length, h.image_width);
     }
     return {};
 }

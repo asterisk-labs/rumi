@@ -41,6 +41,16 @@ std::unexpected<std::string> errf(const char* fmt, ...)
     return std::unexpected(std::move(out));
 }
 
+std::string ordinal(std::uint64_t n)
+{
+    const std::uint64_t tens = n % 100;
+    const char* suffix = tens >= 11 && tens <= 13 ? "th"
+                       : n % 10 == 1 ? "st"
+                       : n % 10 == 2 ? "nd"
+                       : n % 10 == 3 ? "rd" : "th";
+    return std::to_string(n) + suffix;
+}
+
 std::unexpected<Error> failf(rumi_status status, const char* fmt, ...)
 {
     std::va_list ap;

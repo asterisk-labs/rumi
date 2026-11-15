@@ -384,9 +384,11 @@ RUMI_API rumi_status rumi_gpu_current_device(int device_type, int* out);
 // parallel read.
 
 // Read a zero-based (offset, size) window. times and bands are 1-based indices
-// in output order; (NULL, 0) selects all in file order. NULL pattern uses the
-// default Image or Cube layout. dst_size must cover every decoded sample using
-// the registry's storage_bytes. Reads use the process-wide thread pool.
+// in output order; (NULL, 0) selects all in file order, and an array must name
+// at least one. NULL pattern uses the default Image or Cube layout. Selection,
+// window and layout are checked before decoding. dst_size must cover every
+// decoded sample using the registry's storage_bytes; rumi_read_layout reports
+// it. Reads use the process-wide thread pool.
 RUMI_API rumi_status
 rumi_read(rumi_source*     src,
           const rumi_spec* spec,
@@ -506,6 +508,25 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
                       int y_size, int x_size,
                       const char* pattern,
                       DLManagedTensorVersioned** out);
+
+// Check a read request without fetching data. Return its output layout and,
+// if out_bytes is non-NULL, the required destination size.
+RUMI_API rumi_status
+rumi_read_layout(const rumi_spec* spec,
+                 const int*       times, size_t n_times,
+                 const int*       bands, size_t n_bands,
+                 int              y_off, int y_size,
+                 int              x_off, int x_size,
+                 const char*      pattern,
+                 rumi_layout*     out, size_t* out_bytes);
+
+RUMI_API rumi_status
+rumi_read_many_layout(const rumi_read_item* items, size_t n_items,
+                      const int* times, size_t n_times,
+                      const int* bands, size_t n_bands,
+                      int y_size, int x_size,
+                      const char* pattern,
+                      rumi_layout* out, size_t* out_bytes);
 
 // Release a versioned tensor returned by rumi. Safe to call with NULL.
 RUMI_API void rumi_dlpack_free(DLManagedTensorVersioned* t);
