@@ -4,20 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="GeoTIFF and Rumi storage contracts, then Rumi's CPU and GPU read paths.">
+  <meta name="description" content="The Rumi file layout, its external header, and how a read becomes a tensor on the CPU and on a GPU.">
   <title>Rumi · format and read path</title>
   <link rel="icon" href="../img/rumi-logo.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=League+Spartan:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <script defer src="app.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=League+Spartan:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20261115x">
+  <script defer src="app.js?v=20261115r"></script>
 </head>
 <body>
   <div class="progress" id="progress"></div>
   <a class="site-back" href="../" aria-label="Back to the Rumi website">←</a>
 
-  <main class="deck" id="deck" aria-label="GeoTIFF, Rumi, and the read path">
+  <main class="deck" id="deck" aria-label="Rumi format and read path">
     <section class="slide cover active" aria-label="Rumi cover">
       <img class="cover-asterisk" src="../img/asterisk_banner.svg" alt="Asterisk Labs">
       <div class="cover-inner">
@@ -30,45 +30,667 @@
     </section>
 
     <section class="slide intro" aria-label="GeoTIFF and Rumi file layouts">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 07</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 12</span></header>
       <h1>GeoTIFF permits many layouts</h1>
       <figure><img src="../img/problem-rumi-geotiff-flavours.svg?v=20261114" alt="A diagram of GeoTIFF's valid tile, interleave and compression arrangements."></figure>
     </section>
 
     <section class="slide intro" aria-label="Rumi file profile">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 07</span></header>
-      <h1>Rumi permits one container profile</h1>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 12</span></header>
+      <h1>Rumi permits only one container profile</h1>
       <figure><img src="../img/approach-rumi-one-layout.svg?v=20261114" alt="One fixed Rumi container profile. Ten frame units choose tile or cell sample layout without changing the file structure."></figure>
     </section>
 
-    <section class="slide intro" aria-label="Rumi write outputs">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 07</span></header>
-      <h1>rumi.write() → file + external header</h1>
-      <figure><img src="fig/write.svg?v=20261114c" alt="The call path, header equals rumi.write with compressed frames. It writes one scene.rumi file containing a file header, IFD, frames and trailer. Separately it returns external header bytes with 32 fixed bytes and packed frame counts, which can be stored in a Parquet column."></figure>
+    <section class="slide" aria-label="What a write returns">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 12</span></header>
+      <h1>Stateless reads start at write time</h1>
+      <figure class="write-fig">
+        <svg viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header.">
+          <defs>
+            <marker id="write-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
+          </defs>
+          <g fill="#fff" stroke="#777" stroke-width="2">
+            <rect x="30" y="55" width="150" height="70" rx="8"/>
+            <rect x="375" y="18" width="250" height="60" rx="8"/>
+            <rect x="375" y="102" width="250" height="60" rx="8"/>
+          </g>
+          <g fill="none" stroke="#777" stroke-width="2" marker-end="url(#write-arrow)">
+            <path d="M180 90 H255"/>
+            <path d="M274 88 C320 88, 320 48, 370 48"/>
+            <path d="M274 92 C320 92, 320 132, 370 132"/>
+          </g>
+          <circle cx="270" cy="90" r="4" fill="#777"/>
+          <text class="label" x="105" y="82">Array</text>
+          <text class="small" x="105" y="108">(B, Y, X)</text>
+          <text class="label" x="500" y="48">rumi file</text>
+          <text class="label" x="500" y="132">external header</text>
+        </svg>
+        <figcaption>A write produces the file and a small header that locates every frame in it.</figcaption>
+        <div class="trips">
+          <div class="trip-who">From the file alone</div>
+          <div class="trip"><span class="req">GET the IFD</span><span class="wait"></span><span class="req">GET the frames</span></div>
+          <div class="trip-n">2 requests</div>
+          <div class="trip-who">With the external header</div>
+          <div class="trip"><span class="calc">offsets in memory</span><span class="req hot">GET the frames</span></div>
+          <div class="trip-n hot">1 request</div>
+        </div>
+      </figure>
     </section>
 
-    <section class="slide intro" aria-label="Stateless reads with a Parquet catalog">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 07</span></header>
-      <h1>A loader caches Parquet, then reads S3</h1>
-      <figure><img src="../img/approach-rumi-stateless.svg?v=20261114" alt="A data loader caches a Parquet catalog with URI and EXTERNAL HEADER columns. One row selects a Rumi object among several in Amazon S3. The window, band and time choose frame k; a prefix sum over header sizes gives its offset for a range GET."></figure>
+    <section class="slide" aria-label="The file">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 12</span></header>
+      <h1>Predictable first, unpredictable last</h1>
+      <svg class="mini" viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header. The file is highlighted.">
+        <defs>
+          <marker id="mini-grey-5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
+          <marker id="mini-violet-5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#492ae8"/></marker>
+        </defs>
+        <rect class="box" x="30" y="55" width="150" height="70" rx="8"/>
+        <text class="label" x="105" y="90">Array</text>
+        <path class="line" d="M180 90 H255" marker-end="url(#mini-grey-5)"/>
+        <circle cx="270" cy="90" r="4" fill="#777"/>
+        <path class="line on" d="M274 88 C320 88, 320 48, 370 48" marker-end="url(#mini-violet-5)"/>
+        <path class="line off" d="M274 92 C320 92, 320 132, 370 132" marker-end="url(#mini-grey-5)"/>
+        <g class="on"><rect x="375" y="18" width="250" height="60" rx="8"/><text class="label" x="500" y="48">rumi file</text></g>
+        <g class="off"><rect x="375" y="102" width="250" height="60" rx="8"/><text class="label" x="500" y="132">external header</text></g>
+      </svg>
+      <div class="map-slide sf" data-sf="file">
+        <div class="wm-view">
+          <div class="fm-bar wm-bar sf-bar">
+            <button type="button" class="fm-part fm-header tint t-violet" data-info="header"><span class="fm-label">header</span><span class="fm-sub">16 B</span></button>
+            <button type="button" class="fm-part fm-ifd tint t-violet" data-info="ifd"><span class="fm-label">IFD</span><span class="fm-sub">276 B</span></button>
+            <button type="button" class="fm-part fm-values tint t-violet" data-info="values"><span class="fm-label">IFD values</span><span class="fm-sub">208 B</span></button>
+            <button type="button" class="fm-part sf-frame tint t-yellow" data-info="f0" style="flex-grow:1.15"><span class="fm-label">frame 0</span><span class="fm-sub">? B</span></button>
+            <button type="button" class="fm-part sf-frame tint t-yellow" data-info="f1" style="flex-grow:.9"><span class="fm-label">frame 1</span><span class="fm-sub">? B</span></button>
+            <button type="button" class="fm-part sf-frame tint t-yellow" data-info="f2" style="flex-grow:1.05"><span class="fm-label">frame 2</span><span class="fm-sub">? B</span></button>
+            <button type="button" class="fm-part sf-frame tint t-yellow" data-info="f3" style="flex-grow:.85"><span class="fm-label">frame 3</span><span class="fm-sub">? B</span></button>
+            <button type="button" class="fm-part fm-trailer tint t-yellow" data-info="trailer"><span class="fm-label">trailer</span><span class="fm-sub">? B</span></button>
+          </div>
+          <div class="wm-known"><span class="wm-before">known from the tensor, 500 B</span><span class="wm-after">known only after compressing</span></div>
+        </div>
+        <div class="fm-info" aria-live="polite"></div>
+      </div>
     </section>
 
-    <section class="slide" aria-label="Roles of Rumi, Karu and OpenZL">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 07</span></header>
-      <h1>Rumi → Karu → OpenZL → Rumi</h1>
-      <figure><img src="fig/libraries.svg?v=20261114f" alt="Rumi plans a read from the header and selection. Karu returns compressed frame bytes. OpenZL with GeoZL nodes returns decompressed bytes. The flow returns to Rumi, which crops and places the selected samples in the result tensor."></figure>
+    <section class="slide" aria-label="The external header fields">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 12</span></header>
+      <h1>The external header locates every frame</h1>
+      <svg class="mini" viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header. The external header is highlighted.">
+        <defs>
+          <marker id="mini-grey-6" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
+          <marker id="mini-violet-6" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#492ae8"/></marker>
+        </defs>
+        <rect class="box" x="30" y="55" width="150" height="70" rx="8"/>
+        <text class="label" x="105" y="90">Array</text>
+        <path class="line" d="M180 90 H255" marker-end="url(#mini-grey-6)"/>
+        <circle cx="270" cy="90" r="4" fill="#777"/>
+        <path class="line on" d="M274 92 C320 92, 320 132, 370 132" marker-end="url(#mini-violet-6)"/>
+        <path class="line off" d="M274 88 C320 88, 320 48, 370 48" marker-end="url(#mini-grey-6)"/>
+        <g class="off"><rect x="375" y="18" width="250" height="60" rx="8"/><text class="label" x="500" y="48">rumi file</text></g>
+        <g class="on"><rect x="375" y="102" width="250" height="60" rx="8"/><text class="label" x="500" y="132">external header</text></g>
+      </svg>
+      <div class="map-slide sf wm-view" data-sf="header">
+        <div class="hl-line">
+          <p class="hm-caption">fixed part, 32 bytes</p>
+          <p class="hm-caption">frame sizes, 26 bytes, 13 bits per frame</p>
+          <div class="hl-cells">
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="magic" aria-label="magic"><span class="im-name">magic</span><span class="im-tag">4 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="version" aria-label="version"><span class="im-name">version</span><span class="im-tag">2 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="image_width" aria-label="image_width"><span class="im-name">image_width</span><span class="im-tag">4 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="image_length" aria-label="image_length"><span class="im-name">image_length</span><span class="im-tag">4 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="time_count" aria-label="time_count"><span class="im-name">time_count</span><span class="im-tag">4 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="tile_width" aria-label="tile_width"><span class="im-name">tile_width</span><span class="im-tag">2 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="tile_length" aria-label="tile_length"><span class="im-name">tile_length</span><span class="im-tag">2 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="samples_per_pixel" aria-label="samples_per_pixel"><span class="im-name">samples_per_pixel</span><span class="im-tag">2 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="bits_per_sample" aria-label="bits_per_sample"><span class="im-name">bits_per_sample</span><span class="im-tag">1 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="sample_format" aria-label="sample_format"><span class="im-name">sample_format</span><span class="im-tag">1 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-violet" data-info="frame_unit" aria-label="frame_unit"><span class="im-name">frame_unit</span><span class="im-tag">1 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-yellow" data-info="count_min" aria-label="count_min"><span class="im-name">count_min</span><span class="im-tag">4 B</span></button>
+            <button type="button" class="im-cell hl-field tint t-yellow" data-info="count_bits" aria-label="count_bits"><span class="im-name">count_bits</span><span class="im-tag">1 B</span></button>
+          </div>
+          <div class="hx-sizes">
+            <div class="hx-bars">
+              <button type="button" class="hx-bar" data-info="f0" aria-label="Size of frame 0, band B2 at row 0, column 0" style="--h:17px"><span class="hx-diff">+1,784</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f1" aria-label="Size of frame 1, band B3 at row 0, column 0" style="--h:26px"><span class="hx-diff">+2,707</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f2" aria-label="Size of frame 2, band B4 at row 0, column 0" style="--h:36px"><span class="hx-diff">+3,755</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f3" aria-label="Size of frame 3, band B8 at row 0, column 0" style="--h:63px"><span class="hx-diff">+6,540</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f4" aria-label="Size of frame 4, band B2 at row 0, column 1" style="--h:8px"><span class="hx-diff">+870</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f5" aria-label="Size of frame 5, band B3 at row 0, column 1" style="--h:19px"><span class="hx-diff">+1,924</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f6" aria-label="Size of frame 6, band B4 at row 0, column 1" style="--h:29px"><span class="hx-diff">+3,033</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f7" aria-label="Size of frame 7, band B8 at row 0, column 1" style="--h:53px"><span class="hx-diff">+5,505</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f8" aria-label="Size of frame 8, band B2 at row 1, column 0" style="--h:2px"><span class="hx-diff">+0</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f9" aria-label="Size of frame 9, band B3 at row 1, column 0" style="--h:12px"><span class="hx-diff">+1,197</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f10" aria-label="Size of frame 10, band B4 at row 1, column 0" style="--h:26px"><span class="hx-diff">+2,665</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f11" aria-label="Size of frame 11, band B8 at row 1, column 0" style="--h:64px"><span class="hx-diff">+6,645</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f12" aria-label="Size of frame 12, band B2 at row 1, column 1" style="--h:4px"><span class="hx-diff">+444</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f13" aria-label="Size of frame 13, band B3 at row 1, column 1" style="--h:15px"><span class="hx-diff">+1,544</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f14" aria-label="Size of frame 14, band B4 at row 1, column 1" style="--h:28px"><span class="hx-diff">+2,955</span><span class="hx-fill"></span></button>
+              <button type="button" class="hx-bar" data-info="f15" aria-label="Size of frame 15, band B8 at row 1, column 1" style="--h:53px"><span class="hx-diff">+5,509</span><span class="hx-fill"></span></button>
+            </div>
+            <p class="hx-base">+ 92,375 B in every frame, stored once as count_min</p>
+          </div>
+          <div class="wm-known"><span class="wm-before">known from the tensor, 27 B</span><span class="wm-after">known only after compressing, 31 B</span></div>
+        </div>
+        <div class="fm-info" aria-live="polite"></div>
+      </div>
     </section>
 
-    <section class="slide" aria-label="CPU and GPU decode paths">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 07</span></header>
-      <h1>CPU vs GPU decode · one tensor</h1>
-      <figure><img src="fig/modes.svg?v=20261114e" alt="Four selected Sentinel-2 frames enter RAM. CPU decode expands them before decoded samples cross PCIe; eligible GPU decode sends compressed bytes across PCIe and expands them there. Both paths return the same CUDA tensor through DLPack. GPU decode in auto mode needs single-chunk PFOR or PivCo frames with one- or two-byte samples."></figure>
+    <section class="slide index-compare" aria-label="External header size and frame offsets">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 12</span></header>
+      <h1>The external header stores sizes, not offsets</h1>
+      <div class="fig wm-view">
+        <p class="hm-caption">index metadata for the same 100 frames, frame payloads excluded</p>
+        <div class="bars">
+          <div class="who">GeoTIFF<span>BigTIFF, by GDAL</span></div>
+          <div class="bar">
+            <span class="tint t-violet" style="width:5px"></span>
+            <span class="tint t-violet" style="width:128px">IFD 376</span>
+            <span class="tint t-orange" style="width:272px">offsets 800</span>
+            <span class="tint t-yellow" style="width:136px">sizes 400</span>
+            <span class="tint t-violet" style="width:56px">geo 166</span>
+          </div>
+          <div class="total">1,758 B</div>
+
+          <div class="who">Rumi<span>internal header</span></div>
+          <div class="bar">
+            <span class="tint t-violet" style="width:5px"></span>
+            <span class="tint t-violet" style="width:94px">IFD 276</span>
+            <span class="tint t-orange" style="width:272px">offsets 800</span>
+            <span class="tint t-yellow" style="width:136px">sizes 400</span>
+            <span class="tint t-violet" style="width:54px">geo 160</span>
+          </div>
+          <div class="total">1,652 B</div>
+
+          <div class="who rumi">Rumi<span>external header</span></div>
+          <div class="bar">
+            <span class="tint t-violet" style="width:11px"></span>
+            <span class="tint t-yellow" style="width:68px">sizes 200</span>
+            <span class="aside">32 fixed bytes, then every frame size</span>
+          </div>
+          <div class="total rumi">232 B</div>
+        </div>
+        <p class="index-saving">The 232 B external header is <strong>7.6× smaller</strong> than the GeoTIFF index and <strong>7.1× smaller</strong> than Rumi's in-file header.</p>
+      </div>
+    </section>
+
+    <section class="slide" aria-label="A read on the CPU">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">08 / 12</span></header>
+      <h1>On the CPU, frames decode in RAM</h1>
+      <div class="fig path-fig">
+        <pre class="code"><code>rumi.<span class="tok-fn">read</span>(path, header, framework=<span class="tok-str">"torch"</span>)</code></pre>
+        <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read from the header alone. Karu fetches the 4 byte ranges, 206 kB, in one batch on its I/O threads. Each Rumi worker decodes a frame with OpenZL and the GeoZL codecs, following the graph stored in the frame. Rumi places the 524 kB of crops in one buffer, and PyTorch takes it through DLPack without a copy." data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,167,-1],[515,167,2],[590,167,-1],[590,51,-1],[665,51,3],[727,51,-1],[727,225,-1],[790,225,4]]">
+          <rect class="pt-band" x="150" y="0" width="714" height="254"/>
+          <text class="pt-region" x="856" y="14">HOST</text>
+          <line class="pt-lane-rule" x1="0" y1="80" x2="864" y2="80"/>
+          <line class="pt-lane-rule" x1="0" y1="138" x2="864" y2="138"/>
+          <line class="pt-lane-rule" x1="0" y1="196" x2="864" y2="196"/>
+          <g class="pt-lane" data-lane="0"><text class="pt-lane-name" x="0" y="48">Rumi</text><text class="pt-lane-sub" x="0" y="64">plans and places</text></g>
+          <g class="pt-lane" data-lane="1"><text class="pt-lane-name" x="0" y="106">Karu</text><text class="pt-lane-sub" x="0" y="122">fetches the bytes</text></g>
+          <g class="pt-lane" data-lane="2"><text class="pt-lane-name" x="0" y="164">OpenZL + GeoZL</text><text class="pt-lane-sub" x="0" y="180">decode the frames</text></g>
+          <g class="pt-lane" data-lane="3"><text class="pt-lane-name" x="0" y="222">PyTorch</text><text class="pt-lane-sub" x="0" y="238">gets the tensor</text></g>
+          <polyline class="pt-line" points="215,51 290,51 290,109 365,109 440,109 440,167 515,167 590,167 590,51 665,51 727,51 727,225 790,225"/>
+          <polyline class="pt-trail" points="215,51 290,51 290,109 365,109 440,109 440,167 515,167 590,167 590,51 665,51 727,51 727,225 790,225"/>
+          <text class="pt-size" data-after="1" x="434" y="146" text-anchor="end">206 kB</text>
+          <text class="pt-size" data-after="2" x="596" y="142" text-anchor="start">524 kB</text>
+          <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="215" cy="51" r="6"/><text class="pt-title" x="215" y="39">plan the read</text><text class="pt-detail" x="215" y="72">header only, no bytes</text></g>
+          <g class="pt-station" data-lane="1"><circle class="pt-stop" cx="365" cy="109" r="6"/><text class="pt-title" x="365" y="97">fetch 4 ranges</text><text class="pt-detail" x="365" y="130">one batch, I/O threads</text></g>
+          <g class="pt-station" data-lane="2" data-grow data-hold="900"><circle class="pt-stop" cx="515" cy="167" r="6"/><text class="pt-title" x="515" y="155">decode each frame</text><text class="pt-detail" x="515" y="188">by the graph in the frame</text></g>
+          <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="665" cy="51" r="6"/><text class="pt-title" x="665" y="39">place the crops</text><text class="pt-detail" x="665" y="72">into one buffer</text></g>
+          <g class="pt-station" data-lane="3"><circle class="pt-stop" cx="790" cy="225" r="6"/><text class="pt-title" x="790" y="213">torch.Tensor</text><text class="pt-detail" x="790" y="246">DLPack, no copy</text></g>
+          <g class="pt-packet"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
+        </svg>
+        <p class="path-note">One 256 by 256 tile of Lake Annecy, 4 bands in 4 frames. A local file skips Karu, each worker reads its own range.</p>
+      </div>
+    </section>
+
+    <section class="slide" aria-label="Reading on a GPU">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">09 / 12</span></header>
+      <h1>On a GPU, only compressed bytes cross PCIe</h1>
+      <div class="fig path-fig">
+        <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read and allocates the output on cuda:0. Karu fetches every range into pinned host memory. Rumi sends the 206 kB of compressed frames across PCIe in groups that fit the decoder memory. GeoZL decodes them on the GPU and writes each crop into the 524 kB tensor, which PyTorch takes through DLPack once its stream has waited for the read." data-speed="2" data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,51,-1],[515,51,2],[590,51,-1],[590,167,-1],[665,167,3],[732,167,-1],[732,225,-1],[800,225,4]]">
+          <rect class="pt-band" x="150" y="0" width="440" height="254"/>
+          <text class="pt-region" x="582" y="14">HOST</text>
+          <rect class="pt-band is-gpu" x="590" y="0" width="274" height="254"/>
+          <text class="pt-region" x="856" y="14">GPU</text>
+          <line class="pt-rule" x1="590" y1="0" x2="590" y2="254"/>
+          <line class="pt-lane-rule" x1="0" y1="80" x2="864" y2="80"/>
+          <line class="pt-lane-rule" x1="0" y1="138" x2="864" y2="138"/>
+          <line class="pt-lane-rule" x1="0" y1="196" x2="864" y2="196"/>
+          <g class="pt-lane" data-lane="0"><text class="pt-lane-name" x="0" y="48">Rumi</text><text class="pt-lane-sub" x="0" y="64">plans and moves</text></g>
+          <g class="pt-lane" data-lane="1"><text class="pt-lane-name" x="0" y="106">Karu</text><text class="pt-lane-sub" x="0" y="122">fetches the bytes</text></g>
+          <g class="pt-lane" data-lane="2"><text class="pt-lane-name" x="0" y="164">GeoZL</text><text class="pt-lane-sub" x="0" y="180">decodes on the GPU</text></g>
+          <g class="pt-lane" data-lane="3"><text class="pt-lane-name" x="0" y="222">PyTorch</text><text class="pt-lane-sub" x="0" y="238">gets the tensor</text></g>
+          <polyline class="pt-line" points="215,51 290,51 290,109 365,109 440,109 440,51 515,51 590,51 590,167 665,167 732,167 732,225 800,225"/>
+          <polyline class="pt-trail" points="215,51 290,51 290,109 365,109 440,109 440,51 515,51 590,51 590,167 665,167 732,167 732,225 800,225"/>
+          <text class="pt-size is-key" data-after="1" x="446" y="96" text-anchor="start">206 kB</text>
+          <text class="pt-size" data-after="3" x="726" y="206" text-anchor="end">524 kB</text>
+          <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="215" cy="51" r="6"/><text class="pt-title" x="215" y="39">plan the read</text><text class="pt-detail" x="215" y="72">output on cuda:0</text></g>
+          <g class="pt-station" data-lane="1"><circle class="pt-stop" cx="365" cy="109" r="6"/><text class="pt-title" x="365" y="97">fetch every range</text><text class="pt-detail" x="365" y="130">into pinned memory</text></g>
+          <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="515" cy="51" r="6"/><text class="pt-title" x="515" y="39">send to the GPU</text><text class="pt-detail" x="515" y="72">in groups, across PCIe</text></g>
+          <g class="pt-station" data-lane="2" data-grow data-hold="220"><circle class="pt-stop" cx="665" cy="167" r="6"/><text class="pt-title" x="665" y="155">decode on the GPU</text><text class="pt-detail" x="665" y="188">crops written in place</text></g>
+          <g class="pt-station" data-lane="3"><circle class="pt-stop" cx="800" cy="225" r="6"/><text class="pt-title" x="800" y="213">torch.Tensor</text><text class="pt-detail" x="800" y="246">stream waits, DLPack</text></g>
+          <g class="pt-packet"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
+        </svg>
+        <p class="path-note">The same tile. A frame the GPU cannot decode is decoded on the CPU and copied.</p>
+      </div>
+    </section>
+
+    <section class="slide" aria-label="Sentinel-2 benchmark">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">10 / 12</span></header>
+      <h1>A Sentinel-2 scene reaches the GPU in 61 ms</h1>
+      <div class="fig race">
+        <p class="race-setup">One CPU thread and an NVIDIA A100. Red, green and blue of one Sentinel-2 tile, 723 MB, already in memory.</p>
+        <div class="race-chart">
+          <div class="race-head"><span>time to a tensor on the GPU</span><span class="race-now">0.00 s</span><span>file size</span></div>
+          <div class="race-lane" data-time="50.123"><b>JPEG2000</b><div class="race-track"><span class="race-fill"></span></div><span class="race-time">50.1 s</span><span class="race-size">350 MiB</span></div>
+          <div class="race-lane" data-time="1.601"><b>GeoTIFF, ZSTD</b><div class="race-track"><span class="race-fill"></span></div><span class="race-time">1.60 s</span><span class="race-size">441 MiB</span></div>
+          <div class="race-lane is-rumi" data-time="0.061"><b>Rumi, PFOR</b><div class="race-track"><span class="race-fill"></span></div><span class="race-time">61 ms</span><span class="race-size">386 MiB</span></div>
+          <div class="race-lane is-rumi" data-time="0.128"><b>Rumi, PivCo</b><div class="race-track"><span class="race-fill"></span></div><span class="race-time">128 ms</span><span class="race-size">377 MiB</span></div>
+          <div class="race-scale"><span style="left:0%">0 s</span><span style="left:50%">1 s</span><span style="left:100%">2 s</span></div>
+        </div>
+        <p class="race-claim">Rumi with PFOR is <strong>26×</strong> faster than GeoTIFF and <strong>828×</strong> faster than JPEG2000, from a file only 10 % larger than the JPEG2000.</p>
+        <p class="race-links">
+          <a href="https://colab.research.google.com/github/asterisk-labs/geozl/blob/main/docs/notebooks/sentinel2-cuda-benchmark.ipynb" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#E8710A" d="M4.54,9.46,2.19,7.1a6.93,6.93,0,0,0,0,9.79l2.36-2.36A3.59,3.59,0,0,1,4.54,9.46Z"/><path fill="#F9AB00" d="M2.19,7.1,4.54,9.46a3.59,3.59,0,0,1,5.08,0l1.71-2.93h0l-.1-.08h0A6.93,6.93,0,0,0,2.19,7.1Z"/><path fill="#F9AB00" d="M11.34,17.46h0L9.62,14.54a3.59,3.59,0,0,1-5.08,0L2.19,16.9a6.93,6.93,0,0,0,9,.65l.11-.09"/><path fill="#F9AB00" d="M12,7.1a6.93,6.93,0,0,0,0,9.79l2.36-2.36a3.59,3.59,0,1,1,5.08-5.08L21.81,7.1A6.93,6.93,0,0,0,12,7.1Z"/><path fill="#E8710A" d="M21.81,7.1,19.46,9.46a3.59,3.59,0,0,1-5.08,5.08L12,16.9A6.93,6.93,0,0,0,21.81,7.1Z"/></svg>Open in Colab</a>
+          <a href="https://asterisk.coop/geozl/notebooks/sentinel2-cuda-benchmark.html" target="_blank" rel="noopener noreferrer">Read the notebook</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="slide" aria-label="Training with DDP">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">11 / 12</span></header>
+      <h1>In DDP, each GPU decodes its own batches</h1>
+      <div class="fig dl-fig" data-rows="44,84,124,164,204" data-decode="3">
+        <pre class="code dl-code"><code><span class="tok-kw">def</span> <span class="tok-fn">__getitems__</span>(self, indices):
+    <span class="tok-kw">return</span> rumi.<span class="tok-fn">read_many</span>(sources, headers, windows=windows, framework=<span class="tok-str">"torch"</span>, device=<span class="tok-str">f"cuda:{rank}"</span>)</code></pre>
+        <svg viewBox="0 0 864 256" role="img" aria-label="Four DDP ranks, one per GPU. In each rank PyTorch picks the indices with a DistributedSampler, the Dataset calls rumi.read_many in __getitems__, Karu fetches the bytes and GeoZL decodes them on that rank's GPU. PyTorch runs the forward and backward pass, and the gradients go around the four GPUs and come back averaged.">
+          <rect class="pt-band is-gpu" x="0" y="144" width="864" height="112"/>
+          <line class="pt-rule" x1="0" y1="144" x2="864" y2="144"/>
+          <text class="pt-region" x="864" y="36">HOST</text>
+          <text class="pt-region" x="864" y="158">GPU</text>
+          <text class="dl-col" x="327" y="14">rank 0, cuda:0</text>
+          <text class="dl-col" x="480" y="14">rank 1, cuda:1</text>
+          <text class="dl-col" x="634" y="14">rank 2, cuda:2</text>
+          <text class="dl-col" x="787" y="14">rank 3, cuda:3</text>
+          <text class="dl-name" x="0" y="41">PyTorch DataLoader</text><text class="dl-what" x="0" y="57">DistributedSampler splits the indices</text>
+          <text class="dl-name" x="0" y="81">Rumi</text><text class="dl-what" x="0" y="97">__getitems__ calls read_many</text>
+          <text class="dl-name" x="0" y="121">Karu</text><text class="dl-what" x="0" y="137">fetches the byte ranges</text>
+          <text class="dl-name" x="0" y="161">GeoZL</text><text class="dl-what" x="0" y="177">decodes on the rank's own GPU</text>
+          <text class="dl-name" x="0" y="201">PyTorch DDP</text><text class="dl-what" x="0" y="217">forward, backward, gradients averaged</text>
+          <path class="dl-ring" data-from="0" d="M327,204 Q403,238 480,204"/>
+          <path class="dl-ring" data-from="1" d="M480,204 Q557,238 634,204"/>
+          <path class="dl-ring" data-from="2" d="M634,204 Q710,238 787,204"/>
+          <path class="dl-ring" data-from="3" d="M787,204 C833,254 281,254 327,204"/>
+          <line class="pt-line" x1="327" y1="44" x2="327" y2="204"/>
+          <circle class="pt-stop" cx="327" cy="44" r="5.5"/>
+          <circle class="pt-stop" cx="327" cy="84" r="5.5"/>
+          <circle class="pt-stop" cx="327" cy="124" r="5.5"/>
+          <rect class="dl-chip" x="318" y="155" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="318" y="195" width="18" height="18" rx="4"/>
+          <line class="pt-line" x1="480" y1="44" x2="480" y2="204"/>
+          <circle class="pt-stop" cx="480" cy="44" r="5.5"/>
+          <circle class="pt-stop" cx="480" cy="84" r="5.5"/>
+          <circle class="pt-stop" cx="480" cy="124" r="5.5"/>
+          <rect class="dl-chip" x="471" y="155" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="471" y="195" width="18" height="18" rx="4"/>
+          <line class="pt-line" x1="634" y1="44" x2="634" y2="204"/>
+          <circle class="pt-stop" cx="634" cy="44" r="5.5"/>
+          <circle class="pt-stop" cx="634" cy="84" r="5.5"/>
+          <circle class="pt-stop" cx="634" cy="124" r="5.5"/>
+          <rect class="dl-chip" x="625" y="155" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="625" y="195" width="18" height="18" rx="4"/>
+          <line class="pt-line" x1="787" y1="44" x2="787" y2="204"/>
+          <circle class="pt-stop" cx="787" cy="44" r="5.5"/>
+          <circle class="pt-stop" cx="787" cy="84" r="5.5"/>
+          <circle class="pt-stop" cx="787" cy="124" r="5.5"/>
+          <rect class="dl-chip" x="778" y="155" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="778" y="195" width="18" height="18" rx="4"/>
+          <g class="pt-packet dl-packet" data-x="327"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
+          <g class="pt-packet dl-packet" data-x="480"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
+          <g class="pt-packet dl-packet" data-x="634"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
+          <g class="pt-packet dl-packet" data-x="787"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
+          <g class="dl-grad" data-from="0"><circle class="dl-grad-glow" r="9"/><circle class="dl-grad-dot" r="5"/></g>
+          <g class="dl-grad" data-from="1"><circle class="dl-grad-glow" r="9"/><circle class="dl-grad-dot" r="5"/></g>
+          <g class="dl-grad" data-from="2"><circle class="dl-grad-glow" r="9"/><circle class="dl-grad-dot" r="5"/></g>
+          <g class="dl-grad" data-from="3"><circle class="dl-grad-glow" r="9"/><circle class="dl-grad-dot" r="5"/></g>
+        </svg>
+      </div>
+    </section>
+
+    <section class="slide cover closing" aria-label="Thank you">
+      <img class="cover-asterisk" src="../img/asterisk_banner.svg" alt="Asterisk Labs">
+      <div class="cover-inner">
+        <img class="cover-logo" src="../img/rumi-logo.svg" alt="">
+        <div class="cover-copy">
+          <h1>Thank you</h1>
+          <button type="button" class="end-install" data-copy="pip install rumi-eo" aria-label="Copy the install command">pip install rumi-eo</button>
+          <p class="end-links">
+            <a href="https://asterisk.coop/rumi/" target="_blank" rel="noopener noreferrer">asterisk.coop/rumi</a>
+            <a href="https://github.com/asterisk-labs/rumi" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"></path></svg>GitHub</a>
+            <a href="https://colab.research.google.com/github/asterisk-labs/geozl/blob/main/docs/notebooks/sentinel2-cuda-benchmark.ipynb" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#E8710A" d="M4.54,9.46,2.19,7.1a6.93,6.93,0,0,0,0,9.79l2.36-2.36A3.59,3.59,0,0,1,4.54,9.46Z"/><path fill="#F9AB00" d="M2.19,7.1,4.54,9.46a3.59,3.59,0,0,1,5.08,0l1.71-2.93h0l-.1-.08h0A6.93,6.93,0,0,0,2.19,7.1Z"/><path fill="#F9AB00" d="M11.34,17.46h0L9.62,14.54a3.59,3.59,0,0,1-5.08,0L2.19,16.9a6.93,6.93,0,0,0,9,.65l.11-.09"/><path fill="#F9AB00" d="M12,7.1a6.93,6.93,0,0,0,0,9.79l2.36-2.36a3.59,3.59,0,1,1,5.08-5.08L21.81,7.1A6.93,6.93,0,0,0,12,7.1Z"/><path fill="#E8710A" d="M21.81,7.1,19.46,9.46a3.59,3.59,0,0,1-5.08,5.08L12,16.9A6.93,6.93,0,0,0,21.81,7.1Z"/></svg>Open in Colab</a>
+          </p>
+        </div>
+      </div>
     </section>
 
   </main>
 
   <script>
     if (new URLSearchParams(window.location.search).has('embed')) document.documentElement.classList.add('is-embedded');
+  </script>
+  <script>
+    // The small file of slide 5 and its external header on slide 6. Pointing at a block says what it holds and where it sits.
+    (function () {
+      var FRAME = 'The 4 bands of one 256 by 256 cell, 524,288 bytes of uint16 before compression. Its size is known only once GeoZL has compressed it.';
+      var INFO = {
+        file: {
+          hint: ['A (4, 512, 512) uint16 image in 4 frames', null, 'One frame per 256 by 256 cell, with the 4 bands inside it. Point at a block.'],
+          header: ['File header', 'bytes 0 to 16, 16 bytes', 'The magic RUMI, the format version, two reserved zero bytes and the offset of the IFD, which is always 16. Every Rumi file starts with these 16 bytes.'],
+          ifd: ['IFD', 'bytes 16 to 292, 276 bytes', 'An 8 byte count that is always 13, then 13 entries of 20 bytes in a fixed order, then 8 zero bytes. The same 276 bytes in every file.'],
+          values: ['IFD values', 'bytes 292 to 500, 208 bytes', 'The values too long for their entry. The offsets of the 4 frames take 32 bytes, their sizes 16, the transform 128 and the CRS 32. The shape and the pattern give the number of frames, so this size is known before compressing.'],
+          f0: ['Frame 0, the cell at row 0, column 0', 'starts at byte 500', FRAME],
+          f1: ['Frame 1, the cell at row 0, column 1', 'starts where frame 0 ends', FRAME],
+          f2: ['Frame 2, the cell at row 1, column 0', 'starts where frame 1 ends', FRAME],
+          f3: ['Frame 3, the cell at row 1, column 1', 'starts where frame 2 ends', FRAME],
+          trailer: ['Trailer', 'starts where frame 3 ends', 'Band names and dates, of any length. A reader never needs it to find a frame, so it goes last, where its size moves nothing.']
+        },
+        header: {
+          hint: ["The external header of s2-00-tile, 58 bytes", null, "The same (4, 512, 512) image, stored one band per frame, so 16 frames. Point at a field or a bar."],
+          magic: ["magic = LOVE", "4 B, uint32, bytes 0 to 4", "What the record is, the bytes 4C 4F 56 45. A reader rejects any other value."],
+          version: ["version = 1", "2 B, uint16, bytes 4 to 6", "The version of the header format."],
+          image_width: ["image_width = 512", "4 B, uint32, bytes 6 to 10", "The image width in pixels, as in ImageWidth."],
+          image_length: ["image_length = 512", "4 B, uint32, bytes 10 to 14", "The image height in pixels, as in ImageLength."],
+          time_count: ["time_count = 1", "4 B, uint32, bytes 14 to 18", "The number of time steps, as in TimeCount. One time step makes it an Image."],
+          tile_width: ["tile_width = 256", "2 B, uint16, bytes 18 to 20", "The tile width in pixels, as in TileWidth."],
+          tile_length: ["tile_length = 256", "2 B, uint16, bytes 20 to 22", "The tile height in pixels, as in TileLength."],
+          samples_per_pixel: ["samples_per_pixel = 4", "2 B, uint16, bytes 22 to 24", "The number of bands, as in SamplesPerPixel."],
+          bits_per_sample: ["bits_per_sample = 16", "1 B, uint8, bytes 24 to 25", "The bits of one sample, as in BitsPerSample."],
+          sample_format: ["sample_format = 1 (uint)", "1 B, uint8, bytes 25 to 26", "The sample format, as in SampleFormat. 1 means unsigned integers."],
+          frame_unit: ["frame_unit = 0 (h w)", "1 B, uint8, bytes 26 to 27", "The frame unit, as in FrameUnit. 0 stores one band of one tile per frame. It decides how many frames there are and which index each one gets."],
+          count_min: ["count_min = 92,375", "4 B, uint32, bytes 27 to 31", "The size of the smallest frame, in bytes. Every other size is stored as its difference from this one."],
+          count_bits: ["count_bits = 13", "1 B, uint8, bytes 31 to 32", "The bits of each stored difference, the fewest that hold the largest one, 6,645."],
+          f0: ["Size of frame 0, band B2 at row 0, column 0", "bits 0 to 13 after the fixed part, from byte 32", "The stored difference is 1,784, so the frame is 92,375 + 1,784 = 94,159 bytes long."],
+          f1: ["Size of frame 1, band B3 at row 0, column 0", "bits 13 to 26 after the fixed part, from byte 33", "The stored difference is 2,707, so the frame is 92,375 + 2,707 = 95,082 bytes long."],
+          f2: ["Size of frame 2, band B4 at row 0, column 0", "bits 26 to 39 after the fixed part, from byte 35", "The stored difference is 3,755, so the frame is 92,375 + 3,755 = 96,130 bytes long."],
+          f3: ["Size of frame 3, band B8 at row 0, column 0", "bits 39 to 52 after the fixed part, from byte 36", "The stored difference is 6,540, so the frame is 92,375 + 6,540 = 98,915 bytes long."],
+          f4: ["Size of frame 4, band B2 at row 0, column 1", "bits 52 to 65 after the fixed part, from byte 38", "The stored difference is 870, so the frame is 92,375 + 870 = 93,245 bytes long."],
+          f5: ["Size of frame 5, band B3 at row 0, column 1", "bits 65 to 78 after the fixed part, from byte 40", "The stored difference is 1,924, so the frame is 92,375 + 1,924 = 94,299 bytes long."],
+          f6: ["Size of frame 6, band B4 at row 0, column 1", "bits 78 to 91 after the fixed part, from byte 41", "The stored difference is 3,033, so the frame is 92,375 + 3,033 = 95,408 bytes long."],
+          f7: ["Size of frame 7, band B8 at row 0, column 1", "bits 91 to 104 after the fixed part, from byte 43", "The stored difference is 5,505, so the frame is 92,375 + 5,505 = 97,880 bytes long."],
+          f8: ["Size of frame 8, band B2 at row 1, column 0", "bits 104 to 117 after the fixed part, from byte 45", "The stored difference is 0, so the frame is 92,375 + 0 = 92,375 bytes long."],
+          f9: ["Size of frame 9, band B3 at row 1, column 0", "bits 117 to 130 after the fixed part, from byte 46", "The stored difference is 1,197, so the frame is 92,375 + 1,197 = 93,572 bytes long."],
+          f10: ["Size of frame 10, band B4 at row 1, column 0", "bits 130 to 143 after the fixed part, from byte 48", "The stored difference is 2,665, so the frame is 92,375 + 2,665 = 95,040 bytes long."],
+          f11: ["Size of frame 11, band B8 at row 1, column 0", "bits 143 to 156 after the fixed part, from byte 49", "The stored difference is 6,645, so the frame is 92,375 + 6,645 = 99,020 bytes long."],
+          f12: ["Size of frame 12, band B2 at row 1, column 1", "bits 156 to 169 after the fixed part, from byte 51", "The stored difference is 444, so the frame is 92,375 + 444 = 92,819 bytes long."],
+          f13: ["Size of frame 13, band B3 at row 1, column 1", "bits 169 to 182 after the fixed part, from byte 53", "The stored difference is 1,544, so the frame is 92,375 + 1,544 = 93,919 bytes long."],
+          f14: ["Size of frame 14, band B4 at row 1, column 1", "bits 182 to 195 after the fixed part, from byte 54", "The stored difference is 2,955, so the frame is 92,375 + 2,955 = 95,330 bytes long."],
+          f15: ["Size of frame 15, band B8 at row 1, column 1", "bits 195 to 208 after the fixed part, from byte 56", "The stored difference is 5,509, so the frame is 92,375 + 5,509 = 97,884 bytes long."]
+        }
+      };
+      document.querySelectorAll('.sf').forEach(function (host) {
+        var info = INFO[host.dataset.sf];
+        var panel = host.querySelector('.fm-info');
+        function show(line) {
+          panel.replaceChildren();
+          ['fm-title', 'fm-range', 'fm-text'].forEach(function (name, i) {
+            if (!line[i]) return;
+            var p = document.createElement('p');
+            p.className = name;
+            p.textContent = line[i];
+            panel.appendChild(p);
+          });
+        }
+        function hint() { show(info.hint); }
+        host.querySelectorAll('[data-info]').forEach(function (block) {
+          function enter() { show(info[block.dataset.info]); }
+          ['pointerenter', 'focus', 'click'].forEach(function (type) { block.addEventListener(type, enter); });
+          ['pointerleave', 'blur'].forEach(function (type) { block.addEventListener(type, hint); });
+        });
+        hint();
+      });
+    })();
+  </script>
+  <script>
+    // The CPU and GPU reads of slides 8 and 9. The dot is the data, it moves without
+    // stopping to the lane of the library that handles it, pauses only where the frames are
+    // decoded and grows there, and runs again when its slide comes back or the route is
+    // clicked. The GPU route moves faster and barely pauses to decode, so it ends first,
+    // as on the landing page.
+    (function () {
+      var SPEED = 3.2;
+      var HOLD = 0;
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.querySelectorAll('.path-fig').forEach(function (fig) {
+        var svg = fig.querySelector('svg');
+        var points = JSON.parse(svg.dataset.path);
+        var speed = Number(svg.dataset.speed || SPEED);
+        var stations = Array.prototype.slice.call(svg.querySelectorAll('.pt-station'));
+        var sizes = Array.prototype.slice.call(svg.querySelectorAll('.pt-size'));
+        var lanes = Array.prototype.slice.call(svg.querySelectorAll('.pt-lane'));
+        var packet = svg.querySelector('.pt-packet');
+        var trail = svg.querySelector('.pt-trail');
+        var length = trail.getTotalLength();
+        var timers = [];
+        var animations = [];
+        trail.style.strokeDasharray = length;
+        trail.style.strokeDashoffset = length;
+
+        function light(i) {
+          stations[i].classList.add('is-lit');
+          lanes.forEach(function (lane) {
+            lane.classList.toggle('is-now', lane.dataset.lane === stations[i].dataset.lane);
+          });
+          sizes.forEach(function (size) {
+            if (Number(size.dataset.after) === i) size.classList.add('is-lit');
+          });
+        }
+
+        function run() {
+          timers.forEach(window.clearTimeout);
+          animations.forEach(function (animation) { animation.cancel(); });
+          timers = [];
+          stations.concat(sizes).forEach(function (el) { el.classList.remove('is-lit'); });
+          if (reduce) {
+            stations.forEach(function (station, i) { light(i); });
+            trail.style.strokeDashoffset = 0;
+            return;
+          }
+          var stops = [];
+          var t = 0;
+          var walked = 0;
+          var scale = 1;
+          points.forEach(function (point, k) {
+            if (k) {
+              var step = Math.abs(point[0] - points[k - 1][0]) + Math.abs(point[1] - points[k - 1][1]);
+              walked += step;
+              t += step * speed;
+            }
+            stops.push({ t: t, x: point[0], y: point[1], scale: scale, walked: walked });
+            if (point[2] < 0) return;
+            timers.push(window.setTimeout(light.bind(null, point[2]), t));
+            var station = stations[point[2]];
+            if (station.hasAttribute('data-grow')) scale = 1.9;
+            t += Number(station.dataset.hold || HOLD);
+            stops.push({ t: t, x: point[0], y: point[1], scale: scale, walked: walked });
+          });
+          animations = [
+            packet.animate(stops.map(function (stop) {
+              return { offset: stop.t / t, opacity: 1, transform: 'translate(' + stop.x + 'px, ' + stop.y + 'px) scale(' + stop.scale + ')' };
+            }), { duration: t, fill: 'forwards' }),
+            trail.animate(stops.map(function (stop) {
+              return { offset: stop.t / t, strokeDashoffset: length - stop.walked };
+            }), { duration: t, fill: 'forwards' })
+          ];
+        }
+
+        svg.addEventListener('click', run);
+        var slide = fig.closest('.slide');
+        new MutationObserver(function () {
+          if (slide.classList.contains('active')) run();
+        }).observe(slide, { attributes: true, attributeFilter: ['class'] });
+        if (slide.classList.contains('active')) run();
+      });
+    })();
+  </script>
+  <script>
+    // The race of slide 10, the four warm reads of the GeoZL Sentinel-2 benchmark on one
+    // linear clock. Two seconds of reading play in 1.2, so JPEG2000 is still decoding
+    // when the clock stops. It runs again when the slide comes back or the chart is clicked.
+    (function () {
+      var chart = document.querySelector('.race-chart');
+      if (!chart) return;
+      var SPAN = 2;
+      var PLAY = 1200;
+      var lanes = Array.prototype.slice.call(chart.querySelectorAll('.race-lane'));
+      var clock = chart.querySelector('.race-now');
+      var claim = chart.parentNode.querySelector('.race-claim');
+      var frame = 0;
+
+      function draw(t) {
+        clock.textContent = t.toFixed(2) + ' s';
+        lanes.forEach(function (lane) {
+          var time = Number(lane.dataset.time);
+          lane.querySelector('.race-fill').style.width = Math.min(t, time) / SPAN * 100 + '%';
+          lane.classList.toggle('is-done', t >= time || t >= SPAN);
+          lane.classList.toggle('is-over', t >= SPAN && time > SPAN);
+        });
+        claim.classList.toggle('is-shown', t >= SPAN);
+      }
+
+      function run() {
+        window.cancelAnimationFrame(frame);
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return draw(SPAN);
+        var start = performance.now();
+        function tick(now) {
+          var t = Math.min((now - start) / PLAY, 1) * SPAN;
+          draw(t);
+          if (t < SPAN) frame = window.requestAnimationFrame(tick);
+        }
+        draw(0);
+        frame = window.requestAnimationFrame(tick);
+      }
+
+      chart.addEventListener('click', run);
+      var slide = chart.closest('.slide');
+      new MutationObserver(function () {
+        if (slide.classList.contains('active')) run();
+      }).observe(slide, { attributes: true, attributeFilter: ['class'] });
+      if (slide.classList.contains('active')) run();
+      else draw(SPAN);
+    })();
+  </script>
+  <script>
+    // The DDP loop of slide 11, one column per rank and one row per step. The four batches
+    // go down their columns together and grow while GeoZL decodes them on each GPU. After
+    // the backward pass each GPU sends its gradient to the next one around the ring, the
+    // last back to the first, and all four pulse when the averaged gradients are back.
+    // The loop runs while the slide is shown.
+    (function () {
+      var fig = document.querySelector('.dl-fig');
+      if (!fig) return;
+      var SPEED = 2.4;
+      var DECODE = 260;
+      var BACKWARD = 350;
+      var HOP = 750;
+      var PULSE = 300;
+      var STAGGER = 50;
+      var rows = fig.dataset.rows.split(',').map(Number);
+      var decodeRow = Number(fig.dataset.decode);
+      var packets = Array.prototype.slice.call(fig.querySelectorAll('.dl-packet'));
+      var grads = Array.prototype.slice.call(fig.querySelectorAll('.dl-grad'));
+      var rings = Array.prototype.slice.call(fig.querySelectorAll('.dl-ring'));
+      var animations = [];
+
+      function at(t, cycle) {
+        return Math.min(t / cycle, 1);
+      }
+
+      function move(x, y, scale) {
+        return 'translate(' + x + 'px, ' + y + 'px) scale(' + scale + ')';
+      }
+
+      function run() {
+        animations.forEach(function (animation) { animation.cancel(); });
+        var met = 0;
+        var columns = packets.map(function (packet, k) {
+          var x = Number(packet.dataset.x);
+          var t = k * STAGGER;
+          var scale = 1;
+          var stops = [{ t: t, y: rows[0], scale: scale }];
+          for (var r = 1; r < rows.length; r += 1) {
+            t += (rows[r] - rows[r - 1]) * SPEED;
+            stops.push({ t: t, y: rows[r], scale: scale });
+            if (r === decodeRow) {
+              scale = 1.9;
+              t += DECODE;
+              stops.push({ t: t, y: rows[r], scale: scale });
+            }
+          }
+          met = Math.max(met, t);
+          return { x: x, stops: stops };
+        });
+        var send = met + BACKWARD;
+        var back = send + HOP;
+        var cycle = back + PULSE + 450;
+
+        columns.forEach(function (column, k) {
+          var frames = [{ offset: 0, opacity: 0, transform: move(column.x, rows[0], 1) }];
+          column.stops.forEach(function (stop) {
+            frames.push({ offset: at(stop.t, cycle), opacity: 1, transform: move(column.x, stop.y, stop.scale) });
+          });
+          frames.push({ offset: at(send, cycle), opacity: 1, transform: move(column.x, rows[rows.length - 1], 1.9) });
+          frames.push({ offset: at(send + 150, cycle), opacity: 0, transform: move(column.x, rows[rows.length - 1], 1) });
+          frames.push({ offset: 1, opacity: 0, transform: move(column.x, rows[rows.length - 1], 1) });
+          animations.push(packets[k].animate(frames, { duration: cycle, iterations: Infinity }));
+        });
+
+        grads.forEach(function (grad, k) {
+          var ring = rings[k];
+          var length = ring.getTotalLength();
+          var start = ring.getPointAtLength(0);
+          var frames = [
+            { offset: 0, opacity: 0, transform: move(start.x, start.y, 1) },
+            { offset: at(send, cycle), opacity: 0, transform: move(start.x, start.y, 1) },
+            { offset: at(send + 1, cycle), opacity: 1, transform: move(start.x, start.y, 1) }
+          ];
+          for (var i = 1; i <= 24; i += 1) {
+            var point = ring.getPointAtLength(length * i / 24);
+            frames.push({ offset: at(send + HOP * i / 24, cycle), opacity: 1, transform: move(point.x, point.y, 1) });
+          }
+          var end = ring.getPointAtLength(length);
+          frames.push({ offset: at(back + PULSE / 2, cycle), opacity: 1, transform: move(end.x, end.y, 1.8) });
+          frames.push({ offset: at(back + PULSE, cycle), opacity: 1, transform: move(end.x, end.y, 1) });
+          frames.push({ offset: 1, opacity: 0, transform: move(end.x, end.y, 1) });
+          animations.push(grad.animate(frames, { duration: cycle, iterations: Infinity }));
+          animations.push(ring.animate([
+            { offset: 0, opacity: 0.25 },
+            { offset: at(send, cycle), opacity: 0.25 },
+            { offset: at(send + 80, cycle), opacity: 1 },
+            { offset: at(back + PULSE, cycle), opacity: 1 },
+            { offset: 1, opacity: 0.25 }
+          ], { duration: cycle, iterations: Infinity }));
+        });
+      }
+
+      var slide = fig.closest('.slide');
+      new MutationObserver(function () {
+        if (slide.classList.contains('active')) run();
+        else animations.forEach(function (animation) { animation.cancel(); });
+      }).observe(slide, { attributes: true, attributeFilter: ['class'] });
+      if (slide.classList.contains('active')) run();
+    })();
+  </script>
+  <script>
+    // The install command on the closing slide copies itself when clicked.
+    (function () {
+      var button = document.querySelector('.end-install');
+      if (!button || !navigator.clipboard) return;
+      button.addEventListener('click', function () {
+        navigator.clipboard.writeText(button.dataset.copy).then(function () {
+          button.classList.add('is-copied');
+          window.setTimeout(function () { button.classList.remove('is-copied'); }, 1200);
+        });
+      });
+    })();
   </script>
 </body>
 </html>

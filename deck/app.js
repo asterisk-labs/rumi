@@ -75,7 +75,7 @@
 
   if (deck) {
     deck.addEventListener('click', function (event) {
-      if (event.target.closest('a, button')) return;
+      if (event.target.closest('a, button, .path-fig svg, .race-chart')) return;
       next();
     });
 

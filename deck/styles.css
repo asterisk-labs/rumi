@@ -1,13 +1,23 @@
 *, *::before, *::after { box-sizing: border-box; }
-html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+/* clip, not hidden, so focusing a control inside a scaled slide never scrolls the page */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; overflow: clip; }
 :root {
   color-scheme: light;
   --ink: #000;
   --soft: #2b2f36;
   --dim: #5c6370;
+  --faint: #8a919c;
   --rule: #dedede;
+  --line: #c9cbd3;
+  --grey: #ececef;
   --violet: #492ae8;
+  --violet-soft: #ebe7fd;
   --mint: #26745f;
+  --bg: #fff;
+  --edge: rgba(0, 0, 0, .1);
+  --ink-soft: #1d2025;
+  --wash: #f6f6f4;
+  --wash-deep: #eeeeeb;
   --sans: 'League Spartan', Inter, ui-sans-serif, system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'SFMono-Regular', monospace;
 }
@@ -33,7 +43,7 @@ body {
   inset: 0;
   display: flex;
   flex-direction: column;
-  padding: 26px 48px 24px;
+  padding: 22px 48px 24px;
   background: #fff;
   opacity: 0;
   pointer-events: none;
@@ -47,13 +57,23 @@ body {
 .cover-logo { display: block; width: 116px; height: 116px; }
 .cover h1 { margin: 0 0 12px; font-size: 92px; line-height: .86; font-weight: 700; }
 .cover p { margin: 0; color: var(--soft); font-size: 25px; }
+.closing .cover-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+.closing h1 { margin: 0; }
+.end-install { display: inline-flex; align-items: center; gap: 12px; padding: 10px 22px; border: 0; border-radius: 999px; background: var(--wash); color: var(--ink); cursor: pointer; font: 500 20px var(--mono); }
+.end-install::before { color: var(--violet); content: "$"; }
+.end-install::after { color: var(--faint); font: 400 14px var(--sans); content: "copy"; }
+.end-install.is-copied::after { color: var(--violet); content: "copied"; }
+.end-links { display: flex; gap: 12px; }
+.end-links a { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid var(--violet); color: var(--violet); font: 500 17px var(--sans); text-decoration: none; }
+.end-links a:hover,
+.end-links a:focus-visible { background: #ece9fd; outline: none; }
 .slide header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--rule);
   padding-bottom: 10px;
-  margin-bottom: 17px;
+  margin-bottom: 16px;
 }
 .brand { display: flex; align-items: center; gap: 8px; }
 .brand-icon { display: block; width: 30px; height: 30px; }
@@ -64,26 +84,240 @@ h1 {
   line-height: 1;
   letter-spacing: -.042em;
   font-weight: 600;
-  margin: 0 0 12px;
+  margin: 0;
 }
-figure {
-  flex: none;
-  width: 100%;
-  height: 360px;
-  margin: 0 0 12px;
+p { margin: 0; }
+code, pre { font-family: var(--mono); font-variant-ligatures: none; }
+.mono { font-family: var(--mono); }
+
+/* Shared figure parts. */
+.fig {
+  flex: 1;
+  min-height: 0;
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 22px;
+}
+.who { font-size: 26px; font-weight: 600; letter-spacing: -.03em; line-height: 1; }
+.who span { display: block; margin-top: 4px; color: var(--dim); font-size: 14px; font-weight: 400; letter-spacing: 0; }
+
+/* 04 Header bytes. */
+.bars { display: grid; grid-template-columns: 150px 600px 1fr; row-gap: 16px; column-gap: 16px; align-items: center; }
+.bar { display: flex; gap: 3px; height: 38px; }
+.bar span {
+  display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
+  border: 1px solid;
+  color: var(--ink);
+  white-space: nowrap;
+  font: 500 11px var(--mono);
 }
-figure img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: contain;
+.bar .aside { border: 0; background: none; justify-content: flex-start; padding-left: 12px; color: var(--dim); font: 400 13px var(--sans); }
+.bars .who { font-size: 20px; }
+.bars .who span { font-size: 13px; margin-top: 2px; }
+.bars .rumi { color: var(--violet); }
+.total { font: 500 16px var(--mono); text-align: right; }
+.index-compare .fig { gap: 16px; }
+.index-compare .hm-caption { margin: 0; }
+.index-saving { border-left: 3px solid var(--violet); padding-left: 12px; color: var(--soft); font-size: 18px; line-height: 1.2; }
+.index-saving strong { color: var(--hot); font-weight: 600; }
+
+/* The request comparison of slide 4. */
+.trips { display: grid; grid-template-columns: 210px 1fr 110px; row-gap: 10px; align-items: center; }
+.trip-who { font-size: 18px; color: var(--soft); }
+.trip { display: flex; align-items: center; gap: 6px; height: 30px; }
+.trip span { display: flex; align-items: center; height: 100%; padding: 0 12px; font: 500 12px var(--mono); }
+.trip .req { background: var(--grey); color: var(--soft); }
+.trip .req.hot { background: var(--violet); color: #fff; }
+.trip .calc { box-shadow: inset 0 0 0 1px var(--line); color: var(--dim); }
+.trip .wait { width: 70px; padding: 0; background: repeating-linear-gradient(90deg, var(--line) 0 4px, transparent 4px 8px) center / 100% 2px no-repeat; }
+.trip-n { font: 500 14px var(--mono); text-align: right; color: var(--dim); }
+.trip-n.hot { color: var(--violet); }
+
+/* 08 The call, in the colours of the docs code blocks. */
+.code {
+  align-self: center;
+  margin: 0;
+  padding: 12px 20px;
+  border-radius: 6px;
+  background: var(--wash);
+  color: var(--ink);
+  font: 13.5px/1.65 var(--mono);
+  font-variant-ligatures: none;
 }
-.slide.intro { padding-top: 18px; padding-bottom: 16px; }
-.slide.intro header { margin-bottom: 10px; }
-.slide.intro figure { height: 400px; margin-bottom: 0; }
+.tok-fn { color: #0a5fb4; }
+.tok-str { color: #17803d; }
+.tok-num { color: #c2410c; }
+
+/* 08 and 09 The CPU and GPU reads, one lane for each library, drawn like the read of the landing page. */
+.path-fig { gap: 12px; }
+.path-fig svg { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; }
+.pt-band { fill: transparent; }
+.pt-band.is-gpu { fill: rgba(73, 42, 232, .05); }
+.pt-rule { stroke: #d4d4d8; stroke-width: 1; }
+.pt-region { fill: var(--faint); font: 600 10.5px var(--sans); letter-spacing: .12em; text-anchor: end; }
+.pt-lane-rule { stroke: #ececef; stroke-width: 1; }
+.pt-lane-name { fill: var(--ink-soft); font: 600 15px var(--sans); transition: fill 180ms ease; }
+.pt-lane-sub { fill: var(--faint); font: 400 12px var(--sans); }
+.pt-lane.is-now .pt-lane-name { fill: var(--violet); }
+.pt-line,
+.pt-trail { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.pt-line { stroke: #d4d4d8; }
+.pt-trail { stroke: rgba(73, 42, 232, .55); }
+.pt-stop { fill: var(--bg); stroke: #b8b8bf; stroke-width: 1.6; transition: fill 180ms ease, stroke 180ms ease; }
+.pt-title { fill: var(--ink-soft); font: 500 14.5px var(--sans); text-anchor: middle; transition: fill 180ms ease; }
+.pt-detail { fill: var(--dim); font: 400 12px var(--sans); text-anchor: middle; }
+.pt-size { fill: var(--faint); font: 650 15px var(--sans); transition: fill 180ms ease; }
+.pt-size.is-key { font-size: 17px; }
+.pt-size.is-lit { fill: var(--ink); }
+.pt-size.is-key.is-lit { fill: var(--violet); }
+.pt-station.is-lit .pt-stop { fill: var(--violet); stroke: var(--violet); }
+.pt-station.is-lit .pt-title { fill: var(--violet); }
+.pt-packet { opacity: 0; pointer-events: none; }
+.pt-dot { fill: var(--violet); }
+.pt-glow { fill: var(--violet); opacity: .18; }
+.path-note { color: var(--dim); font-size: 14.5px; line-height: 1.3; text-align: center; }
+
+/* 10 The Sentinel-2 benchmark of the GeoZL notebook as a race, Rumi in violet, the gains in orange. */
+.race { gap: 18px; }
+.race-setup { color: var(--dim); font-size: 16px; line-height: 1.3; }
+.race-chart { display: grid; row-gap: 12px; cursor: pointer; }
+.race-head { display: grid; grid-template-columns: 1fr 110px 110px; column-gap: 16px; padding-left: 186px; color: var(--dim); font-size: 16px; }
+.race-head span { text-align: right; }
+.race-head span:first-child { text-align: left; }
+.race-now { font: 500 16px var(--mono); }
+.race-lane { display: grid; grid-template-columns: 170px 1fr 110px 110px; column-gap: 16px; align-items: center; }
+.race-lane b { color: var(--ink); font-size: 20px; font-weight: 600; }
+.race-lane.is-rumi b { color: var(--violet); }
+.race-track { position: relative; height: 28px; background: var(--wash); }
+.race-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: #cbd5e1; }
+.race-lane.is-rumi .race-fill { background: var(--violet); }
+.race-lane.is-over .race-fill::after { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); color: var(--ink-soft); font: 600 18px var(--sans); content: "→"; }
+.race-time { color: var(--ink); font: 600 20px var(--mono); text-align: right; opacity: 0; transition: opacity 200ms ease; }
+.race-lane.is-rumi .race-time { color: var(--violet); }
+.race-lane.is-done .race-time { opacity: 1; }
+.race-size { color: var(--ink-soft); font: 500 20px var(--mono); text-align: right; }
+.race-lane.is-rumi .race-size { color: var(--violet); }
+.race-scale { position: relative; height: 18px; margin: 0 252px 0 186px; color: var(--faint); font: 400 14px var(--mono); }
+.race-scale span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.race-claim { color: var(--ink-soft); font-size: 20px; line-height: 1.3; opacity: 0; transition: opacity 400ms ease; }
+.race-claim.is-shown { opacity: 1; }
+.race-claim strong { color: #fe6b37; font-weight: 600; }
+.race-links { display: flex; gap: 12px; }
+.race-links a { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid var(--violet); color: var(--violet); font: 500 16px var(--sans); text-decoration: none; }
+.race-links a:hover,
+.race-links a:focus-visible { background: #ece9fd; outline: none; }
+
+/* 11 The DDP loop, one column per rank and one row per library, drawn like slides 8 and 9. */
+.dl-fig { gap: 14px; }
+.dl-code { padding: 10px 18px; font-size: 13px; line-height: 1.6; }
+.tok-kw { color: #492ae8; }
+.dl-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.dl-col { fill: var(--ink-soft); font: 600 14px var(--sans); text-anchor: middle; }
+.dl-name { fill: var(--ink); font: 600 15px var(--sans); }
+.dl-what { fill: var(--dim); font: 400 13.5px var(--sans); }
+.dl-fig .pt-stop { fill: var(--violet); stroke: var(--violet); }
+.dl-chip { fill: var(--bg); stroke: var(--violet); stroke-width: 2; }
+.dl-ring { fill: none; stroke: #fe6b37; stroke-width: 2; stroke-linecap: round; opacity: .25; }
+.dl-grad { opacity: 0; pointer-events: none; }
+.dl-grad-dot { fill: #fe6b37; }
+.dl-grad-glow { fill: #fe6b37; opacity: .2; }
+
+/* 04 The write, the graphic of img/rumi-layout.svg with the deck fonts. */
+.write-fig { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+.write-fig svg { display: block; width: 680px; height: auto; }
+.write-fig text { font-family: var(--sans); fill: #222; }
+.write-fig .label { font-size: 17px; text-anchor: middle; dominant-baseline: middle; }
+.write-fig .small { font-size: 13px; fill: #666; text-anchor: middle; }
+.write-fig figcaption { color: var(--dim); font-size: 18px; }
+.write-fig .trips { align-self: stretch; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--rule); }
+
+/* 05 and 06 The file and the external header, with the file map rules of docs/assets/css/reading.css. */
+/* 05 and 06 carry a small copy of the write graphic, the output they show in violet. */
+.mini { position: absolute; top: 74px; right: 48px; width: 200px; height: auto; }
+.mini text { font-family: var(--sans); fill: #222; font-size: 30px; text-anchor: middle; dominant-baseline: middle; }
+.mini .box,
+.mini .off rect { fill: #fff; stroke: #777; stroke-width: 2.5; }
+.mini .line { fill: none; stroke: #777; stroke-width: 2.5; }
+.mini .line.on { stroke: #492ae8; }
+.mini .on rect { fill: #ece9fd; stroke: #492ae8; stroke-width: 3; }
+.mini .on text { fill: #492ae8; font-weight: 600; }
+.mini .off { opacity: .45; }
+.map-slide { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+.fm-bar { display: flex; align-items: stretch; gap: 3px; height: 66px; }
+.fm-part,
+.im-cell {
+  min-width: 0;
+  border: 1px solid var(--edge);
+  background: var(--bg);
+  color: var(--ink-soft);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.fm-part { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0 6px; }
+.fm-part:hover,
+.fm-part:focus-visible,
+.im-cell:hover,
+.im-cell:focus-visible {
+  border-color: var(--violet);
+  background: color-mix(in srgb, var(--violet) 8%, var(--bg));
+  outline: none;
+}
+.fm-header,
+.fm-trailer { flex: 0 0 64px; }
+.fm-ifd { flex: 0 0 76px; }
+.fm-values { flex: 0 0 92px; }
+.fm-label { color: var(--ink); font: 600 12.5px/1.2 var(--sans); white-space: nowrap; }
+.fm-sub,
+.im-tag { color: var(--faint); font: 11px/1.2 var(--mono); white-space: nowrap; }
+.fm-info {
+  min-height: 118px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-left: 2px solid var(--violet);
+  background: var(--wash);
+}
+.fm-info p { margin: 0; }
+.fm-info .fm-title { color: var(--ink); font: 600 16px/1.4 var(--sans); }
+.fm-info .fm-range { margin: 2px 0 6px; color: var(--violet); font: 12.5px/1.5 var(--mono); }
+.fm-info .fm-text { color: var(--ink-soft); font-size: 15px; line-height: 1.45; }
+.im-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 9px 10px; text-align: left; }
+.hm-caption { margin: 0 0 6px; color: var(--dim); font: 500 12px/1.4 var(--sans); }
+.im-name { color: var(--ink); font: 500 12.5px/1.25 var(--sans); }
+.hl-line { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
+.hl-line .hm-caption { align-self: end; }
+.hl-cells { display: flex; gap: 6px; height: 150px; }
+.im-cell.hl-field {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 24px;
+  padding: 8px 0;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+/* Slides 5, 6 and 7, in the Asterisk colours of the slide 2 figure. Violet for what the
+   tensor predicts, yellow for what only compressing gives, and orange for the offsets the
+   external header leaves out. */
+.wm-view { --hot: #fe6b37; }
+.t-violet { --fill: #ece9fd; --rim: #b6aaf6; --strong: #492ae8; }
+.t-yellow { --fill: #fdf5d0; --rim: #f7cc09; --strong: #b38f00; }
+.t-orange { --fill: #ffeae1; --rim: #fe9b75; --strong: #fe6b37; }
+.wm-view .tint { border: 1px solid var(--rim); background: var(--fill); }
+.wm-view .tint:hover,
+.wm-view .tint:focus-visible { border-color: var(--strong); background: var(--fill); box-shadow: inset 0 0 0 1px var(--strong); }
+.sf-frame { flex: 1 1 0; }
+.wm-known { display: flex; gap: 3px; margin-top: 8px; }
+.wm-known span { padding-top: 5px; border-top: 3px solid; font: 500 12px/1.3 var(--sans); text-align: center; }
+.wm-known .wm-before { flex: 0 0 calc(64px + 76px + 92px + 6px); border-color: #492ae8; color: #492ae8; }
+.wm-known .wm-after { flex: 1 1 auto; border-color: #f7cc09; color: #815d00; }
+
 .progress {
   position: fixed;
   top: 0;
@@ -112,3 +346,23 @@ figure img {
   .slide { position: relative; width: 960px; height: 540px; opacity: 1; pointer-events: auto; page-break-after: always; break-after: page; }
   .site-back, .progress { display: none; }
 }
+
+/* The GeoTIFF and Rumi comparison keeps its image figures. */
+.slide.intro { padding-top: 18px; padding-bottom: 16px; }
+.slide.intro header { margin-bottom: 10px; }
+.slide.intro h1 { margin-bottom: 12px; }
+.slide.intro figure { flex: none; width: 100%; height: 400px; margin: 0; display: flex; align-items: center; justify-content: center; }
+.slide.intro figure img { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+/* 06 The external header on one line, every size drawn as count_min plus its stored difference. */
+.hl-line .wm-known { grid-column: 1 / -1; gap: 6px; margin-top: 10px; }
+.hl-line .wm-known .wm-before { flex-basis: 324px; }
+.hx-sizes { display: flex; flex-direction: column; height: 150px; }
+.hx-bars { display: flex; flex: 1 1 auto; align-items: flex-end; gap: 3px; }
+.hx-bar { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; height: 100%; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; }
+.hx-fill { width: 100%; height: var(--h); border: 1px solid #f7cc09; background: color-mix(in srgb, #f7cc09 50%, var(--bg)); }
+.hx-bar:hover .hx-fill,
+.hx-bar:focus-visible .hx-fill { border-color: #b38f00; background: #f7cc09; }
+.hx-bar:focus-visible { outline: none; }
+.hx-diff { color: var(--ink-soft); font: 10.5px/1 var(--mono); white-space: nowrap; writing-mode: vertical-rl; transform: rotate(180deg); }
+.hx-base { margin: 0; padding: 6px 8px; border: 1px solid #f7cc09; background: #fdf5d0; color: var(--ink-soft); font: 500 12px/1.3 var(--sans); text-align: center; }
