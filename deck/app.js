@@ -53,6 +53,7 @@
   }
 
   document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('input')) return;
     if (e.key === 'ArrowRight' || e.key === ' ') {
       e.preventDefault();
       next();
@@ -75,7 +76,7 @@
 
   if (deck) {
     deck.addEventListener('click', function (event) {
-      if (event.target.closest('a, button, .path-fig svg, .race-chart')) return;
+      if (event.target.closest('a, button, input, .ix-fig, .path-fig svg, .race-chart')) return;
       next();
     });
 

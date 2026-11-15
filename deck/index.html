@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=League+Spartan:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261115x">
-  <script defer src="app.js?v=20261115r"></script>
+  <link rel="stylesheet" href="styles.css?v=20261115zu">
+  <script defer src="app.js?v=20261115t"></script>
 </head>
 <body>
   <div class="progress" id="progress"></div>
@@ -30,29 +30,96 @@
     </section>
 
     <section class="slide intro" aria-label="GeoTIFF and Rumi file layouts">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 12</span></header>
-      <h1>GeoTIFF permits many layouts</h1>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 13</span></header>
+      <h1>GeoTIFF permits <span class="title-mark red">many layouts</span></h1>
       <figure><img src="../img/problem-rumi-geotiff-flavours.svg?v=20261114" alt="A diagram of GeoTIFF's valid tile, interleave and compression arrangements."></figure>
     </section>
 
     <section class="slide intro" aria-label="Rumi file profile">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 12</span></header>
-      <h1>Rumi permits only one container profile</h1>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 13</span></header>
+      <h1>Rumi permits only <span class="title-mark">one container profile</span></h1>
       <figure><img src="../img/approach-rumi-one-layout.svg?v=20261114" alt="One fixed Rumi container profile. Ten frame units choose tile or cell sample layout without changing the file structure."></figure>
     </section>
 
+    <section class="slide" aria-label="The Rumi data model">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 13</span></header>
+      <h1>Rumi follows <span class="title-mark">its own data model</span></h1>
+      <figure class="dm-wrap">
+        <svg class="dm-fig" viewBox="0 0 864 352" role="img" aria-label="The Rumi data model. A tile is h by w, one band or time step at one grid position. A cell is (B, h, w) or (T, B, h, w), all samples at one grid position. An Image is (B, Y, X) and a Cube (T, B, Y, X). An ImageCollection is a set of Images and a CubeCollection a set of Cubes, neither need share a grid.">
+          <defs><marker id="dm-tick" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#999"/></marker></defs>
+          <path class="dm-rule" d="M288 0 V352 M576 0 V352 M0 176 H864"/>
+          <text class="dm-term" x="16" y="20">tile</text>
+          <text class="dm-shape" x="16" y="40">h &#215; w</text>
+          <text class="dm-text" x="16" y="58">one band or time step at one grid position</text>
+          <rect class="dm-tile" x="116" y="84" width="56" height="56"/>
+          <path class="dm-dim" d="M116 150 H172 M106 84 V140"/>
+          <text class="dm-axis" x="144" y="164" text-anchor="middle">w</text>
+          <text class="dm-axis" x="96" y="116" text-anchor="middle">h</text>
+          <text class="dm-term" x="304" y="20">cell</text>
+          <text class="dm-shape" x="304" y="40">(B, h, w) or (T, B, h, w)</text>
+          <text class="dm-text" x="304" y="58">all samples at one grid position</text>
+          <g class="dm-box dm-v"><path class="s" d="M432 106 L489 67.4 L489 111.4 L432 150 Z"/><path class="t" d="M388 106 L432 106 L489 67.4 L445 67.4 Z"/><rect class="f" x="388" y="106" width="44" height="44"/><path class="l" d="M402.3 96.3 H446.3 V140.3 M416.5 86.7 H460.5 V130.7 M430.8 77 H474.8 V121"/></g>
+          <text class="dm-axis" x="495" y="71.4" text-anchor="start">B, T</text>
+          <text class="dm-term" x="592" y="20">Image</text>
+          <text class="dm-shape" x="592" y="40">(B, Y, X)</text>
+          <text class="dm-text" x="592" y="58">one time step, cut into tiles or cells</text>
+          <g class="dm-box dm-n"><path class="s" d="M772 90 L800.5 70.7 L800.5 134.7 L772 154 Z"/><path class="t" d="M664 90 L772 90 L800.5 70.7 L692.5 70.7 Z"/><rect class="f" x="664" y="90" width="108" height="64"/><path class="l" d="M671.1 85.2 H779.1 V149.2 M678.3 80.3 H786.3 V144.3 M685.4 75.5 H793.4 V139.5 M700 154 V90 L728.5 70.7 M736 154 V90 L764.5 70.7 M664 122 H772 L800.5 102.7"/></g>
+          <path class="dm-pick" d="M664 90 H700 L728.5 70.7 H692.5 Z M664 90 H700 V122 H664 Z"/>
+          <text class="dm-axis" x="718" y="170" text-anchor="middle">X</text>
+          <text class="dm-axis" x="652" y="126" text-anchor="middle">Y</text>
+          <text class="dm-axis" x="806.5" y="74.7" text-anchor="start">B</text>
+          <text class="dm-term" x="16" y="196">Cube</text>
+          <text class="dm-shape" x="16" y="216">(T, B, Y, X)</text>
+          <text class="dm-text" x="16" y="234">time steps share the transform and CRS</text>
+          <g class="dm-box dm-n"><path class="s" d="M84 272 L97.6 262.8 L97.6 302.8 L84 312 Z"/><path class="t" d="M28 272 L84 272 L97.6 262.8 L41.6 262.8 Z"/><rect class="f" x="28" y="272" width="56" height="40"/><path class="l" d="M32.5 268.9 H88.5 V308.9 M37.1 265.8 H93.1 V305.8 M56 312 V272 L69.6 262.8 M28 292 H84 L97.6 282.8"/></g>
+          <path class="dm-pick" d="M28 272 H56 L69.6 262.8 H41.6 Z M28 272 H56 V292 H28 Z"/>
+          <text class="dm-axis" x="56" y="328" text-anchor="middle">t = 0</text>
+          <g class="dm-box dm-n"><path class="s" d="M168 272 L181.6 262.8 L181.6 302.8 L168 312 Z"/><path class="t" d="M112 272 L168 272 L181.6 262.8 L125.6 262.8 Z"/><rect class="f" x="112" y="272" width="56" height="40"/><path class="l" d="M116.5 268.9 H172.5 V308.9 M121.1 265.8 H177.1 V305.8 M140 312 V272 L153.6 262.8 M112 292 H168 L181.6 282.8"/></g>
+          <path class="dm-pick" d="M112 272 H140 L153.6 262.8 H125.6 Z M112 272 H140 V292 H112 Z"/>
+          <text class="dm-axis" x="140" y="328" text-anchor="middle">t = 1</text>
+          <g class="dm-box dm-n"><path class="s" d="M252 272 L265.6 262.8 L265.6 302.8 L252 312 Z"/><path class="t" d="M196 272 L252 272 L265.6 262.8 L209.6 262.8 Z"/><rect class="f" x="196" y="272" width="56" height="40"/><path class="l" d="M200.5 268.9 H256.5 V308.9 M205.1 265.8 H261.1 V305.8 M224 312 V272 L237.6 262.8 M196 292 H252 L265.6 282.8"/></g>
+          <path class="dm-pick" d="M196 272 H224 L237.6 262.8 H209.6 Z M196 272 H224 V292 H196 Z"/>
+          <text class="dm-axis" x="224" y="328" text-anchor="middle">t = 2</text>
+          <path class="dm-dim" d="M28 342 H268" marker-end="url(#dm-tick)"/>
+          <text class="dm-axis" x="276" y="346" text-anchor="start">T</text>
+          <text class="dm-term" x="304" y="196">ImageCollection</text>
+          <text class="dm-shape" x="304" y="216">a set of Images</text>
+          <text class="dm-text" x="304" y="234">that need not share a grid</text>
+          <rect class="dm-set" x="308" y="258" width="252" height="88"/>
+          <g class="dm-box dm-n"><path class="s" d="M396 288 L412.1 277.1 L412.1 325.1 L396 336 Z"/><path class="t" d="M326 288 L396 288 L412.1 277.1 L342.1 277.1 Z"/><rect class="f" x="326" y="288" width="70" height="48"/><path class="l" d="M331.4 284.4 H401.4 V332.4 M336.7 280.7 H406.7 V328.7 M361 336 V288 L377.1 277.1 M326 312 H396 L412.1 301.1"/></g>
+          <text class="dm-more" x="436" y="318">&#8230;</text>
+          <g class="dm-box dm-n"><path class="s" d="M514 300 L525.2 292.4 L525.2 324.4 L514 332 Z"/><path class="t" d="M470 300 L514 300 L525.2 292.4 L481.2 292.4 Z"/><rect class="f" x="470" y="300" width="44" height="32"/><path class="l" d="M473.7 297.5 H517.7 V329.5 M477.4 295 H521.4 V327 M492 332 V300 L503.2 292.4"/></g>
+          <text class="dm-axis" x="342" y="278" text-anchor="middle">[0]</text>
+          <text class="dm-axis" x="486" y="290" text-anchor="middle">[N-1]</text>
+          <text class="dm-term" x="592" y="196">CubeCollection</text>
+          <text class="dm-shape" x="592" y="216">a set of Cubes</text>
+          <text class="dm-text" x="592" y="234">that need not share a grid</text>
+          <rect class="dm-set" x="596" y="258" width="252" height="88"/>
+          <g class="dm-box dm-n"><path class="s" d="M640 300 L647.4 295 L647.4 317 L640 322 Z"/><path class="t" d="M612 300 L640 300 L647.4 295 L619.4 295 Z"/><rect class="f" x="612" y="300" width="28" height="22"/><path class="l" d="M615.7 297.5 H643.7 V319.5 M626 322 V300 L633.4 295 M612 311 H640 L647.4 306"/></g>
+          <g class="dm-box dm-n"><path class="s" d="M676 300 L683.4 295 L683.4 317 L676 322 Z"/><path class="t" d="M648 300 L676 300 L683.4 295 L655.4 295 Z"/><rect class="f" x="648" y="300" width="28" height="22"/><path class="l" d="M651.7 297.5 H679.7 V319.5 M662 322 V300 L669.4 295 M648 311 H676 L683.4 306"/></g>
+          <g class="dm-box dm-n"><path class="s" d="M712 300 L719.4 295 L719.4 317 L712 322 Z"/><path class="t" d="M684 300 L712 300 L719.4 295 L691.4 295 Z"/><rect class="f" x="684" y="300" width="28" height="22"/><path class="l" d="M687.7 297.5 H715.7 V319.5 M698 322 V300 L705.4 295 M684 311 H712 L719.4 306"/></g>
+          <text class="dm-more" x="738" y="318">&#8230;</text>
+          <g class="dm-box dm-n"><path class="s" d="M782 306 L787 302.6 L787 316.6 L782 320 Z"/><path class="t" d="M764 306 L782 306 L787 302.6 L769 302.6 Z"/><rect class="f" x="764" y="306" width="18" height="14"/><path class="l" d="M766.5 304.3 H784.5 V318.3"/></g>
+          <g class="dm-box dm-n"><path class="s" d="M806 306 L811 302.6 L811 316.6 L806 320 Z"/><path class="t" d="M788 306 L806 306 L811 302.6 L793 302.6 Z"/><rect class="f" x="788" y="306" width="18" height="14"/><path class="l" d="M790.5 304.3 H808.5 V318.3"/></g>
+          <g class="dm-box dm-n"><path class="s" d="M830 306 L835 302.6 L835 316.6 L830 320 Z"/><path class="t" d="M812 306 L830 306 L835 302.6 L817 302.6 Z"/><rect class="f" x="812" y="306" width="18" height="14"/><path class="l" d="M814.5 304.3 H832.5 V318.3"/></g>
+          <text class="dm-axis" x="662" y="282" text-anchor="middle">[0]</text>
+          <text class="dm-axis" x="796" y="288" text-anchor="middle">[N-1]</text>
+        </svg>
+      </figure>
+    </section>
+
     <section class="slide" aria-label="What a write returns">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 12</span></header>
-      <h1>Stateless reads start at write time</h1>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 13</span></header>
+      <h1>Rumi writes an external header for <span class="title-mark">stateless reads</span></h1>
       <figure class="write-fig">
         <svg viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header.">
           <defs>
             <marker id="write-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
           </defs>
           <g fill="#fff" stroke="#777" stroke-width="2">
-            <rect x="30" y="55" width="150" height="70" rx="8"/>
-            <rect x="375" y="18" width="250" height="60" rx="8"/>
-            <rect x="375" y="102" width="250" height="60" rx="8"/>
+            <rect x="30" y="55" width="150" height="70"/>
+            <rect x="375" y="18" width="250" height="60"/>
+            <rect x="375" y="102" width="250" height="60"/>
           </g>
           <g fill="none" stroke="#777" stroke-width="2" marker-end="url(#write-arrow)">
             <path d="M180 90 H255"/>
@@ -65,37 +132,38 @@
           <text class="label" x="500" y="48">rumi file</text>
           <text class="label" x="500" y="132">external header</text>
         </svg>
-        <figcaption>A write produces the file and a small header that locates every frame in it.</figcaption>
+        <figcaption>A write produces the file and a small external header that locates every frame in it.</figcaption>
         <div class="trips">
           <div class="trip-who">From the file alone</div>
-          <div class="trip"><span class="req">GET the IFD</span><span class="wait"></span><span class="req">GET the frames</span></div>
+          <div class="trip"><span class="req">GET the IFD</span><span class="wait">round trip</span><span class="req">GET the frames</span></div>
           <div class="trip-n">2 requests</div>
           <div class="trip-who">With the external header</div>
-          <div class="trip"><span class="calc">offsets in memory</span><span class="req hot">GET the frames</span></div>
+          <div class="trip"><span class="calc">offsets from the external header</span><span class="req hot">GET the frames</span></div>
           <div class="trip-n hot">1 request</div>
         </div>
       </figure>
     </section>
 
     <section class="slide" aria-label="The file">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 12</span></header>
-      <h1>Predictable first, unpredictable last</h1>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 13</span></header>
+      <h1>Rumi's file header is <span class="title-mark">predictable</span></h1>
       <svg class="mini" viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header. The file is highlighted.">
         <defs>
           <marker id="mini-grey-5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
           <marker id="mini-violet-5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#492ae8"/></marker>
         </defs>
-        <rect class="box" x="30" y="55" width="150" height="70" rx="8"/>
+        <rect class="box" x="30" y="55" width="150" height="70"/>
         <text class="label" x="105" y="90">Array</text>
         <path class="line" d="M180 90 H255" marker-end="url(#mini-grey-5)"/>
         <circle cx="270" cy="90" r="4" fill="#777"/>
         <path class="line on" d="M274 88 C320 88, 320 48, 370 48" marker-end="url(#mini-violet-5)"/>
         <path class="line off" d="M274 92 C320 92, 320 132, 370 132" marker-end="url(#mini-grey-5)"/>
-        <g class="on"><rect x="375" y="18" width="250" height="60" rx="8"/><text class="label" x="500" y="48">rumi file</text></g>
-        <g class="off"><rect x="375" y="102" width="250" height="60" rx="8"/><text class="label" x="500" y="132">external header</text></g>
+        <g class="on"><rect x="375" y="18" width="250" height="60"/><text class="label" x="500" y="48">rumi file</text></g>
+        <g class="off"><rect x="375" y="102" width="250" height="60"/><text class="label" x="500" y="132">external header</text></g>
       </svg>
       <div class="map-slide sf" data-sf="file">
         <div class="wm-view">
+          <div class="sf-file" data-name="image.rumi">
           <div class="fm-bar wm-bar sf-bar">
             <button type="button" class="fm-part fm-header tint t-violet" data-info="header"><span class="fm-label">header</span><span class="fm-sub">16 B</span></button>
             <button type="button" class="fm-part fm-ifd tint t-violet" data-info="ifd"><span class="fm-label">IFD</span><span class="fm-sub">276 B</span></button>
@@ -106,6 +174,7 @@
             <button type="button" class="fm-part sf-frame tint t-yellow" data-info="f3" style="flex-grow:.85"><span class="fm-label">frame 3</span><span class="fm-sub">? B</span></button>
             <button type="button" class="fm-part fm-trailer tint t-yellow" data-info="trailer"><span class="fm-label">trailer</span><span class="fm-sub">? B</span></button>
           </div>
+          </div>
           <div class="wm-known"><span class="wm-before">known from the tensor, 500 B</span><span class="wm-after">known only after compressing</span></div>
         </div>
         <div class="fm-info" aria-live="polite"></div>
@@ -113,24 +182,25 @@
     </section>
 
     <section class="slide" aria-label="The external header fields">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 12</span></header>
-      <h1>The external header locates every frame</h1>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 13</span></header>
+      <h1>Rumi's external header locates <span class="title-mark">every frame</span></h1>
       <svg class="mini" viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header. The external header is highlighted.">
         <defs>
           <marker id="mini-grey-6" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
           <marker id="mini-violet-6" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#492ae8"/></marker>
         </defs>
-        <rect class="box" x="30" y="55" width="150" height="70" rx="8"/>
+        <rect class="box" x="30" y="55" width="150" height="70"/>
         <text class="label" x="105" y="90">Array</text>
         <path class="line" d="M180 90 H255" marker-end="url(#mini-grey-6)"/>
         <circle cx="270" cy="90" r="4" fill="#777"/>
         <path class="line on" d="M274 92 C320 92, 320 132, 370 132" marker-end="url(#mini-violet-6)"/>
         <path class="line off" d="M274 88 C320 88, 320 48, 370 48" marker-end="url(#mini-grey-6)"/>
-        <g class="off"><rect x="375" y="18" width="250" height="60" rx="8"/><text class="label" x="500" y="48">rumi file</text></g>
-        <g class="on"><rect x="375" y="102" width="250" height="60" rx="8"/><text class="label" x="500" y="132">external header</text></g>
+        <g class="off"><rect x="375" y="18" width="250" height="60"/><text class="label" x="500" y="48">rumi file</text></g>
+        <g class="on"><rect x="375" y="102" width="250" height="60"/><text class="label" x="500" y="132">external header</text></g>
       </svg>
       <div class="map-slide sf wm-view" data-sf="header">
         <div class="hl-line">
+          <div class="sf-file hl-file" data-name="s2-00-tile.header">
           <p class="hm-caption">fixed part, 32 bytes</p>
           <p class="hm-caption">frame sizes, 26 bytes, 13 bits per frame</p>
           <div class="hl-cells">
@@ -169,6 +239,7 @@
             </div>
             <p class="hx-base">+ 92,375 B in every frame, stored once as count_min</p>
           </div>
+          </div>
           <div class="wm-known"><span class="wm-before">known from the tensor, 27 B</span><span class="wm-after">known only after compressing, 31 B</span></div>
         </div>
         <div class="fm-info" aria-live="polite"></div>
@@ -176,49 +247,40 @@
     </section>
 
     <section class="slide index-compare" aria-label="External header size and frame offsets">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 12</span></header>
-      <h1>The external header stores sizes, not offsets</h1>
-      <div class="fig wm-view">
-        <p class="hm-caption">index metadata for the same 100 frames, frame payloads excluded</p>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">08 / 13</span></header>
+      <h1>Rumi's external header stores sizes, not offsets</h1>
+      <div class="fig wm-view ix-fig">
+        <div class="ix-input">
+          <p>An image of shape (<input class="ix-dim" value="4" maxlength="3" inputmode="numeric" spellcheck="false" aria-label="bands, B">, <input class="ix-dim" value="1280" maxlength="6" inputmode="numeric" spellcheck="false" aria-label="rows, Y">, <input class="ix-dim" value="1280" maxlength="6" inputmode="numeric" spellcheck="false" aria-label="columns, X">) in 256 &times; 256 tiles</p>
+          <div class="fs-tabs" role="group" aria-label="Frame layout">
+            <button type="button" data-band="0">a frame per cell</button>
+            <button type="button" class="is-on" data-band="1">a frame per band</button>
+          </div>
+        </div>
         <div class="bars">
           <div class="who">GeoTIFF<span>BigTIFF, by GDAL</span></div>
-          <div class="bar">
-            <span class="tint t-violet" style="width:5px"></span>
-            <span class="tint t-violet" style="width:128px">IFD 376</span>
-            <span class="tint t-orange" style="width:272px">offsets 800</span>
-            <span class="tint t-yellow" style="width:136px">sizes 400</span>
-            <span class="tint t-violet" style="width:56px">geo 166</span>
-          </div>
-          <div class="total">1,758 B</div>
+          <div class="bar"><div class="block" data-row="tif"><span data-part="head"></span><span data-part="ifd"></span><span class="off" data-part="off"></span><span class="size" data-part="size"></span><span data-part="geo"></span></div></div>
+          <div class="total" data-total="tif"></div>
 
-          <div class="who">Rumi<span>internal header</span></div>
-          <div class="bar">
-            <span class="tint t-violet" style="width:5px"></span>
-            <span class="tint t-violet" style="width:94px">IFD 276</span>
-            <span class="tint t-orange" style="width:272px">offsets 800</span>
-            <span class="tint t-yellow" style="width:136px">sizes 400</span>
-            <span class="tint t-violet" style="width:54px">geo 160</span>
-          </div>
-          <div class="total">1,652 B</div>
+          <div class="who">Rumi<span>file header</span></div>
+          <div class="bar"><div class="block" data-row="file"><span data-part="head"></span><span data-part="ifd"></span><span class="off" data-part="off"></span><span class="size" data-part="size"></span><span data-part="geo"></span></div></div>
+          <div class="total" data-total="file"></div>
 
           <div class="who rumi">Rumi<span>external header</span></div>
-          <div class="bar">
-            <span class="tint t-violet" style="width:11px"></span>
-            <span class="tint t-yellow" style="width:68px">sizes 200</span>
-            <span class="aside">32 fixed bytes, then every frame size</span>
-          </div>
-          <div class="total rumi">232 B</div>
+          <div class="bar"><div class="block rumi" data-row="ext"><span data-part="fixed"></span><span class="size" data-part="size"></span></div><span class="aside">32 fixed bytes, then every frame size</span></div>
+          <div class="total rumi" data-total="ext"></div>
         </div>
-        <p class="index-saving">The 232 B external header is <strong>7.6× smaller</strong> than the GeoTIFF index and <strong>7.1× smaller</strong> than Rumi's in-file header.</p>
+        <p class="ix-note">GeoTIFF from GDAL, tiled 256 &times; 256, interleave <span class="ix-il">band</span>, uint16, ZSTD. External header frame sizes at 16 bits each, as in Lake Annecy.</p>
+        <p class="index-saving">The external header is <strong class="ix-r1">7.6&times; smaller</strong> than the GeoTIFF index and <strong class="ix-r2">7.1&times; smaller</strong> than Rumi's file header.</p>
       </div>
     </section>
 
     <section class="slide" aria-label="A read on the CPU">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">08 / 12</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">09 / 13</span></header>
       <h1>On the CPU, frames decode in RAM</h1>
       <div class="fig path-fig">
         <pre class="code"><code>rumi.<span class="tok-fn">read</span>(path, header, framework=<span class="tok-str">"torch"</span>)</code></pre>
-        <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read from the header alone. Karu fetches the 4 byte ranges, 206 kB, in one batch on its I/O threads. Each Rumi worker decodes a frame with OpenZL and the GeoZL codecs, following the graph stored in the frame. Rumi places the 524 kB of crops in one buffer, and PyTorch takes it through DLPack without a copy." data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,167,-1],[515,167,2],[590,167,-1],[590,51,-1],[665,51,3],[727,51,-1],[727,225,-1],[790,225,4]]">
+        <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read from the external header alone. Karu fetches the 4 byte ranges, 206 kB, in one batch on its I/O threads. Each Rumi worker decodes a frame with OpenZL and the GeoZL codecs, following the graph stored in the frame. Rumi places the 524 kB of crops in one buffer, and PyTorch takes it through DLPack without a copy." data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,167,-1],[515,167,2],[590,167,-1],[590,51,-1],[665,51,3],[727,51,-1],[727,225,-1],[790,225,4]]">
           <rect class="pt-band" x="150" y="0" width="714" height="254"/>
           <text class="pt-region" x="856" y="14">HOST</text>
           <line class="pt-lane-rule" x1="0" y1="80" x2="864" y2="80"/>
@@ -232,7 +294,7 @@
           <polyline class="pt-trail" points="215,51 290,51 290,109 365,109 440,109 440,167 515,167 590,167 590,51 665,51 727,51 727,225 790,225"/>
           <text class="pt-size" data-after="1" x="434" y="146" text-anchor="end">206 kB</text>
           <text class="pt-size" data-after="2" x="596" y="142" text-anchor="start">524 kB</text>
-          <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="215" cy="51" r="6"/><text class="pt-title" x="215" y="39">plan the read</text><text class="pt-detail" x="215" y="72">header only, no bytes</text></g>
+          <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="215" cy="51" r="6"/><text class="pt-title" x="215" y="39">plan the read</text><text class="pt-detail" x="215" y="72">external header only</text></g>
           <g class="pt-station" data-lane="1"><circle class="pt-stop" cx="365" cy="109" r="6"/><text class="pt-title" x="365" y="97">fetch 4 ranges</text><text class="pt-detail" x="365" y="130">one batch, I/O threads</text></g>
           <g class="pt-station" data-lane="2" data-grow data-hold="900"><circle class="pt-stop" cx="515" cy="167" r="6"/><text class="pt-title" x="515" y="155">decode each frame</text><text class="pt-detail" x="515" y="188">by the graph in the frame</text></g>
           <g class="pt-station" data-lane="0"><circle class="pt-stop" cx="665" cy="51" r="6"/><text class="pt-title" x="665" y="39">place the crops</text><text class="pt-detail" x="665" y="72">into one buffer</text></g>
@@ -244,7 +306,7 @@
     </section>
 
     <section class="slide" aria-label="Reading on a GPU">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">09 / 12</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">10 / 13</span></header>
       <h1>On a GPU, only compressed bytes cross PCIe</h1>
       <div class="fig path-fig">
         <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read and allocates the output on cuda:0. Karu fetches every range into pinned host memory. Rumi sends the 206 kB of compressed frames across PCIe in groups that fit the decoder memory. GeoZL decodes them on the GPU and writes each crop into the 524 kB tensor, which PyTorch takes through DLPack once its stream has waited for the read." data-speed="2" data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,51,-1],[515,51,2],[590,51,-1],[590,167,-1],[665,167,3],[732,167,-1],[732,225,-1],[800,225,4]]">
@@ -276,7 +338,7 @@
     </section>
 
     <section class="slide" aria-label="Sentinel-2 benchmark">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">10 / 12</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">11 / 13</span></header>
       <h1>A Sentinel-2 scene reaches the GPU in 61 ms</h1>
       <div class="fig race">
         <p class="race-setup">One CPU thread and an NVIDIA A100. Red, green and blue of one Sentinel-2 tile, 723 MB, already in memory.</p>
@@ -297,7 +359,7 @@
     </section>
 
     <section class="slide" aria-label="Training with DDP">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">11 / 12</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">12 / 13</span></header>
       <h1>In DDP, each GPU decodes its own batches</h1>
       <div class="fig dl-fig" data-rows="44,84,124,164,204" data-decode="3">
         <pre class="code dl-code"><code><span class="tok-kw">def</span> <span class="tok-fn">__getitems__</span>(self, indices):
@@ -324,26 +386,26 @@
           <circle class="pt-stop" cx="327" cy="44" r="5.5"/>
           <circle class="pt-stop" cx="327" cy="84" r="5.5"/>
           <circle class="pt-stop" cx="327" cy="124" r="5.5"/>
-          <rect class="dl-chip" x="318" y="155" width="18" height="18" rx="4"/>
-          <rect class="dl-chip" x="318" y="195" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="318" y="155" width="18" height="18"/>
+          <rect class="dl-chip" x="318" y="195" width="18" height="18"/>
           <line class="pt-line" x1="480" y1="44" x2="480" y2="204"/>
           <circle class="pt-stop" cx="480" cy="44" r="5.5"/>
           <circle class="pt-stop" cx="480" cy="84" r="5.5"/>
           <circle class="pt-stop" cx="480" cy="124" r="5.5"/>
-          <rect class="dl-chip" x="471" y="155" width="18" height="18" rx="4"/>
-          <rect class="dl-chip" x="471" y="195" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="471" y="155" width="18" height="18"/>
+          <rect class="dl-chip" x="471" y="195" width="18" height="18"/>
           <line class="pt-line" x1="634" y1="44" x2="634" y2="204"/>
           <circle class="pt-stop" cx="634" cy="44" r="5.5"/>
           <circle class="pt-stop" cx="634" cy="84" r="5.5"/>
           <circle class="pt-stop" cx="634" cy="124" r="5.5"/>
-          <rect class="dl-chip" x="625" y="155" width="18" height="18" rx="4"/>
-          <rect class="dl-chip" x="625" y="195" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="625" y="155" width="18" height="18"/>
+          <rect class="dl-chip" x="625" y="195" width="18" height="18"/>
           <line class="pt-line" x1="787" y1="44" x2="787" y2="204"/>
           <circle class="pt-stop" cx="787" cy="44" r="5.5"/>
           <circle class="pt-stop" cx="787" cy="84" r="5.5"/>
           <circle class="pt-stop" cx="787" cy="124" r="5.5"/>
-          <rect class="dl-chip" x="778" y="155" width="18" height="18" rx="4"/>
-          <rect class="dl-chip" x="778" y="195" width="18" height="18" rx="4"/>
+          <rect class="dl-chip" x="778" y="155" width="18" height="18"/>
+          <rect class="dl-chip" x="778" y="195" width="18" height="18"/>
           <g class="pt-packet dl-packet" data-x="327"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
           <g class="pt-packet dl-packet" data-x="480"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
           <g class="pt-packet dl-packet" data-x="634"><circle class="pt-glow" r="9"/><circle class="pt-dot" r="4.5"/></g>
@@ -378,7 +440,7 @@
     if (new URLSearchParams(window.location.search).has('embed')) document.documentElement.classList.add('is-embedded');
   </script>
   <script>
-    // The small file of slide 5 and its external header on slide 6. Pointing at a block says what it holds and where it sits.
+    // The small file of slide 6 and its external header on slide 7. Pointing at a block says what it holds and where it sits.
     (function () {
       var FRAME = 'The 4 bands of one 256 by 256 cell, 524,288 bytes of uint16 before compression. Its size is known only once GeoZL has compressed it.';
       var INFO = {
@@ -450,7 +512,97 @@
     })();
   </script>
   <script>
-    // The CPU and GPU reads of slides 8 and 9. The dot is the data, it moves without
+    // The index sizes of slide 8 for any shape. The GeoTIFF is what GDAL writes as a tiled
+    // BigTIFF, measured with GDAL 3.12, the Rumi file header is what rumi.frame_start gives,
+    // and the external header keeps 32 fixed bytes and 16 bits per frame, as in Lake Annecy.
+    // Offsets leave their IFD entry from 2 frames and sizes from 3; band arrays from 5 bands.
+    (function () {
+      var fig = document.querySelector('.ix-fig');
+      if (!fig) return;
+      var TILE = 256;
+      var LIMITS = [256, 100000, 100000];
+      var STEPS = [1, 256, 256];
+      var WIDTH = 600;
+      var dims = Array.prototype.slice.call(fig.querySelectorAll('.ix-dim'));
+      var buttons = Array.prototype.slice.call(fig.querySelectorAll('.fs-tabs button'));
+      var band = true;
+
+      function unit(max) {
+        if (max < 1e4) return [1, ' B', 0];
+        if (max < 1e6) return [1e3, ' kB', 1];
+        return [1e6, ' MB', 2];
+      }
+
+      function draw() {
+        var v = dims.map(function (input, i) {
+          var n = Number(input.value);
+          var ok = /^[0-9]+$/.test(input.value) && n >= 1 && n <= LIMITS[i];
+          input.classList.toggle('is-bad', !ok);
+          input.style.width = 'calc(' + Math.max(input.value.length, 3) + 'ch + 14px)';
+          return ok ? n : 0;
+        });
+        if (v.indexOf(0) >= 0) return;
+        var b = v[0];
+        var n = Math.ceil(v[1] / TILE) * Math.ceil(v[2] / TILE) * (band ? b : 1);
+        var off = n >= 2 ? 8 * n : 0;
+        var size = n >= 3 ? 4 * n : 0;
+        var rows = {
+          tif: { head: 16, ifd: 376 + (b >= 5 ? 4 * b : 0) + (b >= 6 ? 2 * (b - 1) : 0) - (b === 1 ? 20 : 0), off: off, size: size, geo: 166 },
+          file: { head: 16, ifd: 276 + (b >= 5 ? 4 * b : 0), off: off, size: size, geo: 160 },
+          ext: { fixed: 32, size: Math.ceil(n * 16 / 8) }
+        };
+        var names = { ifd: 'IFD', off: 'offsets', size: 'sizes', geo: 'geo', fixed: '', head: '' };
+        var totals = {};
+        Object.keys(rows).forEach(function (k) {
+          totals[k] = Object.keys(rows[k]).reduce(function (s, p) { return s + rows[k][p]; }, 0);
+        });
+        var u = unit(totals.tif);
+        function fmt(x) { return (x / u[0]).toLocaleString('en-US', { minimumFractionDigits: u[2], maximumFractionDigits: u[2] }); }
+        Object.keys(rows).forEach(function (k) {
+          var block = fig.querySelector('[data-row="' + k + '"]');
+          block.style.width = Math.max(totals[k] / totals.tif * WIDTH, 18) + 'px';
+          Object.keys(rows[k]).forEach(function (p) {
+            var span = block.querySelector('[data-part="' + p + '"]');
+            span.style.flexGrow = rows[k][p];
+            span.style.display = rows[k][p] ? '' : 'none';
+            span.textContent = names[p] ? names[p] + ' ' + fmt(rows[k][p]) + (u[0] > 1 ? u[1] : '') : '';
+          });
+          fig.querySelector('[data-total="' + k + '"]').textContent = fmt(totals[k]) + u[1];
+        });
+        Array.prototype.forEach.call(fig.querySelectorAll('.block span'), function (span) {
+          span.classList.remove('is-thin');
+          if (span.scrollWidth > span.clientWidth) span.classList.add('is-thin');
+        });
+        fig.querySelector('.ix-il').textContent = band ? 'band' : 'pixel';
+        fig.querySelector('.ix-r1').textContent = (totals.tif / totals.ext).toFixed(1) + '× smaller';
+        fig.querySelector('.ix-r2').textContent = (totals.file / totals.ext).toFixed(1) + '× smaller';
+      }
+
+      dims.forEach(function (input, i) {
+        input.addEventListener('input', draw);
+        input.addEventListener('focus', function () { input.select(); });
+        input.addEventListener('keydown', function (e) {
+          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+          e.preventDefault();
+          var n = Number(input.value) || 0;
+          n += e.key === 'ArrowUp' ? STEPS[i] : -STEPS[i];
+          input.value = Math.min(Math.max(n, 1), LIMITS[i]);
+          draw();
+        });
+      });
+      buttons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          band = button.dataset.band === '1';
+          buttons.forEach(function (b) { b.classList.toggle('is-on', b === button); });
+          draw();
+        });
+      });
+      new MutationObserver(draw).observe(fig.closest('.slide'), { attributes: true, attributeFilter: ['class'] });
+      draw();
+    })();
+  </script>
+  <script>
+    // The CPU and GPU reads of slides 9 and 10. The dot is the data, it moves without
     // stopping to the lane of the library that handles it, pauses only where the frames are
     // decoded and grows there, and runs again when its slide comes back or the route is
     // clicked. The GPU route moves faster and barely pauses to decode, so it ends first,
@@ -532,7 +684,7 @@
     })();
   </script>
   <script>
-    // The race of slide 10, the four warm reads of the GeoZL Sentinel-2 benchmark on one
+    // The race of slide 11, the four warm reads of the GeoZL Sentinel-2 benchmark on one
     // linear clock. Two seconds of reading play in 1.2, so JPEG2000 is still decoding
     // when the clock stops. It runs again when the slide comes back or the chart is clicked.
     (function () {
@@ -579,7 +731,7 @@
     })();
   </script>
   <script>
-    // The DDP loop of slide 11, one column per rank and one row per step. The four batches
+    // The DDP loop of slide 12, one column per rank and one row per step. The four batches
     // go down their columns together and grow while GeoZL decodes them on each GPU. After
     // the backward pass each GPU sends its gradient to the next one around the ring, the
     // last back to the first, and all four pulse when the averaged gradients are back.

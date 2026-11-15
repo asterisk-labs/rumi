@@ -59,7 +59,7 @@ body {
 .cover p { margin: 0; color: var(--soft); font-size: 25px; }
 .closing .cover-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
 .closing h1 { margin: 0; }
-.end-install { display: inline-flex; align-items: center; gap: 12px; padding: 10px 22px; border: 0; border-radius: 999px; background: var(--wash); color: var(--ink); cursor: pointer; font: 500 20px var(--mono); }
+.end-install { display: inline-flex; align-items: center; gap: 12px; padding: 10px 22px; border: 0; background: var(--wash); color: var(--ink); cursor: pointer; font: 500 20px var(--mono); }
 .end-install::before { color: var(--violet); content: "$"; }
 .end-install::after { color: var(--faint); font: 400 14px var(--sans); content: "copy"; }
 .end-install.is-copied::after { color: var(--violet); content: "copied"; }
@@ -86,6 +86,9 @@ h1 {
   font-weight: 600;
   margin: 0;
 }
+.title-mark { position: relative; isolation: isolate; display: inline-block; }
+.title-mark::before { position: absolute; inset: .56em -.06em .02em -.04em; z-index: -1; content: ''; background: #c4ffc2; transform: rotate(-.8deg); }
+.title-mark.red::before { background: #ffc4c2; }
 p { margin: 0; }
 code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .mono { font-family: var(--mono); }
@@ -102,20 +105,25 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .who { font-size: 26px; font-weight: 600; letter-spacing: -.03em; line-height: 1; }
 .who span { display: block; margin-top: 4px; color: var(--dim); font-size: 14px; font-weight: 400; letter-spacing: 0; }
 
-/* 04 Header bytes. */
+/* 08 The index sizes. */
 .bars { display: grid; grid-template-columns: 150px 600px 1fr; row-gap: 16px; column-gap: 16px; align-items: center; }
-.bar { display: flex; gap: 3px; height: 38px; }
-.bar span {
+.bar { display: flex; height: 46px; }
+.bar .block { display: flex; overflow: hidden; border: 1.5px solid #777; }
+.bar .block.rumi { border-color: var(--violet); }
+.bar .block span {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  border: 1px solid;
+  background: var(--wash);
   color: var(--ink);
   white-space: nowrap;
-  font: 500 11px var(--mono);
+  font: 500 12px var(--mono);
 }
-.bar .aside { border: 0; background: none; justify-content: flex-start; padding-left: 12px; color: var(--dim); font: 400 13px var(--sans); }
+.bar .block span + span { border-left: 1px solid #c9c9c9; }
+.bar .block .off { background: #ffeae1; }
+.bar .block .size { background: #fdf5d0; }
+.bar .aside { display: flex; align-items: center; padding-left: 14px; color: var(--dim); font: 400 15px var(--sans); }
 .bars .who { font-size: 20px; }
 .bars .who span { font-size: 13px; margin-top: 2px; }
 .bars .rumi { color: var(--violet); }
@@ -125,24 +133,23 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .index-saving { border-left: 3px solid var(--violet); padding-left: 12px; color: var(--soft); font-size: 18px; line-height: 1.2; }
 .index-saving strong { color: var(--hot); font-weight: 600; }
 
-/* The request comparison of slide 4. */
+/* The request comparison of slide 5. */
 .trips { display: grid; grid-template-columns: 210px 1fr 110px; row-gap: 10px; align-items: center; }
 .trip-who { font-size: 18px; color: var(--soft); }
 .trip { display: flex; align-items: center; gap: 6px; height: 30px; }
 .trip span { display: flex; align-items: center; height: 100%; padding: 0 12px; font: 500 12px var(--mono); }
 .trip .req { background: var(--grey); color: var(--soft); }
 .trip .req.hot { background: var(--violet); color: #fff; }
-.trip .calc { box-shadow: inset 0 0 0 1px var(--line); color: var(--dim); }
-.trip .wait { width: 70px; padding: 0; background: repeating-linear-gradient(90deg, var(--line) 0 4px, transparent 4px 8px) center / 100% 2px no-repeat; }
+.trip .calc { padding-left: 0; color: var(--dim); }
+.trip .wait { width: 150px; padding: 0; align-items: flex-start; justify-content: center; font-size: 10px; line-height: 1; color: var(--soft); background: repeating-linear-gradient(90deg, var(--line) 0 4px, transparent 4px 8px) center / 100% 2px no-repeat; }
 .trip-n { font: 500 14px var(--mono); text-align: right; color: var(--dim); }
 .trip-n.hot { color: var(--violet); }
 
-/* 08 The call, in the colours of the docs code blocks. */
+/* 09 The call, in the colours of the docs code blocks. */
 .code {
   align-self: center;
   margin: 0;
   padding: 12px 20px;
-  border-radius: 6px;
   background: var(--wash);
   color: var(--ink);
   font: 13.5px/1.65 var(--mono);
@@ -152,7 +159,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .tok-str { color: #17803d; }
 .tok-num { color: #c2410c; }
 
-/* 08 and 09 The CPU and GPU reads, one lane for each library, drawn like the read of the landing page. */
+/* 09 and 10 The CPU and GPU reads, one lane for each library, drawn like the read of the landing page. */
 .path-fig { gap: 12px; }
 .path-fig svg { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; }
 .pt-band { fill: transparent; }
@@ -181,7 +188,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .pt-glow { fill: var(--violet); opacity: .18; }
 .path-note { color: var(--dim); font-size: 14.5px; line-height: 1.3; text-align: center; }
 
-/* 10 The Sentinel-2 benchmark of the GeoZL notebook as a race, Rumi in violet, the gains in orange. */
+/* 11 The Sentinel-2 benchmark of the GeoZL notebook as a race, Rumi in violet, the gains in orange. */
 .race { gap: 18px; }
 .race-setup { color: var(--dim); font-size: 16px; line-height: 1.3; }
 .race-chart { display: grid; row-gap: 12px; cursor: pointer; }
@@ -211,7 +218,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .race-links a:hover,
 .race-links a:focus-visible { background: #ece9fd; outline: none; }
 
-/* 11 The DDP loop, one column per rank and one row per library, drawn like slides 8 and 9. */
+/* 12 The DDP loop, one column per rank and one row per library, drawn like slides 9 and 10. */
 .dl-fig { gap: 14px; }
 .dl-code { padding: 10px 18px; font-size: 13px; line-height: 1.6; }
 .tok-kw { color: #492ae8; }
@@ -226,7 +233,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .dl-grad-dot { fill: #fe6b37; }
 .dl-grad-glow { fill: #fe6b37; opacity: .2; }
 
-/* 04 The write, the graphic of img/rumi-layout.svg with the deck fonts. */
+/* 05 The write, the graphic of img/rumi-layout.svg with the deck fonts. */
 .write-fig { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
 .write-fig svg { display: block; width: 680px; height: auto; }
 .write-fig text { font-family: var(--sans); fill: #222; }
@@ -235,9 +242,9 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .write-fig figcaption { color: var(--dim); font-size: 18px; }
 .write-fig .trips { align-self: stretch; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--rule); }
 
-/* 05 and 06 The file and the external header, with the file map rules of docs/assets/css/reading.css. */
-/* 05 and 06 carry a small copy of the write graphic, the output they show in violet. */
-.mini { position: absolute; top: 74px; right: 48px; width: 200px; height: auto; }
+/* 06 and 07 The file and the external header, with the file map rules of docs/assets/css/reading.css. */
+/* 06 and 07 carry a small copy of the write graphic, the output they show in violet. */
+.mini { position: absolute; top: 74px; right: 48px; width: 180px; height: auto; }
 .mini text { font-family: var(--sans); fill: #222; font-size: 30px; text-anchor: middle; dominant-baseline: middle; }
 .mini .box,
 .mini .off rect { fill: #fff; stroke: #777; stroke-width: 2.5; }
@@ -288,9 +295,9 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .im-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 9px 10px; text-align: left; }
 .hm-caption { margin: 0 0 6px; color: var(--dim); font: 500 12px/1.4 var(--sans); }
 .im-name { color: var(--ink); font: 500 12.5px/1.25 var(--sans); }
-.hl-line { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
+.hl-file { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
 .hl-line .hm-caption { align-self: end; }
-.hl-cells { display: flex; gap: 6px; height: 150px; }
+.hl-cells { display: flex; gap: 6px; height: 140px; }
 .im-cell.hl-field {
   flex-direction: row;
   justify-content: space-between;
@@ -302,7 +309,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
   white-space: nowrap;
 }
 
-/* Slides 5, 6 and 7, in the Asterisk colours of the slide 2 figure. Violet for what the
+/* Slides 6 to 8, in the Asterisk colours of the slide 2 figure. Violet for what the
    tensor predicts, yellow for what only compressing gives, and orange for the offsets the
    external header leaves out. */
 .wm-view { --hot: #fe6b37; }
@@ -317,6 +324,10 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .wm-known span { padding-top: 5px; border-top: 3px solid; font: 500 12px/1.3 var(--sans); text-align: center; }
 .wm-known .wm-before { flex: 0 0 calc(64px + 76px + 92px + 6px); border-color: #492ae8; color: #492ae8; }
 .wm-known .wm-after { flex: 1 1 auto; border-color: #f7cc09; color: #815d00; }
+.sf-file { position: relative; padding: 16px 12px 12px; border: 1.5px solid #777; }
+.sf-file::before { position: absolute; top: -8px; left: 12px; padding: 0 6px; content: attr(data-name); background: #fff; color: var(--dim); font: 500 12px/1 var(--mono); }
+.sf-file + .wm-known { padding-inline: 13.5px; }
+.sf-file.hl-file { padding-top: 12px; }
 
 .progress {
   position: fixed;
@@ -348,16 +359,15 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 }
 
 /* The GeoTIFF and Rumi comparison keeps its image figures. */
-.slide.intro { padding-top: 18px; padding-bottom: 16px; }
-.slide.intro header { margin-bottom: 10px; }
+.slide.intro { padding-bottom: 16px; }
 .slide.intro h1 { margin-bottom: 12px; }
-.slide.intro figure { flex: none; width: 100%; height: 400px; margin: 0; display: flex; align-items: center; justify-content: center; }
+.slide.intro figure { flex: 1; min-height: 0; width: 100%; margin: 0; display: flex; align-items: center; justify-content: center; }
 .slide.intro figure img { width: 100%; height: 100%; display: block; object-fit: contain; }
 
-/* 06 The external header on one line, every size drawn as count_min plus its stored difference. */
-.hl-line .wm-known { grid-column: 1 / -1; gap: 6px; margin-top: 10px; }
+/* 07 The external header on one line, every size drawn as count_min plus its stored difference. */
+.hl-line .wm-known { gap: 6px; margin-top: 10px; }
 .hl-line .wm-known .wm-before { flex-basis: 324px; }
-.hx-sizes { display: flex; flex-direction: column; height: 150px; }
+.hx-sizes { display: flex; flex-direction: column; height: 140px; }
 .hx-bars { display: flex; flex: 1 1 auto; align-items: flex-end; gap: 3px; }
 .hx-bar { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; height: 100%; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; }
 .hx-fill { width: 100%; height: var(--h); border: 1px solid #f7cc09; background: color-mix(in srgb, #f7cc09 50%, var(--bg)); }
@@ -366,3 +376,46 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .hx-bar:focus-visible { outline: none; }
 .hx-diff { color: var(--ink-soft); font: 10.5px/1 var(--mono); white-space: nowrap; writing-mode: vertical-rl; transform: rotate(180deg); }
 .hx-base { margin: 0; padding: 6px 8px; border: 1px solid #f7cc09; background: #fdf5d0; color: var(--ink-soft); font: 500 12px/1.3 var(--sans); text-align: center; }
+
+/* 04 The data model, redrawn from img/rumi-data-model.svg in the deck colours. */
+.dm-wrap { flex: 1; min-height: 0; margin: 0; display: flex; align-items: center; }
+.dm-fig { width: 100%; height: auto; overflow: visible; }
+.dm-fig text { font-family: var(--sans); fill: var(--ink); }
+.dm-rule { fill: none; stroke: var(--rule); stroke-width: 1; }
+.dm-fig .dm-term { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.dm-fig .dm-shape { font: 500 13px var(--mono); fill: #492ae8; }
+.dm-fig .dm-text { font-size: 14px; fill: var(--dim); }
+.dm-fig .dm-axis { font: 500 12px var(--mono); fill: var(--dim); }
+.dm-fig .dm-more { font-size: 22px; fill: var(--dim); text-anchor: middle; }
+.dm-dim { fill: none; stroke: #999; stroke-width: 1; }
+.dm-set { fill: none; stroke: #999; stroke-width: 1.2; stroke-dasharray: 5 4; }
+.dm-tile { fill: #ece9fd; stroke: #492ae8; stroke-width: 1.5; }
+.dm-box path, .dm-box rect { stroke-width: 1.2; stroke-linejoin: miter; }
+.dm-box .l { fill: none; stroke-width: .8; }
+.dm-n .f { fill: #f6f6f4; stroke: #777; }
+.dm-n .t { fill: #fbfbfa; stroke: #777; }
+.dm-n .s { fill: #e7e7e3; stroke: #777; }
+.dm-n .l { stroke: #b9b9b9; }
+.dm-v .f { fill: #ece9fd; stroke: #492ae8; }
+.dm-v .t { fill: #f5f3fe; stroke: #492ae8; }
+.dm-v .s { fill: #d9d3fb; stroke: #492ae8; }
+.dm-v .l { stroke: #b6aaf6; }
+.dm-pick { fill: #ece9fd; stroke: #492ae8; stroke-width: 1.5; }
+
+/* The layout tabs of slide 8. */
+.fs-tabs { display: flex; justify-content: center; gap: 22px; }
+.fs-tabs button { padding: 4px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--dim); font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.fs-tabs button.is-on { border-color: var(--ink); color: var(--ink); }
+
+/* 08 The index sizes for any shape. Big fields so a click lands on the number. */
+.ix-input { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ix-input p { margin: 0; color: var(--ink-soft); font-size: 17px; }
+.ix-dim { width: calc(4ch + 14px); margin: 0; padding: 4px 6px; border: 0; border-bottom: 1.5px dashed #c2410c; background: none; color: #c2410c; font: 500 17px var(--mono); text-align: center; cursor: text; }
+.ix-dim:hover, .ix-dim:focus { outline: none; border-bottom-style: solid; }
+.ix-dim.is-bad { border-color: #d33; color: #d33; }
+.ix-fig .bar .block { flex: none; min-width: 0; transition: width .25s ease; }
+.ix-fig .bar .block span { flex-basis: 0; min-width: 0; overflow: hidden; }
+.ix-fig .bar .block span.is-thin { color: transparent; }
+.ix-note { margin: 0; color: var(--dim); font-size: 13px; }
+.ix-fig .index-saving { margin-top: 22px; }
+.ix-fig .ix-note { margin-top: -6px; }
