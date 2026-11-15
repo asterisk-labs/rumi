@@ -239,7 +239,7 @@ holes = copy(reflectance)
 holes[[(y * 40 + x) % 97 == 0 for x in 0:39, y in 0:47]] .= NaN32
 radiance = Float32.([50 + 4000 * (x + y) / 254 + (x * 7919 + y * 104729) % 61
                      for x in 0:127, y in 0:127])
-# Ties above 2048, subnormals and NaN reach every float16 rounding branch.
+# Exercises float16 ties, subnormals and NaNs.
 half = Float16.([y == 0 ? 2048.0 + x % 8 : y == 1 ? (x - 20) / 3 * 2.0^-14 :
                  ((y * 131 + x * 71) % 1000) / 7 - 60 for x in 0:39, y in 0:47])
 half[[(y * 40 + x) % 89 == 0 for x in 0:39, y in 0:47]] .= NaN16
@@ -319,6 +319,10 @@ wide[[(y * 40 + x) % 83 == 0 for x in 0:39, y in 0:47]] .= typemin(Int64)
 
     @test_throws "must not be a Bool" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error=true)
     @test_throws "NUL character" Rumi.GeoZL.graph(reflectance, "planar>zigzag>zstd"; error="1%\0x")
+    for text in ("5", "", "0")
+        @test_throws "a text `error` is a percentage" Rumi.GeoZL.graph(
+            counts, "planar>zigzag>zstd"; error=text)
+    end
     @test_throws "cannot use NaN" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=NaN)
     @test_throws "does not fit" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=-1)
     @test_throws "does not fit" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=65536)

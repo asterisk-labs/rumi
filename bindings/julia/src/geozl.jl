@@ -62,6 +62,10 @@ function _error_text(error)
         throw(ArgumentError("`error` must be a number, percentage or recipe"))
     '\0' in error &&
         throw(ArgumentError("`error` contains a NUL character, which a C string cannot carry"))
+    # A bare number is LINEAR only as a number, as in GeoZL.jl.
+    occursin(':', error) || endswith(error, "%") ||
+        throw(ArgumentError("a text `error` is a percentage such as \"1%\" or a LINEAR, " *
+                            "LOG or SQRT recipe"))
     return String(error)
 end
 

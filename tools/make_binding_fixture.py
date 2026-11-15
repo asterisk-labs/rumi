@@ -49,7 +49,7 @@ def geozl_cases() -> dict[str, tuple[np.ndarray, str, dict]]:
     reflectance = (((y * 131 + x * 71) % 1000) / 4000 + 0.1).astype(np.float32)
     holes = reflectance.copy()
     holes[(y * 40 + x) % 97 == 0] = np.nan
-    # Ties above 2048, subnormals and NaN reach every float16 rounding branch.
+    # Exercises float16 ties, subnormals and NaNs.
     half = np.where(y == 0, 2048 + x % 8,
                     np.where(y == 1, (x - 20) / 3 * 2.0 ** -14,
                              ((y * 131 + x * 71) % 1000) / 7 - 60)).astype(np.float16)

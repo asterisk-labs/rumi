@@ -26,9 +26,10 @@ Notable user-visible changes are recorded here.
   and `Rumi.GeoZL` in Julia compress frames with the GeoZL linked into
   `librumi`. The C API adds `rumi_geozl_graph_open`, `rumi_geozl_compress`,
   `rumi_geozl_graph_error` and `rumi_geozl_graph_close`. A graph reports its
-  normalized error recipe, as the GeoZL packages do. In R a frame from
-  `rumi_frames()` carries its datatype, which `rumi_geozl_graph()` uses.
-  `rumi.write` still stores payloads as given.
+  normalized error recipe, and a text error must be a percentage or a recipe,
+  as in the GeoZL packages. In R a frame from `rumi_frames()` carries its
+  datatype, which `rumi_geozl_graph()` uses. `rumi.write` still stores payloads
+  as given.
 
 ### Changed
 

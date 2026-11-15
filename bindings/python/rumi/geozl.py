@@ -35,6 +35,10 @@ def _error_text(error: Error) -> bytes | None:
     if isinstance(error, str):
         if "\x00" in error:
             raise ValueError("error contains a NUL character, which a C string cannot carry")
+        # A bare number is LINEAR only as a number, as in the geozl package.
+        if ":" not in error and not error.endswith("%"):
+            raise ValueError('a text error is a percentage such as "1%" or a LINEAR, '
+                             'LOG or SQRT recipe')
         return error.encode("utf-8")
     raise TypeError("error must be a number, a percentage or a recipe")
 

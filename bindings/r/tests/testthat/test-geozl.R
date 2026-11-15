@@ -26,7 +26,7 @@ radiance <- local({
   matrix(50 + 4000 * (g$x + g$y) / 254 + (g$x * 7919 + g$y * 104729) %% 61,
          128, 128)
 })
-# Ties above 2048, subnormals and NaN reach every float16 rounding branch.
+# Exercises float16 ties, subnormals and NaNs.
 half <- local({
   g <- grid(40, 48)
   v <- ifelse(g$y == 0, 2048 + g$x %% 8,
@@ -162,6 +162,9 @@ test_that("the core refuses what GeoZL would misread", {
 test_that("conversion refuses values a datatype cannot hold", {
   expect_error(rumi_geozl_graph(counts, "planar>zigzag>zstd", error = TRUE),
                "must not be a logical")
+  for (text in c("5", "", "0"))
+    expect_error(rumi_geozl_graph(counts, "planar>zigzag>zstd", error = text,
+                                  datatype = "uint16"), "a text `error` is a percentage")
   expect_error(rumi_geozl_graph(counts, "planar>zigzag>zstd", datatype = "uint8"),
                "does not fit")
   expect_error(rumi_geozl_graph(c(1, NA), "planar>zigzag>zstd", width = 2,

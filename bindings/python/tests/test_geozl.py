@@ -36,7 +36,7 @@ def _holes():
 
 
 def _half():
-    # Ties above 2048, subnormals and NaN reach every float16 rounding branch.
+    # Exercises float16 ties, subnormals and NaNs.
     y, x = np.indices((48, 40))
     a = np.where(y == 0, 2048 + x % 8,
                  np.where(y == 1, (x - 20) / 3 * 2.0 ** -14,
@@ -184,6 +184,9 @@ def test_the_binding_refuses_values_it_cannot_convert():
         rumi.geozl.graph(raster, "planar>zigzag>zstd\x00x")
     with pytest.raises(ValueError, match="NUL character"):
         rumi.geozl.graph(raster, "planar>zigzag>zstd", error="1%\x00x")
+    for text in ("5", "", "0"):
+        with pytest.raises(ValueError, match="a text error is a percentage"):
+            rumi.geozl.graph(raster, "planar>zigzag>zstd", error=text)
 
 
 def test_a_bool_tile_holds_only_zero_and_one():

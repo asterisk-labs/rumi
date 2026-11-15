@@ -45,6 +45,10 @@
     return(.format_number(error))
   if (!is.character(error))
     stop("`error` must be a number, percentage or recipe", call. = FALSE)
+  # A bare number is LINEAR only as a number, as in the geozl package.
+  if (!grepl(":", error, fixed = TRUE) && !endsWith(error, "%"))
+    stop("a text `error` is a percentage such as \"1%\" or a LINEAR, LOG or SQRT recipe",
+         call. = FALSE)
   enc2utf8(error)
 }
 
