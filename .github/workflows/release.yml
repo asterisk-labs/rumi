@@ -469,7 +469,9 @@ jobs:
           path: core/build/
       - name: Install Python packages
         shell: bash -el {0}
-        run: python -m pip install wheelhouse/*.whl
+        run: |
+          python -m pip install wheelhouse/*.whl
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.11.*'
       # Without the submodules, configure builds the vendored sources, as
       # R-universe does. install.packages only warns on failure, so load each.
       - name: Install R packages
