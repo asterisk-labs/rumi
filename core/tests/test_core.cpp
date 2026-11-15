@@ -2262,8 +2262,10 @@ void test_geozl_c_api()
         rumi_geozl_graph* same = nullptr;
         EQ(open(zero, nullptr, RUMI_DT_UINT16, 1, &same), RUMI_OK);
         OK(frame_of(same) == frame);
+        OK(rumi_geozl_graph_error(same) == nullptr);
         rumi_geozl_graph_close(same);
     }
+    OK(rumi_geozl_graph_error(nullptr) == nullptr);
 
     CASE("a bare number and a percentage are LINEAR and LOG recipes")
     for (const auto& [short_form, recipe] :
@@ -2274,6 +2276,8 @@ void test_geozl_c_api()
         EQ(open(recipe, nullptr, RUMI_DT_UINT16, 1, &b), RUMI_OK);
         OK(!frame_of(a).empty() && frame_of(a) == frame_of(b));
         OK(frame_of(a) != frame);
+        OK(rumi_geozl_graph_error(a) && std::strcmp(rumi_geozl_graph_error(a), recipe) == 0);
+        OK(rumi_geozl_graph_error(b) && std::strcmp(rumi_geozl_graph_error(b), recipe) == 0);
         rumi_geozl_graph_close(a);
         rumi_geozl_graph_close(b);
     }
@@ -2289,6 +2293,21 @@ void test_geozl_c_api()
     OK(out == nullptr);
     rumi_geozl_graph_close(graph);
     rumi_geozl_graph_close(nullptr);
+
+    CASE("a bool tile holds only the bytes 0 and 1")
+    const unsigned char flags[4] = {0, 1, 1, 0};
+    const unsigned char twos[4] = {0, 1, 2, 0};
+    rumi_geozl_graph* mask = nullptr;
+    EQ(rumi_geozl_graph_open("planar>zigzag>zstd", RUMI_DT_BOOL, flags, 4, 2, 1,
+                             nullptr, nullptr, &mask), RUMI_OK);
+    EQ(rumi_geozl_compress(mask, RUMI_DT_BOOL, flags, 4, &out, &out_size), RUMI_OK);
+    rumi_free(out);
+    out = nullptr;
+    EQ(rumi_geozl_compress(mask, RUMI_DT_BOOL, twos, 4, &out, &out_size),
+       RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(), "a bool tile holds a byte other than 0 or 1") == 0);
+    OK(out == nullptr);
+    rumi_geozl_graph_close(mask);
 
     CASE("the core refuses requests GeoZL would misread")
     rumi_geozl_graph* none = nullptr;

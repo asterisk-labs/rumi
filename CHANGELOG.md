@@ -24,8 +24,10 @@ Notable user-visible changes are recorded here.
   windows and return the output layout and required buffer size.
 - `rumi.geozl` in Python, `rumi_geozl_graph` and `rumi_geozl_compress` in R,
   and `Rumi.GeoZL` in Julia compress frames with the GeoZL linked into
-  `librumi`. The C API adds `rumi_geozl_graph_open`, `rumi_geozl_compress`
-  and `rumi_geozl_graph_close`. `rumi.write` still stores payloads as given.
+  `librumi`. The C API adds `rumi_geozl_graph_open`, `rumi_geozl_compress`,
+  `rumi_geozl_graph_error` and `rumi_geozl_graph_close`. A graph reports its
+  normalized error recipe, as the GeoZL packages do. `rumi.write` still stores
+  payloads as given.
 
 ### Changed
 

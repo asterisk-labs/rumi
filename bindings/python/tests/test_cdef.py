@@ -143,6 +143,7 @@ rumi_status rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
 rumi_status rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
                                 const void* tile, size_t n_bytes,
                                 unsigned char** out_frame, size_t* out_size);
+const char* rumi_geozl_graph_error(const rumi_geozl_graph* graph);
 void rumi_geozl_graph_close(rumi_geozl_graph* graph);
 rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
                        const unsigned char* const* frames,
@@ -323,7 +324,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 52
+    assert len(baseline) == 53
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

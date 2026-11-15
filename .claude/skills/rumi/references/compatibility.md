@@ -34,14 +34,13 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 | Component | Version | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.32.0 | `extern/geozl` submodule. `geozl>=0.32.0,<0.33` in the Python dependencies. `@asterisk-labs/geozl` 0.32.0 in the JavaScript package |
+| GeoZL | 0.32.0 | `extern/geozl` submodule, linked into `librumi` and reached as `rumi.geozl`. `@asterisk-labs/geozl` 0.32.0 in the JavaScript package |
 | OpenZL | upstream commit `b7f498b` | through GeoZL's submodule |
 | Karu | 0.4.0 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |
 
-- `tools/check_release.py` fails when the dependencies do not read
-  `geozl>=X.Y.Z,<X.(Y+1)` for the submodule's `VERSION`, or when `NOTICE` names another
-  Karu version.
+- `tools/check_release.py` fails when the JavaScript GeoZL dependency or lock differs
+  from the submodule's `VERSION`, or when `NOTICE` names another GeoZL or Karu version.
 - Tests write frames with the GeoZL Python binding built from the submodule, never with
   an installed `geozl`. `make geozl-python` builds it, and `make test`,
   `make bindings-fixtures` and CI put it first on `PYTHONPATH`.

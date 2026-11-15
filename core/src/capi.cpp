@@ -1588,6 +1588,12 @@ rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
     });
 }
 
+extern "C" const char* rumi_geozl_graph_error(const rumi_geozl_graph* graph)
+{
+    if (!graph || graph->impl->error().empty()) return nullptr;
+    return graph->impl->error().c_str();
+}
+
 extern "C" void rumi_geozl_graph_close(rumi_geozl_graph* graph)
 {
     delete graph;

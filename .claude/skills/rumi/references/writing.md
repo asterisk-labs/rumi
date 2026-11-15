@@ -1,6 +1,6 @@
 # Writing
 
-Sources: `bindings/python/rumi/_write.py`, `_geozl.py` and `_time.py`,
+Sources: `bindings/python/rumi/_write.py`, `geozl.py` and `_time.py`,
 `core/src/write.cpp`, `core/src/geozl.cpp`, `core/src/trailer.cpp`,
 `core/src/geokeys.cpp`, and the Georeferencing, Trailer and Header blob sections of
 `SPEC.md`. Examples describe rumi after 0.30.0, whose `rumi.geozl` links GeoZL 0.32.0.

@@ -200,7 +200,7 @@ first frame at byte 500
 | Reading | `rumi_read`, `rumi_read_dlpack`, `rumi_read_many`, `rumi_read_many_dlpack`, `rumi_dlpack_free`, `rumi_dlpack_legacy`, `rumi_dlpack_legacy_free` |
 | GPU reads | `rumi_gpu_available`, `rumi_gpu_create`, `rumi_gpu_destroy`, `rumi_gpu_synchronize`, `rumi_gpu_current_device`, `rumi_read_gpu`, `rumi_read_many_gpu`, `rumi_read_gpu_dlpack`, `rumi_read_many_gpu_dlpack`, `rumi_dlpack_wait` (`decode_backend` is `RUMI_GPU_DECODE_AUTO` or `RUMI_GPU_DECODE_CPU`) |
 | Python capsule support | `rumi_dlpack_capsule_api`, `rumi_dlpack_capsule_destructor` |
-| Compression | `rumi_geozl_graph_open`, `rumi_geozl_compress`, `rumi_geozl_graph_close` (the linked GeoZL; error `NULL`, `"0.5"`, `"1%"` or a full recipe; nodata one sample or `NULL`) |
+| Compression | `rumi_geozl_graph_open`, `rumi_geozl_compress`, `rumi_geozl_graph_error` (the normalized recipe or `NULL`), `rumi_geozl_graph_close` (the linked GeoZL; error `NULL`, `"0.5"`, `"1%"` or a full recipe; nodata one sample or `NULL`) |
 | Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_frame_start`, `rumi_geokeys` |
 
 `rumi_read_many` takes an array of `rumi_read_item { source, spec, y_off, x_off }` plus

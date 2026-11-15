@@ -585,11 +585,17 @@ rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
                       rumi_geozl_graph** out);
 
 // Compress one tile of the graph's dtype. Its geometry is not checked against
-// the graph. *out_frame contains *out_size bytes released with rumi_free.
+// the graph, and bool samples must be 0 or 1. *out_frame contains *out_size
+// bytes released with rumi_free.
 RUMI_API rumi_status
 rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
                     const void* tile, size_t n_bytes,
                     unsigned char** out_frame, size_t* out_size);
+
+// The normalized error recipe, such as "LINEAR:MAX_ERROR=0.5" for "0.5", or
+// NULL for a lossless graph. A full recipe comes back as given, without the
+// parameters GeoZL fits from the raster. The text lives as long as the graph.
+RUMI_API const char* rumi_geozl_graph_error(const rumi_geozl_graph* graph);
 
 // Safe to call with NULL.
 RUMI_API void rumi_geozl_graph_close(rumi_geozl_graph* graph);

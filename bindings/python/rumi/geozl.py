@@ -7,6 +7,8 @@ from numpy.typing import ArrayLike
 from ._dtype import dtype_code
 from ._ffi import _check, c_int, ffi, lib
 
+__all__ = ["Graph", "compress", "graph"]
+
 Error = int | float | str | None
 
 
@@ -31,6 +33,8 @@ def _error_text(error: Error) -> bytes | None:
     if isinstance(error, (float, np.floating)):
         return str(error).encode()
     if isinstance(error, str):
+        if "\x00" in error:
+            raise ValueError("error contains a NUL character, which a C string cannot carry")
         return error.encode("utf-8")
     raise TypeError("error must be a number, a percentage or a recipe")
 
@@ -64,7 +68,7 @@ class Graph:
     method: str
     width: int
     planes: int
-    error: Error
+    error: str | None
     nodata: Any
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -73,7 +77,7 @@ class Graph:
 
     @classmethod
     def _new(cls, handle: Any, *, method: str, width: int, planes: int,
-             dtype: np.dtype, error: Error, nodata: Any) -> "Graph":
+             dtype: np.dtype, error: str | None, nodata: Any) -> "Graph":
         g = object.__new__(cls)
         g._h = handle
         g.method = method
@@ -102,6 +106,8 @@ def graph(raster: ArrayLike, method: str, *, width: int | None = None,
     """
     if not isinstance(method, str):
         raise TypeError("method must be a GeoZL graph such as 'planar>zigzag>pfor'")
+    if "\x00" in method:
+        raise ValueError("method contains a NUL character, which a C string cannot carry")
     text = _error_text(error)
     arr, code = _samples(raster)
     if width is None:
@@ -122,9 +128,12 @@ def graph(raster: ArrayLike, method: str, *, width: int | None = None,
         c_int(width, "width", "uint32_t"), c_int(planes, "planes", "uint32_t"),
         ffi.NULL if text is None else text,
         ffi.NULL if sample is None else ffi.from_buffer(sample), out))
-    return Graph._new(ffi.gc(out[0], lib.rumi_geozl_graph_close),
-                      method=method, width=width, planes=planes, dtype=arr.dtype,
-                      error=error, nodata=nodata)
+    handle = ffi.gc(out[0], lib.rumi_geozl_graph_close)
+    # The core normalizes the short syntax, so the graph reports it as GeoZL does.
+    recipe = lib.rumi_geozl_graph_error(handle)
+    return Graph._new(handle, method=method, width=width, planes=planes,
+                      dtype=arr.dtype, nodata=nodata,
+                      error=None if recipe == ffi.NULL else ffi.string(recipe).decode())
 
 
 def compress(tile: ArrayLike, *, graph: Graph) -> bytes:

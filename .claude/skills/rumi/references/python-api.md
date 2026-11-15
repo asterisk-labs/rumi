@@ -1,7 +1,7 @@
 # Python API
 
 Everything here describes `rumi` 0.30.0, as implemented in `bindings/python/rumi/`
-(`_frames.py`, `_geozl.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`,
+(`_frames.py`, `geozl.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`,
 `_config.py`, `_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
 
 ## Contents
@@ -117,8 +117,12 @@ compression. For `coeffs`, `profile` or standalone `decompress`, use the separat
 - `bool`, `complex64` and the other dtypes without a GeoZL code compress losslessly. A
   bound or sentinel on them raises `NotImplementedError`, and `complex128` raises
   `NotImplementedError: GeoZL compresses samples of 1, 2, 4 or 8 bytes`.
-- A `Graph` keeps `method`, `width`, `planes`, `dtype`, `error` and `nodata` as given.
-  It owns a compression context, so use one per thread.
+- A `Graph` keeps `method`, `width`, `planes`, `dtype` and `nodata` as given. `error`
+  is the normalized recipe, as in `geozl.Graph`, so `error=0.5` reads back as
+  `"LINEAR:MAX_ERROR=0.5"` and `error=0` as `None`. A graph owns a compression
+  context, so use one per thread.
+- `rumi.geozl` is a submodule, so `import rumi.geozl` and
+  `from rumi.geozl import graph` work as well as `rumi.geozl.graph`.
 
 ## 4. `write`
 

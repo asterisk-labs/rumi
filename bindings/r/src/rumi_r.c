@@ -745,6 +745,7 @@ SEXP rumi_r_geozl_pack(SEXP x, SEXP dtype_s, SEXP nodata_s);
 SEXP rumi_r_geozl_itemsize(SEXP dtype_s);
 SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
                         SEXP error_s, SEXP dtype_s, SEXP nodata_s);
+SEXP rumi_r_geozl_error(SEXP ptr);
 SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);
 
 static const R_CallMethodDef calls[] = {
@@ -757,6 +758,7 @@ static const R_CallMethodDef calls[] = {
     {"rumi_r_geozl_pack", (DL_FUNC)&rumi_r_geozl_pack, 3},
     {"rumi_r_geozl_itemsize", (DL_FUNC)&rumi_r_geozl_itemsize, 1},
     {"rumi_r_geozl_graph", (DL_FUNC)&rumi_r_geozl_graph, 7},
+    {"rumi_r_geozl_error", (DL_FUNC)&rumi_r_geozl_error, 1},
     {"rumi_r_geozl_compress", (DL_FUNC)&rumi_r_geozl_compress, 3},
     {NULL, NULL, 0}};
 

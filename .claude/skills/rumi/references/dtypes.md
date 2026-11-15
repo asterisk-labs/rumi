@@ -83,7 +83,7 @@ twice as many components. `complex128` must use `float64` components:
 
 ```python
 parts = frame.data.view(np.float64)
-frame.compressed = geozl.compress(parts, graph=geozl.graph(parts, "id>zstd"))
+frame.compressed = rumi.geozl.compress(parts, graph=rumi.geozl.graph(parts, "id>zstd"))
 ```
 
 The registry's `component_bytes` field supplies this rule; the reader does not

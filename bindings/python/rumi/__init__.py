@@ -1,6 +1,6 @@
 from importlib.metadata import version
 
-from . import _geozl as geozl
+from . import geozl
 from ._config import (
     get_checksum_verification,
     get_num_threads,

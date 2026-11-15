@@ -239,6 +239,13 @@ holes = copy(reflectance)
 holes[[(y * 40 + x) % 97 == 0 for x in 0:39, y in 0:47]] .= NaN32
 radiance = Float32.([50 + 4000 * (x + y) / 254 + (x * 7919 + y * 104729) % 61
                      for x in 0:127, y in 0:127])
+# Ties above 2048, subnormals and NaN reach every float16 rounding branch.
+half = Float16.([y == 0 ? 2048.0 + x % 8 : y == 1 ? (x - 20) / 3 * 2.0^-14 :
+                 ((y * 131 + x * 71) % 1000) / 7 - 60 for x in 0:39, y in 0:47])
+half[[(y * 40 + x) % 89 == 0 for x in 0:39, y in 0:47]] .= NaN16
+# int64 samples below 2^53, with the most negative int64 as the sentinel.
+wide = [(x * 7919 + y * 104729) % 1000 * 10^12 - 5 * 10^14 for x in 0:39, y in 0:47]
+wide[[(y * 40 + x) % 83 == 0 for x in 0:39, y in 0:47]] .= typemin(Int64)
 
 @testset "GeoZL" begin
     cases = [
@@ -249,6 +256,8 @@ radiance = Float32.([50 + 4000 * (x + y) / 254 + (x * 7919 + y * 104729) % 61
         "sqrt" => (radiance, "planar>zigzag>zstd", (; error="SQRT:MAX_ERROR=0.5N,A=25,B=2")),
         "sentinel" => (counts, "planar>zigzag>zstd", (; nodata=200)),
         "nan" => (holes, "planar>zigzag>zstd", (;)),
+        "half" => (half, "planar>zigzag>zstd", (;)),
+        "int64" => (wide, "planar>zigzag>zstd", (; nodata=typemin(Int64))),
     ]
     for (name, (raster, method, options)) in cases
         expected = Base.read(joinpath(@__DIR__, "fixtures", "geozl-$name.frame"))
@@ -282,6 +291,22 @@ radiance = Float32.([50 + 4000 * (x + y) / 254 + (x * 7919 + y * 104729) % 61
     @test sprint(show, graph) ==
           "Rumi.GeoZL.Graph(planar>zigzag>zstd, UInt16, row width 40, 3 planes, lossless)"
     @test Rumi.GeoZL.graph(UInt8.(1:12), "planar>zigzag>zstd"; width=4).planes == 1
+    zero = Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error=0)
+    @test zero.error === nothing
+    @test endswith(sprint(show, zero), "lossless)")
+    @test Rumi.GeoZL.graph(reflectance, "planar>zigzag>zstd"; error=0.01).error ==
+          "LINEAR:MAX_ERROR=0.01"
+    @test Rumi.GeoZL.graph(reflectance, "planar>zigzag>zstd"; error="1%").error ==
+          "LOG:MAX_ERROR=1%"
+
+    # missing takes the sentinel, or NaN in a float array, and compresses as it.
+    floats = Rumi.GeoZL.graph([1.0 missing; 3.0 4.0], "planar>zigzag>zstd")
+    @test Rumi.GeoZL.compress([1.0 missing; 3.0 4.0], floats) ==
+          Rumi.GeoZL.compress([1.0 NaN; 3.0 4.0], floats)
+    ints = Rumi.GeoZL.graph(Union{Missing,Int16}[1 missing; 3 4], "planar>zigzag>zstd";
+                            nodata=-1)
+    @test Rumi.GeoZL.compress(Union{Missing,Int16}[1 missing; 3 4], ints) ==
+          Rumi.GeoZL.compress(Int16[1 -1; 3 4], ints)
 
     @test_throws "the tile dtype is not the graph's" Rumi.GeoZL.compress(Int16.(counts), graph)
     @test_throws "error must not be negative" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error=-1)
@@ -293,9 +318,15 @@ radiance = Float32.([50 + 4000 * (x + y) / 254 + (x * 7919 + y * 104729) % 61
     @test_throws "could not build the graph" Rumi.GeoZL.graph(counts, "no such graph")
 
     @test_throws "must not be a Bool" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error=true)
+    @test_throws "NUL character" Rumi.GeoZL.graph(reflectance, "planar>zigzag>zstd"; error="1%\0x")
     @test_throws "cannot use NaN" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=NaN)
     @test_throws "does not fit" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=-1)
+    @test_throws "does not fit" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=65536)
+    @test_throws "does not fit" Rumi.GeoZL.graph(Int16.(counts), "planar>zigzag>zstd"; nodata=0.5)
+    @test_throws "does not fit" Rumi.GeoZL.graph(reflectance, "planar>zigzag>zstd"; nodata=1e40)
     @test_throws "needs `nodata`" Rumi.GeoZL.graph([1, missing], "planar>zigzag>zstd"; width=2)
+    @test_throws "Bool raster cannot hold" Rumi.GeoZL.graph([true, missing], "planar>zigzag>zstd";
+                                                             width=2)
     @test_throws "give `width`" Rumi.GeoZL.graph(counts[:, 1, 1], "planar>zigzag>zstd")
     @test_throws "does not store" Rumi.GeoZL.graph(fill('a', 2, 2), "planar>zigzag>zstd")
 end

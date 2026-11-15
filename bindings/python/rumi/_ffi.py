@@ -301,6 +301,8 @@ rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
                     const void* tile, size_t n_bytes,
                     unsigned char** out_frame, size_t* out_size);
 
+const char* rumi_geozl_graph_error(const rumi_geozl_graph* graph);
+
 void rumi_geozl_graph_close(rumi_geozl_graph* graph);
 
 typedef struct {

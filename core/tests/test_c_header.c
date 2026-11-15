@@ -24,9 +24,11 @@ void rumi_c_header_contract(void)
                               rumi_geozl_graph**) = rumi_geozl_graph_open;
     rumi_status (*compress)(rumi_geozl_graph*, rumi_dtype, const void*, size_t,
                             unsigned char**, size_t*) = rumi_geozl_compress;
+    const char* (*graph_error)(const rumi_geozl_graph*) = rumi_geozl_graph_error;
     void (*graph_close)(rumi_geozl_graph*) = rumi_geozl_graph_close;
     (void)graph_open;
     (void)compress;
+    (void)graph_error;
     (void)graph_close;
     (void)many;
     (void)many_dlpack;

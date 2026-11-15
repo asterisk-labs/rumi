@@ -1058,12 +1058,16 @@ public:
     compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
              unsigned char** out);
 
+    // The normalized error recipe, empty for lossless.
+    [[nodiscard]] const std::string& error() const noexcept { return error_; }
+
 private:
     GeozlGraph(geozl_2d_graph_s* graph, rumi_dtype dtype,
                std::size_t sample_bytes) noexcept;
     geozl_2d_graph_s* graph_;
     rumi_dtype        dtype_;
     std::size_t       sample_bytes_;
+    std::string       error_;
 };
 
 }  // namespace rumi

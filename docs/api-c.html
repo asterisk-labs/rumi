@@ -617,7 +617,7 @@ void rumi_geozl_graph_close(rumi_geozl_graph* graph);</code></pre>
 <pre><code class="sig language-c">rumi_status rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
                                 const void* tile, size_t n_bytes,
                                 unsigned char** out_frame, size_t* out_size);</code></pre>
-      <p>Compresses one tile of the graph's dtype. Its geometry is not checked against the graph, and a bounded tile outside the graph's domain is refused. <code>*out_frame</code> holds <code>*out_size</code> bytes the caller releases with <code>rumi_free</code>.</p>
+      <p>Compresses one tile of the graph's dtype. Its geometry is not checked against the graph. A bounded tile outside the graph's domain is refused, and so is a <code>bool</code> tile holding a byte other than 0 or 1, which a read would refuse. <code>*out_frame</code> holds <code>*out_size</code> bytes the caller releases with <code>rumi_free</code>.</p>
 <pre><code class="language-c">rumi_geozl_graph* graph = NULL;
 if (rumi_geozl_graph_open("planar&gt;zigzag&gt;pfor", RUMI_DT_UINT16, tile, tile_bytes,
                           256, 4, NULL, NULL, &amp;graph) != RUMI_OK) {
@@ -629,6 +629,10 @@ size_t frame_size = 0;
 rumi_status status = rumi_geozl_compress(graph, RUMI_DT_UINT16, tile, tile_bytes,
                                          &amp;frame, &amp;frame_size);
 rumi_geozl_graph_close(graph);</code></pre>
+
+      <h3 id="rumi_geozl_graph_error">rumi_geozl_graph_error</h3>
+<pre><code class="sig language-c">const char* rumi_geozl_graph_error(const rumi_geozl_graph* graph);</code></pre>
+      <p>Returns the normalized error recipe, such as <code>"LINEAR:MAX_ERROR=0.5"</code> for a bound of <code>"0.5"</code>, or <code>NULL</code> for a lossless graph. A full recipe comes back as given, without the parameters GeoZL fits from the raster, such as the <code>A</code> and <code>B</code> of a <code>SQRT</code> recipe. The text lives as long as the graph.</p>
 
       <h2 class="part" id="writing">Writing</h2>
       <p>A file is written in three steps. The frame helpers give the frames in frame-index order with their decoded shapes, you compress each one with <a href="#compression"><code>rumi_geozl_compress</code></a>, and <code>rumi_write</code> stores the payloads and returns the external header.</p>
@@ -786,6 +790,7 @@ if (rumi_write("scene.rumi", &amp;desc, frames, sizes, n,
         <li><a href="#compression">Compression</a></li>
         <li><a href="#rumi_geozl_graph_open">rumi_geozl_graph_open, rumi_geozl_graph_close</a></li>
         <li><a href="#rumi_geozl_compress">rumi_geozl_compress</a></li>
+        <li><a href="#rumi_geozl_graph_error">rumi_geozl_graph_error</a></li>
         <li><a href="#writing">Writing</a></li>
         <li><a href="#rumi_write">rumi_write</a></li>
         <li><a href="#rumi_write_base_offset">rumi_write_base_offset</a></li>

@@ -37,9 +37,15 @@ contain a breaking change, and the changelog calls it out.
 The `extern/geozl` submodule is pinned to GeoZL 0.32.0. GeoZL carries upstream
 OpenZL commit `b7f498b`.
 
-The Python package requires `geozl>=0.32.0,<0.33`, the range that
-`tools/check_release.py` derives from the submodule's `VERSION`. The JavaScript
-reader uses `@asterisk-labs/geozl` 0.32.0.
+GeoZL is linked into `librumi`, and Python, R and Julia compress with it, so
+none of them depends on a GeoZL package. The JavaScript reader uses
+`@asterisk-labs/geozl` 0.32.0.
 
 Rumi's tests write frames with the GeoZL Python binding built from the
-submodule, so they always match the C core Rumi vendors.
+submodule, so they always match the C core Rumi vendors. The R and Julia
+fixtures keep those frames for a byte comparison and are regenerated with
+`make bindings-fixtures` on a GeoZL update. They show that every binding writes
+what the pinned GeoZL writes, not that an older GeoZL's frames still decode.
+Before 1.0 a GeoZL release may change the bytes it writes and keep reading
+earlier frames, or change a codec layout and refuse frames written before it.
+Only the second needs a rewrite, and the changelog then names the files.

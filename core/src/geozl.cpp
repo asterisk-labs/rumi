@@ -239,13 +239,14 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
 
     // Own the graph before another allocation can throw.
     std::unique_ptr<GeozlGraph> out(new GeozlGraph(nullptr, dtype, sample_bytes));
+    out->error_ = std::move(*recipe);
     // OpenZL wants a pointer even for an empty stream.
     static const std::uint64_t empty = 0;
     char message[GEOZL_MESSAGE_BYTES] = {};
     const int rc = geozl_2d_graph_open_c(
         &out->graph_, method, width, planes,
-        recipe->empty() ? nullptr : recipe->c_str(), code < 0 ? 0 : code, mode,
-        bits, n_bytes ? raster : &empty, samples, sample_bytes, message,
+        out->error_.empty() ? nullptr : out->error_.c_str(), code < 0 ? 0 : code,
+        mode, bits, n_bytes ? raster : &empty, samples, sample_bytes, message,
         sizeof message);
     if (rc != 0) return geozl_failure(rc, "GeoZL could not build the graph", message);
     return out;
@@ -261,6 +262,15 @@ GeozlGraph::compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
     if (!tile && n_bytes) return fail(RUMI_ERR_INVALID, "the tile is null");
     if (n_bytes % sample_bytes_) {
         return fail(RUMI_ERR_INVALID, "the tile does not hold whole samples");
+    }
+    // The reader refuses any other byte, so the tile fails here and not on a read.
+    if (dtype_ == RUMI_DT_BOOL) {
+        const auto* bytes = static_cast<const unsigned char*>(tile);
+        for (std::size_t i = 0; i < n_bytes; ++i) {
+            if (bytes[i] > 1) {
+                return fail(RUMI_ERR_INVALID, "a bool tile holds a byte other than 0 or 1");
+            }
+        }
     }
     const std::size_t capacity = geozl_2d_compress_bound_c(n_bytes, 0);
     if (capacity == 0) return fail(RUMI_ERR_INVALID, "the tile has no frame size bound");

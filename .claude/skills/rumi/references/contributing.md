@@ -45,7 +45,7 @@ bindings/python/
   rumi/_dlpack.py _framework.py  DLPack lifetime and framework consumers
   rumi/_read.py _config.py       read orchestration and process configuration
   rumi/_frames.py _pattern.py _write.py _info.py _time.py _dtype.py _repr.py
-  rumi/_geozl.py                 rumi.geozl over rumi_geozl_*
+  rumi/geozl.py                  the public rumi.geozl submodule over rumi_geozl_*
   rumi/_lib/                     staged librumi (ignored by git)
   tests/                         pytest suites
   pyproject.toml hatch_build.py check_wheel.py

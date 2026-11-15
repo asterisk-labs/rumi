@@ -113,8 +113,8 @@ rumi_geozl_graph <- function(x, method, width = NULL, planes = NULL,
   ptr <- .rumi_call(rumi_r_geozl_graph, bytes, enc2utf8(method), geometry$width,
                     geometry$planes, text, dt$name, value)
   structure(list(ptr = ptr, method = method, width = geometry$width,
-                 planes = geometry$planes, datatype = dt$name, error = error,
-                 nodata = nodata),
+                 planes = geometry$planes, datatype = dt$name,
+                 error = .rumi_call(rumi_r_geozl_error, ptr), nodata = nodata),
             class = "rumi_geozl_graph")
 }
 
@@ -123,7 +123,7 @@ print.rumi_geozl_graph <- function(x, ...) {
   plane_word <- if (x$planes == 1) "plane" else "planes"
   parts <- c(x$method, x$datatype, paste("row width", format(x$width)),
              paste(format(x$planes), plane_word),
-             if (is.null(x$error)) "lossless" else format(x$error))
+             if (is.null(x$error)) "lossless" else x$error)
   cat("<rumi_geozl_graph> ", paste(parts, collapse = ", "), "\n", sep = "")
   invisible(x)
 }

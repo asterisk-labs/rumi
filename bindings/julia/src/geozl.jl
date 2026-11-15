@@ -43,6 +43,7 @@ function _samples(x::AbstractArray, nodata)
     _dtype_code(T)
     eltype(x) === T && return x isa Array ? x : Array{T}(x)
     any(ismissing, x) || return Array{T}(x)
+    T === Bool && throw(ArgumentError("`x` has missing values, which a Bool raster cannot hold"))
     if nodata === nothing && !(T <: Union{Float16,Float32,Float64})
         throw(ArgumentError("`x` has missing values; an integer raster needs `nodata` to mark them"))
     end
@@ -59,6 +60,8 @@ function _error_text(error)
     end
     error isa AbstractString ||
         throw(ArgumentError("`error` must be a number, percentage or recipe"))
+    '\0' in error &&
+        throw(ArgumentError("`error` contains a NUL character, which a C string cannot carry"))
     return String(error)
 end
 
@@ -87,7 +90,7 @@ mutable struct Graph
     width::Int
     planes::Int
     eltype::DataType
-    error::Any
+    error::Union{Nothing,String}
     nodata::Any
 
     function Graph(ptr, method, width, planes, T, error, nodata)
@@ -136,7 +139,11 @@ function graph(x::AbstractArray, method::AbstractString; width=nothing, planes=n
             method, _dtype_code(T), a, sizeof(a), w, p,
             text === nothing ? C_NULL : text, sample === nothing ? C_NULL : sample, out))
     end
-    return Graph(out[], String(method), Int(w), Int(p), T, error, nodata)
+    g = Graph(out[], String(method), Int(w), Int(p), T, nothing, nodata)
+    # The core normalizes the short syntax, so the graph reports it as GeoZL does.
+    recipe = ccall(_sym(:rumi_geozl_graph_error), Cstring, (Ptr{Cvoid},), g.ptr)
+    recipe == C_NULL || (g.error = unsafe_string(recipe))
+    return g
 end
 
 """

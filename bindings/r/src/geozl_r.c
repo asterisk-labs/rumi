@@ -154,7 +154,9 @@ SEXP rumi_r_geozl_pack(SEXP x, SEXP dtype_s, SEXP nodata_s) {
     if (missing) {
       if (hasNodata)
         v = nodata;
-      else if (is_int_type(d) || d == RUMI_DT_BOOL)
+      else if (d == RUMI_DT_BOOL)
+        Rf_error("`x` has NA, which a bool datatype cannot hold");
+      else if (is_int_type(d))
         Rf_error("`x` has NA; an integer datatype needs `nodata` to mark it");
     }
     check_value(d, v, "a value of `x`");
@@ -254,6 +256,12 @@ static SEXP frame_to_r(void *data) {
 static void frame_free(void *data, Rboolean jump) {
   (void)jump;
   rumi_free(((frame_copy *)data)->frame);
+}
+
+// The normalized error recipe, or NULL for lossless.
+SEXP rumi_r_geozl_error(SEXP ptr) {
+  const char *recipe = rumi_geozl_graph_error(graph_of(ptr));
+  return recipe == NULL ? R_NilValue : Rf_mkString(recipe);
 }
 
 SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s) {

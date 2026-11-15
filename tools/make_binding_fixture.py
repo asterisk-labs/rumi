@@ -49,6 +49,14 @@ def geozl_cases() -> dict[str, tuple[np.ndarray, str, dict]]:
     reflectance = (((y * 131 + x * 71) % 1000) / 4000 + 0.1).astype(np.float32)
     holes = reflectance.copy()
     holes[(y * 40 + x) % 97 == 0] = np.nan
+    # Ties above 2048, subnormals and NaN reach every float16 rounding branch.
+    half = np.where(y == 0, 2048 + x % 8,
+                    np.where(y == 1, (x - 20) / 3 * 2.0 ** -14,
+                             ((y * 131 + x * 71) % 1000) / 7 - 60)).astype(np.float16)
+    half[(y * 40 + x) % 89 == 0] = np.nan
+    # int64 samples below 2^53, so R holds them exactly as doubles.
+    wide = ((x * 7919 + y * 104729) % 1000 * 10**12 - 5 * 10**14).astype(np.int64)
+    wide[(y * 40 + x) % 83 == 0] = -2**63
     y, x = np.indices((128, 128))
     radiance = (50 + 4000 * (x + y) / 254
                 + (x * 7919 + y * 104729) % 61).astype(np.float32)
@@ -61,6 +69,8 @@ def geozl_cases() -> dict[str, tuple[np.ndarray, str, dict]]:
                  {"error": "SQRT:MAX_ERROR=0.5N,A=25,B=2"}),
         "sentinel": (counts, "planar>zigzag>zstd", {"nodata": 200}),
         "nan": (holes, "planar>zigzag>zstd", {}),
+        "half": (half, "planar>zigzag>zstd", {}),
+        "int64": (wide, "planar>zigzag>zstd", {"nodata": -2**63}),
     }
 
 
