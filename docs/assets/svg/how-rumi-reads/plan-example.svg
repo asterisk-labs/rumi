@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-labelledby="plan-example-title plan-example-desc">
+<title id="plan-example-title">The frames behind one window</title>
+<desc id="plan-example-desc">A 512 by 512 image is stored in four 256 by 256 tiles. The window at rows 192 to 319 and columns 128 to 255 touches tile rows 0 and 1 in tile column 0. With one band per frame, bands 3 and 0 make four frames. Each frame decodes in full and gives a 64 by 128 crop, and the crops fill the two planes of a 2 by 128 by 128 output.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.label{fill:#25231f;font-size:11px;font-weight:700;text-anchor:middle}
+.sub{fill:#706b76;font-size:9px;text-anchor:middle}
+.tile{fill:#ffffff;stroke:#d4d0d9}
+.touched{fill:#f1eefc;stroke:#d4d0d9}
+.pick{fill:#6249d8;fill-opacity:.22;stroke:#6249d8;stroke-width:1.4}
+.split{stroke:#6249d8;stroke-width:1;stroke-dasharray:3 3}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+</style>
+<defs><marker id="arrow-plan-example" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+
+<text class="figure-stage" x="40" y="24">THE WINDOW</text>
+<text class="figure-stage" x="300" y="24">FOUR FRAMES</text>
+<text class="figure-stage" x="510" y="24">THE OUTPUT</text>
+
+<rect class="touched" x="40" y="50" width="100" height="100"/>
+<rect class="tile" x="140" y="50" width="100" height="100"/>
+<rect class="touched" x="40" y="150" width="100" height="100"/>
+<rect class="tile" x="140" y="150" width="100" height="100"/>
+<rect class="pick" x="90" y="125" width="50" height="50"/>
+<text class="sub" x="140" y="268">512 × 512 image, 256 × 256 tiles</text>
+<text class="sub" x="140" y="283">window rows 192 to 319, columns 128 to 255</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-plan-example)" d="M250 150H288"/>
+
+<text class="label" x="332" y="50">band 3</text>
+<text class="label" x="412" y="50">band 0</text>
+<rect class="tile" x="300" y="60" width="64" height="64"/>
+<rect class="pick" x="332" y="108" width="32" height="16"/>
+<rect class="tile" x="380" y="60" width="64" height="64"/>
+<rect class="pick" x="412" y="108" width="32" height="16"/>
+<text class="sub" x="332" y="138">tile 0, 0</text>
+<text class="sub" x="412" y="138">tile 0, 0</text>
+<rect class="tile" x="300" y="150" width="64" height="64"/>
+<rect class="pick" x="332" y="150" width="32" height="16"/>
+<rect class="tile" x="380" y="150" width="64" height="64"/>
+<rect class="pick" x="412" y="150" width="32" height="16"/>
+<text class="sub" x="332" y="228">tile 1, 0</text>
+<text class="sub" x="412" y="228">tile 1, 0</text>
+<text class="sub" x="372" y="258">each frame decodes 256 × 256</text>
+<text class="sub" x="372" y="273">and gives a 64 × 128 crop</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-plan-example)" d="M456 110H498"/>
+
+<text class="label" x="560" y="50">b 0, band 3</text>
+<text class="label" x="680" y="50">b 1, band 0</text>
+<rect class="pick" x="510" y="60" width="100" height="100"/>
+<line class="split" x1="510" y1="110" x2="610" y2="110"/>
+<rect class="pick" x="630" y="60" width="100" height="100"/>
+<line class="split" x1="630" y1="110" x2="730" y2="110"/>
+<text class="sub" x="560" y="89">from tile 0, 0</text>
+<text class="sub" x="560" y="139">from tile 1, 0</text>
+<text class="sub" x="680" y="89">from tile 0, 0</text>
+<text class="sub" x="680" y="139">from tile 1, 0</text>
+<text class="sub" x="620" y="182">shape (2, 128, 128), uint16</text>
+</svg>

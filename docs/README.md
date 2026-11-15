@@ -18,7 +18,7 @@ index.html            landing page, with the deck route as a <template>
 docs.html             what Rumi is, frames, the external header and the file
 spec.html             SPEC.md, rendered into the reading layout
 guide.html            worked code for writing and reading
-how-rumi-reads.html   one read followed through the source, from API call to tensor
+how-rumi-reads.html   how a query becomes a tensor, step by step, and how reads feed a DataLoader
 api.html              API overview and one line per language
 api-python.html, api-c.html, api-r.html, api-julia.html, api-js.html
 examples.html         example notebooks that open in Colab
