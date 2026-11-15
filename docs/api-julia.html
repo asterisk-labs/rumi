@@ -92,7 +92,7 @@ meta = info(file)
 close(file)</code></pre>
 
       <h2 class="part" id="functions">Functions</h2>
-      <p>Call <code>Rumi.open</code>, <code>Rumi.read</code>, <code>Rumi.frames</code> and <code>Rumi.write</code> with the module prefix. Bad arguments throw <code>ArgumentError</code>; native library errors throw <code>RumiError</code>.</p>
+      <p>Call <code>Rumi.open</code>, <code>Rumi.read</code>, <code>Rumi.frames</code> and <code>Rumi.write</code> with the module prefix. Invalid requests throw <code>ArgumentError</code>; other library failures throw <code>RumiError</code>.</p>
 
       <h3 id="open">open</h3>
 <pre><code class="sig language-julia">Rumi.open(source, header) -&gt; Dataset</code></pre>
@@ -101,7 +101,7 @@ close(file)</code></pre>
         <tr><th>source</th><td>A local path or remote URI.</td></tr>
         <tr><th>header</th><td>The external header bytes, any <code>AbstractVector{UInt8}</code>. The Dataset keeps its own copy.</td></tr>
       </table>
-      <p>Returns a <a href="#types"><code>Dataset</code></a>. A header that is invalid or does not match the source throws <code>RumiError</code>.</p>
+      <p>Returns a <a href="#types"><code>Dataset</code></a>. A header that cannot be parsed throws <code>RumiError</code>, and one that does not match the source throws <code>ArgumentError</code>.</p>
 
       <h3 id="read">read</h3>
 <pre><code class="sig language-julia">Rumi.read(file::Dataset; time=nothing, bands=nothing, window=nothing,
@@ -126,7 +126,7 @@ read_many(sources, headers; kwargs...) -&gt; Array</code></pre>
       <table class="spec">
         <tr><th>windows</th><td>One window per Dataset, as in <a href="#read"><code>read</code></a>. An entry of <code>nothing</code> reads that whole image, and <code>nothing</code> alone reads every whole image.</td></tr>
         <tr><th>time, bands</th><td>As in <code>read</code>.</td></tr>
-        <tr><th>pattern</th><td>As in <code>read</code>. <code>nothing</code> uses <code>"n t b y x"</code> or <code>"n b y x"</code>, which puts the item axis last in Julia. With one Dataset the default has no item axis.</td></tr>
+        <tr><th>pattern</th><td>As in <code>read</code>. <code>nothing</code> uses <code>"n t b y x"</code> or <code>"n b y x"</code>, which puts the item axis last in Julia. The item axis stays for one Dataset.</td></tr>
       </table>
       <p>An empty list, a <code>windows</code> list of the wrong length, windows of different sizes, or sources and headers of different lengths throw <code>ArgumentError</code>.</p>
 <pre data-run="skip"><code class="language-julia">batch = read_many([file, file]; windows = [(1, 1, 2, 3), (3, 4, 2, 3)], bands = [2])
@@ -197,7 +197,7 @@ Base.write("scene.header", header)</code></pre>
         <tr><th>Dataset</th><td>What <code>Rumi.open</code> returns. <code>isopen(file)</code> tells whether it is open and <code>close(file)</code> frees it, which also happens when it is garbage collected. A closed Dataset throws <code>ArgumentError</code> on read.</td></tr>
         <tr><th>Metadata</th><td>What <code>info</code> returns, with the fields above.</td></tr>
         <tr><th>FrameTable</th><td>What <code>Rumi.frames</code> returns. <code>data</code> holds one array per frame and <code>compressed</code> one payload per frame, <code>nothing</code> until it is set. <code>layout</code> names the axes of one frame, such as <code>"h w"</code>, and <code>dtype</code> the sample type. <code>length(table)</code> is the frame count.</td></tr>
-        <tr><th>RumiError</th><td>A native header, source, read or write error. Its message comes from <code>librumi</code>.</td></tr>
+        <tr><th>RumiError</th><td>A library failure other than an invalid request. Its message comes from <code>librumi</code>.</td></tr>
       </table>
 
       <h2 class="part" id="arrays">Arrays</h2>

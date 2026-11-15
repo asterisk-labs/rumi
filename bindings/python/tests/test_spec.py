@@ -567,10 +567,14 @@ def test_tile_size_accepts_positive_uint16_values(size):
     assert rumi.frames(arr, "b (row h) (col w) -> row col b (h w)", size).tile_size == size
 
 
-@pytest.mark.parametrize("bad", [0, -1, 65536])
-def test_tile_size_must_fit_its_uint16_field(bad):
+@pytest.mark.parametrize("bad, because", [
+    (0, "tile_size must be at least 1"),
+    (-1, "tile_size must not be negative, got -1"),
+    (65536, "tile_size must be at most 65535, got 65536"),
+])
+def test_tile_size_must_fit_its_uint16_field(bad, because):
     arr = np.zeros((1, 64, 64), np.uint16)
-    with pytest.raises(ValueError, match="65535"):
+    with pytest.raises(ValueError, match=because):
         rumi.frames(arr, "b (row h) (col w) -> row col b (h w)", bad)
 
 

@@ -63,7 +63,12 @@ end
         @test size(Rumi.read(expanded; window=(1, 1, 1, 1))) == (1, 1, 3, 2)
         close(expanded)
     end
-    @test_throws ArgumentError Rumi.read(file; bands=[0])
+    @test_throws ArgumentError("bands selects a band before the first") Rumi.read(file; bands=[0])
+    @test_throws ArgumentError("bands selects no band") Rumi.read(file; bands=Int[])
+    @test_throws "the window extends past the image" Rumi.read(file; window=(5, 1, 4, 1))
+    @test_throws "every window must have the same height" Rumi.read_many(
+        [file, file]; windows=[(1, 1, 2, 2), (1, 1, 1, 1)])
+    @test size(Rumi.read_many([file]; windows=[(1, 1, 2, 3)])) == (3, 2, 3, 2, 1)
     bad_header = copy(header)
     bad_header[1] = xor(bad_header[1], 0x01)
     @test_throws RumiError Rumi.open(path, bad_header)
@@ -184,7 +189,9 @@ end
     @test_throws "names 2 axes" Rumi.frames(image, "(row h) (col w) -> row col (h w)")
     @test_throws "tile_size" Rumi.frames(image, LAYOUT; tile_size=0)
     @test_throws "does not store" Rumi.frames(fill('a', 2, 2, 1), LAYOUT)
-    @test_throws RumiError Rumi.frames(image, "b (row h) (col w) -> row col q (h w)")
+    @test_throws ArgumentError Rumi.frames(image, "b (row h) (col w) -> row col q (h w)")
+    @test_throws "tile_size must be at least 1" Rumi.frames(image, LAYOUT; tile_size=0)
+    @test_throws "bands and time steps must be positive" Rumi.frames(zeros(UInt16, 5, 3, 0), LAYOUT)
 
     path = tempname() * ".rumi"
     table = Rumi.frames(image, LAYOUT; tile_size=2)
@@ -193,7 +200,7 @@ end
     table.compressed[1:11] .= Ref(UInt8[1])
     @test_throws "frame 12 has no compressed bytes" attempt(table, ["2025-08-08"])
     table.compressed[12] = UInt8[]
-    @test_throws "frame 12 has no compressed bytes" attempt(table, ["2025-08-08"])
+    @test_throws "the 12th frame has an empty payload" attempt(table, ["2025-08-08"])
     table.compressed[12] = UInt8[1]
 
     @test_throws "given together" Rumi.write(path, table; bands=["B04", "B08"],

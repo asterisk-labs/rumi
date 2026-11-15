@@ -46,7 +46,7 @@ _seconds(value) = throw(ArgumentError(
 
 # Return the time type and POSIX seconds the writer takes. A Date marks
 # midnight UTC and a DateTime is read as UTC.
-function _time_axis(time, steps::Integer)
+function _time_axis(time)
     time === nothing && throw(ArgumentError(
         "every file labels its time steps; pass one date per step, or a " *
         "(start, end) pair for a step without a single instant"))
@@ -58,15 +58,10 @@ function _time_axis(time, steps::Integer)
     time isa AbstractVector || throw(ArgumentError(
         "time is a vector with one entry per time step; wrap a single " *
         "coordinate as time=[$(repr(time))]"))
-    isempty(time) && throw(ArgumentError(
-        "a time axis covers every step, so $steps coordinates are needed; got none"))
-    intervals = first(time) isa Tuple
+    intervals = !isempty(time) && first(time) isa Tuple
     all(entry -> (entry isa Tuple) == intervals, time) || throw(ArgumentError(
         "a file records one kind of time step, so the vector is either all " *
         "instants or all (start, end) intervals, not a mix"))
-    what = intervals ? "an interval" : "an instant"
-    length(time) == steps || throw(ArgumentError(
-        "$what axis needs one entry per time step, so $steps of them; got $(length(time))"))
 
     seconds = Int64[]
     for (step, entry) in enumerate(time)

@@ -143,7 +143,7 @@ def test_named_selection_reaches_the_same_cube_window(tmp_path):
 
 def test_a_step_out_of_range_is_refused(tmp_path):
     _tf, path, header = store(tmp_path, "planar")
-    with pytest.raises(ValueError, match="out of"):
+    with pytest.raises(ValueError, match=f"time selects the {T + 1}th time step"):
         rumi.read(path, header, time=[T])
 
 

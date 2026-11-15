@@ -132,7 +132,7 @@ def test_a_zone_conversion_may_cross_into_the_next_day(tmp_path):
 # Invalid time inputs
 
 @pytest.mark.parametrize("time, because", [
-    ([], "empty list"),
+    ([], "one entry per time step, so 1 of them; got 0"),
     (["2024-08-25", "2024-08-26"], "one entry per time step, so 1 of them; got more than 1"),
     ([("2024-08-25", "2024-08-26"), ("2024-08-27", "2024-08-28")],
      "one entry per time step, so 1 of them; got more than 1"),

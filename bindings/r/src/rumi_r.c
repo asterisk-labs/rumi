@@ -216,23 +216,18 @@ SEXP rumi_r_close(SEXP pointer) {
   return R_NilValue;
 }
 
-static void selection(SEXP value, const char *name, uint32_t total,
-                      int **out, size_t *count) {
+// NULL selects all indices; an empty vector must stay non-NULL.
+static void selection(SEXP value, const char *name, int **out, size_t *count) {
+  static int none;
   if (Rf_isNull(value)) {
     *out = NULL;
     *count = 0;
     return;
   }
-  if (TYPEOF(value) != INTSXP || XLENGTH(value) == 0)
-    Rf_error("`%s` must be a non-empty integer vector or NULL", name);
+  if (TYPEOF(value) != INTSXP)
+    Rf_error("`%s` must be an integer vector or NULL", name);
   *count = (size_t)XLENGTH(value);
-  *out = (int *)R_alloc(*count, sizeof(int));
-  for (size_t i = 0; i < *count; ++i) {
-    int index = INTEGER(value)[i];
-    if (index < 1 || (uint32_t)index > total)
-      Rf_error("`%s` index %d is outside 1:%u", name, index, total);
-    (*out)[i] = index;
-  }
+  *out = *count ? INTEGER(value) : &none;
 }
 
 static void window(SEXP value, const rumi_header *h,
@@ -246,15 +241,10 @@ static void window(SEXP value, const rumi_header *h,
   }
   if (TYPEOF(value) != REALSXP || XLENGTH(value) != 4)
     Rf_error("`window` must have four values");
-  double row = REAL(value)[0], col = REAL(value)[1];
-  double height = REAL(value)[2], width = REAL(value)[3];
-  if (row < 1 || col < 1 || height < 1 || width < 1 ||
-      row + height - 1 > h->image_length || col + width - 1 > h->image_width)
-    Rf_error("`window` extends past the image");
-  *y_off = (int)row - 1;
-  *x_off = (int)col - 1;
-  *y_size = (int)height;
-  *x_size = (int)width;
+  *y_off = (int)REAL(value)[0] - 1;
+  *x_off = (int)REAL(value)[1] - 1;
+  *y_size = (int)REAL(value)[2];
+  *x_size = (int)REAL(value)[3];
 }
 
 static const char *pattern(SEXP value) {
@@ -451,16 +441,9 @@ static SEXP decoded_array(SEXP bytes, rumi_dtype dtype,
   return out;
 }
 
-static size_t output_bytes(const rumi_layout *layout, size_t width) {
-  size_t size = width;
-  for (int i = 0; i < layout->ndim; ++i) {
-    if ((uint64_t)layout->shape[i] > SIZE_MAX / size)
-      Rf_error("Rumi output is too large");
-    size *= (size_t)layout->shape[i];
-  }
-  if (size > (size_t)R_XLEN_T_MAX)
+static void fits_r(size_t bytes) {
+  if (bytes > (size_t)R_XLEN_T_MAX)
     Rf_error("Rumi output is too large for R");
-  return size;
 }
 
 SEXP rumi_r_read(SEXP pointer, SEXP time_s, SEXP bands_s,
@@ -470,19 +453,16 @@ SEXP rumi_r_read(SEXP pointer, SEXP time_s, SEXP bands_s,
   fail(rumi_spec_header(value->spec, &h));
   int *times, *bands;
   size_t nt, nb;
-  selection(time_s, "time", h.time_count, &times, &nt);
-  selection(bands_s, "bands", h.samples_per_pixel, &bands, &nb);
+  selection(time_s, "time", &times, &nt);
+  selection(bands_s, "bands", &bands, &nb);
   int y_off, y_size, x_off, x_size;
   window(window_s, &h, &y_off, &y_size, &x_off, &x_size);
   const char *output_pattern = pattern(pattern_s);
-  if (output_pattern == NULL)
-    output_pattern = rumi_default_pattern(1, h.time_count);
   rumi_layout layout;
-  fail(rumi_compile_layout(output_pattern, 1,
-      nt == 0 ? h.time_count : (int64_t)nt,
-      nb == 0 ? h.samples_per_pixel : (int64_t)nb,
-      y_size, x_size, &layout));
-  size_t bytes_n = output_bytes(&layout, dtype_info(h.dtype)->storage_bytes);
+  size_t bytes_n;
+  fail(rumi_read_layout(value->spec, times, nt, bands, nb, y_off, y_size,
+                        x_off, x_size, output_pattern, &layout, &bytes_n));
+  fits_r(bytes_n);
   int direct = h.dtype == RUMI_DT_FLOAT64;
   SEXP bytes = PROTECT(direct ?
       Rf_allocVector(REALSXP, (R_xlen_t)(bytes_n / sizeof(double))) :
@@ -529,17 +509,14 @@ SEXP rumi_r_read_many(SEXP pointers, SEXP windows_s, SEXP time_s,
   }
   int *times, *bands;
   size_t nt, nb;
-  selection(time_s, "time", first.time_count, &times, &nt);
-  selection(bands_s, "bands", first.samples_per_pixel, &bands, &nb);
+  selection(time_s, "time", &times, &nt);
+  selection(bands_s, "bands", &bands, &nb);
   const char *output_pattern = pattern(pattern_s);
-  if (output_pattern == NULL)
-    output_pattern = rumi_default_pattern(n, first.time_count);
   rumi_layout layout;
-  fail(rumi_compile_layout(output_pattern, (int64_t)n,
-      nt == 0 ? first.time_count : (int64_t)nt,
-      nb == 0 ? first.samples_per_pixel : (int64_t)nb,
-      y_size, x_size, &layout));
-  size_t bytes_n = output_bytes(&layout, dtype_info(first.dtype)->storage_bytes);
+  size_t bytes_n;
+  fail(rumi_read_many_layout(items, n, times, nt, bands, nb, y_size, x_size,
+                             output_pattern, &layout, &bytes_n));
+  fits_r(bytes_n);
   int direct = first.dtype == RUMI_DT_FLOAT64;
   SEXP bytes = PROTECT(direct ?
       Rf_allocVector(REALSXP, (R_xlen_t)(bytes_n / sizeof(double))) :
@@ -716,12 +693,14 @@ SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
   const unsigned char **frames =
       (const unsigned char **)R_alloc(count, sizeof(*frames));
   size_t *sizes = (size_t *)R_alloc(count, sizeof(*sizes));
+  static unsigned char empty;
   for (size_t i = 0; i < count; ++i) {
     SEXP payload = VECTOR_ELT(payloads_s, (R_xlen_t)i);
-    if (TYPEOF(payload) != RAWSXP || XLENGTH(payload) == 0)
+    if (TYPEOF(payload) != RAWSXP)
       Rf_error("frame %zu has no payload", i + 1);
-    frames[i] = RAW(payload);
     sizes[i] = (size_t)XLENGTH(payload);
+    // Keep empty payloads distinct from null pointers.
+    frames[i] = sizes[i] ? RAW(payload) : &empty;
   }
 
   const double *shape = REAL(shape_s);

@@ -110,8 +110,10 @@ function frames(x::AbstractArray, pattern::AbstractString; tile_size::Integer=51
     Base.require_one_based_indexing(x)
     T = eltype(x)
     code = _dtype_code(T)
-    !(tile_size isa Bool) && 1 <= tile_size <= typemax(UInt16) ||
-        throw(ArgumentError("tile_size must be in 1:65535, got $tile_size"))
+    tile_size isa Bool && throw(ArgumentError("tile_size must be an integer"))
+    tile_size >= 0 || throw(ArgumentError("tile_size must not be negative, got $tile_size"))
+    tile_size <= typemax(UInt16) ||
+        throw(ArgumentError("tile_size must be at most 65535, got $tile_size"))
     tile = Int(tile_size)
     compiled = _frame_pattern(pattern)
     roles = [_axis_name(compiled.input[i]) for i in 1:Int(compiled.input_ndim)]
@@ -119,7 +121,6 @@ function frames(x::AbstractArray, pattern::AbstractString; tile_size::Integer=51
     ndims(x) == n || throw(ArgumentError(
         "the pattern names $n axes ($(join(roles, ' '))), so x needs $n dimensions, " *
         "got $(ndims(x))"))
-    all(>(0), size(x)) || throw(ArgumentError("x has an empty dimension, size $(size(x))"))
 
     # Julia dimension d holds the pattern's axis n - d + 1.
     role = reverse(roles)

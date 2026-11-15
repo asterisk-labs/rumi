@@ -101,9 +101,12 @@ end
 Base.showerror(io::IO, error::RumiError) = print(io, error.message)
 
 
+const _ERR_INVALID = 1
+
 function _check(status::Integer)
     status == 0 && return nothing
     ptr = ccall(_sym(:rumi_last_error), Cstring, ())
     message = ptr == C_NULL ? "librumi failed with status $status" : unsafe_string(ptr)
+    status == _ERR_INVALID && throw(ArgumentError(message))
     throw(RumiError(message))
 end

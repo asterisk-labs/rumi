@@ -59,7 +59,8 @@ def test_frame_start_matches_the_writer_layout():
     ((2, 40), TILE, 16, ValueError, "pattern names 3 axes"),
     ((2, 0, 70), TILE, 16, ValueError, "must be positive"),
     ((2, 40.5, 70), TILE, 16, TypeError, "shape must contain integers"),
-    ((2, 40, 70), TILE, 0, ValueError, "tile_size must be in"),
+    ((2, 40, 70), TILE, 0, ValueError, "tile_size must be at least 1"),
+    ((2, 40, 70), TILE, 70000, ValueError, "tile_size must be at most 65535"),
 ])
 def test_frame_start_validates_geometry(shape, pattern, tile, error, message):
     with pytest.raises(error, match=message):

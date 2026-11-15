@@ -96,8 +96,6 @@ def _shown_step(step) -> str:
 
 
 def _native_info(source: _Source | None, header: Header | None = None):
-    if source is None and header is None:
-        raise ValueError("info needs source, header, or both")
     if header is not None and not isinstance(header, (bytes, bytearray,
                                                         memoryview)):
         raise TypeError(

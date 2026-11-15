@@ -735,7 +735,8 @@ void test_plan_ranges_c_api_rejects_invalid_requests()
     const int bad_band[] = {999};
     EQ(rumi_plan_ranges(spec, nullptr, 0, bad_band, 1, 0, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
-    OK(std::strcmp(rumi_last_error(), "band 999 out of range [1, 2]") == 0);
+    OK(std::strcmp(rumi_last_error(),
+                   "bands selects the 999th band, but this file has 2") == 0);
     EQ(rumi_plan_ranges(spec, nullptr, 0, nullptr, 0, -1, 1, 0, 1,
                         &ranges, &count), RUMI_ERR_INVALID);
     EQ(rumi_plan_ranges(spec, nullptr, 0, nullptr, 0, 0, 65, 0, 64,
@@ -805,19 +806,49 @@ void test_read_c_api_rejects_invalid_requests()
 
     const int zero = 0, past = 2, band1 = 1, time2 = 2;
     rejects(read(&zero, 1, nullptr, 0, 0, 32, 0, 32),
-            "band 0 out of range");
+            "bands selects a band before the first");
     rejects(read(&past, 1, nullptr, 0, 0, 32, 0, 32),
-            "band 2 out of range");
+            "bands selects the 2nd band, but this file has 1");
     rejects(read(&band1, 1, &time2, 1, 0, 32, 0, 32),
-            "t=2 out of range");
+            "time selects the 2nd time step, but this file has 1");
+    rejects(read(&band1, 0, nullptr, 0, 0, 32, 0, 32),
+            "bands selects no band");
+    rejects(read(nullptr, 1, nullptr, 0, 0, 32, 0, 32),
+            "bands is NULL but n_bands is not zero");
     rejects(read(&band1, 1, nullptr, 0, 0, 32, 30, 4),
-            "requested window out of bounds");
+            "the window extends past the image, which is 32 rows by 32 columns");
     rejects(read(&band1, 1, nullptr, 0, -1, 32, 0, 32),
-            "requested window out of bounds");
+            "the window starts before the image");
     rejects(read(&band1, 1, nullptr, 0, 0, 0, 0, 32),
             "must be positive");
+    // Bounds are checked before the destination, so a past window names them.
     rejects(read(&band1, 1, nullptr, 0, 0, 33, 0, 32),
+            "extends past the image");
+    rejects(rumi_read(src, spec, nullptr, 0, &band1, 1, 0, 32, 0, 32, nullptr,
+                      dst.data(), dst_size - 1),
             "dst buffer too small");
+
+    rumi_layout layout{};
+    std::size_t need = 0;
+    EQ(rumi_read_layout(spec, nullptr, 0, &band1, 1, 4, 8, 2, 16, nullptr,
+                        &layout, &need), RUMI_OK);
+    EQ(layout.ndim, 3);
+    EQ(layout.shape[0], 1);
+    EQ(layout.shape[1], 8);
+    EQ(layout.shape[2], 16);
+    EQ(need, std::size_t{8 * 16 * sizeof(std::uint16_t)});
+    rejects(rumi_read_layout(spec, nullptr, 0, &past, 1, 0, 32, 0, 32, nullptr,
+                             &layout, nullptr),
+            "bands selects the 2nd band");
+
+    const rumi_read_item items[] = {{src, spec, 0, 0}, {src, spec, 0, 24}};
+    EQ(rumi_read_many_layout(items, 1, nullptr, 0, nullptr, 0, 8, 8, nullptr,
+                             &layout, &need), RUMI_OK);
+    EQ(layout.ndim, 4);
+    EQ(layout.shape[0], 1);
+    rejects(rumi_read_many_layout(items, 2, nullptr, 0, nullptr, 0, 16, 16,
+                                  nullptr, &layout, &need),
+            "item 2: the window extends past the image");
 
     rumi_source_free(src);
     rumi_spec_destroy(spec);
@@ -2032,7 +2063,8 @@ void test_write_c_api_band_texts()
     desc.band_text_count = 2;
     desc.time_coords     = 2;
     EQ(write(), RUMI_ERR_INVALID);
-    OK(std::strstr(rumi_last_error(), "needs 1 coordinates, got 2") != nullptr);
+    OK(std::strstr(rumi_last_error(),
+                   "one entry per time step, so 1 of them; got 2") != nullptr);
 
     desc.time_coords = 1;
     desc.time_type   = 0;

@@ -20,6 +20,8 @@ Notable user-visible changes are recorded here.
   CUDA context.
 - `tools/benchmark_gpu_read.py` times GPU reads to a ready PyTorch tensor,
   for whole scenes and for `read_many` batches, one fresh process per trial.
+- `rumi_read_layout` and `rumi_read_many_layout` validate selections and
+  windows and return the output layout and required buffer size.
 
 ### Changed
 
@@ -36,6 +38,14 @@ Notable user-visible changes are recorded here.
 - GPU reads land compressed frames in host staging the context keeps, bounded
   by its decode budget, instead of one transport buffer per frame. Batches no
   longer fault fresh pages on every read.
+- Read validation for bands, time steps, windows and batch compatibility now
+  runs in the core before output allocation. Python, R and Julia use the same
+  checks and error messages. Out-of-range indices are named as ordinals.
+- An explicit empty selection fails; `(NULL, 0)` still selects all indices.
+- The writer rejects non-finite transform coefficients.
+- R and Julia retain the `n` axis for a one-item `read_many`. R previously
+  failed on that read.
+- Julia maps `RUMI_ERR_INVALID` to `ArgumentError`.
 
 ## [0.30.0] - 2026-11-11
 

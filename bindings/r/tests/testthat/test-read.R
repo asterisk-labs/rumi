@@ -112,7 +112,9 @@ if (file.exists(path) && file.exists(header_path)) {
     expect_error(rumi_open(path, bad), "magic")
 
     file <- rumi_open(path, header)
-    expect_error(rumi_read(file, bands = 0), "positive, one-based")
+    expect_error(rumi_read(file, bands = 0), "bands selects a band before the first")
+    expect_error(rumi_read(file, bands = integer(0)), "bands selects no band")
+    expect_error(rumi_read(file, time = 3), "time selects the 3rd time step")
     expect_error(rumi_read_many(file), "use list\\(file\\)")
     expect_error(rumi_read(file, window = c(6, 8, 2, 2)), "past")
     rumi_close(file)

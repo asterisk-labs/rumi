@@ -197,7 +197,7 @@ def test_a_source_that_ends_early_is_a_format_error(tmp_path):
 
 
 def test_info_requires_an_input():
-    with pytest.raises(ValueError, match="needs source, header, or both"):
+    with pytest.raises(ValueError, match="needs a source, a header, or both"):
         rumi.info()
 
 

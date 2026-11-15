@@ -118,13 +118,6 @@ rumi_frame_locate(uint8_t unit, uint32_t width, uint32_t length, uint16_t tile,
                   uint16_t bands, uint32_t times, uint64_t index,
                   rumi_frame_at* out);
 
-const char* rumi_default_pattern(size_t n_items, uint32_t times);
-
-rumi_status
-rumi_compile_layout(const char* pattern,
-                    int64_t n, int64_t t, int64_t b, int64_t y, int64_t x,
-                    rumi_layout* out);
-
 rumi_status
 rumi_spec_parse(const unsigned char* blob, size_t blob_size,
                 rumi_spec** out);
@@ -393,3 +386,21 @@ def _check(rc):
     msg = (ffi.string(err).decode("utf-8", errors="replace")
            if err != ffi.NULL else "(no error message)")
     raise _STATUS_TO_EXC.get(rc, RuntimeError)(msg)
+
+
+_C_RANGE = {
+    "int": (-(1 << 31), (1 << 31) - 1),
+    "uint16_t": (0, (1 << 16) - 1),
+    "uint32_t": (0, (1 << 32) - 1),
+}
+
+
+def c_int(value: int, name: str, ctype: str = "int") -> int:
+    """Check that a Python integer fits a C parameter."""
+    low, high = _C_RANGE[ctype]
+    if value < low:
+        raise ValueError(f"{name} must not be negative, got {value}" if low == 0
+                         else f"{name} must be at least {low}, got {value}")
+    if value > high:
+        raise ValueError(f"{name} must be at most {high}, got {value}")
+    return value

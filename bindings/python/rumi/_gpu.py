@@ -101,24 +101,10 @@ def _device(device: str) -> tuple[int, int]:
         "device must be 'cpu', 'cuda', 'cuda:N', or 'mps'")
 
 
-def _shape(n: int, keep_single_n: bool, time: int, bands: int,
-           height: int, width: int, pattern, time_count: int) -> tuple[int, ...]:
-    if pattern == ffi.NULL:
-        default_n = 2 if keep_single_n and n == 1 else n
-        pattern = lib.rumi_default_pattern(default_n, time_count)
-    out = ffi.new("rumi_layout*")
-    _check(lib.rumi_compile_layout(
-        pattern, n, time, bands, height, width, out))
-    return tuple(int(out.shape[i]) for i in range(out.ndim))
-
-
 def read_one(source, spec, times, n_times, bands, n_bands,
              window, pattern, dtype: DType, device: str,
              decode_backend: int):
     y_off, y_size, x_off, x_size = window
-    shape = _shape(1, False, n_times or spec.fields.time_count,
-                   n_bands or spec.fields.samples_per_pixel,
-                   y_size, x_size, pattern, spec.fields.time_count)
     device_type, index = _device(device)
     out = ffi.new("DLManagedTensorVersioned**")
     with _context(device_type, index) as context:
@@ -130,16 +116,12 @@ def read_one(source, spec, times, n_times, bands, n_bands,
             y_off, y_size, x_off, x_size, pattern,
             decode_backend, out,
         ))
-    return RumiArray(out[0], shape, dtype.code, (device_type, index))
+    return RumiArray(out[0], dtype.code)
 
 
-def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
+def read_many(items, n_items: int, times, n_times, bands, n_bands,
               y_size: int, x_size: int, pattern, dtype: DType, device: str,
               decode_backend: int):
-    fields = specs[0].fields
-    shape = _shape(n_items, True, n_times or fields.time_count,
-                   n_bands or fields.samples_per_pixel,
-                   y_size, x_size, pattern, fields.time_count)
     device_type, index = _device(device)
     out = ffi.new("DLManagedTensorVersioned**")
     with _context(device_type, index) as context:
@@ -149,4 +131,4 @@ def read_many(items, n_items: int, specs, times, n_times, bands, n_bands,
             y_size, x_size, pattern,
             decode_backend, out,
         ))
-    return RumiArray(out[0], shape, dtype.code, (device_type, index))
+    return RumiArray(out[0], dtype.code)

@@ -93,12 +93,6 @@ class FramePattern:
         """Return whether the decoded frame contains ``axis``."""
         return axis in self.frame_axes
 
-    def index_columns(self, bands, times):
-        """Return canonical index column names, outermost first."""
-        return (*GRID_COLUMNS,
-                *(COLUMN[a] for a in self.index_axes
-                  if (bands if a == "b" else times) > 1))
-
     @property
     def canonical_input(self):
         """Return the canonical input axis order."""

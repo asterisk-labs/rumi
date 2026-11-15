@@ -3,7 +3,7 @@ from collections.abc import Iterable, Set
 from itertools import islice
 
 from ._dtype import dtype_code
-from ._ffi import _check, ffi, lib
+from ._ffi import _check, c_int, ffi, lib
 from ._native import FilePath, encode_path
 from ._pattern import compile_pattern, frame_count
 from ._time import compile_axis
@@ -14,26 +14,23 @@ def _epsg(crs) -> int:
     if isinstance(crs, bool):
         raise TypeError("crs must be an EPSG code")
     if isinstance(crs, int):
-        return crs
+        return c_int(crs, "crs", "uint32_t")
     if isinstance(crs, str):
         text = crs.strip()
         if text.upper().startswith("EPSG:"):
             text = text[5:]
         if text.isdigit():
-            return int(text)
+            return c_int(int(text), "crs", "uint32_t")
     code = getattr(crs, "to_epsg", None)
     if callable(code):
         got = code()
         if got:
-            return int(got)
+            return c_int(int(got), "crs", "uint32_t")
     raise ValueError(f"crs must be an EPSG code, got {crs!r}")
 
 
 def _desc(tf, transform, crs, pixel_is_point):
     """Build a write descriptor and retain its referenced buffers."""
-    if (transform is None) != (crs is None):
-        raise ValueError("transform and crs must be given together")
-
     keep = []
     d = ffi.new("rumi_write_desc*")
     d.image_width = tf.image_width
@@ -45,10 +42,9 @@ def _desc(tf, transform, crs, pixel_is_point):
     d.pixel_is_point = 1 if pixel_is_point else 0
     d.frame_unit = tf.frame_unit
 
-    if transform is None:
-        d.transform = ffi.NULL
-        d.epsg = 0
-    else:
+    d.transform = ffi.NULL
+    d.epsg = 0 if crs is None else _epsg(crs)
+    if transform is not None:
         values = tuple(transform)
         if len(values) not in (6, 9):
             raise ValueError(
@@ -59,7 +55,6 @@ def _desc(tf, transform, crs, pixel_is_point):
         coeffs = ffi.new("double[6]", [float(v) for v in values[:6]])
         keep.append(coeffs)
         d.transform = coeffs
-        d.epsg = _epsg(crs)
     return d, keep
 
 
@@ -90,6 +85,7 @@ def _label(d, keep, tf, bands, time):
         raise TypeError(
             f"bands is a list with one text per band; wrap a single text as "
             f"bands=[{bands!r}]")
+    # Limit generators to one more band name than expected.
     names = list(islice(bands, tf.bands + 1))
     if len(names) > tf.bands:
         noun = "band" if tf.bands == 1 else "bands"
@@ -141,26 +137,16 @@ def frame_start(shape, pattern, tile_size=512) -> int:
         raise ValueError(
             f"the pattern names {len(p.input_axes)} axes "
             f"({' '.join(p.input_axes)}), got shape {dims}")
-    if any(value <= 0 for value in dims):
-        raise ValueError(f"shape dimensions must be positive, got {dims}")
-
     try:
-        tile = operator.index(tile_size)
+        tile = c_int(operator.index(tile_size), "tile_size", "uint16_t")
     except TypeError:
         raise TypeError("tile_size must be an integer") from None
-    if not 1 <= tile <= 65535:
-        raise ValueError(f"tile_size must be in [1, 65535], got {tile_size}")
 
     extents = dict(zip(p.input_axes, dims, strict=True))
-    bands = extents.get("b", 1)
-    times = extents.get("t", 1)
-    length = extents["y"]
-    width = extents["x"]
-    if bands > 65535:
-        raise ValueError(f"band count must be in [1, 65535], got {bands}")
-    for name, value in (("time", times), ("height", length), ("width", width)):
-        if value > 0xFFFFFFFF:
-            raise ValueError(f"{name} must be in [1, 4294967295], got {value}")
+    bands = c_int(extents.get("b", 1), "band count", "uint16_t")
+    times = c_int(extents.get("t", 1), "time", "uint32_t")
+    length = c_int(extents["y"], "height", "uint32_t")
+    width = c_int(extents["x"], "width", "uint32_t")
 
     unit = p.frame_unit(bands, times)
     count = frame_count(unit, width, length, tile, bands, times)[2]

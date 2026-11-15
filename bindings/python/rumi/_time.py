@@ -60,25 +60,20 @@ def _axis_entries(time, steps):
             f"time is a list with one entry per time step; wrap a single "
             f"coordinate as time=[{time!r}]")
 
+    # Limit generators to one more step than expected.
     entries = list(islice(time, steps + 1))
-    if not entries:
-        raise ValueError(
-            f"a time axis covers every step, so {steps} coordinates are "
-            f"needed; got an empty list")
-
-    intervals = isinstance(entries[0], tuple)
+    intervals = bool(entries) and isinstance(entries[0], tuple)
     if any(isinstance(entry, tuple) != intervals for entry in entries):
         raise ValueError(
             "a file records one kind of time step, so the list is either all "
             "plain coordinates (instants) or all pairs (intervals), not a mix")
 
     kind = INTERVAL if intervals else INSTANT
-    if len(entries) != steps:
-        what = "interval" if kind == INTERVAL else "instant"
-        got = f"more than {steps}" if len(entries) > steps else str(len(entries))
+    if len(entries) > steps:
+        what = "an interval" if kind == INTERVAL else "an instant"
         raise ValueError(
-            f"a {what} axis needs one entry per time step, so {steps} of "
-            f"them; got {got}")
+            f"{what} axis needs one entry per time step, so {steps} of "
+            f"them; got more than {steps}")
     return entries, kind
 
 

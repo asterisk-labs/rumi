@@ -20,7 +20,7 @@ function _payloads(table::FrameTable)
     payloads = table.compressed
     length(payloads) == length(table.data) || throw(ArgumentError(
         "compressed must have one entry per frame"))
-    missing = findfirst(p -> isnothing(p) || isempty(p), payloads)
+    missing = findfirst(isnothing, payloads)
     missing === nothing || throw(ArgumentError("frame $missing has no compressed bytes"))
     return Vector{Vector{UInt8}}(payloads)
 end
@@ -80,12 +80,10 @@ EPSG `crs`.
 function write(path::AbstractString, table::FrameTable{T}; bands, time,
                transform=nothing, crs=nothing, pixel_is_point::Bool=false) where {T}
     payloads = _payloads(table)
-    (transform === nothing) == (crs === nothing) ||
-        throw(ArgumentError("transform and crs must be given together"))
     coefficients = transform === nothing ? Cdouble[] : _transform(transform)
     epsg = crs === nothing ? UInt32(0) : _epsg(crs)
     texts = _band_texts(bands)
-    kind, seconds = _time_axis(time, table.time_count)
+    kind, seconds = _time_axis(time)
 
     out = Ref{Ptr{UInt8}}(C_NULL)
     out_size = Ref{Csize_t}(0)

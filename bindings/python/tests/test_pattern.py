@@ -7,6 +7,7 @@ from rumi._pattern import (
     compile_pattern,
     frame_at,
     frame_count,
+    index_axes,
     layout_name,
     unit_indexes_bands,
 )
@@ -36,15 +37,15 @@ def test_the_input_order_crosses_intact():
 
 
 def test_the_columns_a_table_shows_follow_the_layout():
-    assert compile_pattern(TILE).index_columns(3, 1) == ("row", "col", "band")
-    assert compile_pattern(CELL).index_columns(3, 1) == ("row", "col")
+    assert index_axes(compile_pattern(TILE).frame_unit(3, 1), 3, 1) == ("b",)
+    assert index_axes(compile_pattern(CELL).frame_unit(3, 1), 3, 1) == ()
     assert not compile_pattern(TILE).holds("b")
     assert compile_pattern(CHUNKY).holds("b")
 
 
 def test_one_band_leaves_nothing_for_the_index_to_walk():
     """Singleton non-spatial axes are omitted from the recorded unit."""
-    assert compile_pattern(TILE).index_columns(1, 1) == ("row", "col")
+    assert index_axes(compile_pattern(TILE).frame_unit(1, 1), 1, 1) == ()
     for text in (TILE, CELL, CHUNKY):
         assert compile_pattern(text).frame_unit(1, 1) == 0
 

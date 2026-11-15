@@ -56,11 +56,12 @@ def _cuda_stream(stream):
 class RumiArray:
     """Decoded samples that transfer once through DLPack."""
 
-    def __init__(self, tensor, shape, dtype_code, device=(1, 0)):
+    def __init__(self, tensor, dtype_code):
+        value = tensor.dl_tensor
         self._tensor = tensor
-        self._shape = shape
+        self._shape = tuple(int(value.shape[i]) for i in range(value.ndim))
         self._dtype_code = dtype_code
-        self._device = device
+        self._device = (int(value.device.device_type), int(value.device.device_id))
         self._export_lock = threading.Lock()
 
     @property

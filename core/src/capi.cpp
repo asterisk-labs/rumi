@@ -269,6 +269,17 @@ const char* default_pattern(size_t n, uint32_t times)
     return times > 1 ? "t b y x" : "b y x";
 }
 
+void fill_layout(const rumi::LayoutPlan& plan, rumi_layout* out)
+{
+    std::memset(out, 0, sizeof(*out));
+    out->ndim = static_cast<int>(plan.shape.size());
+    for (size_t i = 0; i < plan.shape.size() && i < RUMI_OUT_NDIM; ++i) {
+        out->shape[i] = plan.shape[i];
+    }
+    for (size_t i = 0; i < RUMI_OUT_NDIM; ++i) out->stride[i] = plan.stride[i];
+    out->native = plan.native ? 1 : 0;
+}
+
 }  // namespace
 
 extern "C" const char* rumi_default_pattern(size_t n_items, uint32_t times)
@@ -295,13 +306,7 @@ rumi_compile_layout(const char* pattern,
             set_error(plan.error());
             return RUMI_ERR_INVALID;
         }
-        std::memset(out, 0, sizeof(*out));
-        out->ndim = static_cast<int>(plan->shape.size());
-        for (size_t i = 0; i < plan->shape.size() && i < RUMI_OUT_NDIM; ++i) {
-            out->shape[i] = plan->shape[i];
-        }
-        for (size_t i = 0; i < RUMI_OUT_NDIM; ++i) out->stride[i] = plan->stride[i];
-        out->native = plan->native ? 1 : 0;
+        fill_layout(*plan, out);
         return RUMI_OK;
     });
 }
@@ -506,6 +511,19 @@ bool checked_mul_i64(std::int64_t value, std::int64_t positive,
     return true;
 }
 
+// (NULL, 0) selects every index in file order; an array names at least one.
+const char* selection_error(const int* values, size_t n, bool time) noexcept
+{
+    if (!values && n) {
+        return time ? "times is NULL but n_times is not zero"
+                    : "bands is NULL but n_bands is not zero";
+    }
+    if (values && !n) {
+        return time ? "time selects no time step" : "bands selects no band";
+    }
+    return nullptr;
+}
+
 // NULL/0 means all 1-based positions in file order. Expanding all time steps
 // is unavailable when time_count exceeds the signed int index range.
 const char* times_fit(const int* times, size_t n_times, uint32_t tc) noexcept
@@ -610,7 +628,7 @@ rumi_info(rumi_source* source,
     return capi_call([&]() -> rumi_status {
         if (!out || (!source && !header)
             || ((header == nullptr) != (header_size == 0))) {
-            set_error("rumi_info: provide a source, a header, or both");
+            set_error("info needs a source, a header, or both");
             return RUMI_ERR_INVALID;
         }
 
@@ -739,13 +757,12 @@ rumi_plan_ranges(const rumi_spec* spec,
             set_error("rumi_plan_ranges: null argument");
             return RUMI_ERR_INVALID;
         }
-        if ((bands == nullptr) != (n_bands == 0)) {
-            set_error("bands and n_bands must agree (both empty or both set)");
-            return RUMI_ERR_INVALID;
-        }
-        if ((times == nullptr) != (n_times == 0)) {
-            set_error("times and n_times must agree (both empty or both set)");
-            return RUMI_ERR_INVALID;
+        for (const char* why : {selection_error(bands, n_bands, false),
+                                 selection_error(times, n_times, true)}) {
+            if (why) {
+                set_error(why);
+                return RUMI_ERR_INVALID;
+            }
         }
         const auto& h = spec->h;
         const auto picked   = resolve_bands(bands, n_bands, h.samples_per_pixel);
@@ -863,16 +880,19 @@ rumi_status prepare_selection(const rumi::Header& h, size_t n_items,
                               int y_size, int x_size, const char* pattern,
                               SelectionSetup* out)
 {
-    if ((bands == nullptr) != (n_bands == 0)) {
-        set_error("bands and n_bands must agree (both empty or both set)");
+    for (const char* why : {selection_error(bands, n_bands, false),
+                             selection_error(times, n_times, true)}) {
+        if (why) {
+            set_error(why);
+            return RUMI_ERR_INVALID;
+        }
+    }
+    if (n_items == 0) {
+        set_error("a read needs at least one item");
         return RUMI_ERR_INVALID;
     }
-    if ((times == nullptr) != (n_times == 0)) {
-        set_error("times and n_times must agree (both empty or both set)");
-        return RUMI_ERR_INVALID;
-    }
-    if (n_items == 0 || y_size <= 0 || x_size <= 0) {
-        set_error("read dimensions must be positive");
+    if (y_size <= 0 || x_size <= 0) {
+        set_error("the window height and width must be positive");
         return RUMI_ERR_INVALID;
     }
     if (n_items > static_cast<size_t>(
@@ -912,6 +932,34 @@ rumi_status prepare_selection(const rumi::Header& h, size_t n_items,
     return RUMI_OK;
 }
 
+// item is the one-based batch position, or zero for a single read.
+rumi_status check_item(const rumi::Header& h, const SelectionSetup& setup,
+                       int y_off, int y_size, int x_off, int x_size,
+                       size_t item)
+{
+    auto ok = rumi::validate_request(h, setup.picked_t, setup.picked_b,
+                                     y_off, y_size, x_off, x_size);
+    if (ok) return RUMI_OK;
+    set_error(item ? rumi::format_message("item %zu: %s", item, ok.error().c_str())
+                   : ok.error());
+    return RUMI_ERR_INVALID;
+}
+
+rumi_status prepare_read(const rumi::Header& h,
+                         const int* times, size_t n_times,
+                         const int* bands, size_t n_bands,
+                         int y_off, int y_size, int x_off, int x_size,
+                         const char* pattern, SelectionSetup* out)
+{
+    if (const rumi_status status = prepare_selection(
+            h, 1, false, times, n_times, bands, n_bands,
+            y_size, x_size, pattern, out);
+        status != RUMI_OK) {
+        return status;
+    }
+    return check_item(h, *out, y_off, y_size, x_off, x_size, 0);
+}
+
 rumi_status finish_read(const std::expected<void, rumi::Error>& result)
 {
     if (result) return RUMI_OK;
@@ -935,9 +983,9 @@ rumi_read(rumi_source* src, const rumi_spec* spec,
         }
         const auto& h = spec->h;
         SelectionSetup setup;
-        if (const rumi_status status = prepare_selection(
-                h, 1, false, times, n_times, bands, n_bands,
-                y_size, x_size, pattern, &setup);
+        if (const rumi_status status = prepare_read(
+                h, times, n_times, bands, n_bands,
+                y_off, y_size, x_off, x_size, pattern, &setup);
             status != RUMI_OK) {
             return status;
         }
@@ -1037,9 +1085,9 @@ rumi_read_gpu(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
         }
         const auto& h = spec->h;
         SelectionSetup setup;
-        if (const rumi_status status = prepare_selection(
-                h, 1, false, times, n_times, bands, n_bands,
-                y_size, x_size, pattern, &setup);
+        if (const rumi_status status = prepare_read(
+                h, times, n_times, bands, n_bands,
+                y_off, y_size, x_off, x_size, pattern, &setup);
             status != RUMI_OK) {
             return status;
         }
@@ -1126,9 +1174,9 @@ rumi_read_gpu_dlpack(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
         }
         const auto& h = spec->h;
         SelectionSetup setup;
-        if (const rumi_status status = prepare_selection(
-                h, 1, false, times, n_times, bands, n_bands,
-                y_size, x_size, pattern, &setup);
+        if (const rumi_status status = prepare_read(
+                h, times, n_times, bands, n_bands,
+                y_off, y_size, x_off, x_size, pattern, &setup);
             status != RUMI_OK) {
             return status;
         }
@@ -1177,9 +1225,9 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
         }
         const auto& h = spec->h;
         SelectionSetup setup;
-        if (const rumi_status status = prepare_selection(
-                h, 1, false, times, n_times, bands, n_bands,
-                y_size, x_size, pattern, &setup);
+        if (const rumi_status status = prepare_read(
+                h, times, n_times, bands, n_bands,
+                y_off, y_size, x_off, x_size, pattern, &setup);
             status != RUMI_OK) {
             return status;
         }
@@ -1250,6 +1298,18 @@ rumi_status prepare_many(const rumi_read_item* items, size_t n_items,
         out->srcs.push_back(items[i].source->impl.get());
         out->y_offs.push_back(items[i].y_off);
         out->x_offs.push_back(items[i].x_off);
+    }
+    if (auto ok = rumi::compatible_headers(out->headers); !ok) {
+        set_error(ok.error());
+        return RUMI_ERR_INVALID;
+    }
+    for (size_t i = 0; i < n_items; ++i) {
+        if (const rumi_status status = check_item(
+                items[i].spec->h, out->selection, items[i].y_off, y_size,
+                items[i].x_off, x_size, i + 1);
+            status != RUMI_OK) {
+            return status;
+        }
     }
     return RUMI_OK;
 }
@@ -1424,6 +1484,57 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
 }
 
 
+extern "C" rumi_status
+rumi_read_layout(const rumi_spec* spec,
+                 const int* times, size_t n_times,
+                 const int* bands, size_t n_bands,
+                 int y_off, int y_size, int x_off, int x_size,
+                 const char* pattern, rumi_layout* out, size_t* out_bytes)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!spec || !out) {
+            set_error("rumi_read_layout: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        SelectionSetup setup;
+        if (const rumi_status status = prepare_read(
+                spec->h, times, n_times, bands, n_bands,
+                y_off, y_size, x_off, x_size, pattern, &setup);
+            status != RUMI_OK) {
+            return status;
+        }
+        fill_layout(setup.layout, out);
+        if (out_bytes) *out_bytes = setup.need;
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_read_many_layout(const rumi_read_item* items, size_t n_items,
+                      const int* times, size_t n_times,
+                      const int* bands, size_t n_bands,
+                      int y_size, int x_size, const char* pattern,
+                      rumi_layout* out, size_t* out_bytes)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_read_many_layout: null output");
+            return RUMI_ERR_INVALID;
+        }
+        ManySetup setup;
+        if (const rumi_status status = prepare_many(
+                items, n_items, times, n_times, bands, n_bands,
+                y_size, x_size, pattern, "rumi_read_many_layout", &setup);
+            status != RUMI_OK) {
+            return status;
+        }
+        fill_layout(setup.selection.layout, out);
+        if (out_bytes) *out_bytes = setup.selection.need;
+        return RUMI_OK;
+    });
+}
+
+
 // Writing.
 
 namespace {
@@ -1493,12 +1604,18 @@ to_write_desc(const rumi_write_desc& desc)
     }
     const std::uint64_t want =
         rumi::time_coord_count(desc.time_type, desc.time_count);
+    const bool pairs = desc.time_type == rumi::TIME_INTERVAL;
+    if (desc.time_coords != want && pairs && desc.time_coords % 2) {
+        return rumi::errf(
+            "an interval axis needs a start and an end per time step, so %llu "
+            "coordinates; got %llu", static_cast<unsigned long long>(want),
+            static_cast<unsigned long long>(desc.time_coords));
+    }
     if (desc.time_coords != want) {
         return rumi::errf(
-            "a %s axis over %u time steps needs %llu coordinates, got %llu",
-            desc.time_type == rumi::TIME_INTERVAL ? "interval" : "instant",
-            desc.time_count, static_cast<unsigned long long>(want),
-            static_cast<unsigned long long>(desc.time_coords));
+            "%s axis needs one entry per time step, so %u of them; got %llu",
+            pairs ? "an interval" : "an instant", desc.time_count,
+            static_cast<unsigned long long>(desc.time_coords / (pairs ? 2 : 1)));
     }
     if (!desc.time) {
         return rumi::err("time is null");

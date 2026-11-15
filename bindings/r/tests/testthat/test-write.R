@@ -83,7 +83,7 @@ test_that("frames and write refuse bad arguments", {
   expect_error(rumi_frames(image, "(row h) (col w) -> row col (h w)"),
                "names 2 axes")
   expect_error(rumi_frames(image, "b (row h) (col w) -> row col b (h w)",
-                           tile_size = 0), "from 1 to 65535")
+                           tile_size = 0), "tile_size must be at least 1")
 
   frames <- rumi_frames(image, "b (row h) (col w) -> row col b (h w)",
                         tile_size = 2, datatype = "uint16")

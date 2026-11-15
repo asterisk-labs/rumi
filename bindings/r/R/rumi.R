@@ -64,14 +64,11 @@ rumi_info <- function(file) .file(file)$metadata
 .selection <- function(value, name) {
   if (is.null(value))
     return(NULL)
-  if (!is.numeric(value) || !length(value) || anyNA(value) ||
+  if (!is.numeric(value) || anyNA(value) ||
       any(!is.finite(value)) || any(value != floor(value)))
     stop(sprintf("`%s` must contain whole, one-based indices", name),
          call. = FALSE)
-  if (any(value < 1))
-    stop(sprintf("`%s` must contain positive, one-based indices", name),
-         call. = FALSE)
-  if (any(value > .Machine$integer.max))
+  if (any(abs(value) > .Machine$integer.max))
     stop(sprintf("`%s` indices are outside R's integer range", name),
          call. = FALSE)
   as.integer(value)
@@ -81,10 +78,10 @@ rumi_info <- function(file) .file(file)$metadata
   if (is.null(value))
     return(NULL)
   if (!is.numeric(value) || length(value) != 4L || anyNA(value) ||
-      any(!is.finite(value)) || any(value != floor(value)) || any(value < 1))
+      any(!is.finite(value)) || any(value != floor(value)))
     stop("`window` must be (row, column, height, width), with one-based origins",
          call. = FALSE)
-  if (any(value > .Machine$integer.max))
+  if (any(abs(value) > .Machine$integer.max))
     stop("`window` values are outside R's integer range", call. = FALSE)
   as.double(value)
 }
@@ -227,8 +224,12 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
       !nzchar(pattern))
     stop("`pattern` must be one frame pattern", call. = FALSE)
   if (!is.numeric(tile_size) || length(tile_size) != 1L || is.na(tile_size) ||
-      tile_size != floor(tile_size) || tile_size < 1 || tile_size > 65535)
-    stop("`tile_size` must be a whole number from 1 to 65535", call. = FALSE)
+      tile_size != floor(tile_size))
+    stop("`tile_size` must be a whole number", call. = FALSE)
+  if (tile_size < 0)
+    stop("`tile_size` must not be negative", call. = FALSE)
+  if (tile_size > 65535)
+    stop("`tile_size` must be at most 65535", call. = FALSE)
   datatype <- .datatype(datatype, x)
   value <- .rumi_call(rumi_r_frames, x, enc2utf8(pattern), as.integer(tile_size))
   value$compressed <- vector("list", length(value$data))
@@ -293,7 +294,7 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
 }
 
 # One instant per step, or a start and an end per step, as POSIX seconds.
-.time_axis <- function(time, steps) {
+.time_axis <- function(time) {
   if (is.null(time))
     stop("every file labels its time steps; pass one date per step, or a start and an end per step",
          call. = FALSE)
@@ -302,24 +303,17 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
       stop("an interval step is a start and an end", call. = FALSE)
     kind <- 1L
     seconds <- unlist(lapply(time, .seconds))
-    n <- length(time)
   } else if (!is.null(dim(time))) {
     if (length(dim(time)) != 2L || ncol(time) != 2L)
       stop("an interval axis has one row per step, with a start and an end column",
            call. = FALSE)
     kind <- 1L
     seconds <- unlist(lapply(seq_len(nrow(time)), function(i) .seconds(time[i, ])))
-    n <- nrow(time)
   } else {
     kind <- 2L
     seconds <- .seconds(time)
-    n <- length(time)
   }
-  if (n != steps)
-    stop(sprintf("a %s axis needs one entry per time step, so %d of them; got %d",
-                 if (kind == 1L) "interval" else "instant", steps, n),
-         call. = FALSE)
-  list(kind = kind, seconds = seconds)
+  list(kind = kind, seconds = as.double(seconds))
 }
 
 .epsg <- function(crs) {
@@ -338,8 +332,8 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
 }
 
 .transform <- function(value) {
-  if (!is.numeric(value) || !length(value) %in% c(6L, 9L) || any(!is.finite(value)))
-    stop("`transform` must be six finite coefficients (x_res, row_rot, x_origin, col_rot, y_res, y_origin)",
+  if (!is.numeric(value) || !length(value) %in% c(6L, 9L))
+    stop("`transform` must be six coefficients (x_res, row_rot, x_origin, col_rot, y_res, y_origin)",
          call. = FALSE)
   if (length(value) == 9L && !identical(as.double(value[7:9]), c(0, 0, 1)))
     stop("a nine-value affine `transform` must end in (0, 0, 1)", call. = FALSE)
@@ -374,19 +368,15 @@ rumi_write <- function(path, frames, bands, time, transform = NULL, crs = NULL,
     stop("`frames` must come from rumi_frames()", call. = FALSE)
   if (length(frames$compressed) != length(frames$data))
     stop("`compressed` must have one entry per frame", call. = FALSE)
-  missing <- which(!vapply(frames$compressed,
-                           function(payload) is.raw(payload) && length(payload) > 0L,
-                           logical(1)))[1L]
+  missing <- which(!vapply(frames$compressed, is.raw, logical(1)))[1L]
   if (!is.na(missing))
     stop(sprintf("frame %d has no compressed bytes", missing), call. = FALSE)
   if (!is.character(bands) || anyNA(bands))
     stop("`bands` must be one text per band", call. = FALSE)
-  if (is.null(transform) != is.null(crs))
-    stop("`transform` and `crs` must be given together", call. = FALSE)
   if (!is.logical(pixel_is_point) || length(pixel_is_point) != 1L ||
       is.na(pixel_is_point))
     stop("`pixel_is_point` must be TRUE or FALSE", call. = FALSE)
-  axis <- .time_axis(time, frames$time_count)
+  axis <- .time_axis(time)
   shape <- c(frames$image_width, frames$image_length, frames$time_count,
              frames$tile_size, frames$bands, frames$frame_unit)
   .rumi_call(rumi_r_write, enc2utf8(path.expand(path)), frames$compressed,

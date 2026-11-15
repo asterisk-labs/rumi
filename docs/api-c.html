@@ -407,7 +407,7 @@ rumi_status rumi_plan_ranges(const rumi_spec* spec,
         <tr><th>pattern</th><td>A <a href="#read-patterns">read pattern</a>, or <code>NULL</code> for the default Image or Cube layout.</td></tr>
         <tr><th>dst, dst_size</th><td>The output buffer. It must hold every selected sample at the dtype's <code>storage_bytes</code>.</td></tr>
       </table>
-      <p>A pointer and its count must both be set or both be empty. A read returns <code>RUMI_ERR_INVALID</code> for a bad selection, window or pattern or a buffer that is too small, <code>RUMI_ERR_IO</code> when a frame cannot be fetched, and <code>RUMI_ERR_DECODE</code> or <code>RUMI_ERR_UNSUPPORTED</code> when one cannot be decoded.</p>
+      <p>A <code>NULL</code> pointer needs a count of 0; a non-<code>NULL</code> selection must contain at least one index. Selections, windows and layouts are checked before decoding. A read returns <code>RUMI_ERR_INVALID</code> for a bad selection, window or pattern or a buffer that is too small, <code>RUMI_ERR_IO</code> when a frame cannot be fetched, and <code>RUMI_ERR_DECODE</code> or <code>RUMI_ERR_UNSUPPORTED</code> when one cannot be decoded.</p>
 
       <h3 id="rumi_read">rumi_read</h3>
 <pre><code class="sig language-c">rumi_status rumi_read(rumi_source* src, const rumi_spec* spec,
@@ -444,6 +444,20 @@ rumi_spec_destroy(spec);</code></pre>
                            void* dst, size_t dst_size);</code></pre>
       <p>Reads one window per item into <code>dst</code>, in <code>n</code> order. Each item names a source, its parsed header and the zero-based window origin, and the caller keeps them alive for the call. Every window shares <code>y_size</code> and <code>x_size</code>, and <code>times</code> and <code>bands</code> apply to every item.</p>
       <p>The headers must agree on tile size, band count, dtype, time step count, and which of band and time a frame holds. Image sizes may differ, so one batch can draw from scenes of different extents. The default pattern keeps <code>n</code> even for one item, and a custom pattern must include <code>n</code> for more than one.</p>
+
+      <h3 id="rumi_read_layout">rumi_read_layout, rumi_read_many_layout</h3>
+<pre><code class="sig language-c">rumi_status rumi_read_layout(const rumi_spec* spec,
+                             const int* times, size_t n_times,
+                             const int* bands, size_t n_bands,
+                             int y_off, int y_size, int x_off, int x_size,
+                             const char* pattern,
+                             rumi_layout* out, size_t* out_bytes);
+rumi_status rumi_read_many_layout(const rumi_read_item* items, size_t n_items,
+                                  const int* times, size_t n_times,
+                                  const int* bands, size_t n_bands,
+                                  int y_size, int x_size, const char* pattern,
+                                  rumi_layout* out, size_t* out_bytes);</code></pre>
+      <p>Check the selection, window and layout without fetching data. The functions return the <a href="#rumi_compile_layout">output layout</a> and, when <code>out_bytes</code> is not <code>NULL</code>, the required <code>dst_size</code>. Call them before allocating a caller-owned output buffer.</p>
 
       <h2 class="part" id="gpu">Reading on the GPU</h2>
       <p>A GPU read plans the frames and the window on the CPU, then GeoZL writes the decoded samples into device memory. It needs a build with <code>RUMI_BUILD_GPU</code>, which drives CUDA on Linux and Metal on macOS. The device types follow DLPack.</p>

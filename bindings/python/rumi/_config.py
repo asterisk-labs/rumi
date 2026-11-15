@@ -1,6 +1,6 @@
 import operator
 
-from ._ffi import _check, ffi, lib
+from ._ffi import _check, c_int, ffi, lib
 
 
 def set_num_threads(n: int) -> int:
@@ -20,9 +20,7 @@ def set_num_threads(n: int) -> int:
         n = operator.index(n)
     except TypeError:
         raise TypeError(f"num_threads must be an integer, got {n!r}") from None
-    if not 1 <= n <= 1024:
-        raise ValueError(f"num_threads must be in [1, 1024], got {n}")
-    _check(lib.rumi_set_num_threads(n))
+    _check(lib.rumi_set_num_threads(c_int(n, "num_threads")))
     return n
 
 

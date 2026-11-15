@@ -3,6 +3,7 @@ import operator
 import numpy as np
 
 from ._dtype import check_samples, dtype_code, needs_sample_validation
+from ._ffi import c_int
 from ._pattern import (
     AXES,
     COLUMN,
@@ -10,6 +11,7 @@ from ._pattern import (
     compile_pattern,
     frame_at,
     frame_count,
+    index_axes,
     layout_name,
 )
 from ._repr import _human, frame_html, frame_text
@@ -127,30 +129,20 @@ class FrameTable:
         self.pattern = (pattern if not isinstance(pattern, str)
                         else compile_pattern(pattern))
         try:
-            self.image_width = operator.index(image_width)
-            self.image_length = operator.index(image_length)
-            self.tile_size = t = operator.index(tile_size)
-            self.bands = operator.index(bands)
-            self.time_count = operator.index(time_count)
+            width, length, tile, b, t = map(operator.index, (
+                image_width, image_length, tile_size, bands, time_count))
         except TypeError:
             raise TypeError(
                 "image dimensions, tile_size, bands and time_count must be integers"
             ) from None
+        self.image_width = c_int(width, "image_width", "uint32_t")
+        self.image_length = c_int(length, "image_length", "uint32_t")
+        self.tile_size = c_int(tile, "tile_size", "uint16_t")
+        self.bands = c_int(b, "bands", "uint16_t")
+        self.time_count = c_int(t, "time_count", "uint32_t")
         self.dtype = np.dtype(dtype)
         code = dtype_code(self.dtype)
         validate_samples = needs_sample_validation(code)
-        if self.image_width <= 0 or self.image_length <= 0:
-            raise ValueError(
-                f"image dimensions must be positive, got "
-                f"{self.image_width}x{self.image_length}"
-            )
-        if self.bands <= 0:
-            raise ValueError(f"bands must be positive, got {self.bands}")
-        if self.time_count <= 0:
-            raise ValueError(
-                f"time_count must be positive, got {self.time_count}")
-        if not 1 <= t <= 65535:
-            raise ValueError(f"tile_size must be in [1, 65535], got {t}")
 
         # Singleton band and time axes are omitted from the stored layout.
         self.frame_unit = self.pattern.frame_unit(self.bands, self.time_count)
@@ -162,7 +154,7 @@ class FrameTable:
                 f"expected {n} ({' '.join(self.pattern.frame_axes)}) frames "
                 f"for this grid, got {len(self._data)}")
 
-        walks = self.pattern.index_columns(self.bands, self.time_count)
+        walks = self.dims
         self._row = np.empty(n, np.int64)
         self._col = np.empty(n, np.int64)
         self._band = np.empty(n, np.int64) if "band" in walks else None
@@ -215,11 +207,9 @@ class FrameTable:
                 f"the pattern names {len(p.input_axes)} axes "
                 f"({' '.join(p.input_axes)}), got shape {arr.shape}")
         try:
-            tile = operator.index(tile_size)
+            tile = c_int(operator.index(tile_size), "tile_size", "uint16_t")
         except TypeError:
             raise TypeError("tile_size must be an integer") from None
-        if not 1 <= tile <= 65535:
-            raise ValueError(f"tile_size must be in [1, 65535], got {tile_size}")
 
         # Normalize to (b, t, y, x), inserting omitted singleton axes. The
         # transpose is a view; individual frames become contiguous below.
@@ -230,6 +220,10 @@ class FrameTable:
             if a not in p.input_axes:
                 arr = np.expand_dims(arr, i)
         b, times, y, x = (int(v) for v in arr.shape)
+        c_int(b, "bands", "uint16_t")
+        for value, name in ((times, "time_count"), (y, "image_length"),
+                            (x, "image_width")):
+            c_int(value, name, "uint32_t")
 
         # Choose the layout after omitting singleton band and time axes.
         unit = p.frame_unit(b, times)
@@ -264,7 +258,8 @@ class FrameTable:
     @property
     def dims(self):
         """Return the columns that identify each frame."""
-        return self.pattern.index_columns(self.bands, self.time_count)
+        return (*GRID_COLUMNS, *(COLUMN[a] for a in index_axes(
+            self.frame_unit, self.bands, self.time_count)))
 
     @property
     def tiles_across(self):
@@ -461,13 +456,10 @@ class FrameTable:
 
 
 def _frame_bytes(v, i):
+    # bytes(n) silently creates n zero bytes.
     if isinstance(v, (int, np.integer)):
         raise TypeError(f"frame {i} must be bytes-like, got {type(v).__name__}")
-    buf = bytes(v)
-    # Validate at assignment so the error identifies the producing frame.
-    if not buf:
-        raise ValueError(f"frame {i} is empty")
-    return buf
+    return bytes(v)
 
 
 def frames(arr, pattern, tile_size=512):

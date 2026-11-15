@@ -134,22 +134,25 @@ function _header(file::Dataset)
     return result[]
 end
 
-function _selection(selection, total::Integer, name::String)
-    selection === nothing && return Cint[]
+function _selection(selection, name::String)
+    selection === nothing && return nothing
     values = selection isa Integer ? [selection] : collect(selection)
-    isempty(values) && throw(ArgumentError("$name cannot be empty"))
     out = Cint[]
     for value in values
         value isa Integer && !(value isa Bool) ||
             throw(ArgumentError("every $name index must be an integer"))
-        1 <= value <= total ||
-            throw(ArgumentError("$name index $value is outside 1:$total"))
-        value <= typemax(Cint) ||
+        typemin(Cint) <= value <= typemax(Cint) ||
             throw(ArgumentError("$name index $value exceeds the C API limit"))
         push!(out, Cint(value))
     end
     return out
 end
+
+# A null pointer selects all indices; an empty vector must stay non-null.
+_c_selection(values) = values === nothing ? Ptr{Cint}(C_NULL) :
+    isempty(values) ? Ref{Cint}(0) : values
+
+_c_length(values) = values === nothing ? 0 : length(values)
 
 function _window(window, header::_Header)
     window === nothing && return (0, Int(header.image_length), 0, Int(header.image_width))
@@ -158,40 +161,15 @@ function _window(window, header::_Header)
     row, column, height, width = window
     all(value -> value isa Integer && !(value isa Bool), window) ||
         throw(ArgumentError("window values must be integers"))
-    row >= 1 && column >= 1 && height >= 1 && width >= 1 ||
-        throw(ArgumentError("window uses one-based origins and positive sizes"))
-    all(value -> value <= typemax(Cint), window) ||
+    all(value -> typemin(Cint) < value <= typemax(Cint), window) ||
         throw(ArgumentError("window values exceed the C API limit"))
-    row + height - 1 <= header.image_length &&
-        column + width - 1 <= header.image_width ||
-        throw(ArgumentError("window extends past the image"))
     return (Int(row - 1), Int(height), Int(column - 1), Int(width))
 end
 
-function _layout(pattern, n, t, b, y, x)
-    result = Ref{_Layout}()
-    status = if pattern === nothing
-        ccall(_sym(:rumi_compile_layout), Cint,
-              (Ptr{UInt8}, Int64, Int64, Int64, Int64, Int64, Ref{_Layout}),
-              C_NULL, n, t, b, y, x, result)
-    else
-        pattern isa AbstractString || throw(ArgumentError("pattern must be a string or nothing"))
-        ccall(_sym(:rumi_compile_layout), Cint,
-              (Cstring, Int64, Int64, Int64, Int64, Int64, Ref{_Layout}),
-              pattern, n, t, b, y, x, result)
-    end
-    _check(status)
-    return result[]
-end
-
-function _output_pattern(pattern, n_items, file_times)
-    pattern === nothing || return pattern
-    ptr = ccall(
-        _sym(:rumi_default_pattern), Cstring,
-        (Csize_t, UInt32), n_items, file_times,
-    )
-    ptr == C_NULL && throw(RumiError("librumi returned no default output pattern"))
-    return unsafe_string(ptr)
+function _pattern(pattern)
+    pattern === nothing || pattern isa AbstractString ||
+        throw(ArgumentError("pattern must be a string or nothing"))
+    return pattern === nothing ? C_NULL : pattern
 end
 
 function _array(header::_Header, layout::_Layout)
@@ -202,26 +180,28 @@ end
 
 function read(file::Dataset; time=nothing, bands=nothing, window=nothing, pattern=nothing)
     header = _header(file)
-    selected_time = _selection(time, header.time_count, "time")
-    selected_bands = _selection(bands, header.samples_per_pixel, "bands")
+    selected_time = _selection(time, "time")
+    selected_bands = _selection(bands, "bands")
     y_off, y_size, x_off, x_size = _window(window, header)
-    nt = isempty(selected_time) ? Int(header.time_count) : length(selected_time)
-    nb = isempty(selected_bands) ? Int(header.samples_per_pixel) : length(selected_bands)
-    output_pattern = _output_pattern(pattern, 1, header.time_count)
-    layout = _layout(output_pattern, 1, nt, nb, y_size, x_size)
-    out = _array(header, layout)
-    GC.@preserve selected_time selected_bands out begin
-        time_ptr = isempty(selected_time) ? Ptr{Cint}(C_NULL) : pointer(selected_time)
-        band_ptr = isempty(selected_bands) ? Ptr{Cint}(C_NULL) : pointer(selected_bands)
-        _check(ccall(
-            _sym(:rumi_read), Cint,
-            (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cint}, Csize_t, Ptr{Cint}, Csize_t,
-             Cint, Cint, Cint, Cint, Ptr{UInt8}, Ptr{Cvoid}, Csize_t),
-            file.source, file.spec,
-            time_ptr, length(selected_time), band_ptr, length(selected_bands),
-            y_off, y_size, x_off, x_size, output_pattern, out, sizeof(out),
-        ))
-    end
+    output_pattern = _pattern(pattern)
+    nt, nb = _c_length(selected_time), _c_length(selected_bands)
+    layout = Ref{_Layout}()
+    _check(ccall(
+        _sym(:rumi_read_layout), Cint,
+        (Ptr{Cvoid}, Ptr{Cint}, Csize_t, Ptr{Cint}, Csize_t,
+         Cint, Cint, Cint, Cint, Ptr{UInt8}, Ref{_Layout}, Ptr{Csize_t}),
+        file.spec, _c_selection(selected_time), nt, _c_selection(selected_bands), nb,
+        y_off, y_size, x_off, x_size, output_pattern, layout, C_NULL,
+    ))
+    out = _array(header, layout[])
+    _check(ccall(
+        _sym(:rumi_read), Cint,
+        (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cint}, Csize_t, Ptr{Cint}, Csize_t,
+         Cint, Cint, Cint, Cint, Ptr{UInt8}, Ptr{Cvoid}, Csize_t),
+        file.source, file.spec,
+        _c_selection(selected_time), nt, _c_selection(selected_bands), nb,
+        y_off, y_size, x_off, x_size, output_pattern, out, sizeof(out),
+    ))
     return out
 end
 
@@ -238,9 +218,8 @@ function read_many(files::AbstractVector{<:Dataset}; windows=nothing,
                    time=nothing, bands=nothing, pattern=nothing)
     isempty(files) && throw(ArgumentError("read_many needs at least one Dataset"))
     headers = _header.(files)
-    base = headers[1]
-    selected_time = _selection(time, base.time_count, "time")
-    selected_bands = _selection(bands, base.samples_per_pixel, "bands")
+    selected_time = _selection(time, "time")
+    selected_bands = _selection(bands, "bands")
     raw_windows = windows === nothing ? fill(nothing, length(files)) : collect(windows)
     length(raw_windows) == length(files) ||
         throw(ArgumentError("windows must have one entry per Dataset"))
@@ -250,23 +229,26 @@ function read_many(files::AbstractVector{<:Dataset}; windows=nothing,
         throw(ArgumentError("every window must have the same height and width"))
     items = [_ReadItem(file.source, file.spec, window[1], window[3])
              for (file, window) in zip(files, resolved)]
-    nt = isempty(selected_time) ? Int(base.time_count) : length(selected_time)
-    nb = isempty(selected_bands) ? Int(base.samples_per_pixel) : length(selected_bands)
-    output_pattern = _output_pattern(pattern, length(files), base.time_count)
-    layout = _layout(output_pattern, length(files), nt, nb, y_size, x_size)
-    out = _array(base, layout)
-    GC.@preserve items selected_time selected_bands out begin
-        time_ptr = isempty(selected_time) ? Ptr{Cint}(C_NULL) : pointer(selected_time)
-        band_ptr = isempty(selected_bands) ? Ptr{Cint}(C_NULL) : pointer(selected_bands)
-        _check(ccall(
-            _sym(:rumi_read_many), Cint,
-            (Ptr{_ReadItem}, Csize_t, Ptr{Cint}, Csize_t, Ptr{Cint}, Csize_t,
-             Cint, Cint, Ptr{UInt8}, Ptr{Cvoid}, Csize_t),
-            items, length(items), time_ptr, length(selected_time),
-            band_ptr, length(selected_bands), y_size, x_size,
-            output_pattern, out, sizeof(out),
-        ))
-    end
+    output_pattern = _pattern(pattern)
+    nt, nb = _c_length(selected_time), _c_length(selected_bands)
+    layout = Ref{_Layout}()
+    _check(ccall(
+        _sym(:rumi_read_many_layout), Cint,
+        (Ptr{_ReadItem}, Csize_t, Ptr{Cint}, Csize_t, Ptr{Cint}, Csize_t,
+         Cint, Cint, Ptr{UInt8}, Ref{_Layout}, Ptr{Csize_t}),
+        items, length(items),
+        _c_selection(selected_time), nt, _c_selection(selected_bands), nb,
+        y_size, x_size, output_pattern, layout, C_NULL,
+    ))
+    out = _array(headers[1], layout[])
+    _check(ccall(
+        _sym(:rumi_read_many), Cint,
+        (Ptr{_ReadItem}, Csize_t, Ptr{Cint}, Csize_t, Ptr{Cint}, Csize_t,
+         Cint, Cint, Ptr{UInt8}, Ptr{Cvoid}, Csize_t),
+        items, length(items),
+        _c_selection(selected_time), nt, _c_selection(selected_bands), nb,
+        y_size, x_size, output_pattern, out, sizeof(out),
+    ))
     return out
 end
 

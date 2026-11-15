@@ -74,14 +74,21 @@ def test_a_pathlike_must_resolve_to_text(image):
 
 
 @pytest.mark.parametrize("kwargs, message", [
-    ({"bands": [99]}, "bands: index"),
-    ({"window": (0, 0, 1000, 1000)}, "window: requested window"),
+    ({"bands": [99]}, "bands selects the 100th band, but this file has 3"),
+    ({"window": (0, 0, 1000, 1000)}, "the window extends past the image"),
     ({"pattern": 1}, "pattern must be a string"),
 ])
 def test_read_validates_arguments_before_opening_source(image, kwargs, message):
     _path, header, _data = image
     with pytest.raises((TypeError, ValueError), match=message):
         rumi.read("does-not-exist.rumi", header, **kwargs)
+
+
+@pytest.mark.parametrize("selection", [(-10**12, 1), (-1, 2), (0, 10**12)])
+def test_invalid_range_does_not_expand_before_validation(image, selection):
+    path, header, _data = image
+    with pytest.raises(ValueError):
+        rumi.read(path, header, bands=selection)
 
 
 def test_read_many_validates_lengths_before_opening_sources(image):
@@ -217,7 +224,7 @@ def test_a_window_has_an_origin_and_positive_size(image, window, error):
 
 def test_a_named_window_stays_inside_the_image(image):
     path, header, _data = image
-    with pytest.raises(ValueError, match="out of"):
+    with pytest.raises(ValueError, match="extends past the image"):
         rumi.read(path, header, window=(90, 120, 20, 20))
 
 

@@ -44,6 +44,8 @@ RUMI_PRINTF_LIKE(1, 2)
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::unexpected<std::string> errf(const char* fmt, ...);
 
+[[nodiscard]] std::string ordinal(std::uint64_t n);
+
 // Keep the status beside the message so the C boundary never infers it from
 // message text.
 struct Error {
@@ -844,6 +846,10 @@ bool set_checksum_verification(bool on) noexcept;
 validate_request(const Header& h, std::span<const int> times,
                  std::span<const int> bands,
                  int y_off, int y_size, int x_off, int x_size);
+
+// Headers read together must agree on everything but their image size.
+[[nodiscard]] std::expected<void, std::string>
+compatible_headers(std::span<const Header* const> headers);
 
 // Compute required ranges from the external header without I/O.
 [[nodiscard]] std::vector<Range>

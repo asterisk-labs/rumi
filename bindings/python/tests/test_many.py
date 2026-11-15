@@ -573,10 +573,8 @@ class TestRejections:
 
     @pytest.mark.parametrize(
         "window, message",
-        [((-1, 0, 32, 32), "negative"),
-         ((0, -1, 32, 32), "negative"),
-         ((0, 0, 0, 32), "positive"),
-         ((0, 0, 32, 0), "positive"),
+        [((-1, 0, 32, 32), "item 2: the window starts before the image"),
+         ((0, -1, 32, 32), "item 2: the window starts before the image"),
          ((0, 0, 32), "expected \\(row, column, height, width\\)")],
     )
     def test_a_malformed_window_is_named(self, pair, window, message):
@@ -585,12 +583,18 @@ class TestRejections:
             rumi.read_many(paths, headers,
                             windows=[(0, 0, 32, 32), window])
 
+    @pytest.mark.parametrize("window", [(0, 0, 0, 32), (0, 0, 32, 0)])
+    def test_an_empty_window_is_named(self, pair, window):
+        paths, headers = pair
+        with pytest.raises(ValueError, match="height and width must be positive"):
+            rumi.read_many(paths, headers, windows=[window, window])
+
     def test_a_window_is_checked_against_its_own_item(self, scenes):
         square_path, square_header, _d = scenes[0]
         wide_path, wide_header, _w = scenes[4]
         window = (0, 128, 32, 32)
         rumi.read_many([wide_path], [wide_header], windows=[window])
-        with pytest.raises(ValueError, match="out of bounds"):
+        with pytest.raises(ValueError, match="item 2: the window extends past"):
             rumi.read_many([wide_path, square_path],
                             [wide_header, square_header],
                             windows=[window, window])

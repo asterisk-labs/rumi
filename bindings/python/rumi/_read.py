@@ -7,7 +7,7 @@ from typing import TypeAlias, cast
 
 from ._dataset import Dataset
 from ._dlpack import RumiArray
-from ._ffi import _check, ffi, lib
+from ._ffi import _check, c_int, ffi, lib
 from ._framework import resolve_framework
 from ._native import Header, ReadSource, _Source, _Spec, normalize_source
 
@@ -15,10 +15,10 @@ Axis = tuple[int, int] | list[int] | None
 Window = tuple[int, int, int, int] | None
 _ReadSource = ReadSource
 _ReadTarget: TypeAlias = ReadSource | Dataset
-_C_INT_MAX = (1 << 31) - 1
+_WINDOW = ("row", "column", "height", "width")
 
 
-# Convert Python indices to the C API's 1-based convention. NULL/0 means all.
+# Python indices are zero-based; the C API uses one-based indices.
 def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     if sel is None:
         return None
@@ -29,46 +29,43 @@ def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
             start, stop = map(operator.index, sel)
         except TypeError:
             raise TypeError(f"{name}: start and stop must be integers") from None
-        if not (0 <= start < stop <= total):
-            raise ValueError(f"{name}: slice ({start}, {stop}) out of [0, {total}]")
-        if stop > _C_INT_MAX:
-            raise ValueError(f"{name}: indices exceed the C API limit")
-        return list(range(start + 1, stop + 1))
-    if isinstance(sel, list):
-        try:
-            out = [operator.index(i) + 1 for i in sel]
-        except TypeError:
-            raise TypeError(f"{name}: every index must be an integer") from None
-        for x in out:
-            if not (1 <= x <= total):
-                raise ValueError(f"{name}: index {x - 1} out of [0, {total})")
-            if x > _C_INT_MAX:
-                raise ValueError(f"{name}: index {x - 1} exceeds the C API limit")
-        return out
-    raise TypeError(f"{name}: expected tuple or list, got {type(sel).__name__}")
+        # One bad index is enough for C to reject an out-of-bounds range.
+        if start < 0:
+            sel = [start]
+        elif stop <= start:
+            sel = []
+        elif start >= total:
+            sel = [start]
+        elif stop > total:
+            sel = [total]
+        else:
+            sel = list(range(start, stop))
+    elif not isinstance(sel, list):
+        raise TypeError(f"{name}: expected tuple or list, got {type(sel).__name__}")
+    try:
+        out = [operator.index(i) for i in sel]
+    except TypeError:
+        raise TypeError(f"{name}: every index must be an integer") from None
+    for i in out:
+        if not -(1 << 31) <= i < (1 << 31) - 1:
+            raise ValueError(f"{name}: index {i} exceeds the C API limit")
+    return [i + 1 for i in out]
 
 
 def _resolve_window(window: Window, image_height: int, image_width: int) \
         -> tuple[int, int, int, int]:
-    """Validate a row/column/height/width window against one image."""
+    """Return ``(row, height, column, width)``; None covers the whole image."""
     if window is None:
         return 0, image_height, 0, image_width
     if not isinstance(window, tuple) or len(window) != 4:
         raise TypeError("window: expected (row, column, height, width) tuple")
     try:
-        row, column, height, width = map(operator.index, window)
+        row, column, height, width = (
+            c_int(operator.index(v), f"window {n}")
+            for n, v in zip(_WINDOW, window, strict=True))
     except TypeError:
         raise TypeError("window: row, column, height and width must be integers") \
             from None
-    if row < 0 or column < 0 or height <= 0 or width <= 0:
-        raise ValueError(
-            "window: row and column must be non-negative; height and width "
-            "must be positive")
-    if row > _C_INT_MAX or column > _C_INT_MAX \
-            or height > _C_INT_MAX or width > _C_INT_MAX:
-        raise ValueError("window values exceed the C API limit")
-    if row + height > image_height or column + width > image_width:
-        raise ValueError("window: requested window is out of image bounds")
     return row, height, column, width
 
 
@@ -86,12 +83,6 @@ def _to_c(lst: list[int] | None):
     return ffi.new("int[]", lst), len(lst)
 
 
-def _dlpack_shape(tensor) -> tuple[int, ...]:
-    """Read result metadata produced by the core instead of recompiling it."""
-    value = tensor.dl_tensor
-    return tuple(int(value.shape[i]) for i in range(value.ndim))
-
-
 def _read_one(src: _Source, spec: _Spec,
               times: list[int] | None, bands: list[int] | None,
               window: tuple[int, int, int, int], output_pattern) -> RumiArray:
@@ -103,12 +94,11 @@ def _read_one(src: _Source, spec: _Spec,
         src.handle, spec.handle, times_c, n_times_c, bands_c, n_bands_c,
         y_off, y_size, x_off, x_size, output_pattern, out,
     ))
-    return RumiArray(out[0], _dlpack_shape(out[0]), spec.fields.dtype)
+    return RumiArray(out[0], spec.fields.dtype)
 
 
-def _resolve_windows(windows, specs: Sequence[_Spec]) \
-        -> tuple[list[int], list[int], int, int]:
-    """Split equal-sized windows into row offsets, column offsets, and size."""
+def _resolve_windows(windows) -> tuple[list[int], list[int], int, int]:
+    """Split windows into row offsets, column offsets and the size they share."""
     rows: list[int] = []
     cols: list[int] = []
     size: tuple[int, int] | None = None
@@ -118,20 +108,13 @@ def _resolve_windows(windows, specs: Sequence[_Spec]) \
                 f"windows[{i}]: expected (row, column, height, width) tuple"
             )
         try:
-            row, column, height, width = map(operator.index, window)
+            row, column, height, width = (
+                c_int(operator.index(v), f"windows[{i}] {n}")
+                for n, v in zip(_WINDOW, window, strict=True))
         except TypeError:
             raise TypeError(
                 f"windows[{i}]: row, column, height and width must be integers"
             ) from None
-        if row < 0 or column < 0:
-            raise ValueError(f"windows[{i}]: row and column must not be negative")
-        if height <= 0 or width <= 0:
-            raise ValueError(f"windows[{i}]: height and width must be positive")
-        fields = specs[i].fields
-        if row + height > fields.image_length \
-                or column + width > fields.image_width:
-            raise ValueError(
-                f"windows[{i}]: requested window is out of bounds for image")
         if size is None:
             size = (height, width)
         elif (height, width) != size:
@@ -141,8 +124,7 @@ def _resolve_windows(windows, specs: Sequence[_Spec]) \
             )
         rows.append(row)
         cols.append(column)
-    if size is None:
-        raise ValueError("read_many requires at least one window")
+    assert size is not None
     return rows, cols, size[0], size[1]
 
 
@@ -181,7 +163,7 @@ def _read_many(sources: Sequence[_Source], specs: Sequence[_Spec],
         times_c, n_times_c, bands_c, n_bands_c,
         y_size, x_size, output_pattern, out,
     ))
-    return RumiArray(out[0], _dlpack_shape(out[0]), specs[0].fields.dtype)
+    return RumiArray(out[0], specs[0].fields.dtype)
 
 
 def _decode_backend_code(value: str) -> int:
@@ -339,7 +321,7 @@ def read_many(sources: Sequence[_ReadTarget],
     picked_bands = _resolve_axis(bands, "bands", fields.samples_per_pixel)
     if raw_windows is None:
         raw_windows = _whole_images(specs)
-    y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows, specs)
+    y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows)
     output_pattern = _resolve_pattern(pattern)
 
     if device not in (None, "cpu"):
@@ -356,7 +338,7 @@ def read_many(sources: Sequence[_ReadTarget],
         times_c, n_times_c = _to_c(times)
         bands_c, n_bands_c = _to_c(picked_bands)
         return consumer.convert(read_many_gpu(
-            items, len(specs), specs,
+            items, len(specs),
             times_c, n_times_c, bands_c, n_bands_c,
             y_size, x_size, output_pattern, consumer.dtype, device,
             backend))
