@@ -54,7 +54,7 @@
   min-height: 100vh;
   min-height: 100svh;
   margin-inline: auto;
-  padding: env(safe-area-inset-top) 0 max(16px, env(safe-area-inset-bottom));
+  padding: env(safe-area-inset-top) var(--pad-inline) max(16px, env(safe-area-inset-bottom));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: clamp(18px, 3vh, 32px);
@@ -225,7 +225,6 @@ html[data-route="home"] .offsite {
 
 #view {
   min-width: 0;
-  padding-inline: var(--pad-inline);
   display: grid;
   align-items: center;
   view-transition-name: view;
@@ -363,14 +362,13 @@ html[data-route="home"] .colophon {
 
 @media (max-width: 760px) {
   .page {
-    grid-template-rows: auto auto auto;
     gap: 26px;
   }
 
   .masthead {
     grid-template-columns: 1fr auto;
     row-gap: 8px;
-    padding: 12px 18px;
+    padding-inline: 18px;
   }
 
   .offsite {
@@ -394,11 +392,13 @@ html[data-route="home"] .colophon {
   }
 }
 
-@media (max-width: 420px) {
-  #view {
-    padding-inline: 18px;
+@media (max-width: 480px) {
+  .page {
+    padding-inline: 16px;
   }
+}
 
+@media (max-width: 420px) {
   .nav {
     width: 100%;
     gap: 10px;
