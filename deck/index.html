@@ -277,7 +277,7 @@
 
     <section class="slide" aria-label="A read on the CPU">
       <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">09 / 13</span></header>
-      <h1>On the CPU, frames decode in RAM</h1>
+      <h1><span class="title-mark">On the CPU</span>, frames decode in RAM</h1>
       <div class="fig path-fig">
         <pre class="code"><code>rumi.<span class="tok-fn">read</span>(path, header, framework=<span class="tok-str">"torch"</span>)</code></pre>
         <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read from the external header alone. Karu fetches the 4 byte ranges, 206 kB, in one batch on its I/O threads. Each Rumi worker decodes a frame with OpenZL and the GeoZL codecs, following the graph stored in the frame. Rumi places the 524 kB of crops in one buffer, and PyTorch takes it through DLPack without a copy." data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,167,-1],[515,167,2],[590,167,-1],[590,51,-1],[665,51,3],[727,51,-1],[727,225,-1],[790,225,4]]">
@@ -307,7 +307,7 @@
 
     <section class="slide" aria-label="Reading on a GPU">
       <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">10 / 13</span></header>
-      <h1>On a GPU, only compressed bytes cross PCIe</h1>
+      <h1><span class="title-mark">On a GPU</span>, compressed bytes cross PCIe</h1>
       <div class="fig path-fig">
         <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read and allocates the output on cuda:0. Karu fetches every range into pinned host memory. Rumi sends the 206 kB of compressed frames across PCIe in groups that fit the decoder memory. GeoZL decodes them on the GPU and writes each crop into the 524 kB tensor, which PyTorch takes through DLPack once its stream has waited for the read." data-speed="2" data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,51,-1],[515,51,2],[590,51,-1],[590,167,-1],[665,167,3],[732,167,-1],[732,225,-1],[800,225,4]]">
           <rect class="pt-band" x="150" y="0" width="440" height="254"/>
@@ -339,7 +339,7 @@
 
     <section class="slide" aria-label="Sentinel-2 benchmark">
       <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">11 / 13</span></header>
-      <h1>A Sentinel-2 scene reaches the GPU in 61 ms</h1>
+      <h1>A Sentinel-2 scene reaches the <span class="title-mark">GPU in 61 ms</span></h1>
       <div class="fig race">
         <p class="race-setup">One CPU thread and an NVIDIA A100. Red, green and blue of one Sentinel-2 tile, 723 MB, already in memory.</p>
         <div class="race-chart">
@@ -360,7 +360,7 @@
 
     <section class="slide" aria-label="Training with DDP">
       <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">12 / 13</span></header>
-      <h1>In DDP, each GPU decodes its own batches</h1>
+      <h1>Rumi <span class="title-mark">scales with every GPU</span> you add</h1>
       <div class="fig dl-fig" data-rows="44,84,124,164,204" data-decode="3">
         <pre class="code dl-code"><code><span class="tok-kw">def</span> <span class="tok-fn">__getitems__</span>(self, indices):
     <span class="tok-kw">return</span> rumi.<span class="tok-fn">read_many</span>(sources, headers, windows=windows, framework=<span class="tok-str">"torch"</span>, device=<span class="tok-str">f"cuda:{rank}"</span>)</code></pre>
