@@ -28,9 +28,9 @@ and `CHANGELOG.md` over this file.
 - `rumi.frames(array, pattern, tile_size)` cuts an array into a `FrameTable`. The pattern
   names the input axes and decides what one frame holds: one band and time step of a tile
   (`h w`), or a whole grid cell with every band and step (`b h w`, `h w b`, `t b h w`, ...).
-- Rumi never compresses. Assign `frame.compressed` for every frame, usually
-  `geozl.compress(frame.data, ...)`; `rumi.write` stores the payloads and returns
-  `(path, header)`.
+- `rumi.write` never compresses. Assign `frame.compressed` for every frame, usually
+  `rumi.geozl.compress(frame.data, ...)` with the GeoZL inside `librumi`; `rumi.write`
+  stores the payloads and returns `(path, header)`.
 - Every file names its bands and dates its steps. `rumi.write` requires `bands=`, one
   text per band, and `time=`, one date, datetime or `(start, end)` pair per step. Both
   go in a trailer after the frames, so they never move a frame and a read never touches
@@ -46,7 +46,6 @@ and `CHANGELOG.md` over this file.
 ## Canonical workflow
 
 ```python
-import geozl
 import numpy as np
 import rumi
 
@@ -54,8 +53,8 @@ image = np.random.default_rng(0).integers(0, 4096, (4, 1024, 1024), dtype=np.uin
 
 frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
 for frame in frames:                        # edge frames may be smaller than the tile
-    graph = geozl.graph(frame.data, "planar>zigzag>zstd")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
+    graph = rumi.geozl.graph(frame.data, "planar>zigzag>zstd")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
 path, header = rumi.write(
     "scene.rumi", frames,

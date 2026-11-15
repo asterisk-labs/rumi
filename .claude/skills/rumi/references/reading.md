@@ -222,7 +222,7 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 ## 8. Threads, concurrency and fork
 
 - One process-wide pool decodes frames for every read. Configure it before the first
-  parallel read (`python-api.md` section 8).
+  parallel read (`python-api.md` section 9).
 - `read`, `read_many` and `info` may run concurrently from several Python threads. The C
   call releases the GIL, and concurrent calls share the pool.
 - After `fork`, the child starts with a fresh setting: 1, or its own `RUMI_NUM_THREADS`.

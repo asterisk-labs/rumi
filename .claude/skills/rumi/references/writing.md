@@ -1,9 +1,9 @@
 # Writing
 
-Sources: `bindings/python/rumi/_write.py` and `_time.py`, `core/src/write.cpp`,
-`core/src/trailer.cpp`, `core/src/geokeys.cpp`, the Georeferencing, Trailer and Header
-blob sections of `SPEC.md`, and GeoZL's Python API. Examples describe rumi
-0.29.0 with geozl 0.31.0.
+Sources: `bindings/python/rumi/_write.py`, `_geozl.py` and `_time.py`,
+`core/src/write.cpp`, `core/src/geozl.cpp`, `core/src/trailer.cpp`,
+`core/src/geokeys.cpp`, and the Georeferencing, Trailer and Header blob sections of
+`SPEC.md`. Examples describe rumi after 0.30.0, whose `rumi.geozl` links GeoZL 0.32.0.
 
 ## Contents
 
@@ -25,12 +25,12 @@ array --rumi.frames--> FrameTable --you compress--> payloads --rumi.write--> (pa
 
 Rumi checks structure (frame count, shapes, dtype, boolean values, band text, time and
 CRS rules) and never decodes a payload. Compression, recipe choice and lossy bounds
-belong to the caller, usually through GeoZL.
+belong to the caller, usually through `rumi.geozl`.
+R has `rumi_geozl_graph` and `rumi_geozl_compress`, and Julia `Rumi.GeoZL`.
 
 ## 2. Compressing frames with GeoZL
 
 ```python
-import geozl
 import rumi
 
 frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=256)
@@ -38,8 +38,8 @@ graphs = {}
 for frame in frames:
     graph = graphs.get(frame.shape)
     if graph is None:
-        graph = graphs[frame.shape] = geozl.graph(frame.data, "planar>zigzag>zstd")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
+        graph = graphs[frame.shape] = rumi.geozl.graph(frame.data, "planar>zigzag>zstd")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
 path, header = rumi.write("scene.rumi", frames, bands=bands, time=["2026-01-01"])
 ```
@@ -49,15 +49,17 @@ path, header = rumi.write("scene.rumi", frames, bands=bands, time=["2026-01-01"]
 - Never share one graph across shapes. A graph fixes the row width, so an edge frame
   compressed with the first frame's graph stays lossless but is predicted with the wrong
   rows (148,446 bytes instead of 142,901 in one test).
-- Choose recipes with `geozl.profile(frame.data, ...)` on interior frames that represent
-  the product, with the `width`, `planes`, `error` and `nodata` you will build with.
+- Choose recipes with `geozl.profile(frame.data, ...)` from the `geozl` package on
+  interior frames that represent the product, with the `width`, `planes`, `error` and
+  `nodata` you will build with. It writes the frames `rumi.geozl` writes for the same
+  GeoZL version.
 - Every frame carries its own graph, so recipes may differ per frame. With tile frames a
   mask band can use its own recipe:
   `recipe = "id>categorical" if frame.band == 3 else "planar>zigzag>zstd"`.
 
 ## 3. GeoZL geometry per layout
 
-`geozl.graph` infers `width=shape[-1]` and `planes=shape[0]` for arrays of three or more
+`rumi.geozl.graph` infers `width=shape[-1]` and `planes=shape[0]` for arrays of three or more
 dimensions (1 plane otherwise). Planes restart the spatial predictors; `width` is the
 row length they predict over.
 
@@ -76,7 +78,7 @@ products differ more, so profile.
 ## 4. Lossy and NoData frames
 
 - `error=` bounds hold per frame. A `(6, 600, 520)` product written as `b h w` frames
-  with `geozl.graph(frame.data, recipe, error=4)` read back with a worst error of 4.
+  with `rumi.geozl.graph(frame.data, recipe, error=4)` read back with a worst error of 4.
 - A graph built from the frame it compresses cannot see values outside its own domain.
   A lossy graph shared by several frames must be built from data spanning all of them,
   with explicit `width` and `planes`; otherwise GeoZL refuses later frames
@@ -85,7 +87,7 @@ products differ more, so profile.
   turns on NaN mode for frames that contain NaN; a shared graph needs
   `nodata=float("nan")`.
 - Rumi stores no NoData value, scale or offset. Keep them in the catalog, or as integer
-  GeoZL coefficients inside each frame
+  GeoZL coefficients inside each frame, which only the `geozl` package writes
   (`geozl.compress(..., coeffs=[[10000, 0]])`); Rumi carries them without reading them.
 
 ## 5. What a payload must decode to
@@ -98,7 +100,7 @@ the byte values zero and one.
 
 | Payload | Result at read time |
 | --- | --- |
-| `geozl.compress(frame.data, ...)` | reads |
+| `rumi.geozl.compress(frame.data, ...)` or `geozl.compress(frame.data, ...)` | reads |
 | same bytes through another dtype of an accepted width (`frame.data.view(np.int16)`) | reads |
 | complex samples as components (`frame.data.view(np.float64)` for `complex128`) | reads |
 | plain OpenZL frame (`openzl.ext`, standard codecs only) | reads |
@@ -212,7 +214,7 @@ rumi.write("scene.rumi", frames, bands=bands, time=time,
 - There is no streaming or append writer. The input array, every frame array and every
   payload live in memory until `write`. Split products larger than memory into several
   files.
-- GeoZL releases the GIL, so threads compress in parallel. A GeoZL graph is not
+- `rumi.geozl` releases the GIL, so threads compress in parallel. A graph is not
   thread-safe, so give each thread its own:
 
 ```python
@@ -226,16 +228,16 @@ def compress(i):
     graphs = local.__dict__.setdefault("graphs", {})
     graph = graphs.get(frame.shape)
     if graph is None:
-        graph = graphs[frame.shape] = geozl.graph(frame.data, "planar>zigzag>transpose>zstd")
-    return i, geozl.compress(frame.data, graph=graph)
+        graph = graphs[frame.shape] = rumi.geozl.graph(frame.data, "planar>zigzag>transpose>zstd")
+    return i, rumi.geozl.compress(frame.data, graph=graph)
 
 with ThreadPoolExecutor(8) as pool:
     for i, payload in pool.map(compress, range(len(frames))):
         frames[i].compressed = payload
 ```
 
-  On a `(4, 4096, 4096)` product this took 0.07 s instead of 0.28 s and wrote the same
-  bytes.
+  On a `(4, 4096, 4096)` product eight threads took a third of the serial time and
+  wrote the same bytes.
 - `write` validates everything it can before opening the file, then opens it with
   truncation. A failure after that removes the file, including a file that existed
   before, so write under a new name and rename.

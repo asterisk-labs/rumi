@@ -1,21 +1,22 @@
 # Python API
 
 Everything here describes `rumi` 0.30.0, as implemented in `bindings/python/rumi/`
-(`_frames.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`, `_config.py`,
-`_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
+(`_frames.py`, `_geozl.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`,
+`_config.py`, `_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
 
 ## Contents
 
 1. Install and runtime
 2. `frames`, `FrameTable` and `Frame`
-3. `write`
-4. `read`
-5. `read_many`
-6. `info` and `Metadata`
-7. `RumiArray`
-8. Threads
-9. Checksums
-10. Exceptions
+3. `geozl`
+4. `write`
+5. `read`
+6. `read_many`
+7. `info` and `Metadata`
+8. `RumiArray`
+9. Threads
+10. Checksums
+11. Exceptions
 
 ## 1. Install and runtime
 
@@ -23,14 +24,14 @@ Everything here describes `rumi` 0.30.0, as implemented in `bindings/python/rumi
 pip install rumi-eo
 ```
 
-- Python 3.11 to 3.14; runtime dependencies `numpy>=2`, `cffi>=1.17` and
-  `geozl>=0.32.0,<0.33`. The import name is `rumi`, the
-  distribution is `rumi-eo`.
+- Python 3.11 to 3.14; runtime dependencies `numpy>=2` and `cffi>=1.17`. GeoZL is
+  inside `librumi` and reached as `rumi.geozl`, so the `geozl` package is not needed.
+  The import name is `rumi`, the distribution is `rumi-eo`.
 - Wheels exist for Linux x86-64 and macOS arm64. Windows is not supported.
 - The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.
   Import fails when neither exists or when the native C interface
   does not match the binding. The pre-1.0 API version remains 1.
-- Public names: `frames`, `FrameTable`, `Frame`, `frame_start`, `write`, `open`,
+- Public names: `frames`, `FrameTable`, `Frame`, `geozl`, `frame_start`, `write`, `open`,
   `Dataset`, `read`, `read_many`, `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`,
   `get_num_threads`, `set_checksum_verification`, `get_checksum_verification`,
   `__version__`.
@@ -88,7 +89,38 @@ Assignment errors: an `int` raises `TypeError: frame 0 must be bytes-like, got i
 empty payload `ValueError: frame 0 is empty`. `attach` refuses reserved names
 (`ValueError: 'row' is already a Frame attribute`) and wrong lengths.
 
-## 3. `write`
+## 3. `geozl`
+
+```text
+rumi.geozl.graph(raster, method, *, width=None, planes=None, error=None, nodata=None)
+    -> rumi.geozl.Graph
+rumi.geozl.compress(tile, *, graph) -> bytes
+```
+
+These calls use the GeoZL linked into `librumi`. They cover graph creation and
+compression. For `coeffs`, `profile` or standalone `decompress`, use the separate
+`geozl` package.
+
+| Argument | Meaning |
+| --- | --- |
+| `raster` | samples of a rumi dtype in native byte order; for a bounded graph they fix the domain later tiles must fall in |
+| `method` | a recipe such as `"planar>zigzag>zstd"` |
+| `width`, `planes` | row width and stacked images; default `shape[-1]` and, for three or more axes, `shape[0]` |
+| `error` | `None` or zero for lossless, a number for LINEAR, `"1%"` for LOG, or a full LINEAR, LOG or SQRT recipe |
+| `nodata` | a sentinel value; NaN holes in a float raster are kept without one |
+
+- The core validates for every binding. `error=-1` raises `ValueError: error must not
+  be negative`, `planes=7` on a 3-band frame `ValueError: the planes do not split the
+  raster into whole rows`, and an unknown recipe `ValueError: GeoZL could not build the
+  graph: unknown method "nope"`.
+- `compress` refuses another dtype with `ValueError: the tile dtype is not the graph's`.
+- `bool`, `complex64` and the other dtypes without a GeoZL code compress losslessly. A
+  bound or sentinel on them raises `NotImplementedError`, and `complex128` raises
+  `NotImplementedError: GeoZL compresses samples of 1, 2, 4 or 8 bytes`.
+- A `Graph` keeps `method`, `width`, `planes`, `dtype`, `error` and `nodata` as given.
+  It owns a compression context, so use one per thread.
+
+## 4. `write`
 
 ```text
 rumi.frame_start(shape, pattern, tile_size=512) -> int
@@ -122,7 +154,7 @@ rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=Fa
   Image in the canonical example). It carries no band texts, time or georeferencing.
 - The writer opens `path` with truncation. A failure after that removes the file.
 
-## 4. `read`
+## 5. `read`
 
 ```text
 rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
@@ -156,7 +188,7 @@ returns a `rumi.Dataset` with `source`, `header` and `metadata`. Pass it to `rea
 with `headers=None`, or bare sources with one header each, never a mix. Close a Dataset
 with `close()` or a `with` block.
 
-## 5. `read_many`
+## 6. `read_many`
 
 ```text
 rumi.read_many(sources, headers=None, *, windows=None, framework="numpy", pattern=None,
@@ -179,7 +211,7 @@ Rumi's pool in that stream's order when the array is released, so keep the strea
 until then. `__dlpack__(stream=None)` or `-1` waits on the host instead. Metal finishes
 its write before returning.
 
-## 6. `info` and `Metadata`
+## 7. `info` and `Metadata`
 
 ```text
 rumi.info(*, source=None, header=None) -> rumi.Metadata
@@ -210,7 +242,7 @@ bytes.
 
 `print(meta)` lists every field; the header appears as its size.
 
-## 7. `RumiArray`
+## 8. `RumiArray`
 
 Returned by `read` and `read_many` with `framework="dlpack"`.
 
@@ -222,7 +254,7 @@ Returned by `read` and `read_many` with `framework="dlpack"`.
   every registered dtype; the other consumers accept their exact subsets. JAX 64-bit
   dtypes require `jax_enable_x64`.
 
-## 8. Threads
+## 9. Threads
 
 ```python
 rumi.set_num_threads(8)     # returns the count in effect
@@ -238,7 +270,7 @@ rumi.get_num_threads()
 - A forked child starts from its own environment (1 unless `RUMI_NUM_THREADS` is set) and
   may set its own count.
 
-## 9. Checksums
+## 10. Checksums
 
 ```python
 rumi.set_checksum_verification(True)       # returns the setting in effect
@@ -253,7 +285,7 @@ rumi.get_checksum_verification()
   another value raises `RuntimeError`. The setter accepts only `bool`.
 - A forked child inherits the setting, pinned state included.
 
-## 10. Exceptions
+## 11. Exceptions
 
 C status codes map to Python exceptions in `_ffi.py`; the message is the core's error
 text.

@@ -59,7 +59,8 @@ cc -std=c11 app.c -I core/include -L core/build -lrumi -Wl,-rpath,"$PWD/core/bui
 | `rumi_spec_parse` | `rumi_spec_destroy` (the input blob may be freed right away) |
 | `rumi_source_file`, `rumi_source_memory` | `rumi_source_free`; a memory source borrows its buffer, which must outlive it |
 | `rumi_info` | `rumi_metadata_free` |
-| `rumi_plan_ranges`, `rumi_write` blob, `rumi_geokeys` directory | `rumi_free` |
+| `rumi_plan_ranges`, `rumi_geozl_compress` frame, `rumi_write` blob, `rumi_geokeys` directory | `rumi_free` |
+| `rumi_geozl_graph_open` | `rumi_geozl_graph_close` |
 | `rumi_read_dlpack`, `rumi_read_many_dlpack` | the tensor's deleter or `rumi_dlpack_free` |
 | `rumi_dlpack_legacy` | `rumi_dlpack_legacy_free` (the wrapper owns the versioned tensor) |
 | `rumi_dtype_registry`, `rumi_default_pattern`, `rumi_axis_name`, `rumi_version_string` | static; never freed |
@@ -199,6 +200,7 @@ first frame at byte 500
 | Reading | `rumi_read`, `rumi_read_dlpack`, `rumi_read_many`, `rumi_read_many_dlpack`, `rumi_dlpack_free`, `rumi_dlpack_legacy`, `rumi_dlpack_legacy_free` |
 | GPU reads | `rumi_gpu_available`, `rumi_gpu_create`, `rumi_gpu_destroy`, `rumi_gpu_synchronize`, `rumi_gpu_current_device`, `rumi_read_gpu`, `rumi_read_many_gpu`, `rumi_read_gpu_dlpack`, `rumi_read_many_gpu_dlpack`, `rumi_dlpack_wait` (`decode_backend` is `RUMI_GPU_DECODE_AUTO` or `RUMI_GPU_DECODE_CPU`) |
 | Python capsule support | `rumi_dlpack_capsule_api`, `rumi_dlpack_capsule_destructor` |
+| Compression | `rumi_geozl_graph_open`, `rumi_geozl_compress`, `rumi_geozl_graph_close` (the linked GeoZL; error `NULL`, `"0.5"`, `"1%"` or a full recipe; nodata one sample or `NULL`) |
 | Writing | `rumi_write`, `rumi_write_base_offset`, `rumi_frame_start`, `rumi_geokeys` |
 
 `rumi_read_many` takes an array of `rumi_read_item { source, spec, y_off, x_off }` plus
@@ -232,8 +234,9 @@ and binding do not share the same C interface. The unstable API and SONAME remai
 - Pass `frame_count` payload pointers and sizes in frame-index order. `rumi_frame_locate`
   gives each frame's position and decoded `dims`; `perm` maps a cut ordered as
   (held band, held time, h, w) to those dims.
-- `rumi_write` does not compress. Payloads come from GeoZL's C API or OpenZL and must
-  decode as `writing.md` section 5 requires.
+- `rumi_write` does not compress. Payloads usually come from `rumi_geozl_compress`, the
+  GeoZL the reader decodes with, and any other must decode as `writing.md` section 5
+  requires. A graph is not safe for concurrent calls, so give each thread its own.
 - On success `*out_blob` holds the header (release with `rumi_free`); on failure the
   partial file is removed and the outputs are untouched.
 

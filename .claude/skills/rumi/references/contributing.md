@@ -31,6 +31,7 @@ core/
   src/error.cpp                  error messages of any length
   src/builder.cpp                file indexing: IFD, trailer, header rebuild
   src/write.cpp                  the writer
+  src/geozl.cpp                  GeoZL graphs behind rumi_geozl_*, with dtype, error and nodata
   src/geokeys.cpp                georeferencing
   src/trailer.cpp                band texts and time, after the frames
   src/read.cpp src/plan.cpp      selections, planning, decode tasks and frame checks
@@ -44,6 +45,7 @@ bindings/python/
   rumi/_dlpack.py _framework.py  DLPack lifetime and framework consumers
   rumi/_read.py _config.py       read orchestration and process configuration
   rumi/_frames.py _pattern.py _write.py _info.py _time.py _dtype.py _repr.py
+  rumi/_geozl.py                 rumi.geozl over rumi_geozl_*
   rumi/_lib/                     staged librumi (ignored by git)
   tests/                         pytest suites
   pyproject.toml hatch_build.py check_wheel.py
@@ -81,7 +83,9 @@ make ctest       # C++ component tests in core/build-tests
 - Changing `VERSION` reconfigures CMake, so the library reports the new version.
 - Variables: `BUILD_TYPE=Debug`, `PYTHON=python3.12`, `GEN='Unix Makefiles'`,
   `CMAKE_FLAGS=...`, `PREFIX=/opt`.
-- Without GeoZL installed, the tests that write files skip.
+- Tests that write or compare frames with the `geozl` package use the binding
+  `make geozl-python` builds from the submodule, and skip without it. `test_geozl.py`
+  checks that `rumi.geozl` writes its bytes.
 - One test: `python -m pytest bindings/python/tests/test_read.py -q -k window`.
 
 ## 3. Make targets
@@ -161,9 +165,10 @@ cmake --build core/build-asan && ctest --test-dir core/build-asan --output-on-fa
   in `test_spec.py`.
 - **EPSG table:** `python tools/gen_epsg_kinds.py > core/include/rumi/epsg_kinds.def`
   (needs pyproj).
-- **GeoZL update:** move `extern/geozl` to the release tag, update the `write` and `test`
-  extras, `NOTICE` and `CHANGELOG.md`, then run `python tools/check_release.py` and the
-  full suite.
+- **GeoZL update:** move `extern/geozl` to the release tag, update `NOTICE` and
+  `CHANGELOG.md`, run `make r-vendor` and `make bindings-fixtures` so the R and Julia
+  byte checks compare against the new GeoZL, then run `python tools/check_release.py`
+  and the full suite.
 - **Karu update:** move `extern/karu`, update `NOTICE` (`Karu X.Y.Z`),
   `licenses/LICENSE.Karu` if it changed, and `CHANGELOG.md`.
 - **Format change:** follow `compatibility.md` section 4.
