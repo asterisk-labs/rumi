@@ -16,5 +16,6 @@ include("api.jl")
 include("frames.jl")
 include("time.jl")
 include("write.jl")
+include("geozl.jl")
 
 end

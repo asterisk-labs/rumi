@@ -92,6 +92,7 @@ set(RUMI_SOURCES
     src/error.cpp
     src/builder.cpp
     src/geokeys.cpp
+    src/geozl.cpp
     src/write.cpp
     src/plan.cpp
     src/source.cpp

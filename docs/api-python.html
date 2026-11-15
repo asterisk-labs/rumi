@@ -77,10 +77,10 @@
         </ol>
       </aside>
       <pre><code class="language-sh">pip install rumi-eo</code></pre>
-      <p>The package imports as <code>rumi</code> and installs <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> with it, which compresses the frames before a write. The Linux wheels decode on CUDA and the macOS wheels on Metal, and both read on the CPU when no GPU is present.</p>
+      <p>The package imports as <code>rumi</code> and carries <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> inside it, as <a href="#geozl"><code>rumi.geozl</code></a>, to compress the frames before a write. The Linux wheels decode on CUDA and the macOS wheels on Metal, and both read on the CPU when no GPU is present.</p>
 
       <h2 class="part" id="writing">Writing</h2>
-      <p>A file is written in three steps. <code>frames</code> cuts an array into tiles, you compress each tile with GeoZL, and <code>write</code> stores the payloads with the index and returns the external header.</p>
+      <p>A file is written in three steps. <code>frames</code> cuts an array into tiles, you compress each tile with <a href="#geozl"><code>rumi.geozl</code></a>, and <code>write</code> stores the payloads with the index and returns the external header.</p>
 
       <h3 id="frames">frames</h3>
 <pre><code class="sig language-python">rumi.frames(arr, pattern, tile_size=512) -&gt; FrameTable</code></pre>
@@ -110,9 +110,23 @@
       <h3 id="frame">Frame</h3>
       <p>One frame of a <code>FrameTable</code>. <code>data</code> is the tile to compress and <code>shape</code> its shape. <code>index</code>, <code>row</code>, <code>col</code> and <code>cell</code> place it in the grid, and <code>band</code> and <code>time</code> are set when the pattern stores one band or one time step per frame. <code>compressed</code> holds the payload once you assign it.</p>
 <pre data-run="skip"><code class="language-python">for frame in frames:
-    g = geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
-    frame.compressed = geozl.compress(frame.data, graph=g)</code></pre>
+    g = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=g)</code></pre>
       <p>Each frame can use its own recipe, so a land tile and an ocean tile in one file can compress differently.</p>
+
+      <h3 id="geozl">geozl</h3>
+<pre><code class="sig language-python">rumi.geozl.graph(raster, method, *, width=None, planes=None, error=None,
+    nodata=None) -&gt; rumi.geozl.Graph
+rumi.geozl.compress(tile, *, graph) -&gt; bytes</code></pre>
+      <p>Compress frames with the GeoZL linked into Rumi. These calls cover graph creation and compression; <code>write</code> stores the resulting bytes.</p>
+      <table class="spec">
+        <tr><th>raster</th><td>The samples the graph is built from. For a bounded error they also fix the domain later tiles must fall in, so use data spanning the product.</td></tr>
+        <tr><th>method</th><td>A recipe such as <code>"planar&gt;zigzag&gt;lanes"</code>.</td></tr>
+        <tr><th>width, planes</th><td>Row width in samples and the number of stacked images. They default to the last axis and, for three or more axes, the first. Row predictors restart at each plane.</td></tr>
+        <tr><th>error</th><td><code>None</code> or zero for lossless, a positive number for an absolute bound, a percentage such as <code>"1%"</code> for a relative one, or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe. Integers and 16, 32 and 64-bit floats take a bound.</td></tr>
+        <tr><th>nodata</th><td>A sentinel value that marks missing samples. NaN holes in a float raster are kept without one.</td></tr>
+      </table>
+      <p>A graph is reusable for tiles of its dtype and is not thread-safe. <code>compress</code> refuses a tile of another dtype, and a bounded tile outside the graph's domain.</p>
 
       <h3 id="write">write</h3>
 <pre><code class="sig language-python">rumi.write(path, tf, *, bands, time, transform=None, crs=None,
@@ -214,6 +228,7 @@ rumi.get_checksum_verification() -&gt; bool</code></pre>
         <li><a href="#frames">frames</a></li>
         <li><a href="#frametable">FrameTable</a></li>
         <li><a href="#frame">Frame</a></li>
+        <li><a href="#geozl">geozl</a></li>
         <li><a href="#write">write</a></li>
         <li><a href="#frame_start">frame_start</a></li>
         <li><a href="#reading">Reading</a></li>

@@ -29,6 +29,8 @@
 #  define RUMI_PRINTF_LIKE(format_index, first_argument)
 #endif
 
+struct geozl_2d_graph_s;
+
 namespace rumi {
 
 class ThreadPool;
@@ -1035,5 +1037,33 @@ write_file(const char* path, const WriteDesc& desc,
 // Start of frame data for this description, without writing a file.
 [[nodiscard]] std::expected<std::uint64_t, std::string>
 base_offset(const WriteDesc& desc) noexcept;
+
+
+// GeoZL compression.
+
+// A GeoZL compression context for one dtype. Do not call it concurrently.
+class GeozlGraph {
+public:
+    [[nodiscard]] static std::expected<std::unique_ptr<GeozlGraph>, Error>
+    open(const char* method, rumi_dtype dtype, const void* raster,
+         std::size_t n_bytes, std::uint32_t width, std::uint32_t planes,
+         const char* error, const void* nodata);
+
+    ~GeozlGraph();
+    GeozlGraph(const GeozlGraph&) = delete;
+    GeozlGraph& operator=(const GeozlGraph&) = delete;
+
+    // *out must be released with std::free.
+    [[nodiscard]] std::expected<std::size_t, Error>
+    compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
+             unsigned char** out);
+
+private:
+    GeozlGraph(geozl_2d_graph_s* graph, rumi_dtype dtype,
+               std::size_t sample_bytes) noexcept;
+    geozl_2d_graph_s* graph_;
+    rumi_dtype        dtype_;
+    std::size_t       sample_bytes_;
+};
 
 }  // namespace rumi

@@ -287,6 +287,22 @@ void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
 
 void rumi_dlpack_capsule_destructor(void* capsule);
 
+typedef struct rumi_geozl_graph rumi_geozl_graph;
+
+rumi_status
+rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
+                      const void* raster, size_t n_bytes,
+                      uint32_t width, uint32_t planes,
+                      const char* error, const void* nodata,
+                      rumi_geozl_graph** out);
+
+rumi_status
+rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
+                    const void* tile, size_t n_bytes,
+                    unsigned char** out_frame, size_t* out_size);
+
+void rumi_geozl_graph_close(rumi_geozl_graph* graph);
+
 typedef struct {
     uint32_t      image_width;
     uint32_t      image_length;

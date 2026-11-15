@@ -79,8 +79,7 @@
       </figure>
       <p>The code reads the four bands from the public Sentinel-2 archive and writes them as a Rumi file, in Python, R or Julia.</p>
 <div class="code-tabs">
-<pre data-lang="Python"><code class="language-python">import geozl
-import numpy as np
+<pre data-lang="Python"><code class="language-python">import numpy as np
 import rasterio
 import rumi
 from rasterio.windows import Window
@@ -108,7 +107,7 @@ frames = rumi.frames(
 
 for frame in frames:
     payloads = [
-        geozl.compress(frame.data, graph=geozl.graph(frame.data, recipe))
+        rumi.geozl.compress(frame.data, graph=rumi.geozl.graph(frame.data, recipe))
         for recipe in ("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes")
     ]
     frame.compressed = min(payloads, key=len)
@@ -124,8 +123,7 @@ path, header = rumi.write(
 
 with open("annecy.header", "wb") as f:
     f.write(header)</code></pre>
-<pre data-lang="R"><code class="language-r">library(geozl)
-library(rumi)
+<pre data-lang="R"><code class="language-r">library(rumi)
 library(terra)
 
 scene &lt;- paste0(
@@ -145,7 +143,7 @@ frames &lt;- rumi_frames(image, "b (row h) (col w) -&gt; row col b (h w)",
 for (i in seq_along(frames$data)) {
   tile &lt;- frames$data[[i]]
   payloads &lt;- lapply(c("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes"), function(recipe)
-    geozl_compress(tile, geozl_graph(tile, recipe, datatype = "uint16")))
+    rumi_geozl_compress(tile, rumi_geozl_graph(tile, recipe, datatype = "uint16")))
   frames$compressed[[i]] &lt;- payloads[[which.min(lengths(payloads))]]
 }
 
@@ -159,7 +157,8 @@ header &lt;- rumi_write(
 )
 
 writeBin(header, "annecy.header")</code></pre>
-<pre data-lang="Julia"><code class="language-julia">using ArchGDAL, GeoZL, Rumi
+<pre data-lang="Julia"><code class="language-julia">using ArchGDAL, Rumi
+using Rumi: GeoZL
 
 scene = "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/" *
         "31/T/GL/2025/8/S2A_31TGL_20250808_0_L2A/"

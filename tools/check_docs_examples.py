@@ -117,7 +117,7 @@ def main() -> int:
     parser.add_argument("--lang", action="append", choices=sorted(EXTENSIONS),
                         help="run only this language, may repeat")
     parser.add_argument("--julia-project", default=os.environ.get("JULIA_PROJECT"),
-                        help="Julia environment with Rumi, GeoZL and ArchGDAL")
+                        help="Julia environment with Rumi and ArchGDAL")
     parser.add_argument("--jobs", type=int, default=3, help="scripts run at once")
     parser.add_argument("--timeout", type=float, default=1800, help="seconds per script")
     parser.add_argument("--keep", action="store_true", help="keep the work directories")

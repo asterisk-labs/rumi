@@ -26,12 +26,11 @@ the array's `rumi_metadata` attribute. Metadata keeps Rumi's canonical
 
 ## Writing
 
-`rumi_frames()` cuts an array into frames, you compress each one with
-[geozl](https://asterisk.coop/geozl/), and `rumi_write()` stores the payloads
-and returns the external header.
+`rumi_frames()` cuts an array into frames, you compress each one with the
+[GeoZL](https://asterisk.coop/geozl/) built into the package, and `rumi_write()`
+stores the payloads and returns the external header.
 
 ```r
-library(geozl)
 library(rumi)
 
 image <- array(sample(0:4095, 1024 * 1024 * 4, TRUE), c(1024, 1024, 4))
@@ -39,8 +38,8 @@ frames <- rumi_frames(image, "b (row h) (col w) -> row col b (h w)",
                       tile_size = 256, datatype = "uint16")
 for (i in seq_along(frames$data)) {
   tile <- frames$data[[i]]
-  graph <- geozl_graph(tile, "planar>zigzag>pfor", datatype = "uint16")
-  frames$compressed[[i]] <- geozl_compress(tile, graph)
+  graph <- rumi_geozl_graph(tile, "planar>zigzag>pfor", datatype = "uint16")
+  frames$compressed[[i]] <- rumi_geozl_compress(tile, graph)
 }
 header <- rumi_write("scene.rumi", frames, bands = c("B02", "B03", "B04", "B08"),
                      time = "2025-08-08",
@@ -49,4 +48,4 @@ writeBin(header, "scene.header")
 ```
 
 Patterns use the same axis names as Python. R holds those axes in reverse:
-this image is `(X, Y, Band)`, and each frame is ready for `geozl_graph()`.
+this image is `(X, Y, Band)`, and each frame is ready for `rumi_geozl_graph()`.

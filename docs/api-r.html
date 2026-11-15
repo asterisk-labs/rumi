@@ -79,11 +79,11 @@
       <p>Write Rumi files from R arrays, or read selected windows, bands and time steps. The reader pairs each file with its external header.</p>
 
       <h2 class="part" id="install">Install</h2>
-<pre data-run="skip"><code class="language-r">install.packages(c("rumi", "geozl"), repos = "https://asterisk-labs.r-universe.dev")
+<pre data-run="skip"><code class="language-r">install.packages("rumi", repos = "https://asterisk-labs.r-universe.dev")
 
 # or from GitHub
 remotes::install_github("asterisk-labs/rumi", subdir = "bindings/r")</code></pre>
-      <p>A source install builds the bundled Rumi, GeoZL, OpenZL and Karu code with CMake 3.21 or newer. It needs C11 and C++23 compilers, and pkg-config to find libcurl 7.83 or newer and OpenSSL 3.0 or newer. No separate Rumi installation is needed.</p>
+      <p>The package compresses frames with the GeoZL it reads them with, so no other package is needed to write. A source install builds the bundled Rumi, GeoZL, OpenZL and Karu code with CMake 3.21 or newer. It needs C11 and C++23 compilers, and pkg-config to find libcurl 7.83 or newer and OpenSSL 3.0 or newer. No separate Rumi installation is needed.</p>
 <pre data-run="skip"><code class="language-r">library(rumi)
 
 header &lt;- readBin("scene.header", "raw", file.info("scene.header")$size)
@@ -167,7 +167,7 @@ dim(batch)                                   # 3 2 1 2 2</code></pre>
 
       <h3 id="rumi_frames">rumi_frames</h3>
 <pre><code class="sig language-r">rumi_frames(x, pattern, tile_size = 512L, datatype = NULL)</code></pre>
-      <p>Cuts an array into frames in file order, clipping edge tiles. Compress each frame with <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">geozl</a> before writing.</p>
+      <p>Cuts an array into frames in file order, clipping edge tiles. Compress each frame with <a href="#rumi_geozl_graph"><code>rumi_geozl_graph</code></a> and <a href="#rumi_geozl_graph"><code>rumi_geozl_compress</code></a> before writing.</p>
       <table class="spec">
         <tr><th>x</th><td>An array of samples. It holds the pattern's input axes in reverse, so <code>"b (row h) (col w)"</code> takes <code>(X, Y, Band)</code>, the shape <code>rumi_read</code> returns.</td></tr>
         <tr><th>pattern</th><td>The frame pattern <a href="api-python.html#frames">Python</a> takes, in C order, such as <code>"b (row h) (col w) -&gt; row col b (h w)"</code>.</td></tr>
@@ -179,9 +179,24 @@ dim(batch)                                   # 3 2 1 2 2</code></pre>
                       tile_size = 256, datatype = "uint16")
 for (i in seq_along(frames$data)) {
   tile &lt;- frames$data[[i]]
-  graph &lt;- geozl_graph(tile, "planar&gt;zigzag&gt;pfor", datatype = "uint16")
-  frames$compressed[[i]] &lt;- geozl_compress(tile, graph)
+  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;pfor", datatype = "uint16")
+  frames$compressed[[i]] &lt;- rumi_geozl_compress(tile, graph)
 }</code></pre>
+
+      <h3 id="rumi_geozl_graph">rumi_geozl_graph, rumi_geozl_compress</h3>
+<pre><code class="sig language-r">rumi_geozl_graph(x, method, width = NULL, planes = NULL, error = NULL,
+    nodata = NULL, datatype = NULL)
+rumi_geozl_compress(x, graph)</code></pre>
+      <p>Compress frames with the <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> linked into Rumi. These calls build a graph and return compressed bytes for <code>rumi_write</code>.</p>
+      <table class="spec">
+        <tr><th>x</th><td>Samples as a double, integer, logical or raw vector or array, converted to <code>datatype</code>. A raw vector is taken as native samples already. For a bounded error the graph's <code>x</code> also fixes the domain later tiles must fall in.</td></tr>
+        <tr><th>method</th><td>A recipe such as <code>"planar&gt;zigzag&gt;pfor"</code>.</td></tr>
+        <tr><th>width, planes</th><td>Row width in samples and the number of stacked images. They default to <code>dim(x)[1]</code> and, for three or more dimensions, the last one, which is the planes of a <code>b h w</code> frame.</td></tr>
+        <tr><th>error</th><td><code>NULL</code> or <code>0</code> for lossless, a positive number for an absolute bound, a percentage such as <code>"1%"</code> for a relative one, or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe.</td></tr>
+        <tr><th>nodata</th><td>A sentinel value. <code>NA</code> and <code>NaN</code> in <code>x</code> are stored as it, and <code>NaN</code> selects NaN handling, which float rasters with missing values get without asking.</td></tr>
+        <tr><th>datatype</th><td>The storage type, as <code>rumi_frames</code> takes it, or terra's <code>"INT2U"</code> and GDAL's <code>"UInt16"</code> names. The default follows the type of <code>x</code>.</td></tr>
+      </table>
+      <p><code>rumi_geozl_compress</code> returns the frame as a raw vector for a <code>compressed</code> entry. A graph wraps native state, so it is not thread-safe and does not survive saving and reloading.</p>
 
       <h3 id="rumi_write">rumi_write</h3>
 <pre><code class="sig language-r">rumi_write(path, frames, bands, time, transform = NULL, crs = NULL,
@@ -233,6 +248,7 @@ writeBin(header, "scene.header")</code></pre>
         <li><a href="#rumi_read_many">rumi_read_many</a></li>
         <li><a href="#rumi_close">rumi_close</a></li>
         <li><a href="#rumi_frames">rumi_frames</a></li>
+        <li><a href="#rumi_geozl_graph">rumi_geozl_graph</a></li>
         <li><a href="#rumi_write">rumi_write</a></li>
         <li><a href="#arrays">Arrays</a></li>
         <li><a href="#types">Sample types</a></li>

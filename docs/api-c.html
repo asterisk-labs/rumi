@@ -128,7 +128,7 @@ void        rumi_clear_error(void);</code></pre>
 
       <h3 id="rumi_free">rumi_free</h3>
 <pre><code class="sig language-c">void rumi_free(void* ptr);</code></pre>
-      <p>Releases a buffer returned by <code>rumi_plan_ranges</code>, <code>rumi_write</code> or <code>rumi_geokeys</code>. Accepts <code>NULL</code>.</p>
+      <p>Releases a buffer returned by <code>rumi_plan_ranges</code>, <code>rumi_geozl_compress</code>, <code>rumi_write</code> or <code>rumi_geokeys</code>. Accepts <code>NULL</code>.</p>
 
       <h2 class="part" id="settings">Process settings</h2>
       <p>These settings apply to the whole process. The thread count and checksum verification are pinned once reads start, so set them before the first read.</p>
@@ -593,8 +593,44 @@ void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
 void rumi_dlpack_capsule_destructor(void* capsule);</code></pre>
       <p>For bindings that do not include <code>Python.h</code>. Register <code>PyCapsule_IsValid</code> and <code>PyCapsule_GetPointer</code> once, then pass <code>rumi_dlpack_capsule_destructor</code> to <code>PyCapsule_New</code>. The destructor releases a capsule no consumer claimed, and it can do so only after the registration. A renamed capsule belongs to the consumer.</p>
 
+      <h2 class="part" id="compression">Compression</h2>
+      <p>These functions compress with the <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> linked into Rumi. Python, R and Julia call them; <code>rumi_write</code> stores the bytes it receives without compressing them.</p>
+
+      <h3 id="rumi_geozl_graph_open">rumi_geozl_graph_open, rumi_geozl_graph_close</h3>
+<pre><code class="sig language-c">rumi_status rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
+                                  const void* raster, size_t n_bytes,
+                                  uint32_t width, uint32_t planes,
+                                  const char* error, const void* nodata,
+                                  rumi_geozl_graph** out);
+void rumi_geozl_graph_close(rumi_geozl_graph* graph);</code></pre>
+      <p>Builds a reusable graph for <code>method</code>, such as <code>"planar&gt;zigzag&gt;pfor"</code>, from <code>n_bytes</code> of native <code>dtype</code> samples. Release it with <code>rumi_geozl_graph_close</code>, which accepts <code>NULL</code>. A graph owns a compression context, so it is not safe for concurrent calls.</p>
+      <table class="spec">
+        <tr><th>dtype</th><td>Any sample type of 1, 2, 4 or 8 bytes. Integers and <code>float16</code>, <code>float32</code> and <code>float64</code> take a bound and a sentinel. The others compress losslessly.</td></tr>
+        <tr><th>width, planes</th><td>The row in samples and the number of stacked images, whose row predictors restart. Both are positive, and more than one plane must split the raster into whole rows.</td></tr>
+        <tr><th>error</th><td><code>NULL</code> or <code>""</code> for lossless, a decimal bound such as <code>"0.5"</code> (LINEAR), a percentage such as <code>"1%"</code> (LOG), or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe. A zero bound is lossless. The raster fixes the domain a bounded graph accepts later tiles from.</td></tr>
+        <tr><th>nodata</th><td>One <code>dtype</code> sample that marks missing data, or <code>NULL</code>. A NaN sample, or <code>NULL</code> with a NaN in a float raster, keeps every NaN as a hole.</td></tr>
+      </table>
+      <p>Returns <code>RUMI_ERR_INVALID</code> for a recipe or geometry GeoZL refuses and <code>RUMI_ERR_UNSUPPORTED</code> for a sample width or a dtype it cannot bound.</p>
+
+      <h3 id="rumi_geozl_compress">rumi_geozl_compress</h3>
+<pre><code class="sig language-c">rumi_status rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
+                                const void* tile, size_t n_bytes,
+                                unsigned char** out_frame, size_t* out_size);</code></pre>
+      <p>Compresses one tile of the graph's dtype. Its geometry is not checked against the graph, and a bounded tile outside the graph's domain is refused. <code>*out_frame</code> holds <code>*out_size</code> bytes the caller releases with <code>rumi_free</code>.</p>
+<pre><code class="language-c">rumi_geozl_graph* graph = NULL;
+if (rumi_geozl_graph_open("planar&gt;zigzag&gt;pfor", RUMI_DT_UINT16, tile, tile_bytes,
+                          256, 4, NULL, NULL, &amp;graph) != RUMI_OK) {
+    fprintf(stderr, "%s\n", rumi_last_error());
+    return 1;
+}
+unsigned char* frame = NULL;
+size_t frame_size = 0;
+rumi_status status = rumi_geozl_compress(graph, RUMI_DT_UINT16, tile, tile_bytes,
+                                         &amp;frame, &amp;frame_size);
+rumi_geozl_graph_close(graph);</code></pre>
+
       <h2 class="part" id="writing">Writing</h2>
-      <p>A file is written in three steps. The frame helpers give the frames in frame-index order with their decoded shapes, you compress each one with <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a>, and <code>rumi_write</code> stores the payloads and returns the external header.</p>
+      <p>A file is written in three steps. The frame helpers give the frames in frame-index order with their decoded shapes, you compress each one with <a href="#compression"><code>rumi_geozl_compress</code></a>, and <code>rumi_write</code> stores the payloads and returns the external header.</p>
 <pre><code class="language-c">typedef struct {
     uint32_t           image_width;
     uint32_t           image_length;
@@ -746,6 +782,9 @@ if (rumi_write("scene.rumi", &amp;desc, frames, sizes, n,
         <li><a href="#rumi_dlpack_free">rumi_dlpack_free</a></li>
         <li><a href="#rumi_dlpack_legacy">rumi_dlpack_legacy, rumi_dlpack_legacy_free</a></li>
         <li><a href="#rumi_dlpack_capsule_api">rumi_dlpack_capsule_api, rumi_dlpack_capsule_destructor</a></li>
+        <li><a href="#compression">Compression</a></li>
+        <li><a href="#rumi_geozl_graph_open">rumi_geozl_graph_open, rumi_geozl_graph_close</a></li>
+        <li><a href="#rumi_geozl_compress">rumi_geozl_compress</a></li>
         <li><a href="#writing">Writing</a></li>
         <li><a href="#rumi_write">rumi_write</a></li>
         <li><a href="#rumi_write_base_offset">rumi_write_base_offset</a></li>

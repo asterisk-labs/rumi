@@ -24,8 +24,8 @@ only the frames it needs.
   either one per frame or all together in one frame.
 - **Patterns in einops notation**, such as `b (row h) (col w) -> row col (b h w)` to store
   every band of a tile together, or `y x b` to read channels last.
-- **GeoZL is the only supported codec**, lossless or lossy, and each frame can use a
-  different compression graph.
+- **Independent OpenZL frames**, normally compressed with GeoZL. Each frame can
+  use a different graph; Python, R and Julia expose the linked GeoZL compressor.
 - **Minibatches in one call**, with `read_many` fetching windows from many files
   concurrently, ideal for training data loaders.
 - **Multithreaded decoding** that overlaps with downloads, set with
@@ -47,15 +47,14 @@ only the frames it needs.
 ## Quick start
 
 ```python
-import geozl
 import numpy as np
 import rumi
 
 image = np.random.default_rng(0).integers(0, 4096, (4, 1024, 1024), dtype=np.uint16)
 frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
 for frame in frames:
-    graph = geozl.graph(frame.data, "planar>zigzag>zstd")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
+    graph = rumi.geozl.graph(frame.data, "planar>zigzag>zstd")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
 path, header = rumi.write("scene.rumi", frames, bands=["B2", "B3", "B4", "B8"],
                           time=["2024-08-25"])

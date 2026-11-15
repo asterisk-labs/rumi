@@ -247,7 +247,7 @@ docs:
 	$(PYTHON) tools/build_docs.py --output _site --clean
 
 # Run the Python, R and Julia examples on the docs pages. They read public data
-# over the network, and JULIA_PROJECT names an environment with Rumi, GeoZL and
+# over the network, and JULIA_PROJECT names an environment with Rumi and
 # ArchGDAL.
 docs-examples:
 	$(PYTHON) tools/check_docs_examples.py $(DOCS_EXAMPLES_ARGS)

@@ -1,5 +1,5 @@
 CXX_STD = CXX23
-OBJECTS = rumi_r.o link.o
+OBJECTS = rumi_r.o geozl_r.o link.o
 
 PKG_CPPFLAGS = -DRUMI_STATIC -Igen -I"@CORE@/include"
 PKG_CFLAGS = @OSX_FLAG@

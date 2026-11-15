@@ -7,6 +7,9 @@ Python bindings for Rumi, stateless raster storage for AI4EO. Rumi stores images
 pip install rumi-eo
 ```
 
+Use `rumi.geozl` to compress frames before writing. It uses the GeoZL linked
+into Rumi; a separate `geozl` package is not required.
+
 Rumi currently supports Linux and macOS and requires Python 3.11 or newer. The
 format and APIs may change before 1.0. See the
 [project README](https://github.com/asterisk-labs/rumi) for examples and the

@@ -1,5 +1,6 @@
 from importlib.metadata import version
 
+from . import _geozl as geozl
 from ._config import (
     get_checksum_verification,
     get_num_threads,
@@ -17,6 +18,6 @@ from ._write import frame_start, write
 __version__ = version("rumi-eo")
 
 __all__ = ["DType", "Dataset", "Frame", "FrameTable", "Metadata", "RumiArray", "frame_start",
-           "frames", "get_checksum_verification", "get_num_threads", "info",
+           "frames", "geozl", "get_checksum_verification", "get_num_threads", "info",
            "open", "read", "read_many", "set_checksum_verification", "set_num_threads",
            "write", "__version__"]

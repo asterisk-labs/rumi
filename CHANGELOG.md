@@ -22,8 +22,15 @@ Notable user-visible changes are recorded here.
   for whole scenes and for `read_many` batches, one fresh process per trial.
 - `rumi_read_layout` and `rumi_read_many_layout` validate selections and
   windows and return the output layout and required buffer size.
+- `rumi.geozl` in Python, `rumi_geozl_graph` and `rumi_geozl_compress` in R,
+  and `Rumi.GeoZL` in Julia compress frames with the GeoZL linked into
+  `librumi`. The C API adds `rumi_geozl_graph_open`, `rumi_geozl_compress`
+  and `rumi_geozl_graph_close`. `rumi.write` still stores payloads as given.
 
 ### Changed
+
+- `rumi-eo` no longer depends on the `geozl` package, and R and Julia need
+  no separate GeoZL package to write.
 
 - Python GPU reads no longer depend on PyTorch. `device="cuda:N"` and
   `device="mps"` work with every framework but NumPy, and `framework="dlpack"`

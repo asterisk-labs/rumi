@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the small shared fixture used by the R and Julia reader tests."""
+"""Write the small shared fixtures used by the R and Julia tests."""
 
 from __future__ import annotations
 
@@ -40,6 +40,30 @@ def write(directory: Path, name: str, table: rumi.FrameTable) -> None:
     print(path)
 
 
+def geozl_cases() -> dict[str, tuple[np.ndarray, str, dict]]:
+    """Rasters the R and Julia tests rebuild by formula, and how to compress them."""
+    b, y, x = np.indices((3, 48, 40))
+    counts = (200 + b * 977 + y * 31 + x * 17
+              + (x * 7919 + y * 104729 + b * 31) % 97).astype(np.uint16)
+    y, x = np.indices((48, 40))
+    reflectance = (((y * 131 + x * 71) % 1000) / 4000 + 0.1).astype(np.float32)
+    holes = reflectance.copy()
+    holes[(y * 40 + x) % 97 == 0] = np.nan
+    y, x = np.indices((128, 128))
+    radiance = (50 + 4000 * (x + y) / 254
+                + (x * 7919 + y * 104729) % 61).astype(np.float32)
+    return {
+        "lossless": (counts, "planar>zigzag>zstd", {}),
+        "linear": (counts, "planar>zigzag>pfor", {"error": 3}),
+        "linear-float": (reflectance, "planar>zigzag>zstd", {"error": 0.01}),
+        "log": (reflectance, "planar>zigzag>zstd", {"error": "1%"}),
+        "sqrt": (radiance, "planar>zigzag>zstd",
+                 {"error": "SQRT:MAX_ERROR=0.5N,A=25,B=2"}),
+        "sentinel": (counts, "planar>zigzag>zstd", {"nodata": 200}),
+        "nan": (holes, "planar>zigzag>zstd", {}),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", type=Path, nargs="+")
@@ -50,10 +74,15 @@ def main() -> None:
     integer = frames(data)
     floating = frames(data.astype(np.float64) / 10)
 
+    expected = {name: geozl.compress(raster, graph=geozl.graph(raster, method, **options))
+                for name, (raster, method, options) in geozl_cases().items()}
+
     for directory in args.directory:
         directory.mkdir(parents=True, exist_ok=True)
         write(directory, "binding", integer)
         write(directory, "binding-f64", floating)
+        for name, frame in expected.items():
+            (directory / f"geozl-{name}.frame").write_bytes(frame)
 
 
 if __name__ == "__main__":

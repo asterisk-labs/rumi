@@ -79,16 +79,15 @@
       <p>A Rumi file is written once from frames that GeoZL has already compressed, and read many times by window, band and time step. Python writes and reads. C is the library every binding calls. R, Julia and JavaScript read. The <a href="examples.html">examples</a> run these calls end to end.</p>
 
       <h2 class="part" id="loop">Write, then read</h2>
-<pre><code class="language-python">import geozl
-import numpy as np
+<pre><code class="language-python">import numpy as np
 import rumi
 
 image = np.random.default_rng(0).integers(0, 4096, (4, 1024, 1024), dtype=np.uint16)
 
 frames = rumi.frames(image, "b (row h) (col w) -&gt; row col (b h w)", tile_size=512)
 for frame in frames:
-    graph = geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
+    graph = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
 path, header = rumi.write("scene.rumi", frames, bands=["B2", "B3", "B4", "B8"],
                           time=["2024-08-25"])

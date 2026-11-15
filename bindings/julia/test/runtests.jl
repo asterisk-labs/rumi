@@ -230,3 +230,72 @@ end
     @test_throws "a Date, a DateTime" attempt(table, [20250808])
     @test !isfile(path)
 end
+
+# Match the shared fixtures in Julia's (x, y, band) order.
+counts = UInt16.([200 + b * 977 + y * 31 + x * 17 + (x * 7919 + y * 104729 + b * 31) % 97
+                  for x in 0:39, y in 0:47, b in 0:2])
+reflectance = Float32.([((y * 131 + x * 71) % 1000) / 4000 + 0.1 for x in 0:39, y in 0:47])
+holes = copy(reflectance)
+holes[[(y * 40 + x) % 97 == 0 for x in 0:39, y in 0:47]] .= NaN32
+radiance = Float32.([50 + 4000 * (x + y) / 254 + (x * 7919 + y * 104729) % 61
+                     for x in 0:127, y in 0:127])
+
+@testset "GeoZL" begin
+    cases = [
+        "lossless" => (counts, "planar>zigzag>zstd", (;)),
+        "linear" => (counts, "planar>zigzag>pfor", (; error=3)),
+        "linear-float" => (reflectance, "planar>zigzag>zstd", (; error=0.01)),
+        "log" => (reflectance, "planar>zigzag>zstd", (; error="1%")),
+        "sqrt" => (radiance, "planar>zigzag>zstd", (; error="SQRT:MAX_ERROR=0.5N,A=25,B=2")),
+        "sentinel" => (counts, "planar>zigzag>zstd", (; nodata=200)),
+        "nan" => (holes, "planar>zigzag>zstd", (;)),
+    ]
+    for (name, (raster, method, options)) in cases
+        expected = Base.read(joinpath(@__DIR__, "fixtures", "geozl-$name.frame"))
+        graph = Rumi.GeoZL.graph(raster, method; options...)
+        @test Rumi.GeoZL.compress(raster, graph) == expected
+    end
+
+    path = tempname() * ".rumi"
+    table = Rumi.frames(counts, "b (row h) (col w) -> row col (b h w)"; tile_size=16)
+    for (i, data) in enumerate(table.data)
+        table.compressed[i] = Rumi.GeoZL.compress(data, Rumi.GeoZL.graph(data, "planar>zigzag>pfor"))
+    end
+    header = Rumi.write(path, table; bands=["B02", "B03", "B04"], time=["2026-01-01"])
+    file = Rumi.open(path, header)
+    @test Rumi.read(file) == counts
+    close(file)
+
+    bounded = Rumi.frames(reshape(reflectance, 40, 48, 1), LAYOUT; tile_size=16)
+    for (i, data) in enumerate(bounded.data)
+        graph = Rumi.GeoZL.graph(data, "planar>zigzag>zstd"; error=0.01)
+        bounded.compressed[i] = Rumi.GeoZL.compress(data, graph)
+    end
+    header = Rumi.write(path, bounded; bands=["B04"], time=["2026-01-01"])
+    file = Rumi.open(path, header)
+    @test maximum(abs.(Rumi.read(file)[:, :, 1] .- reflectance)) <= 0.01
+    close(file)
+    rm(path)
+
+    graph = Rumi.GeoZL.graph(counts, "planar>zigzag>zstd")
+    @test (graph.width, graph.planes, graph.eltype) == (40, 3, UInt16)
+    @test sprint(show, graph) ==
+          "Rumi.GeoZL.Graph(planar>zigzag>zstd, UInt16, row width 40, 3 planes, lossless)"
+    @test Rumi.GeoZL.graph(UInt8.(1:12), "planar>zigzag>zstd"; width=4).planes == 1
+
+    @test_throws "the tile dtype is not the graph's" Rumi.GeoZL.compress(Int16.(counts), graph)
+    @test_throws "error must not be negative" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error=-1)
+    @test_throws "between 0% and 100%" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error="100%")
+    @test_throws "whole rows" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; planes=7)
+    @test_throws "no nodata sentinel" Rumi.GeoZL.graph(Float16.(counts), "planar>zigzag>zstd"; nodata=0)
+    @test_throws "nodata needs" Rumi.GeoZL.graph(trues(4, 4), "planar>zigzag>zstd"; nodata=1)
+    @test_throws "1, 2, 4 or 8 bytes" Rumi.GeoZL.graph(ComplexF64.(counts), "planar>zigzag>zstd")
+    @test_throws "could not build the graph" Rumi.GeoZL.graph(counts, "no such graph")
+
+    @test_throws "must not be a Bool" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; error=true)
+    @test_throws "cannot use NaN" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=NaN)
+    @test_throws "does not fit" Rumi.GeoZL.graph(counts, "planar>zigzag>zstd"; nodata=-1)
+    @test_throws "needs `nodata`" Rumi.GeoZL.graph([1, missing], "planar>zigzag>zstd"; width=2)
+    @test_throws "give `width`" Rumi.GeoZL.graph(counts[:, 1, 1], "planar>zigzag>zstd")
+    @test_throws "does not store" Rumi.GeoZL.graph(fill('a', 2, 2), "planar>zigzag>zstd")
+end

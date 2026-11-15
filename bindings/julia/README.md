@@ -23,14 +23,14 @@ the matching native artifact on first use and keeps it in the Julia depot.
 
 ## Writing
 
-`Rumi.frames` cuts an array into frames, you compress each one with
-[GeoZL.jl](https://asterisk.coop/geozl/), and `Rumi.write` stores the payloads
-and returns the external header.
+`Rumi.frames` cuts an array into frames, you compress each one with the
+[GeoZL](https://asterisk.coop/geozl/) built into the package, `Rumi.GeoZL`, and
+`Rumi.write` stores the payloads and returns the external header.
 
 ```julia
 using Dates
-using GeoZL
 using Rumi
+using Rumi: GeoZL
 
 image = rand(UInt16(0):UInt16(4095), 1024, 1024, 4)
 table = Rumi.frames(image, "b (row h) (col w) -> row col b (h w)"; tile_size=256)
@@ -44,5 +44,5 @@ Base.write("scene.header", header)
 ```
 
 Patterns use the same axis names as Python. Julia holds those axes in reverse:
-this image is `(X, Y, Band)`, and each frame is ready for `GeoZL.graph`.
+this image is `(X, Y, Band)`, and each frame is ready for `Rumi.GeoZL.graph`.
 The array's element type sets the file's sample type.

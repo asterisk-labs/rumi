@@ -81,8 +81,8 @@
       <h2 class="part" id="install">Install</h2>
 <pre data-run="skip"><code class="language-julia">using Pkg
 Pkg.Registry.add(url = "https://github.com/asterisk-labs/AsteriskRegistry")
-Pkg.add(["Rumi", "GeoZL"])</code></pre>
-      <p>The package calls <code>librumi</code> directly. It loads the library named by <code>RUMI_LIB</code>, then the one <code>make build</code> writes to <code>core/build</code> in a checkout, then the artifact a release publishes for Linux x86-64 and macOS arm64, downloaded on first use and kept in the Julia depot. Loading fails with a <code>librumi</code> built for another C API version.</p>
+Pkg.add("Rumi")</code></pre>
+      <p>The package calls <code>librumi</code> directly, and compresses frames with the GeoZL inside it. It loads the library named by <code>RUMI_LIB</code>, then the one <code>make build</code> writes to <code>core/build</code> in a checkout, then the artifact a release publishes for Linux x86-64 and macOS arm64, downloaded on first use and kept in the Julia depot. Loading fails with a <code>librumi</code> built for another C API version.</p>
 <pre data-run="skip"><code class="language-julia">using Rumi
 
 file = Rumi.open("scene.rumi", Base.read("scene.header"))
@@ -157,19 +157,33 @@ meta.bands                                   # ["B02", "B03", "B04"]</code></pre
 
       <h3 id="frames">frames</h3>
 <pre><code class="sig language-julia">Rumi.frames(x::AbstractArray, pattern; tile_size=512) -&gt; FrameTable</code></pre>
-      <p>Cuts an array into frames in file order, clipping edge tiles. Compress each frame with <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL.jl</a> before writing.</p>
+      <p>Cuts an array into frames in file order, clipping edge tiles. Compress each frame with <a href="#geozl"><code>Rumi.GeoZL</code></a> before writing.</p>
       <table class="spec">
         <tr><th>x</th><td>An array of samples. Its element type is the file's sample type, and it holds the pattern's input axes in reverse, so <code>"b (row h) (col w)"</code> takes <code>(x, y, band)</code>, the shape <code>Rumi.read</code> returns. A view works and is copied frame by frame.</td></tr>
         <tr><th>pattern</th><td>The frame pattern <a href="api-python.html#frames">Python</a> takes, in C order, such as <code>"b (row h) (col w) -&gt; row col b (h w)"</code>.</td></tr>
         <tr><th>tile_size</th><td>Height and width of a square tile, from 1 to 65535.</td></tr>
       </table>
       <p>Returns a <a href="#types"><code>FrameTable</code></a>. A <code>b h w</code> frame is a Julia array shaped <code>(w, h, band)</code>.</p>
-<pre data-run="skip"><code class="language-julia">using GeoZL
+<pre data-run="skip"><code class="language-julia">using Rumi: GeoZL
 
 table = Rumi.frames(image, "b (row h) (col w) -&gt; row col b (h w)"; tile_size = 256)
 for (i, tile) in enumerate(table.data)
     table.compressed[i] = GeoZL.compress(tile, GeoZL.graph(tile, "planar&gt;zigzag&gt;pfor"))
 end</code></pre>
+
+      <h3 id="geozl">GeoZL</h3>
+<pre><code class="sig language-julia">Rumi.GeoZL.graph(x, method; width=nothing, planes=nothing, error=nothing,
+    nodata=nothing) -&gt; Rumi.GeoZL.Graph
+Rumi.GeoZL.compress(x, g::Rumi.GeoZL.Graph) -&gt; Vector{UInt8}</code></pre>
+      <p>Compress frames with the <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> linked into <code>librumi</code>. These calls cover graph creation and compression; <code>Rumi.write</code> stores the resulting bytes.</p>
+      <table class="spec">
+        <tr><th>x</th><td>An array of a Rumi sample type. <code>missing</code> values take <code>nodata</code>, or NaN in a float array. For a bounded error the graph's <code>x</code> also fixes the domain later tiles must fall in.</td></tr>
+        <tr><th>method</th><td>A recipe such as <code>"planar&gt;zigzag&gt;pfor"</code>.</td></tr>
+        <tr><th>width, planes</th><td>Row width in samples and the number of stacked images. They default to <code>size(x, 1)</code> and, for three or more dimensions, the last one, which is the planes of a <code>b h w</code> frame.</td></tr>
+        <tr><th>error</th><td><code>nothing</code> or <code>0</code> for lossless, a positive number for an absolute bound, a percentage such as <code>"1%"</code> for a relative one, or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe.</td></tr>
+        <tr><th>nodata</th><td>A sentinel value that marks missing samples. NaN holes in a float array are kept without one.</td></tr>
+      </table>
+      <p><code>compress</code> refuses a tile of another element type, and a bounded tile outside the graph's domain. A <code>Graph</code> holds native state, so it is not thread-safe; build one per task.</p>
 
       <h3 id="write">write</h3>
 <pre><code class="sig language-julia">Rumi.write(path, table::FrameTable; bands, time, transform=nothing, crs=nothing,
@@ -225,6 +239,7 @@ Base.write("scene.header", header)</code></pre>
         <li><a href="#read_many">read_many</a></li>
         <li><a href="#info">info</a></li>
         <li><a href="#frames">frames</a></li>
+        <li><a href="#geozl">GeoZL</a></li>
         <li><a href="#write">write</a></li>
         <li><a href="#types">Types</a></li>
         <li><a href="#arrays">Arrays</a></li>

@@ -74,24 +74,20 @@
       <p>These examples write an Image and a Cube, read part of a file back, run the same read against local and remote storage, and build training batches. The first four sections create data. If a catalog already gives you a source and its header, start at <a href="#selection">bands, times and windows</a>. Each example comes in Python, R and Julia, except frameworks and devices, which only Python has. The <a href="api-r.html">R</a> and <a href="api-julia.html">Julia</a> APIs describe those two packages.</p>
 
       <h2 class="part" id="setup">Installation</h2>
-      <p>Each language writes files with Rumi and GeoZL and reads them through the Rumi core. In Python, installing <code>rumi-eo</code> also installs GeoZL. In R and Julia, you install the two packages side by side.</p>
+      <p>Use <code>rumi.geozl</code> in Python, <code>rumi_geozl_graph</code> and <code>rumi_geozl_compress</code> in R, or <code>Rumi.GeoZL</code> in Julia. All three use the GeoZL linked into Rumi.</p>
 <div class="code-tabs">
 <pre data-lang="Python"><code class="language-sh">python -m pip install rumi-eo</code></pre>
-<pre data-lang="R" data-run="skip"><code class="language-r">install.packages(
-  c("rumi", "geozl"),
-  repos = "https://asterisk-labs.r-universe.dev"
-)</code></pre>
+<pre data-lang="R" data-run="skip"><code class="language-r">install.packages("rumi", repos = "https://asterisk-labs.r-universe.dev")</code></pre>
 <pre data-lang="Julia" data-run="skip"><code class="language-julia">using Pkg
 Pkg.Registry.add(url = "https://github.com/asterisk-labs/AsteriskRegistry")
-Pkg.add(["Rumi", "GeoZL"])</code></pre>
+Pkg.add("Rumi")</code></pre>
 </div>
 <div class="code-tabs">
-<pre data-lang="Python"><code class="language-python">import geozl
-import numpy as np
+<pre data-lang="Python"><code class="language-python">import numpy as np
 import rumi</code></pre>
-<pre data-lang="R"><code class="language-r">library(geozl)
-library(rumi)</code></pre>
-<pre data-lang="Julia"><code class="language-julia">using GeoZL, Random, Rumi</code></pre>
+<pre data-lang="R"><code class="language-r">library(rumi)</code></pre>
+<pre data-lang="Julia"><code class="language-julia">using Random, Rumi
+using Rumi: GeoZL</code></pre>
 </div>
       <div class="note"><p><b>Shapes and positions.</b> In Python an Image is <code>(B, Y, X)</code> and a temporal Cube is <code>(T, B, Y, X)</code>. Selections count from zero, and a window is <code>(row, column, height, width)</code>. R and Julia count from one and return Images as <code>(X, Y, Band)</code> and Cubes as <code>(X, Y, Band, Time)</code>. They write arrays in that order too, with the same patterns as Python.</p></div>
 
@@ -111,8 +107,8 @@ frames = rumi.frames(
 )
 
 for frame in frames:
-    graph = geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
+    graph = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
 image_path, image_header = rumi.write(
     "image.rumi",
@@ -141,8 +137,8 @@ frames &lt;- rumi_frames(
 
 for (i in seq_along(frames$data)) {
   tile &lt;- frames$data[[i]]
-  graph &lt;- geozl_graph(tile, "planar&gt;zigzag&gt;zstd", datatype = "uint16")
-  frames$compressed[[i]] &lt;- geozl_compress(tile, graph)
+  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;zstd", datatype = "uint16")
+  frames$compressed[[i]] &lt;- rumi_geozl_compress(tile, graph)
 }
 
 image_header &lt;- rumi_write(
@@ -280,8 +276,8 @@ cube_frames = rumi.frames(
 )
 
 for frame in cube_frames:
-    graph = geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
-    frame.compressed = geozl.compress(frame.data, graph=graph)
+    graph = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
+    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
 cube_path, cube_header = rumi.write(
     "cube.rumi",
@@ -309,8 +305,8 @@ cube_frames &lt;- rumi_frames(
 
 for (i in seq_along(cube_frames$data)) {
   tile &lt;- cube_frames$data[[i]]
-  graph &lt;- geozl_graph(tile, "planar&gt;zigzag&gt;zstd", datatype = "uint16")
-  cube_frames$compressed[[i]] &lt;- geozl_compress(tile, graph)
+  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;zstd", datatype = "uint16")
+  cube_frames$compressed[[i]] &lt;- rumi_geozl_compress(tile, graph)
 }
 
 cube_header &lt;- rumi_write(

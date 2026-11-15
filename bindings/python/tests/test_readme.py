@@ -7,8 +7,6 @@ import numpy as np
 import pytest
 import rumi
 
-geozl = pytest.importorskip("geozl")
-
 README = pathlib.Path(__file__).resolve().parents[3] / "README.md"
 
 # The complete quick start can run by itself. Later blocks intentionally reuse
@@ -39,14 +37,14 @@ def test_a_readme_block_at_least_compiles(index):
                                    if is_runnable(b)])
 def test_a_readme_block_runs(index, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    env = {"np": np, "geozl": geozl, "rumi": rumi}
+    env = {"np": np, "rumi": rumi}
     exec(compile(blocks()[index], f"README.md block {index}", "exec"), env)
 
 
 def test_the_quick_start_writes_a_file_that_reads_back(tmp_path, monkeypatch):
     """Check the objects created by the introductory example."""
     monkeypatch.chdir(tmp_path)
-    env = {"np": np, "geozl": geozl, "rumi": rumi}
+    env = {"np": np, "rumi": rumi}
     exec(compile(blocks()[0], "README.md quick start", "exec"), env)
 
     scene = tmp_path / "scene.rumi"

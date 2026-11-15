@@ -15,6 +15,7 @@ PUBLIC = (
     "RumiArray",
     "frame_start",
     "frames",
+    "geozl",
     "get_checksum_verification",
     "get_num_threads",
     "info",

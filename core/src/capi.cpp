@@ -1535,6 +1535,65 @@ rumi_read_many_layout(const rumi_read_item* items, size_t n_items,
 }
 
 
+// Compression.
+
+struct rumi_geozl_graph {
+    std::unique_ptr<rumi::GeozlGraph> impl;
+    explicit rumi_geozl_graph(std::unique_ptr<rumi::GeozlGraph> p) noexcept
+        : impl(std::move(p)) {}
+};
+
+extern "C" rumi_status
+rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
+                      const void* raster, size_t n_bytes,
+                      uint32_t width, uint32_t planes,
+                      const char* error, const void* nodata,
+                      rumi_geozl_graph** out)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!out) {
+            set_error("rumi_geozl_graph_open: null output");
+            return RUMI_ERR_INVALID;
+        }
+        auto graph = rumi::GeozlGraph::open(method, dtype, raster, n_bytes,
+                                            width, planes, error, nodata);
+        if (!graph) {
+            set_error(graph.error().message);
+            return graph.error().status;
+        }
+        *out = new rumi_geozl_graph(std::move(*graph));
+        return RUMI_OK;
+    });
+}
+
+extern "C" rumi_status
+rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
+                    const void* tile, size_t n_bytes,
+                    unsigned char** out_frame, size_t* out_size)
+{
+    return capi_call([&]() -> rumi_status {
+        if (!graph || !out_frame || !out_size) {
+            set_error("rumi_geozl_compress: null argument");
+            return RUMI_ERR_INVALID;
+        }
+        unsigned char* frame = nullptr;
+        auto size = graph->impl->compress(dtype, tile, n_bytes, &frame);
+        if (!size) {
+            set_error(size.error().message);
+            return size.error().status;
+        }
+        *out_frame = frame;
+        *out_size = *size;
+        return RUMI_OK;
+    });
+}
+
+extern "C" void rumi_geozl_graph_close(rumi_geozl_graph* graph)
+{
+    delete graph;
+}
+
+
 // Writing.
 
 namespace {

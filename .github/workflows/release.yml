@@ -433,8 +433,7 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
-  # Run every example on the docs pages with this release's wheel, R package and
-  # library, and GeoZL as the guide installs it. A failing example stops the release.
+  # Run docs examples against the release artifacts.
   docs-examples:
     name: Docs examples
     needs: [build-lib-linux, build-wheel-linux]
@@ -472,16 +471,13 @@ jobs:
         run: |
           python -m pip install wheelhouse/*.whl
           python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.11.*'
-      # Without the submodules, configure builds the vendored sources, as
-      # R-universe does. install.packages only warns on failure, so load each.
+      # Build R from vendored sources, as R-universe does.
       - name: Install R packages
         shell: bash -el {0}
         run: |
           set -euo pipefail
           R CMD INSTALL bindings/r
-          Rscript -e 'install.packages("geozl", repos = c(
-            "https://asterisk-labs.r-universe.dev", "https://cloud.r-project.org"))'
-          Rscript -e 'library(geozl); library(rumi); library(terra)'
+          Rscript -e 'library(rumi); library(terra)'
       - name: Install Julia packages
         shell: bash -el {0}
         run: |
@@ -490,8 +486,8 @@ jobs:
             Pkg.Registry.add("General")
             Pkg.Registry.add(url = "https://github.com/asterisk-labs/AsteriskRegistry")
             Pkg.develop(path = "bindings/julia")
-            Pkg.add(["ArchGDAL", "GeoZL"])
-            using ArchGDAL, GeoZL, Rumi
+            Pkg.add("ArchGDAL")
+            using ArchGDAL, Rumi
           '
       - name: Run the docs examples
         shell: bash -el {0}

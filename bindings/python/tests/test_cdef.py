@@ -135,6 +135,15 @@ void rumi_dlpack_legacy_free(DLManagedTensor* t);
 void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
                              rumi_capsule_pointer_fn pointer);
 void rumi_dlpack_capsule_destructor(void* capsule);
+rumi_status rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
+                                  const void* raster, size_t n_bytes,
+                                  uint32_t width, uint32_t planes,
+                                  const char* error, const void* nodata,
+                                  rumi_geozl_graph** out);
+rumi_status rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
+                                const void* tile, size_t n_bytes,
+                                unsigned char** out_frame, size_t* out_size);
+void rumi_geozl_graph_close(rumi_geozl_graph* graph);
 rumi_status rumi_write(const char* path, const rumi_write_desc* desc,
                        const unsigned char* const* frames,
                        const size_t* sizes, size_t frame_count,
@@ -314,7 +323,7 @@ def test_cdef_public_types_match_the_header():
 
 def test_public_c_api_matches_the_recorded_signatures(c_declarations):
     baseline = _declarations(_PUBLIC_API)
-    assert len(baseline) == 49
+    assert len(baseline) == 52
     drift = []
     for name, signature in baseline.items():
         current = c_declarations.get(name)

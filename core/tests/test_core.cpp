@@ -2196,6 +2196,159 @@ void test_read_many_c_api()
     }
 }
 
+void test_geozl_c_api()
+{
+    std::vector<std::uint16_t> tile(16 * 16);
+    for (std::size_t i = 0; i < tile.size(); ++i) {
+        tile[i] = static_cast<std::uint16_t>(1000 + (i * 7) % 97);
+    }
+    const std::size_t bytes = tile.size() * sizeof(std::uint16_t);
+    auto open = [&](const char* error, const void* nodata, rumi_dtype dtype,
+                    std::uint32_t planes, rumi_geozl_graph** out) {
+        return rumi_geozl_graph_open("planar>zigzag>zstd", dtype, tile.data(),
+                                     bytes, 16, planes, error, nodata, out);
+    };
+    auto frame_of = [&](rumi_geozl_graph* graph) {
+        unsigned char* frame = nullptr;
+        std::size_t size = 0;
+        std::vector<unsigned char> out;
+        if (rumi_geozl_compress(graph, RUMI_DT_UINT16, tile.data(), bytes,
+                                &frame, &size) == RUMI_OK) {
+            out.assign(frame, frame + size);
+        }
+        rumi_free(frame);
+        return out;
+    };
+
+    CASE("a compressed tile is written and reads back unchanged")
+    rumi_geozl_graph* graph = nullptr;
+    EQ(open(nullptr, nullptr, RUMI_DT_UINT16, 1, &graph), RUMI_OK);
+    const std::vector<unsigned char> frame = frame_of(graph);
+    OK(!frame.empty());
+
+    const unsigned char* frames[1] = {frame.data()};
+    const std::size_t sizes[1] = {frame.size()};
+    const char* texts[1] = {"B4"};
+    const std::int64_t day[1] = {1704067200};
+    rumi_write_desc desc{};
+    desc.image_width = 16; desc.image_length = 16; desc.time_count = 1;
+    desc.tile_size = 16; desc.samples_per_pixel = 1; desc.dtype = RUMI_DT_UINT16;
+    desc.band_texts = texts; desc.band_text_count = 1;
+    desc.time_type = rumi::TIME_INSTANT; desc.time = day; desc.time_coords = 1;
+    const std::string path = "/tmp/rumi_geozl_"
+                           + std::to_string(std::random_device{}()) + ".rumi";
+    unsigned char* blob = nullptr;
+    std::size_t blob_size = 0;
+    EQ(rumi_write(path.c_str(), &desc, frames, sizes, 1, &blob, &blob_size),
+       RUMI_OK);
+    rumi_source* src = nullptr;
+    rumi_spec* spec = nullptr;
+    EQ(rumi_source_file(path.c_str(), &src), RUMI_OK);
+    EQ(rumi_spec_parse(blob, blob_size, &spec), RUMI_OK);
+    std::vector<std::uint16_t> back(tile.size());
+    if (src && spec) {
+        EQ(rumi_read(src, spec, nullptr, 0, nullptr, 0, 0, 16, 0, 16, nullptr,
+                     back.data(), bytes), RUMI_OK);
+    }
+    OK(back == tile);
+    rumi_spec_destroy(spec);
+    rumi_source_free(src);
+    rumi_free(blob);
+    std::remove(path.c_str());
+
+    CASE("a zero bound in any spelling is the lossless graph")
+    for (const char* zero : {"", "0", "-0.0", "0%", "LINEAR:MAX_ERROR=0",
+                             "LOG:MAX_ERROR=0e5%", "SQRT:MAX_ERROR=.0N"}) {
+        rumi_geozl_graph* same = nullptr;
+        EQ(open(zero, nullptr, RUMI_DT_UINT16, 1, &same), RUMI_OK);
+        OK(frame_of(same) == frame);
+        rumi_geozl_graph_close(same);
+    }
+
+    CASE("a bare number and a percentage are LINEAR and LOG recipes")
+    for (const auto& [short_form, recipe] :
+         {std::pair{"2", "LINEAR:MAX_ERROR=2"}, std::pair{"1.5%", "LOG:MAX_ERROR=1.5%"}}) {
+        rumi_geozl_graph* a = nullptr;
+        rumi_geozl_graph* b = nullptr;
+        EQ(open(short_form, nullptr, RUMI_DT_UINT16, 1, &a), RUMI_OK);
+        EQ(open(recipe, nullptr, RUMI_DT_UINT16, 1, &b), RUMI_OK);
+        OK(!frame_of(a).empty() && frame_of(a) == frame_of(b));
+        OK(frame_of(a) != frame);
+        rumi_geozl_graph_close(a);
+        rumi_geozl_graph_close(b);
+    }
+
+    CASE("a compress call refuses a tile of another dtype")
+    unsigned char* out = nullptr;
+    std::size_t out_size = 0;
+    EQ(rumi_geozl_compress(graph, RUMI_DT_INT16, tile.data(), bytes, &out,
+                           &out_size), RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(), "the tile dtype is not the graph's") == 0);
+    EQ(rumi_geozl_compress(graph, RUMI_DT_UINT16, tile.data(), bytes - 1, &out,
+                           &out_size), RUMI_ERR_INVALID);
+    OK(out == nullptr);
+    rumi_geozl_graph_close(graph);
+    rumi_geozl_graph_close(nullptr);
+
+    CASE("the core refuses requests GeoZL would misread")
+    rumi_geozl_graph* none = nullptr;
+    const std::uint16_t sentinel = 0;
+    const std::uint16_t half_nan = 0x7E00;
+    const std::uint16_t half_one = 0x3C00;
+    struct Refusal {
+        const char* error;
+        const void* nodata;
+        rumi_dtype dtype;
+        std::uint32_t planes;
+        rumi_status status;
+        const char* message;
+    };
+    const Refusal refusals[] = {
+        {"-1", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "error must not be negative"},
+        {"100%", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "a relative error must be between 0% and 100%"},
+        {"-5%", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "a relative error must be between 0% and 100%"},
+        {"ten%", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "a relative error looks like 10%"},
+        {"inf", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "error must be a finite number, a percentage such as 1% or a "
+         "LINEAR, LOG or SQRT recipe"},
+        {nullptr, nullptr, RUMI_DT_UINT16, 3, RUMI_ERR_INVALID,
+         "the planes do not split the raster into whole rows"},
+        {nullptr, nullptr, RUMI_DT_UINT16, 0, RUMI_ERR_INVALID,
+         "width and planes must be positive"},
+        {"1", nullptr, RUMI_DT_BFLOAT16, 1, RUMI_ERR_UNSUPPORTED,
+         "a bounded error needs an integer, float16, float32 or float64 dtype"},
+        {nullptr, &sentinel, RUMI_DT_BFLOAT16, 1, RUMI_ERR_UNSUPPORTED,
+         "nodata needs an integer, float16, float32 or float64 dtype"},
+        {nullptr, &half_one, RUMI_DT_FLOAT16, 1, RUMI_ERR_INVALID,
+         "a float16 raster carries no nodata sentinel; NaN still works"},
+        {nullptr, nullptr, static_cast<rumi_dtype>(12), 1, RUMI_ERR_INVALID,
+         "unknown dtype"},
+    };
+    for (const Refusal& r : refusals) {
+        EQ(open(r.error, r.nodata, r.dtype, r.planes, &none), r.status);
+        const char* got = rumi_last_error();
+        OK(got && std::strcmp(got, r.message) == 0);
+        OK(none == nullptr);
+    }
+    EQ(open(nullptr, &half_nan, RUMI_DT_FLOAT16, 1, &none), RUMI_OK);
+    rumi_geozl_graph_close(none);
+    none = nullptr;
+    EQ(rumi_geozl_graph_open("planar>zigzag>zstd", RUMI_DT_COMPLEX128,
+                             tile.data(), 32, 1, 1, nullptr, nullptr, &none),
+       RUMI_ERR_UNSUPPORTED);
+    EQ(rumi_geozl_graph_open("no such graph", RUMI_DT_UINT16, tile.data(),
+                             bytes, 16, 1, nullptr, nullptr, &none),
+       RUMI_ERR_INVALID);
+    OK(std::strncmp(rumi_last_error(), "GeoZL could not build the graph: ", 33) == 0);
+    EQ(rumi_geozl_graph_open(nullptr, RUMI_DT_UINT16, tile.data(), bytes, 16, 1,
+                             nullptr, nullptr, &none), RUMI_ERR_INVALID);
+    OK(none == nullptr);
+}
+
 int main()
 {
     test_checksum_verification();
@@ -2221,6 +2374,7 @@ int main()
     test_info_c_api();
     test_metadata_from_both_ends();
     test_write_c_api_band_texts();
+    test_geozl_c_api();
     test_read_many_c_api();
     test_dtype_table();
     test_dlpack_wrappers();

@@ -62,8 +62,8 @@ RUMI_API void rumi_clear_error(void);
 
 // Memory.
 
-// Release a buffer returned by rumi_plan_ranges, rumi_write, or rumi_geokeys.
-// Other pointers remain caller-owned.
+// Release a buffer returned by rumi_plan_ranges, rumi_geozl_compress,
+// rumi_write, or rumi_geokeys. Other pointers remain caller-owned.
 RUMI_API void rumi_free(void* ptr);
 
 
@@ -558,6 +558,41 @@ RUMI_API void rumi_dlpack_capsule_api(rumi_capsule_is_valid_fn is_valid,
 
 // Release an unclaimed DLPack capsule. Renamed capsules belong to the consumer.
 RUMI_API void rumi_dlpack_capsule_destructor(void* capsule);
+
+
+// Compression.
+//
+// Compress with the GeoZL linked into Rumi. rumi_write stores the resulting
+// bytes; it does not compress them.
+
+// A reusable graph for tiles of one dtype. It is not safe for concurrent calls.
+typedef struct rumi_geozl_graph rumi_geozl_graph;
+
+// Build a graph from native dtype samples. width is the row length; planes
+// counts stacked images for row predictors. Both must be positive, and
+// multiple planes must contain whole rows. error accepts NULL or "" for
+// lossless, a number for LINEAR, a percentage for LOG, or a full LINEAR, LOG
+// or SQRT recipe. Zero is lossless. The raster fixes the domain of a bounded
+// graph; bounds require integer or float16/32/64 samples. nodata points to one
+// dtype sample or is NULL. A NaN sample, or a NaN found in a float raster when
+// nodata is NULL, marks all NaNs as missing. Close *out with
+// rumi_geozl_graph_close.
+RUMI_API rumi_status
+rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
+                      const void* raster, size_t n_bytes,
+                      uint32_t width, uint32_t planes,
+                      const char* error, const void* nodata,
+                      rumi_geozl_graph** out);
+
+// Compress one tile of the graph's dtype. Its geometry is not checked against
+// the graph. *out_frame contains *out_size bytes released with rumi_free.
+RUMI_API rumi_status
+rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
+                    const void* tile, size_t n_bytes,
+                    unsigned char** out_frame, size_t* out_size);
+
+// Safe to call with NULL.
+RUMI_API void rumi_geozl_graph_close(rumi_geozl_graph* graph);
 
 
 // Writing.

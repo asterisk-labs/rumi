@@ -32,11 +32,6 @@ def read_version(path: Path, label: str) -> str:
     return version
 
 
-def next_minor_constraint(version: str) -> str:
-    major, minor, _ = version.split(".", 2)
-    return f"geozl>={version},<{major}.{int(minor) + 1}"
-
-
 def r_package_version(version: str, changelog: str) -> str:
     """Map a prerelease to an R version after the latest stable release."""
     base, separator, prerelease = version.partition("-")
@@ -131,9 +126,6 @@ def check(tag: str | None) -> tuple[str, str, str]:
             f"{julia_project.get('version')!r} does not match VERSION {rumi_version}"
         )
 
-    expected = next_minor_constraint(geozl_version)
-    if expected not in project.get("dependencies", []):
-        fail(f"Python dependencies must contain {expected!r}")
     js_dependency = js_package.get("dependencies", {}).get("@asterisk-labs/geozl")
     lock_root = js_lock.get("packages", {}).get("", {})
     lock_dependency = lock_root.get("dependencies", {}).get("@asterisk-labs/geozl")

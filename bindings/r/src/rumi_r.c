@@ -741,6 +741,12 @@ SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
   return header;
 }
 
+SEXP rumi_r_geozl_pack(SEXP x, SEXP dtype_s, SEXP nodata_s);
+SEXP rumi_r_geozl_itemsize(SEXP dtype_s);
+SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
+                        SEXP error_s, SEXP dtype_s, SEXP nodata_s);
+SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);
+
 static const R_CallMethodDef calls[] = {
     {"rumi_r_open", (DL_FUNC)&rumi_r_open, 2},
     {"rumi_r_close", (DL_FUNC)&rumi_r_close, 1},
@@ -748,6 +754,10 @@ static const R_CallMethodDef calls[] = {
     {"rumi_r_read_many", (DL_FUNC)&rumi_r_read_many, 5},
     {"rumi_r_frames", (DL_FUNC)&rumi_r_frames, 3},
     {"rumi_r_write", (DL_FUNC)&rumi_r_write, 10},
+    {"rumi_r_geozl_pack", (DL_FUNC)&rumi_r_geozl_pack, 3},
+    {"rumi_r_geozl_itemsize", (DL_FUNC)&rumi_r_geozl_itemsize, 1},
+    {"rumi_r_geozl_graph", (DL_FUNC)&rumi_r_geozl_graph, 7},
+    {"rumi_r_geozl_compress", (DL_FUNC)&rumi_r_geozl_compress, 3},
     {NULL, NULL, 0}};
 
 void attribute_visible R_init_rumi(DllInfo *dll) {
