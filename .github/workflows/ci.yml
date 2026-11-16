@@ -180,191 +180,113 @@ jobs:
         with:
           working-directory: bindings/r
           extra-packages: any::roxygen2
-      - name: Prepare R source package
+      - name: Apply Windows decoder cleanup candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --unidiff-zero <<'PATCH'
+          diff --git a/bindings/r/src/link.cpp b/bindings/r/src/link.cpp
+          index 8e000115..8cb1ef6e 100644
+          --- a/bindings/r/src/link.cpp
+          +++ b/bindings/r/src/link.cpp
+          @@ -1 +1,12 @@
+          -// Make R link the vendored C++ core with its C++ driver.
+          +#define R_NO_REMAP
+          +#include <Rinternals.h>
+          +
+          +#include "rumi/thread_pool.hpp"
+          +
+          +extern "C" SEXP rumi_r_shutdown_pool(void)
+          +{
+          +    auto& global = rumi::detail::g_global_pool;
+          +    auto* slot = global.current.exchange(nullptr, std::memory_order_acq_rel);
+          +    if (slot && slot->owner == rumi::detail::current_pid()) delete slot;
+          +    return R_NilValue;
+          +}
+          diff --git a/bindings/r/src/rumi_r.c b/bindings/r/src/rumi_r.c
+          index f7979f53..5d18a70d 100644
+          --- a/bindings/r/src/rumi_r.c
+          +++ b/bindings/r/src/rumi_r.c
+          @@ -932,0 +933 @@ SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);
+          +SEXP rumi_r_shutdown_pool(void);
+          @@ -953,0 +955 @@ static const R_CallMethodDef calls[] = {
+          +    {"rumi_r_shutdown_pool", (DL_FUNC)&rumi_r_shutdown_pool, 0},
+          diff --git a/core/src/plan.cpp b/core/src/plan.cpp
+          index 6f31e9fe..7519f519 100644
+          --- a/core/src/plan.cpp
+          +++ b/core/src/plan.cpp
+          @@ -108,0 +109,2 @@ struct WorkerState {
+          +// Windows DLL teardown can invalidate this thread-local state before its destructor.
+          +#ifndef _WIN32
+          @@ -113,0 +116 @@ WorkerState& worker_state() noexcept
+          +#endif
+          @@ -187 +190,2 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
+          -                         std::string& msg) noexcept
+          +                         std::string& msg,
+          +                         WorkerState& ws) noexcept
+          @@ -192 +195,0 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
+          -    WorkerState& ws = worker_state();
+          @@ -354 +357,2 @@ bool Executor::run(std::span<const FrameTask> tasks,
+          -    const auto run_one = [&st, &first, this, &spec, transport, output](const FrameTask& t) {
+          +    const auto run_one = [&st, &first, this, &spec, transport, output](
+          +        const FrameTask& t, WorkerState& ws) {
+          @@ -357 +361 @@ bool Executor::run(std::span<const FrameTask> tasks,
+          -        const rumi_status r = execute_task(t, spec, transport, output, msg);
+          +        const rumi_status r = execute_task(t, spec, transport, output, msg, ws);
+          @@ -389,0 +394,5 @@ bool Executor::run(std::span<const FrameTask> tasks,
+          +#ifdef _WIN32
+          +            WorkerState ws;
+          +#else
+          +            WorkerState& ws = worker_state();
+          +#endif
+          @@ -396 +405 @@ bool Executor::run(std::span<const FrameTask> tasks,
+          -                    run_one(tasks[order[k]]);
+          +                    run_one(tasks[order[k]], ws);
+          @@ -407,0 +417,5 @@ bool Executor::run(std::span<const FrameTask> tasks,
+          +#ifdef _WIN32
+          +        WorkerState ws;
+          +#else
+          +        WorkerState& ws = worker_state();
+          +#endif
+          @@ -409 +423 @@ bool Executor::run(std::span<const FrameTask> tasks,
+          -            run_one(t);
+          +            run_one(t, ws);
+          diff --git a/bindings/r/R/zzz.R b/bindings/r/R/zzz.R
+          new file mode 100644
+          index 0000000..0c0fcda
+          --- /dev/null
+          +++ b/bindings/r/R/zzz.R
+          @@ -0,0 +1,10 @@
+          +.onLoad <- function(libname, pkgname) {
+          +  reg.finalizer(asNamespace(pkgname), function(e) {
+          +    if ("rumi" %in% names(getLoadedDLLs()))
+          +      .Call(rumi_r_shutdown_pool)
+          +  }, onexit = TRUE)
+          +}
+          +
+          +.onUnload <- function(libpath) {
+          +  .Call(rumi_r_shutdown_pool)
+          +}
+          PATCH
+          python tools/sync_r_vendor.py
+      - name: Check parallel R process exit
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          R CMD INSTALL bindings/r
+          Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress")'
+      - name: Check source package
         shell: bash
         run: |
           set -euo pipefail
           python tools/sync_r_vendor.py --check
-          python - <<'PY'
-          from pathlib import Path
-          from shutil import copyfile
-
-          Path("bindings/r/src/link.cpp").write_text('''#define R_NO_REMAP
-          #include <Rinternals.h>
-          #include <cstdio>
-          #include "rumi/thread_pool.hpp"
-
-          extern "C" SEXP rumi_r_shutdown_pool(void) {
-              auto& global = rumi::detail::g_global_pool;
-              auto* slot = global.current.exchange(nullptr, std::memory_order_acq_rel);
-              std::fprintf(stderr, "pool shutdown begin %p\\n", static_cast<void*>(slot));
-              std::fflush(stderr);
-              if (slot && slot->owner == rumi::detail::current_pid()) delete slot;
-              std::fprintf(stderr, "pool shutdown done\\n");
-              std::fflush(stderr);
-              return R_NilValue;
-          }
-          ''')
-          path = Path("bindings/r/src/rumi_r.c")
-          code = path.read_text()
-          marker = 'SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);'
-          assert code.count(marker) == 1
-          code = code.replace(marker, marker + '\nSEXP rumi_r_shutdown_pool(void);')
-          marker = '    {"rumi_r_geozl_compress", (DL_FUNC)&rumi_r_geozl_compress, 3},'
-          assert code.count(marker) == 1
-          path.write_text(code.replace(marker, marker + '\n    {"rumi_r_shutdown_pool", (DL_FUNC)&rumi_r_shutdown_pool, 0},'))
-          Path("bindings/r/R/zzz.R").write_text('''.onLoad <- function(libname, pkgname) {
-            reg.finalizer(asNamespace(pkgname), function(e) {
-              cat("R exit hook begin\\n", file = stderr())
-              if ("rumi" %in% names(getLoadedDLLs()))
-                .Call(rumi_r_shutdown_pool)
-              cat("R exit hook done\\n", file = stderr())
-            }, onexit = TRUE)
-          }
-
-          .onUnload <- function(libpath) {
-            cat("R unload hook begin\\n", file = stderr())
-            .Call(rumi_r_shutdown_pool)
-            cat("R unload hook done\\n", file = stderr())
-          }
-          ''')
-          pool = Path("core/include/rumi/thread_pool.hpp")
-          code = pool.read_text()
-          old = '''inline ThreadPool::~ThreadPool()
-          {
-              {
-                  std::lock_guard lock(mutex_);
-                  stop_ = true;
-              }
-              ready_.notify_all();
-              for (std::thread& w : workers_) {
-                  if (w.joinable()) w.join();
-              }
-          }
-          '''
-          new = '''inline ThreadPool::~ThreadPool()
-          {
-              std::fprintf(stderr, "pool dtor begin\\n"); std::fflush(stderr);
-              {
-                  std::lock_guard lock(mutex_);
-                  stop_ = true;
-              }
-              ready_.notify_all();
-              for (std::thread& w : workers_) {
-                  std::fprintf(stderr, "join begin\\n"); std::fflush(stderr);
-                  if (w.joinable()) w.join();
-                  std::fprintf(stderr, "join done\\n"); std::fflush(stderr);
-              }
-              std::fprintf(stderr, "pool dtor done\\n"); std::fflush(stderr);
-          }
-          '''
-          assert code.count(old) == 1
-          code = code.replace(old, new)
-          code = code.replace('#include <condition_variable>\n', '#include <condition_variable>\n#include <cstdio>\n', 1)
-          pool.write_text(code)
-          plan = Path("core/src/plan.cpp")
-          code = plan.read_text()
-          marker = '// Decoder context and reusable buffers for one worker.\nstruct WorkerState {'
-          assert code.count(marker) == 1
-          code = code.replace(marker, 'std::mutex g_worker_state_free_mutex;\n\n' + marker)
-          marker = '    WorkerState() {'
-          assert code.count(marker) == 1
-          code = code.replace(marker, marker + '\n        std::fprintf(stderr, "worker state create %p dctx %p\\n", static_cast<void*>(this), static_cast<void*>(dctx)); std::fflush(stderr);')
-          code = code.replace('#include <numeric>\n', '#include <numeric>\n#include <optional>\n', 1)
-          old = '    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }'
-          new = '''    ~WorkerState() {
-                  std::fprintf(stderr, "worker state free begin %p dctx %p\\n", static_cast<void*>(this), static_cast<void*>(dctx)); std::fflush(stderr);
-                  std::lock_guard guard(g_worker_state_free_mutex);
-                  if (dctx && !std::getenv("RUMI_TRACE_SKIP_DCTX_FREE")) ZL_DCtx_free(dctx);
-                  std::fprintf(stderr, "worker state free done\\n"); std::fflush(stderr);
-              }'''
-          assert code.count(old) == 1
-          code = code.replace(old, new)
-          marker = '    WorkerState& ws = worker_state();'
-          assert code.count(marker) == 1
-          code = code.replace(marker, '''    std::optional<WorkerState> local;
-              if (std::getenv("RUMI_TRACE_LOCAL_WORKER_STATE")) local.emplace();
-              WorkerState& ws = local ? *local : worker_state();
-              std::fprintf(stderr, "worker state use %p dctx %p\\n", static_cast<void*>(&ws), static_cast<void*>(ws.dctx)); std::fflush(stderr);''')
-          marker = '        compressed, t.compressed_size);'
-          assert code.count(marker) == 1
-          code = code.replace(marker, marker + '\n    std::fprintf(stderr, "worker state after decode %p dctx %p\\n", static_cast<void*>(&ws), static_cast<void*>(ws.dctx)); std::fflush(stderr);')
-          plan.write_text(code)
-          copyfile(pool, "bindings/r/src/ext/r/include/rumi/thread_pool.hpp")
-          copyfile(plan, "bindings/r/src/ext/r/src/plan.cpp")
-          PY
-      - name: Install R package
-        shell: bash
-        run: R CMD INSTALL bindings/r
-      - name: Trace R package exit
-        id: r_load
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        run: Rscript -e 'library(rumi); cat("package loaded\n")'
-      - name: Trace GeoZL test exit
-        id: r_geozl
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-geozl.R", reporter="progress"); cat("GeoZL tests done\n")'
-      - name: Trace read test exit
-        id: r_read
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-read.R", reporter="progress"); cat("read tests done\n")'
-      - name: Trace early pool shutdown
-        id: r_early
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); evalq(.Call(rumi_r_shutdown_pool), asNamespace("rumi")); cat("early shutdown done\n")'
-      - name: Trace settings exit without decoder free
-        id: r_settings
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        env:
-          RUMI_TRACE_SKIP_DCTX_FREE: '1'
-        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); cat("settings tests done\n")'
-      - name: Trace settings with stack decoder context
-        id: r_local
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        env:
-          RUMI_TRACE_LOCAL_WORKER_STATE: '1'
-        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); cat("stack context tests done\n")'
-      - name: Trace write test exit
-        id: r_write
-        shell: bash
-        timeout-minutes: 3
-        continue-on-error: true
-        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-write.R", reporter="progress"); cat("write tests done\n")'
-      - name: Check source package
-        if: steps.r_load.outcome == 'success' && steps.r_geozl.outcome == 'success' && steps.r_read.outcome == 'success' && steps.r_early.outcome == 'success' && steps.r_settings.outcome == 'success' && steps.r_local.outcome == 'success' && steps.r_write.outcome == 'success'
-        shell: bash
-        timeout-minutes: 20
-        run: |
-          set -euo pipefail
+          Rscript -e 'roxygen2::roxygenise("bindings/r")'
           R CMD build bindings/r
           if ! _R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_*.tar.gz; then
             test ! -f rumi.Rcheck/00install.out || cat rumi.Rcheck/00install.out
             exit 1
           fi
           sh tools/r_check_status.sh rumi.Rcheck/00check.log
-      - name: Check R process exits
-        if: always()
-        shell: bash
-        run: |
-          test '${{ steps.r_load.outcome }}' = success
-          test '${{ steps.r_geozl.outcome }}' = success
-          test '${{ steps.r_read.outcome }}' = success
-          test '${{ steps.r_early.outcome }}' = success
-          test '${{ steps.r_settings.outcome }}' = success
-          test '${{ steps.r_local.outcome }}' = success
-          test '${{ steps.r_write.outcome }}' = success
 
   core:
     name: Core (${{ matrix.name }})
