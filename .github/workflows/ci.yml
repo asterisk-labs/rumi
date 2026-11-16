@@ -187,14 +187,43 @@ jobs:
           python tools/sync_r_vendor.py --check
           Rscript -e 'roxygen2::roxygenise("bindings/r")'
           R CMD build bindings/r
-      - name: Trace R test cleanup
+      - name: Install R package
         shell: bash
-        timeout-minutes: 15
-        run: |
-          R CMD INSTALL rumi_*.tar.gz
-          Rscript -e 'testthat::test_dir("bindings/r/tests/testthat", reporter="progress"); gc(); detach("package:rumi", unload=TRUE); cat("dll unload start\n"); flush(stdout()); dyn.unload(getLoadedDLLs()[["rumi"]][["path"]]); cat("dll unload done\n"); flush(stdout())'
+        run: R CMD INSTALL rumi_*.tar.gz
+      - name: Trace R package exit
+        id: r_load
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        run: Rscript -e 'library(rumi); cat("package loaded\n")'
+      - name: Trace GeoZL test exit
+        id: r_geozl
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-geozl.R", reporter="progress"); cat("GeoZL tests done\n")'
+      - name: Trace read test exit
+        id: r_read
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-read.R", reporter="progress"); cat("read tests done\n")'
+      - name: Trace settings test exit
+        id: r_settings
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); cat("settings tests done\n")'
+      - name: Trace write test exit
+        id: r_write
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-write.R", reporter="progress"); cat("write tests done\n")'
       - name: Check source package
+        if: steps.r_load.outcome == 'success' && steps.r_geozl.outcome == 'success' && steps.r_read.outcome == 'success' && steps.r_settings.outcome == 'success' && steps.r_write.outcome == 'success'
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           if ! _R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_*.tar.gz; then
@@ -202,6 +231,15 @@ jobs:
             exit 1
           fi
           sh tools/r_check_status.sh rumi.Rcheck/00check.log
+      - name: Check R process exits
+        if: always()
+        shell: bash
+        run: |
+          test '${{ steps.r_load.outcome }}' = success
+          test '${{ steps.r_geozl.outcome }}' = success
+          test '${{ steps.r_read.outcome }}' = success
+          test '${{ steps.r_settings.outcome }}' = success
+          test '${{ steps.r_write.outcome }}' = success
 
   core:
     name: Core (${{ matrix.name }})
