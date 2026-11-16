@@ -11,7 +11,7 @@ rumi_geozl_graph(
   planes = NULL,
   error = NULL,
   nodata = NULL,
-  datatype = NULL
+  dtype = NULL
 )
 }
 \arguments{
@@ -28,15 +28,16 @@ and zero mean lossless.}
 \item{nodata}{A sentinel for missing samples. Pass \code{NaN} to mark all NaNs;
 float rasters with NaNs also detect them when \code{nodata} is \code{NULL}.}
 
-\item{datatype}{Storage type, as \code{\link[=rumi_frames]{rumi_frames()}} takes it. terra's
+\item{dtype}{Storage type, as \code{\link[=rumi_frames]{rumi_frames()}} takes it. terra's
 \code{"INT2U"} and GDAL's \code{"UInt16"} names are accepted too. A frame from
-\code{\link[=rumi_frames]{rumi_frames()}} uses its own datatype and refuses another. Otherwise it
+\code{\link[=rumi_frames]{rumi_frames()}} uses its own dtype and refuses another. Otherwise it
 defaults to \code{"int32"} for integer, \code{"float64"} for double, \code{"uint8"} for
 raw and \code{"bool"} for logical input.}
 }
 \value{
-A \code{rumi_geozl_graph}. Its native context is not safe for concurrent
-calls and does not survive a new R session.
+A \code{rumi_geozl_graph} with the fields \code{method}, \code{width}, \code{planes},
+\code{dtype}, \code{itemsize}, \code{error} and \code{nodata}. Its native context is not safe
+for concurrent calls and does not survive a new R session.
 }
 \description{
 Build a graph with the GeoZL linked into Rumi. It fixes the recipe, storage
@@ -47,11 +48,21 @@ type and predictor geometry for later tiles.
 for arrays with at least three dimensions. Row predictors restart at each
 plane.
 
-Samples are converted to \code{datatype} before compression. Integer values must
+Samples are converted to \code{dtype} before compression. Integer values must
 fit exactly; a raw vector already contains native samples.
+
+A bad argument stops with a plain error whose call is \code{NULL}. R checks what
+the core cannot see in the words the geozl R package uses, and the core
+checks the error text, the plane split and the dtype. A refusal by the
+native library follows Rumi's rule. An invalid request, such as an unknown
+recipe, is a plain error, and any other refusal signals a
+\verb{rumi_error_<kind>} condition.
+
+Rumi covers building a graph and compressing a tile. Decompression,
+profiling and frame coefficients live in the geozl package.
 }
 \examples{
 tile <- matrix(1000L + 1:(64 * 64) \%\% 97L, 64, 64)
-g <- rumi_geozl_graph(tile, "planar>zigzag>pfor", datatype = "uint16")
+g <- rumi_geozl_graph(tile, "planar>zigzag>pfor", dtype = "uint16")
 frame <- rumi_geozl_compress(tile, g)
 }

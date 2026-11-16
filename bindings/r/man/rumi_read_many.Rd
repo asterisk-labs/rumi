@@ -2,26 +2,37 @@
 % Please edit documentation in R/rumi.R
 \name{rumi_read_many}
 \alias{rumi_read_many}
-\title{Read one window from several Rumi datasets}
+\title{Read one window from several Rumi sources}
 \usage{
 rumi_read_many(
-  files,
+  sources,
+  headers = NULL,
   windows = NULL,
-  bands = NULL,
   time = NULL,
+  bands = NULL,
   pattern = NULL
 )
 }
 \arguments{
-\item{files}{A list of datasets from \code{\link[=rumi_open]{rumi_open()}}.}
+\item{sources}{A list of datasets from \code{\link[=rumi_open]{rumi_open()}}, or a list or
+character vector of paths and raw vectors, read with \code{headers} and
+closed after the read.}
+
+\item{headers}{A list with one raw external header per source when
+\code{sources} are not datasets.}
 
 \item{windows}{A list or matrix with one \verb{(row, column, height, width)} row
-per dataset. All windows have the same height and width.}
+per source. All windows have the same height and width. A \code{NULL} entry,
+or \code{NULL} for all, reads the whole image.}
 
-\item{bands, time}{One-based indices, in output order, or \code{NULL} for all.}
+\item{time, bands}{One-based indices, in output order, or \code{NULL} for all.}
 
 \item{pattern}{Optional Rumi output pattern.}
 }
+\value{
+An array with a last \code{n} dimension, one entry per source.
+}
 \description{
-Read one window from several Rumi datasets
+Paths and raw vectors are read with their headers alone, as in
+\code{\link[=rumi_read]{rumi_read()}}, so the result then has no band or time dimnames.
 }

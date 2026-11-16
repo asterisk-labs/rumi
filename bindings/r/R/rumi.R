@@ -8,9 +8,41 @@
   header
 }
 
+# Whole UTC days read back as Date, as Python returns date.
+.time_values <- function(seconds) {
+  if (all(seconds %% 86400 == 0))
+    return(as.Date(seconds / 86400))
+  as.POSIXct(seconds, origin = "1970-01-01", tz = "UTC")
+}
+
+.time_text <- function(time) {
+  if (inherits(time, "Date"))
+    return(format(time))
+  format(time, tz = "UTC", usetz = TRUE)
+}
+
+.ordinal <- function(n) {
+  suffix <- if (n %% 100 %in% 11:13) "th" else
+    switch(as.character(n %% 10), "1" = "st", "2" = "nd", "3" = "rd", "th")
+  paste0(n, suffix)
+}
+
+# Seconds from 0001-01-01 to 9999-12-31T23:59:59 UTC, the years the writer
+# and the other bindings accept.
+.time_limits <- c(-62135596800, 253402300799)
+
 .metadata <- function(value) {
   if (!is.null(value$time)) {
-    time <- as.POSIXct(value$time, origin = "1970-01-01", tz = "UTC")
+    outside <- which(value$time < .time_limits[[1L]] |
+                     value$time > .time_limits[[2L]])
+    if (length(outside)) {
+      step <- outside[[1L]]
+      if (identical(value$time_kind, "interval"))
+        step <- (step + 1L) %/% 2L
+      .rumi_error("format", sprintf(
+        "the %s time step falls outside the years 1 to 9999", .ordinal(step)))
+    }
+    time <- .time_values(value$time)
     if (identical(value$time_kind, "interval")) {
       index <- matrix(seq_along(time), ncol = 2L, byrow = TRUE)
       time <- time[as.vector(index)]
@@ -23,47 +55,95 @@
   value
 }
 
+# The C glue signals every native status other than an invalid request here.
+.rumi_error <- function(kind, message) {
+  stop(structure(
+    class = c(paste0("rumi_error_", kind), "rumi_error", "error", "condition"),
+    list(message = message, call = NULL, kind = kind)
+  ))
+}
+
+.source <- function(source) {
+  if (is.raw(source))
+    return(source)
+  if (!is.character(source) || length(source) != 1L || is.na(source) ||
+      !nzchar(source))
+    stop("`source` must be one non-empty path or a raw vector of file bytes",
+         call. = FALSE)
+  enc2utf8(path.expand(source))
+}
+
 #' Open a Rumi source
 #'
-#' `path` and its external `header` stay paired for every partial read.
+#' `source` and its external `header` stay paired for every partial read.
 #' Opening validates the header against the source and reads its metadata.
 #'
-#' @param path Local path, URI or VSI path.
+#' @param source A local path, URI or VSI path, or the file's bytes as a raw
+#'   vector. The dataset keeps a raw vector alive while it is open.
 #' @param header Raw external-header bytes.
-#' @return A `rumi_dataset`.
+#' @return A `rumi_dataset` list with `pointer`, `source`, `header` and
+#'   `metadata`.
 #' @export
-rumi_open <- function(path, header) {
-  if (!is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path))
-    stop("`path` must be one non-empty string", call. = FALSE)
-  value <- .rumi_call(rumi_r_open, enc2utf8(path.expand(path)), .header(header))
-  value$metadata <- .metadata(value$metadata)
+rumi_open <- function(source, header) .open(source, header, TRUE)
+
+# A one-shot read skips the check, which reads the index and trailer and costs
+# range requests on a remote source, so its metadata holds the header alone.
+.open <- function(source, header, check) {
+  value <- .rumi_call(rumi_r_open, .source(source), .header(header), check)
+  value$metadata <- tryCatch(.metadata(value$metadata), error = function(e) {
+    .rumi_call(rumi_r_close, value$pointer)
+    stop(e)
+  })
   class(value) <- "rumi_dataset"
   value
 }
 
 #' Close a Rumi dataset
-#' @param file A dataset returned by [rumi_open()].
+#' @param dataset A dataset returned by [rumi_open()].
 #' @export
-rumi_close <- function(file) {
-  .file(file)
-  invisible(.rumi_call(rumi_r_close, file$pointer))
+rumi_close <- function(dataset) {
+  .dataset(dataset)
+  invisible(.rumi_call(rumi_r_close, dataset$pointer))
 }
 
-.file <- function(file) {
-  if (!inherits(file, "rumi_dataset") || !is.list(file) ||
-      !identical(names(file), c("pointer", "path", "header", "metadata")))
-    stop("`file` must come from rumi_open()", call. = FALSE)
-  file
+.dataset <- function(dataset, name = "dataset") {
+  if (!inherits(dataset, "rumi_dataset") || !is.list(dataset) ||
+      !identical(names(dataset), c("pointer", "source", "header", "metadata")))
+    stop(sprintf("`%s` must come from rumi_open()", name), call. = FALSE)
+  dataset
 }
 
-#' Inspect a Rumi dataset
-#' @param file A dataset returned by [rumi_open()].
+#' Inspect a Rumi source or header
+#'
+#' A source alone is read and its canonical external header rebuilt. A header
+#' alone opens nothing, so `bands`, `time`, `time_kind`, `transform`, `crs`
+#' and `pixel_is_point` are `NULL`. Given both, Rumi checks that they match.
+#'
+#' @param source A dataset returned by [rumi_open()], a local path, URI or VSI
+#'   path, or the file's bytes as a raw vector.
+#' @param header Raw external-header bytes. A dataset already carries one.
+#' @return A `rumi_metadata` list. Its `time` holds `Date` values when every
+#'   coordinate is a whole UTC day and UTC `POSIXct` values otherwise.
 #' @export
-rumi_info <- function(file) .file(file)$metadata
+rumi_info <- function(source = NULL, header = NULL) {
+  if (inherits(source, "rumi_dataset")) {
+    if (!is.null(header))
+      stop("`header` is already carried by this dataset", call. = FALSE)
+    return(.dataset(source, "source")$metadata)
+  }
+  if (!is.null(source))
+    source <- .source(source)
+  if (!is.null(header))
+    header <- .header(header)
+  .metadata(.rumi_call(rumi_r_info, source, header))
+}
 
 .selection <- function(value, name) {
   if (is.null(value))
     return(NULL)
+  if (!is.null(dim(value)))
+    stop(sprintf("`%s` must be a vector of indices, not a matrix or array", name),
+         call. = FALSE)
   if (!is.numeric(value) || anyNA(value) ||
       any(!is.finite(value)) || any(value != floor(value)))
     stop(sprintf("`%s` must contain whole, one-based indices", name),
@@ -94,13 +174,13 @@ rumi_info <- function(file) .file(file)$metadata
   value
 }
 
-.decorate <- function(x, file, bands, time, batch = FALSE) {
-  metadata <- file$metadata
+.decorate <- function(x, dataset, bands, time, batch = FALSE) {
+  metadata <- dataset$metadata
   axes <- c("x", "y", "band")
   if (metadata$time_count > 1L)
     axes <- c(axes, "time")
   if (batch)
-    axes <- c(axes, "sample")
+    axes <- c(axes, "n")
   attr(x, "rumi_axes") <- axes
   attr(x, "rumi_metadata") <- metadata
 
@@ -113,13 +193,10 @@ rumi_info <- function(file) .file(file)$metadata
   if (metadata$time_count > 1L && length(metadata$time)) {
     if (is.matrix(metadata$time)) {
       picked <- metadata$time[picked_time, , drop = FALSE]
-      labels$time <- paste(
-        format(picked[, 1L], tz = "UTC", usetz = TRUE),
-        format(picked[, 2L], tz = "UTC", usetz = TRUE),
-        sep = "/"
-      )
+      labels$time <- paste(.time_text(picked[, 1L]), .time_text(picked[, 2L]),
+                           sep = "/")
     } else {
-      labels$time <- format(metadata$time[picked_time], tz = "UTC", usetz = TRUE)
+      labels$time <- .time_text(metadata$time[picked_time])
     }
   }
   dimnames(x) <- labels
@@ -132,73 +209,128 @@ rumi_info <- function(file) .file(file)$metadata
 #' `(row, column, height, width)`. The returned Image is `(X, Y, Band)` and a
 #' Cube is `(X, Y, Band, Time)`, matching R's column-major memory order.
 #'
-#' @param file A dataset returned by [rumi_open()]. Alternatively, a path when
-#'   `header` is supplied.
-#' @param header External header when `file` is a path.
-#' @param bands,time One-based indices, in output order, or `NULL` for all.
+#' A path or raw vector is read with its header alone, without reading the
+#' index and trailer or checking the pair as [rumi_open()] does. The result
+#' then has no band or time dimnames, and its `rumi_metadata` attribute holds
+#' only the header's fields.
+#'
+#' Native failures other than an invalid request signal a condition of class
+#' `rumi_error_<kind>` and `rumi_error`, with the kind, such as `"io"` or
+#' `"decode"`, in its `kind` field.
+#'
+#' @param source A dataset returned by [rumi_open()]. Alternatively, a path or
+#'   a raw vector of file bytes, read with `header` and closed after the
+#'   read.
+#' @param header External header when `source` is not a dataset.
+#' @param time,bands One-based indices, in output order, or `NULL` for all.
 #' @param window One-based `(row, column, height, width)`, or `NULL` for all.
 #' @param pattern Optional Rumi output pattern.
 #' @export
-rumi_read <- function(file, header = NULL, bands = NULL, time = NULL,
+rumi_read <- function(source, header = NULL, time = NULL, bands = NULL,
                       window = NULL, pattern = NULL) {
-  owned <- is.character(file)
-  if (owned) {
-    file <- rumi_open(file, .header(header))
-    on.exit(rumi_close(file), add = TRUE)
-  } else if (!is.null(header)) {
-    stop("`header` is already carried by this dataset", call. = FALSE)
+  if (inherits(source, "rumi_dataset")) {
+    if (!is.null(header))
+      stop("`header` is already carried by this dataset", call. = FALSE)
+    dataset <- .dataset(source, "source")
+  } else {
+    dataset <- .open(source, header, FALSE)
+    on.exit(rumi_close(dataset), add = TRUE)
   }
-  file <- .file(file)
-  bands <- .selection(bands, "bands")
   time <- .selection(time, "time")
-  x <- .rumi_call(rumi_r_read, file$pointer, time, bands,
+  bands <- .selection(bands, "bands")
+  x <- .rumi_call(rumi_r_read, dataset$pointer, time, bands,
                   .window(window), .pattern(pattern))
   if (is.null(pattern))
-    x <- .decorate(x, file, bands, time)
+    x <- .decorate(x, dataset, bands, time)
   x
 }
 
-#' Read one window from several Rumi datasets
+#' Read one window from several Rumi sources
 #'
-#' @param files A list of datasets from [rumi_open()].
+#' Paths and raw vectors are read with their headers alone, as in
+#' [rumi_read()], so the result then has no band or time dimnames.
+#'
+#' @param sources A list of datasets from [rumi_open()], or a list or
+#'   character vector of paths and raw vectors, read with `headers` and
+#'   closed after the read.
+#' @param headers A list with one raw external header per source when
+#'   `sources` are not datasets.
 #' @param windows A list or matrix with one `(row, column, height, width)` row
-#'   per dataset. All windows have the same height and width.
+#'   per source. All windows have the same height and width. A `NULL` entry,
+#'   or `NULL` for all, reads the whole image.
 #' @inheritParams rumi_read
+#' @return An array with a last `n` dimension, one entry per source.
 #' @export
-rumi_read_many <- function(files, windows = NULL, bands = NULL, time = NULL,
-                           pattern = NULL) {
-  if (inherits(files, "rumi_dataset"))
-    stop("`files` must be a list of Rumi datasets; use list(file)",
+rumi_read_many <- function(sources, headers = NULL, windows = NULL, time = NULL,
+                           bands = NULL, pattern = NULL) {
+  if (inherits(sources, "rumi_dataset") || is.raw(sources))
+    stop("`sources` must be a list with one entry per item; use list(source)",
          call. = FALSE)
-  if (!is.list(files) || !length(files))
-    stop("`files` must be a non-empty list of Rumi datasets", call. = FALSE)
-  files <- lapply(files, .file)
+  if (is.character(sources))
+    sources <- as.list(sources)
+  if (!is.list(sources) || !length(sources))
+    stop("`sources` must be a non-empty list of datasets or sources",
+         call. = FALSE)
+  opened <- vapply(sources, inherits, logical(1), "rumi_dataset")
+  if (all(opened)) {
+    if (!is.null(headers))
+      stop("`headers` are already carried by these datasets", call. = FALSE)
+    datasets <- lapply(sources, .dataset, "sources")
+  } else if (any(opened)) {
+    stop("`sources` cannot mix datasets and bare sources", call. = FALSE)
+  } else {
+    if (!is.list(headers) || length(headers) != length(sources))
+      stop("`headers` must be a list with one raw header per source",
+           call. = FALSE)
+    datasets <- vector("list", length(sources))
+    on.exit(lapply(Filter(Negate(is.null), datasets), rumi_close), add = TRUE)
+    for (i in seq_along(sources))
+      datasets[[i]] <- .open(sources[[i]], headers[[i]], FALSE)
+  }
   if (is.null(windows)) {
-    windows <- vector("list", length(files))
+    windows <- vector("list", length(datasets))
   } else if (is.matrix(windows)) {
     windows <- lapply(seq_len(nrow(windows)), function(i) windows[i, ])
   }
-  if (!is.list(windows) || length(windows) != length(files))
-    stop("`windows` must have one window per dataset", call. = FALSE)
+  if (!is.list(windows) || length(windows) != length(datasets))
+    stop("`windows` must have one window per source", call. = FALSE)
   windows <- lapply(windows, .window)
-  bands <- .selection(bands, "bands")
   time <- .selection(time, "time")
-  x <- .rumi_call(rumi_r_read_many, lapply(files, `[[`, "pointer"), windows,
+  bands <- .selection(bands, "bands")
+  x <- .rumi_call(rumi_r_read_many, lapply(datasets, `[[`, "pointer"), windows,
                   time, bands, .pattern(pattern))
   if (is.null(pattern))
-    x <- .decorate(x, files[[1L]], bands, time, batch = TRUE)
+    x <- .decorate(x, datasets[[1L]], bands, time, batch = TRUE)
   x
 }
 
-.datatype <- function(value, x) {
+.dtype <- function(value, x) {
   if (is.null(value))
     return(switch(typeof(x), integer = "int32", double = "float64",
                   raw = "uint8", logical = "bool", complex = "complex128",
                   stop("`x` must be a raw, logical, integer, double or complex array",
                        call. = FALSE)))
   if (!is.character(value) || length(value) != 1L || is.na(value) || !nzchar(value))
-    stop("`datatype` must be one sample type such as \"uint16\"", call. = FALSE)
+    stop("`dtype` must be one sample type such as \"uint16\"", call. = FALSE)
   value
+}
+
+.frame_pattern <- function(pattern) {
+  if (!is.character(pattern) || length(pattern) != 1L || is.na(pattern) ||
+      !nzchar(pattern))
+    stop("`pattern` must be one frame pattern", call. = FALSE)
+  enc2utf8(pattern)
+}
+
+.tile_size <- function(tile_size) {
+  if (!is.numeric(tile_size) || length(tile_size) != 1L || is.na(tile_size) ||
+      tile_size != floor(tile_size))
+    stop("`tile_size` must be a whole number", call. = FALSE)
+  if (tile_size < 0)
+    stop("`tile_size` must not be negative", call. = FALSE)
+  if (tile_size > 65535)
+    stop("`tile_size` must be at most 65535", call. = FALSE)
+  as.integer(tile_size)
 }
 
 #' Cut an array into frames
@@ -211,34 +343,93 @@ rumi_read_many <- function(files, windows = NULL, bands = NULL, time = NULL,
 #' @param x An array of samples.
 #' @param pattern A frame pattern.
 #' @param tile_size Height and width of a square tile, from 1 to 65535.
-#' @param datatype The sample type the payloads are compressed as, such as
+#' @param dtype The sample type the payloads are compressed as, such as
 #'   `"uint16"`. Defaults to `"int32"` for integer arrays, `"float64"` for
-#'   double, `"uint8"` for raw and `"bool"` for logical.
+#'   double, `"uint8"` for raw, `"bool"` for logical and `"complex128"` for
+#'   complex.
 #' @return A `rumi_frames` list with `data`, one array per frame in file
 #'   order, `compressed`, a list of `NULL` to fill, and the layout of the file.
-#'   Each frame carries `datatype` as its `rumi_datatype` attribute, which
-#'   [rumi_geozl_graph()] uses.
+#'   `tiles_across` and `tiles_down` give the grid. `row`, `col`, `band` and
+#'   `time` give each frame's one-based position. `band` and `time` are `NULL`
+#'   unless frames are split by that axis. Each frame carries `dtype` as its
+#'   `rumi_dtype` attribute, which [rumi_geozl_graph()] uses.
 #' @export
-rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
+rumi_frames <- function(x, pattern, tile_size = 512L, dtype = NULL) {
   if (is.null(dim(x)))
     stop("`x` must be an array", call. = FALSE)
-  if (!is.character(pattern) || length(pattern) != 1L || is.na(pattern) ||
-      !nzchar(pattern))
-    stop("`pattern` must be one frame pattern", call. = FALSE)
-  if (!is.numeric(tile_size) || length(tile_size) != 1L || is.na(tile_size) ||
-      tile_size != floor(tile_size))
-    stop("`tile_size` must be a whole number", call. = FALSE)
-  if (tile_size < 0)
-    stop("`tile_size` must not be negative", call. = FALSE)
-  if (tile_size > 65535)
-    stop("`tile_size` must be at most 65535", call. = FALSE)
-  datatype <- .datatype(datatype, x)
-  value <- .rumi_call(rumi_r_frames, x, enc2utf8(pattern), as.integer(tile_size),
-                      datatype)
-  value$compressed <- vector("list", length(value$data))
-  value$datatype <- datatype
+  pattern <- .frame_pattern(pattern)
+  tile_size <- .tile_size(tile_size)
+  dtype <- .dtype(dtype, x)
+  value <- .rumi_call(rumi_r_frames, x, pattern, tile_size, dtype)
+  value <- c(value[1L], list(compressed = vector("list", length(value$data))),
+             value[-1L])
+  value$dtype <- dtype
+  value$pattern <- trimws(pattern)
   class(value) <- "rumi_frames"
   value
+}
+
+#' Find where the first frame starts
+#'
+#' Returns the byte offset of the first frame without cutting an array, which
+#' is also the size of everything a file stores before its first frame.
+#'
+#' @param shape The dimensions of the array [rumi_frames()] would cut, in
+#'   `dim()` order, the reverse of the pattern's input axes.
+#' @inheritParams rumi_frames
+#' @return The offset in bytes, as a double.
+#' @export
+rumi_frame_start <- function(shape, pattern, tile_size = 512L) {
+  if (!is.numeric(shape) || !length(shape) || anyNA(shape) ||
+      any(!is.finite(shape)) || any(shape != floor(shape)) || any(shape < 0))
+    stop("`shape` must hold whole, non-negative dimensions", call. = FALSE)
+  .rumi_call(rumi_r_frame_start, as.double(shape), .frame_pattern(pattern),
+             .tile_size(tile_size))
+}
+
+#' Thread and checksum settings
+#'
+#' The thread count and OpenZL checksum verification are process-wide. Set
+#' them before the first read. The first parallel read pins the thread count
+#' and the first decoded frame pins checksum verification, after which a
+#' change signals a `rumi_error_state` condition. `RUMI_NUM_THREADS` and
+#' `RUMI_VERIFY` give the initial values.
+#'
+#' @param n A whole number of threads from 1 to 1024.
+#' @param on `TRUE` to verify OpenZL checksums.
+#' @return The setters return the accepted value invisibly. The getters
+#'   return the current value.
+#' @name rumi_settings
+NULL
+
+#' @rdname rumi_settings
+#' @export
+rumi_set_num_threads <- function(n) {
+  if (!is.numeric(n) || length(n) != 1L || is.na(n) || n != floor(n) ||
+      abs(n) > .Machine$integer.max)
+    stop("`n` must be one whole number", call. = FALSE)
+  n <- as.integer(n)
+  .rumi_call(rumi_r_set_num_threads, n)
+  invisible(n)
+}
+
+#' @rdname rumi_settings
+#' @export
+rumi_get_num_threads <- function() .rumi_call(rumi_r_get_num_threads)
+
+#' @rdname rumi_settings
+#' @export
+rumi_set_checksum_verification <- function(on) {
+  if (!is.logical(on) || length(on) != 1L || is.na(on))
+    stop("`on` must be TRUE or FALSE", call. = FALSE)
+  .rumi_call(rumi_r_set_checksum_verification, on)
+  invisible(on)
+}
+
+#' @rdname rumi_settings
+#' @export
+rumi_get_checksum_verification <- function() {
+  .rumi_call(rumi_r_get_checksum_verification)
 }
 
 .iso_seconds <- function(text) {
@@ -319,18 +510,18 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
   list(kind = kind, seconds = as.double(seconds))
 }
 
+# EPSG codes span 1 to 2^32 - 1, past R's integer range, so they travel as
+# doubles.
 .epsg <- function(crs) {
-  if (is.numeric(crs) && length(crs) == 1L && !is.na(crs) &&
-      crs == floor(crs) && crs >= 1 && crs <= .Machine$integer.max)
-    return(as.integer(crs))
+  if (inherits(crs, "crs"))
+    crs <- crs$epsg
   if (is.character(crs) && length(crs) == 1L && !is.na(crs)) {
     text <- sub("^EPSG:", "", trimws(crs), ignore.case = TRUE)
-    if (grepl("^[0-9]+$", text)) {
-      code <- suppressWarnings(as.integer(text))
-      if (!is.na(code) && code > 0L)
-        return(code)
-    }
+    crs <- if (grepl("^[0-9]+$", text)) as.numeric(text)
   }
+  if (is.numeric(crs) && length(crs) == 1L && !is.na(crs) &&
+      crs == floor(crs) && crs >= 1 && crs <= 4294967295)
+    return(as.double(crs))
   stop("`crs` must be an EPSG code, such as 32631 or \"EPSG:32631\"", call. = FALSE)
 }
 
@@ -358,7 +549,8 @@ rumi_frames <- function(x, pattern, tile_size = 512L, datatype = NULL) {
 #'   pass a two-column matrix or a list of start and end pairs.
 #' @param transform Six affine coefficients in rasterio order,
 #'   `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`, given with `crs`.
-#' @param crs An EPSG code, such as `32631` or `"EPSG:32631"`.
+#' @param crs An EPSG code from 1 to 4294967295, such as `32631` or
+#'   `"EPSG:32631"`, or an sf `crs` object with an EPSG code.
 #' @param pixel_is_point Whether coordinates refer to pixel centres rather
 #'   than corners.
 #' @return The external header as a raw vector. Keep it with the path.
@@ -383,7 +575,7 @@ rumi_write <- function(path, frames, bands, time, transform = NULL, crs = NULL,
   shape <- c(frames$image_width, frames$image_length, frames$time_count,
              frames$tile_size, frames$bands, frames$frame_unit)
   .rumi_call(rumi_r_write, enc2utf8(path.expand(path)), frames$compressed,
-             as.double(shape), frames$datatype,
+             as.double(shape), frames$dtype,
              if (!is.null(transform)) .transform(transform),
              if (!is.null(crs)) .epsg(crs), pixel_is_point, enc2utf8(bands),
              axis$kind, as.double(axis$seconds))
@@ -394,7 +586,7 @@ print.rumi_frames <- function(x, ...) {
   done <- sum(vapply(x$compressed, is.raw, logical(1)))
   cat("<Rumi frames> ", length(x$data), " frames of ", x$layout, ", ",
       x$image_width, " x ", x$image_length, " in tiles of ", x$tile_size, ", ",
-      x$datatype, ", ", done, " compressed\n", sep = "")
+      x$dtype, ", ", done, " compressed\n", sep = "")
   invisible(x)
 }
 
@@ -411,18 +603,15 @@ print.rumi_metadata <- function(x, ...) {
   cat("  dtype:", x$dtype, "\n")
   cat("  tile:", paste(x$tile, collapse = " x "), "\n")
   cat("  frame layout:", x$frame_layout, "\n")
-  cat("  bands:", paste(x$bands, collapse = ", "), "\n")
+  if (!is.null(x$bands))
+    cat("  bands:", paste(x$bands, collapse = ", "), "\n")
   if (!is.null(x$crs))
-    cat("  CRS: EPSG:", x$crs, "\n", sep = "")
+    cat("  CRS: EPSG:", format(x$crs, scientific = FALSE), "\n", sep = "")
   if (length(x$time)) {
     first <- if (is.matrix(x$time)) {
-      paste(
-        format(x$time[1L, 1L], tz = "UTC", usetz = TRUE),
-        format(x$time[1L, 2L], tz = "UTC", usetz = TRUE),
-        sep = "/"
-      )
+      paste(.time_text(x$time[1L, 1L]), .time_text(x$time[1L, 2L]), sep = "/")
     } else {
-      format(x$time[[1L]], tz = "UTC", usetz = TRUE)
+      .time_text(x$time[[1L]])
     }
     cat("  time:", first, "...\n")
   }

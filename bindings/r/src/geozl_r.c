@@ -7,28 +7,51 @@
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+
+void rumi_r_raise(rumi_status status, const char *message);
+
+// A bad argument, without a call, as stop(call. = FALSE) gives in the R code.
+// The texts mirror the geozl R package.
+#define bad(...) Rf_errorcall(R_NilValue, __VA_ARGS__)
 
 static void fail(rumi_status status) {
   if (status == RUMI_OK)
     return;
   const char *message = rumi_last_error();
-  Rf_error("%s", message == NULL ? "librumi failed" : message);
+  char copy[1024];
+  snprintf(copy, sizeof copy, "%s",
+           message == NULL ? "librumi failed" : message);
+  rumi_r_raise(status, copy);
 }
 
-static rumi_dtype dtype_arg(SEXP s, size_t *width) {
+// The R code resolves names and aliases, so only a canonical name arrives.
+static const rumi_dtype_info *dtype_arg(SEXP s) {
   if (!Rf_isString(s) || XLENGTH(s) != 1 || STRING_ELT(s, 0) == NA_STRING)
-    Rf_error("`datatype` must be one sample type such as \"uint16\"");
+    bad("`dtype` must be a single string");
   const char *name = Rf_translateCharUTF8(STRING_ELT(s, 0));
   const rumi_dtype_info *registry = NULL;
   size_t count = rumi_dtype_registry(&registry);
+  for (size_t i = 0; i < count; ++i)
+    if (strcmp(registry[i].name, name) == 0)
+      return registry + i;
+  bad("unknown dtype \"%s\"", name);
+}
+
+// Storage bytes per sample, named by every Rumi sample type.
+SEXP rumi_r_dtype_sizes(void) {
+  const rumi_dtype_info *registry = NULL;
+  size_t count = rumi_dtype_registry(&registry);
+  SEXP out = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)count));
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t)count));
   for (size_t i = 0; i < count; ++i) {
-    if (strcmp(registry[i].name, name) == 0) {
-      *width = registry[i].storage_bytes;
-      return (rumi_dtype)registry[i].code;
-    }
+    INTEGER(out)[i] = (int)registry[i].storage_bytes;
+    SET_STRING_ELT(names, (R_xlen_t)i, Rf_mkChar(registry[i].name));
   }
-  Rf_error("`datatype` is not a Rumi sample type");
+  Rf_setAttrib(out, R_NamesSymbol, names);
+  UNPROTECT(2);
+  return out;
 }
 
 static int is_int_type(rumi_dtype d) {
@@ -102,37 +125,46 @@ static void store(uint8_t *p, rumi_dtype d, double v) {
   }
 }
 
-static void check_value(rumi_dtype d, double v, const char *what) {
+// Fails unless v, sample i of x, can be stored as d. Floats round to nearest.
+static void check_value(const rumi_dtype_info *info, double v, R_xlen_t i) {
+  rumi_dtype d = (rumi_dtype)info->code;
   if (d == RUMI_DT_BOOL) {
     if (v != 0 && v != 1)
-      Rf_error("%s is not TRUE or FALSE", what);
+      bad("value %.17g at position %.0f is not TRUE or FALSE", v,
+          (double)i + 1);
   } else if (is_int_type(d)) {
     if (!int_fits(d, v))
-      Rf_error("%s does not fit the integer datatype", what);
+      bad("value %.17g at position %.0f does not fit %s", v, (double)i + 1,
+          info->name);
   } else if (d == RUMI_DT_FLOAT32) {
     if (R_FINITE(v) && fabs(v) > FLT_MAX)
-      Rf_error("%s is outside the float32 range", what);
+      bad("value %.17g at position %.0f is outside the float32 range", v,
+          (double)i + 1);
   } else if (d == RUMI_DT_FLOAT16) {
     int overflow;
     f64_to_f16(v, &overflow);
     if (overflow)
-      Rf_error("%s is outside the float16 range", what);
+      bad("value %.17g at position %.0f is outside the float16 range", v,
+          (double)i + 1);
   }
 }
 
 // Preserve float64 NaN payloads when no sentinel is given.
 SEXP rumi_r_geozl_pack(SEXP x, SEXP dtype_s, SEXP nodata_s) {
-  size_t w;
-  rumi_dtype d = dtype_arg(dtype_s, &w);
+  const rumi_dtype_info *info = dtype_arg(dtype_s);
+  rumi_dtype d = (rumi_dtype)info->code;
+  size_t w = info->storage_bytes;
   if (TYPEOF(x) == RAWSXP) {
     if ((size_t)XLENGTH(x) % w != 0)
-      Rf_error("a raw `x` must hold whole samples of the datatype");
+      bad("a raw vector of %s samples needs a length divisible by %d",
+          info->name, (int)w);
     return x;
   }
   if (TYPEOF(x) != INTSXP && TYPEOF(x) != REALSXP && TYPEOF(x) != LGLSXP)
-    Rf_error("`x` must be a double, integer, logical or raw vector");
+    bad("`x` must be a double, integer, logical or raw vector, not %s",
+        Rf_type2char(TYPEOF(x)));
   if (!packs(d))
-    Rf_error("this datatype takes `x` as raw samples");
+    bad("%s samples take `x` as a raw vector", info->name);
   int hasNodata = !Rf_isNull(nodata_s);
   double nodata = hasNodata ? Rf_asReal(nodata_s) : 0.0;
   R_xlen_t n = XLENGTH(x);
@@ -155,21 +187,17 @@ SEXP rumi_r_geozl_pack(SEXP x, SEXP dtype_s, SEXP nodata_s) {
       if (hasNodata)
         v = nodata;
       else if (d == RUMI_DT_BOOL)
-        Rf_error("`x` has NA, which a bool datatype cannot hold");
+        bad("`x` has NA at position %.0f, which a bool dtype cannot hold",
+            (double)i + 1);
       else if (is_int_type(d))
-        Rf_error("`x` has NA; an integer datatype needs `nodata` to mark it");
+        bad("`x` has NA at position %.0f; an integer dtype needs `nodata` "
+            "to mark it", (double)i + 1);
     }
-    check_value(d, v, "a value of `x`");
+    check_value(info, v, i);
     store(dst + (size_t)i * w, d, v);
   }
   UNPROTECT(1);
   return out;
-}
-
-SEXP rumi_r_geozl_itemsize(SEXP dtype_s) {
-  size_t w;
-  dtype_arg(dtype_s, &w);
-  return Rf_ScalarInteger((int)w);
 }
 
 static void graph_finalizer(SEXP ptr) {
@@ -180,19 +208,25 @@ static void graph_finalizer(SEXP ptr) {
 static rumi_geozl_graph *graph_of(SEXP ptr) {
   if (TYPEOF(ptr) != EXTPTRSXP ||
       R_ExternalPtrTag(ptr) != Rf_install("rumi_geozl_graph"))
-    Rf_error("`graph` must come from rumi_geozl_graph()");
+    bad("`graph` must come from rumi_geozl_graph()");
   rumi_geozl_graph *g = R_ExternalPtrAddr(ptr);
   if (g == NULL)
-    Rf_error("this graph is no longer open; a saved graph does not survive a "
-             "new session, build it again with rumi_geozl_graph()");
+    bad("this graph is no longer open; a saved graph does not survive a "
+        "new session, build it again with rumi_geozl_graph()");
   return g;
 }
 
-static uint32_t count_arg(SEXP s, const char *message) {
+static uint32_t u32_arg(SEXP s, const char *name) {
   double v = Rf_isNumeric(s) && XLENGTH(s) == 1 ? Rf_asReal(s) : NA_REAL;
-  if (!R_FINITE(v) || v < 0 || v > 4294967295.0 || v != floor(v))
-    Rf_error("%s", message);
+  if (!R_FINITE(v) || v < 1 || v > 4294967295.0 || v != floor(v))
+    bad("`%s` must be a whole number from 1 to 4294967295", name);
   return (uint32_t)v;
+}
+
+static const char *string_arg(SEXP s, const char *name) {
+  if (!Rf_isString(s) || XLENGTH(s) != 1 || STRING_ELT(s, 0) == NA_STRING)
+    bad("`%s` must be a single string", name);
+  return Rf_translateCharUTF8(STRING_ELT(s, 0));
 }
 
 // OpenZL needs a non-null pointer even for an empty stream.
@@ -203,16 +237,12 @@ static const void *raw_samples(SEXP bytes) {
 
 SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
                         SEXP error_s, SEXP dtype_s, SEXP nodata_s) {
-  if (!Rf_isString(method_s) || XLENGTH(method_s) != 1 ||
-      STRING_ELT(method_s, 0) == NA_STRING)
-    Rf_error("`method` must be a recipe such as \"planar>zigzag>pfor\"");
-  if (!Rf_isNull(error_s) && (!Rf_isString(error_s) || XLENGTH(error_s) != 1))
-    Rf_error("`error` must be a single number, percentage or recipe");
-  size_t w;
-  rumi_dtype d = dtype_arg(dtype_s, &w);
-  uint32_t width = count_arg(width_s, "`width` must be a single whole number");
-  uint32_t planes = count_arg(planes_s, "`planes` must be a single whole number");
-  const char *error = Rf_isNull(error_s) ? NULL : Rf_translateCharUTF8(STRING_ELT(error_s, 0));
+  const rumi_dtype_info *info = dtype_arg(dtype_s);
+  rumi_dtype d = (rumi_dtype)info->code;
+  const char *method = string_arg(method_s, "method");
+  const char *error = Rf_isNull(error_s) ? NULL : string_arg(error_s, "error");
+  uint32_t width = u32_arg(width_s, "width");
+  uint32_t planes = u32_arg(planes_s, "planes");
 
   // The core rejects sentinels for unsupported types; the sample is unused.
   uint8_t sample[8] = {0};
@@ -220,10 +250,13 @@ SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
   if (!Rf_isNull(nodata_s)) {
     double v = Rf_asReal(nodata_s);
     if (packs(d) && d != RUMI_DT_BOOL) {
+      // The core sees only the stored sample, so the range is checked here.
       if (ISNAN(v) && is_int_type(d))
-        Rf_error("an integer raster cannot use NaN as nodata");
-      if (!ISNAN(v))
-        check_value(d, v, "`nodata`");
+        bad("a %s raster cannot use NaN as nodata", info->name);
+      int outside = is_int_type(d) ? !int_fits(d, v)
+                    : d == RUMI_DT_FLOAT32 && R_FINITE(v) && fabs(v) > FLT_MAX;
+      if (!ISNAN(v) && outside)
+        bad("nodata %.17g does not fit %s", v, info->name);
       store(sample, d, v);
     }
     nodata = sample;
@@ -233,9 +266,9 @@ SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
   SEXP ptr = PROTECT(R_MakeExternalPtr(NULL, Rf_install("rumi_geozl_graph"), R_NilValue));
   R_RegisterCFinalizerEx(ptr, graph_finalizer, TRUE);
   rumi_geozl_graph *g = NULL;
-  fail(rumi_geozl_graph_open(Rf_translateCharUTF8(STRING_ELT(method_s, 0)), d,
-                             raw_samples(bytes), (size_t)XLENGTH(bytes), width,
-                             planes, error, nodata, &g));
+  fail(rumi_geozl_graph_open(method, d, raw_samples(bytes),
+                             (size_t)XLENGTH(bytes), width, planes, error,
+                             nodata, &g));
   R_SetExternalPtrAddr(ptr, g);
   UNPROTECT(1);
   return ptr;
@@ -266,8 +299,7 @@ SEXP rumi_r_geozl_error(SEXP ptr) {
 
 SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s) {
   rumi_geozl_graph *g = graph_of(ptr);
-  size_t w;
-  rumi_dtype d = dtype_arg(dtype_s, &w);
+  rumi_dtype d = (rumi_dtype)dtype_arg(dtype_s)->code;
   frame_copy c = {NULL, 0};
   fail(rumi_geozl_compress(g, d, raw_samples(bytes), (size_t)XLENGTH(bytes),
                            &c.frame, &c.size));

@@ -1,7 +1,8 @@
 # rumi for R
 
 R reader and writer for Rumi Image and Cube files. The external header is
-always paired with the path when a dataset is opened.
+always paired with the source, a path or the file's bytes as a raw vector, when
+a dataset is opened.
 
 The source package builds its bundled native code. It needs CMake, libcurl and
 OpenSSL; no separate Rumi installation is required.
@@ -10,19 +11,26 @@ OpenSSL; no separate Rumi installation is required.
 library(rumi)
 
 header <- readBin("scene.header", "raw", file.info("scene.header")$size)
-file <- rumi_open("scene.rumi", header)
-chip <- rumi_read(file, bands = c(4, 8), time = 1:3,
+dataset <- rumi_open("scene.rumi", header)
+chip <- rumi_read(dataset, time = 1:3, bands = c(4, 8),
                   window = c(1, 1, 256, 256))
-metadata <- rumi_info(file)
-rumi_close(file)
+metadata <- rumi_info(dataset)
+rumi_close(dataset)
+
+# A file without its external header rebuilds it.
+header <- rumi_info("scene.rumi")$header
 ```
 
 Selections and window origins are one-based. The window order is
 `(row, column, height, width)`. An Image is returned as an array shaped
 `(X, Y, Band)` and a Cube as `(X, Y, Band, Time)`. The exact affine transform,
-CRS, band descriptions and time coordinates stay in `rumi_info(file)` and in
+CRS, band descriptions and time coordinates stay in `rumi_info(dataset)` and in
 the array's `rumi_metadata` attribute. Metadata keeps Rumi's canonical
 `(Band, Y, X)` or `(Time, Band, Y, X)` shape.
+
+Native failures other than a bad request signal a condition of class
+`rumi_error_<kind>` and `rumi_error`, such as `rumi_error_io`, so
+`tryCatch(..., rumi_error_io = ...)` can retry a network read.
 
 ## Writing
 
@@ -35,10 +43,10 @@ library(rumi)
 
 image <- array(sample(0:4095, 1024 * 1024 * 4, TRUE), c(1024, 1024, 4))
 frames <- rumi_frames(image, "b (row h) (col w) -> row col b (h w)",
-                      tile_size = 256, datatype = "uint16")
+                      tile_size = 256, dtype = "uint16")
 for (i in seq_along(frames$data)) {
   tile <- frames$data[[i]]
-  graph <- rumi_geozl_graph(tile, "planar>zigzag>pfor", datatype = "uint16")
+  graph <- rumi_geozl_graph(tile, "planar>zigzag>pfor")
   frames$compressed[[i]] <- rumi_geozl_compress(tile, graph)
 }
 header <- rumi_write("scene.rumi", frames, bands = c("B02", "B03", "B04", "B08"),
@@ -47,5 +55,9 @@ header <- rumi_write("scene.rumi", frames, bands = c("B02", "B03", "B04", "B08")
 writeBin(header, "scene.header")
 ```
 
-Patterns use the same axis names as Python. R holds those axes in reverse:
+Patterns use the same axis names as Python. R holds those axes in reverse, so
 this image is `(X, Y, Band)`, and each frame is ready for `rumi_geozl_graph()`.
+
+`rumi_geozl_graph()` and `rumi_geozl_compress()` refuse bad arguments in the
+words of the [geozl](https://asterisk.coop/geozl/) packages. They cover graph
+and compress only. Decompress, profile and coeffs live in the geozl package.

@@ -30,7 +30,8 @@ pass a two-column matrix or a list of start and end pairs.}
 \item{transform}{Six affine coefficients in rasterio order,
 \verb{(x_res, row_rot, x_origin, col_rot, y_res, y_origin)}, given with \code{crs}.}
 
-\item{crs}{An EPSG code, such as \code{32631} or \code{"EPSG:32631"}.}
+\item{crs}{An EPSG code from 1 to 4294967295, such as \code{32631} or
+\code{"EPSG:32631"}, or an sf \code{crs} object with an EPSG code.}
 
 \item{pixel_is_point}{Whether coordinates refer to pixel centres rather
 than corners.}

@@ -1,13 +1,18 @@
 useDynLib(rumi, .registration = TRUE)
 
 export(rumi_close)
+export(rumi_frame_start)
 export(rumi_frames)
 export(rumi_geozl_compress)
 export(rumi_geozl_graph)
+export(rumi_get_checksum_verification)
+export(rumi_get_num_threads)
 export(rumi_info)
 export(rumi_open)
 export(rumi_read)
 export(rumi_read_many)
+export(rumi_set_checksum_verification)
+export(rumi_set_num_threads)
 export(rumi_write)
 
 S3method(print, rumi_dataset)

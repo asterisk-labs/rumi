@@ -4,10 +4,10 @@
 \alias{rumi_close}
 \title{Close a Rumi dataset}
 \usage{
-rumi_close(file)
+rumi_close(dataset)
 }
 \arguments{
-\item{file}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}.}
+\item{dataset}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}.}
 }
 \description{
 Close a Rumi dataset

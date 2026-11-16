@@ -7,7 +7,7 @@
 rumi_geozl_compress(x, graph)
 }
 \arguments{
-\item{x}{Tile samples, converted to the graph's datatype. Its geometry is
+\item{x}{Tile samples, converted to the graph's dtype. Its geometry is
 not checked against the graph.}
 
 \item{graph}{A graph from \code{\link[=rumi_geozl_graph]{rumi_geozl_graph()}}.}

@@ -4,17 +4,19 @@
 \alias{rumi_open}
 \title{Open a Rumi source}
 \usage{
-rumi_open(path, header)
+rumi_open(source, header)
 }
 \arguments{
-\item{path}{Local path, URI or VSI path.}
+\item{source}{A local path, URI or VSI path, or the file's bytes as a raw
+vector. The dataset keeps a raw vector alive while it is open.}
 
 \item{header}{Raw external-header bytes.}
 }
 \value{
-A \code{rumi_dataset}.
+A \code{rumi_dataset} list with \code{pointer}, \code{source}, \code{header} and
+\code{metadata}.
 }
 \description{
-\code{path} and its external \code{header} stay paired for every partial read.
+\code{source} and its external \code{header} stay paired for every partial read.
 Opening validates the header against the source and reads its metadata.
 }

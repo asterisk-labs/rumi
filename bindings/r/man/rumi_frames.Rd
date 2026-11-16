@@ -4,7 +4,7 @@
 \alias{rumi_frames}
 \title{Cut an array into frames}
 \usage{
-rumi_frames(x, pattern, tile_size = 512L, datatype = NULL)
+rumi_frames(x, pattern, tile_size = 512L, dtype = NULL)
 }
 \arguments{
 \item{x}{An array of samples.}
@@ -13,15 +13,18 @@ rumi_frames(x, pattern, tile_size = 512L, datatype = NULL)
 
 \item{tile_size}{Height and width of a square tile, from 1 to 65535.}
 
-\item{datatype}{The sample type the payloads are compressed as, such as
+\item{dtype}{The sample type the payloads are compressed as, such as
 \code{"uint16"}. Defaults to \code{"int32"} for integer arrays, \code{"float64"} for
-double, \code{"uint8"} for raw and \code{"bool"} for logical.}
+double, \code{"uint8"} for raw, \code{"bool"} for logical and \code{"complex128"} for
+complex.}
 }
 \value{
 A \code{rumi_frames} list with \code{data}, one array per frame in file
 order, \code{compressed}, a list of \code{NULL} to fill, and the layout of the file.
-Each frame carries \code{datatype} as its \code{rumi_datatype} attribute, which
-\code{\link[=rumi_geozl_graph]{rumi_geozl_graph()}} uses.
+\code{tiles_across} and \code{tiles_down} give the grid. \code{row}, \code{col}, \code{band} and
+\code{time} give each frame's one-based position. \code{band} and \code{time} are \code{NULL}
+unless frames are split by that axis. Each frame carries \code{dtype} as its
+\code{rumi_dtype} attribute, which \code{\link[=rumi_geozl_graph]{rumi_geozl_graph()}} uses.
 }
 \description{
 The pattern names axes in C order; R holds them in reverse. For example,

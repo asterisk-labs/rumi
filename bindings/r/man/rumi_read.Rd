@@ -5,21 +5,22 @@
 \title{Read a partial Rumi array}
 \usage{
 rumi_read(
-  file,
+  source,
   header = NULL,
-  bands = NULL,
   time = NULL,
+  bands = NULL,
   window = NULL,
   pattern = NULL
 )
 }
 \arguments{
-\item{file}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}. Alternatively, a path when
-\code{header} is supplied.}
+\item{source}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}. Alternatively, a path or
+a raw vector of file bytes, read with \code{header} and closed after the
+read.}
 
-\item{header}{External header when \code{file} is a path.}
+\item{header}{External header when \code{source} is not a dataset.}
 
-\item{bands, time}{One-based indices, in output order, or \code{NULL} for all.}
+\item{time, bands}{One-based indices, in output order, or \code{NULL} for all.}
 
 \item{window}{One-based \verb{(row, column, height, width)}, or \code{NULL} for all.}
 
@@ -29,4 +30,14 @@ rumi_read(
 \code{bands}, \code{time} and window origins use R's one-based indexing. \code{window} is
 \verb{(row, column, height, width)}. The returned Image is \verb{(X, Y, Band)} and a
 Cube is \verb{(X, Y, Band, Time)}, matching R's column-major memory order.
+}
+\details{
+A path or raw vector is read with its header alone, without reading the
+index and trailer or checking the pair as \code{\link[=rumi_open]{rumi_open()}} does. The result
+then has no band or time dimnames, and its \code{rumi_metadata} attribute holds
+only the header's fields.
+
+Native failures other than an invalid request signal a condition of class
+\verb{rumi_error_<kind>} and \code{rumi_error}, with the kind, such as \code{"io"} or
+\code{"decode"}, in its \code{kind} field.
 }

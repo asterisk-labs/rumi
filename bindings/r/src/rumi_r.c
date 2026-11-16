@@ -13,27 +13,65 @@
 #include <stdlib.h>
 #include <string.h>
 
-void rumi_r_abort(void) { Rf_error("OpenZL failed an internal check"); }
+// Every error raised here has no call, as stop(call. = FALSE) gives in the R
+// code.
+#define bad(...) Rf_errorcall(R_NilValue, __VA_ARGS__)
+
+void rumi_r_abort(void) { bad("OpenZL failed an internal check"); }
 
 typedef struct {
   rumi_source *source;
   rumi_spec *spec;
 } dataset;
 
+static const char *status_kind(rumi_status status) {
+  switch (status) {
+  case RUMI_ERR_IO: return "io";
+  case RUMI_ERR_PARSE: return "parse";
+  case RUMI_ERR_FORMAT: return "format";
+  case RUMI_ERR_DECODE: return "decode";
+  case RUMI_ERR_OOM: return "oom";
+  case RUMI_ERR_UNSUPPORTED: return "unsupported";
+  case RUMI_ERR_STATE: return "state";
+  default: return "internal";
+  }
+}
+
+// Copy the message so native state can be released before R unwinds.
+static void error_copy(char *out, size_t size) {
+  const char *message = rumi_last_error();
+  snprintf(out, size, "%s", message == NULL ? "librumi failed" : message);
+}
+
+// An invalid request is a plain R error; every other status signals a
+// classed rumi_error built by .rumi_error() in the package namespace.
+void rumi_r_raise(rumi_status status, const char *message) {
+  if (status == RUMI_ERR_INVALID)
+    bad("%s", message);
+  SEXP kind = PROTECT(Rf_mkString(status_kind(status)));
+  SEXP text = PROTECT(Rf_ScalarString(Rf_mkCharCE(message, CE_UTF8)));
+  SEXP call = PROTECT(Rf_lang3(Rf_install(".rumi_error"), kind, text));
+  SEXP ns = PROTECT(R_FindNamespace(Rf_mkString("rumi")));
+  Rf_eval(call, ns);
+  UNPROTECT(4);
+  bad("%s", message);
+}
+
 static void fail(rumi_status status) {
   if (status == RUMI_OK)
     return;
-  const char *message = rumi_last_error();
-  Rf_error("%s", message == NULL ? "librumi failed" : message);
+  char copy[1024];
+  error_copy(copy, sizeof copy);
+  rumi_r_raise(status, copy);
 }
 
 static dataset *dataset_of(SEXP pointer) {
   if (TYPEOF(pointer) != EXTPTRSXP ||
       R_ExternalPtrTag(pointer) != Rf_install("rumi_dataset"))
-    Rf_error("invalid Rumi dataset pointer");
+    bad("invalid Rumi dataset pointer");
   dataset *value = R_ExternalPtrAddr(pointer);
   if (value == NULL || value->source == NULL || value->spec == NULL)
-    Rf_error("this Rumi dataset is closed");
+    bad("this Rumi Dataset is closed");
   return value;
 }
 
@@ -67,7 +105,7 @@ static const rumi_dtype_info *dtype_info(rumi_dtype dtype) {
   for (size_t i = 0; i < count; ++i)
     if (registry[i].code == (uint8_t)dtype)
       return registry + i;
-  Rf_error("librumi returned unknown dtype code %d", (int)dtype);
+  bad("librumi returned unknown dtype code %d", (int)dtype);
 }
 
 static SEXP metadata_to_r(rumi_metadata *metadata) {
@@ -121,29 +159,33 @@ static SEXP metadata_to_r(rumi_metadata *metadata) {
   SET_VECTOR_ELT(out, 6, order);
   SET_VECTOR_ELT(out, 7, Rf_ScalarReal((double)frames));
 
-  SEXP bands = PROTECT(Rf_allocVector(STRSXP, metadata->band_text_count));
-  for (size_t i = 0; i < metadata->band_text_count; ++i)
-    SET_STRING_ELT(bands, i, Rf_mkCharCE(metadata->band_texts[i], CE_UTF8));
-  SET_VECTOR_ELT(out, 8, bands);
+  // A header alone carries no band texts, time or georeferencing.
+  if (metadata->has_source) {
+    SEXP bands = PROTECT(Rf_allocVector(STRSXP, metadata->band_text_count));
+    for (size_t i = 0; i < metadata->band_text_count; ++i)
+      SET_STRING_ELT(bands, i, Rf_mkCharCE(metadata->band_texts[i], CE_UTF8));
+    SET_VECTOR_ELT(out, 8, bands);
 
-  SEXP time = PROTECT(Rf_allocVector(REALSXP, metadata->time_coords));
-  for (size_t i = 0; i < metadata->time_coords; ++i)
-    REAL(time)[i] = (double)metadata->time[i];
-  SET_VECTOR_ELT(out, 9, time);
-  const char *kind = metadata->time_type == 1 ? "interval" :
-                     metadata->time_type == 2 ? "instant" : NULL;
-  SET_VECTOR_ELT(out, 10, kind == NULL ? R_NilValue : Rf_mkString(kind));
+    SEXP time = PROTECT(Rf_allocVector(REALSXP, metadata->time_coords));
+    for (size_t i = 0; i < metadata->time_coords; ++i)
+      REAL(time)[i] = (double)metadata->time[i];
+    SET_VECTOR_ELT(out, 9, time);
+    const char *kind = metadata->time_type == 1 ? "interval" :
+                       metadata->time_type == 2 ? "instant" : NULL;
+    SET_VECTOR_ELT(out, 10, kind == NULL ? R_NilValue : Rf_mkString(kind));
 
-  if (metadata->epsg != 0) {
-    SEXP transform = PROTECT(Rf_allocVector(REALSXP, 6));
-    memcpy(REAL(transform), metadata->transform, 6 * sizeof(double));
-    SET_VECTOR_ELT(out, 11, transform);
-    SET_VECTOR_ELT(out, 12, Rf_ScalarReal(metadata->epsg));
-    UNPROTECT(1);
+    if (metadata->epsg != 0) {
+      SEXP transform = PROTECT(Rf_allocVector(REALSXP, 6));
+      memcpy(REAL(transform), metadata->transform, 6 * sizeof(double));
+      SET_VECTOR_ELT(out, 11, transform);
+      SET_VECTOR_ELT(out, 12, Rf_ScalarReal(metadata->epsg));
+      UNPROTECT(1);
+    }
+    SET_VECTOR_ELT(out, 13, Rf_ScalarLogical(metadata->pixel_is_point != 0));
+    UNPROTECT(2);
   }
-  SET_VECTOR_ELT(out, 13, Rf_ScalarLogical(metadata->pixel_is_point != 0));
   names(out, field_names, 14);
-  UNPROTECT(7);
+  UNPROTECT(5);
   return out;
 }
 
@@ -156,63 +198,115 @@ static void metadata_free_unwind(void *data, Rboolean jump) {
   rumi_metadata_free(data);
 }
 
-SEXP rumi_r_open(SEXP path_s, SEXP header_s) {
-  if (TYPEOF(path_s) != STRSXP || XLENGTH(path_s) != 1 ||
-      STRING_ELT(path_s, 0) == NA_STRING)
-    Rf_error("`path` must be one string");
-  if (TYPEOF(header_s) != RAWSXP)
-    Rf_error("`header` must be raw");
+// The UTF-8 path, or NULL for a raw vector of file bytes. Resolve it before
+// allocating native state, since the translation may raise.
+static const char *source_path(SEXP source_s) {
+  if (TYPEOF(source_s) == RAWSXP)
+    return NULL;
+  if (TYPEOF(source_s) != STRSXP || XLENGTH(source_s) != 1 ||
+      STRING_ELT(source_s, 0) == NA_STRING)
+    bad("`source` must be one path or a raw vector");
+  return Rf_translateCharUTF8(STRING_ELT(source_s, 0));
+}
 
+// A raw source borrows R's bytes, so the caller keeps the vector alive.
+static rumi_status source_open(SEXP source_s, const char *path,
+                               rumi_source **out) {
+  static const unsigned char empty = 0;
+  if (path != NULL)
+    return rumi_source_file(path, out);
+  return rumi_source_memory(XLENGTH(source_s) ? RAW(source_s) : &empty,
+                            (size_t)XLENGTH(source_s), out);
+}
+
+static const unsigned char *header_bytes(SEXP header_s) {
+  static const unsigned char empty = 0;
+  return XLENGTH(header_s) ? RAW(header_s) : &empty;
+}
+
+// check reads the index and trailer to validate the pair. A one-shot read
+// skips it, as Python does, and takes the header's fields alone.
+SEXP rumi_r_open(SEXP source_s, SEXP header_s, SEXP check_s) {
+  const char *path = source_path(source_s);
+  if (TYPEOF(header_s) != RAWSXP)
+    bad("`header` must be raw");
+
+  int check = Rf_asLogical(check_s) == TRUE;
+
+  // Register cleanup before allocating native state. The protected slot keeps
+  // a raw source alive as long as the pointer.
+  SEXP pointer = PROTECT(R_MakeExternalPtr(
+      NULL, Rf_install("rumi_dataset"),
+      TYPEOF(source_s) == RAWSXP ? source_s : R_NilValue));
+  R_RegisterCFinalizerEx(pointer, dataset_finalizer, TRUE);
   dataset *value = calloc(1, sizeof(*value));
   if (value == NULL)
-    Rf_error("could not allocate Rumi dataset");
-  rumi_status status = rumi_spec_parse(RAW(header_s), XLENGTH(header_s),
-                                       &value->spec);
+    bad("could not allocate Rumi dataset");
+  R_SetExternalPtrAddr(pointer, value);
+  rumi_status status = rumi_spec_parse(header_bytes(header_s),
+                                       XLENGTH(header_s), &value->spec);
   if (status == RUMI_OK)
-    status = rumi_source_file(Rf_translateCharUTF8(STRING_ELT(path_s, 0)),
-                              &value->source);
-  if (status != RUMI_OK) {
-    const char *message = rumi_last_error();
-    char copy[512];
-    snprintf(copy, sizeof copy, "%s",
-             message == NULL ? "librumi failed" : message);
-    dataset_close(value);
-    Rf_error("%s", copy);
-  }
-
+    status = source_open(source_s, path, &value->source);
   rumi_metadata native = {0};
-  status = rumi_info(value->source, RAW(header_s), XLENGTH(header_s), &native);
+  if (status == RUMI_OK)
+    status = rumi_info(check ? value->source : NULL, header_bytes(header_s),
+                       XLENGTH(header_s), &native);
   if (status != RUMI_OK) {
-    const char *message = rumi_last_error();
-    char copy[512];
-    snprintf(copy, sizeof copy, "%s",
-             message == NULL ? "librumi failed" : message);
+    char copy[1024];
+    error_copy(copy, sizeof copy);
     dataset_close(value);
-    Rf_error("%s", copy);
+    R_ClearExternalPtr(pointer);
+    rumi_r_raise(status, copy);
   }
 
-  SEXP pointer = PROTECT(R_MakeExternalPtr(
-      value, Rf_install("rumi_dataset"), R_NilValue));
-  R_RegisterCFinalizerEx(pointer, dataset_finalizer, TRUE);
   SEXP metadata = PROTECT(R_UnwindProtect(
       metadata_to_r_unwind, &native, metadata_free_unwind, &native, NULL));
   SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
   SET_VECTOR_ELT(out, 0, pointer);
-  SET_VECTOR_ELT(out, 1, path_s);
+  SET_VECTOR_ELT(out, 1, source_s);
   SET_VECTOR_ELT(out, 2, header_s);
   SET_VECTOR_ELT(out, 3, metadata);
-  static const char *const out_names[] = {"pointer", "path", "header", "metadata"};
+  static const char *const out_names[] = {"pointer", "source", "header",
+                                          "metadata"};
   names(out, out_names, 4);
   UNPROTECT(3);
   return out;
 }
 
+SEXP rumi_r_info(SEXP source_s, SEXP header_s) {
+  int has_source = !Rf_isNull(source_s), has_header = !Rf_isNull(header_s);
+  const char *path = has_source ? source_path(source_s) : NULL;
+  if (has_header && TYPEOF(header_s) != RAWSXP)
+    bad("`header` must be raw");
+
+  rumi_source *source = NULL;
+  rumi_status status =
+      has_source ? source_open(source_s, path, &source) : RUMI_OK;
+  rumi_metadata native = {0};
+  if (status == RUMI_OK)
+    status = rumi_info(source, has_header ? header_bytes(header_s) : NULL,
+                       has_header ? (size_t)XLENGTH(header_s) : 0, &native);
+  if (status != RUMI_OK) {
+    char copy[1024];
+    error_copy(copy, sizeof copy);
+    if (source != NULL)
+      rumi_source_free(source);
+    rumi_r_raise(status, copy);
+  }
+  // The metadata owns its copies, so the source can go before conversion.
+  if (source != NULL)
+    rumi_source_free(source);
+  return R_UnwindProtect(metadata_to_r_unwind, &native, metadata_free_unwind,
+                         &native, NULL);
+}
+
 SEXP rumi_r_close(SEXP pointer) {
   if (TYPEOF(pointer) != EXTPTRSXP ||
       R_ExternalPtrTag(pointer) != Rf_install("rumi_dataset"))
-    Rf_error("invalid Rumi dataset pointer");
+    bad("invalid Rumi dataset pointer");
   dataset_close(R_ExternalPtrAddr(pointer));
   R_ClearExternalPtr(pointer);
+  R_SetExternalPtrProtected(pointer, R_NilValue);
   return R_NilValue;
 }
 
@@ -225,7 +319,7 @@ static void selection(SEXP value, const char *name, int **out, size_t *count) {
     return;
   }
   if (TYPEOF(value) != INTSXP)
-    Rf_error("`%s` must be an integer vector or NULL", name);
+    bad("`%s` must be an integer vector or NULL", name);
   *count = (size_t)XLENGTH(value);
   *out = *count ? INTEGER(value) : &none;
 }
@@ -240,7 +334,7 @@ static void window(SEXP value, const rumi_header *h,
     return;
   }
   if (TYPEOF(value) != REALSXP || XLENGTH(value) != 4)
-    Rf_error("`window` must have four values");
+    bad("`window` must have four values");
   *y_off = (int)REAL(value)[0] - 1;
   *x_off = (int)REAL(value)[1] - 1;
   *y_size = (int)REAL(value)[2];
@@ -294,7 +388,7 @@ static void integer_samples(int *out, const uint8_t *src, rumi_dtype dtype,
     }
     return;
   default:
-    Rf_error("cannot convert dtype %d to an R integer array", (int)dtype);
+    bad("cannot convert dtype %d to an R integer array", (int)dtype);
   }
 }
 
@@ -316,12 +410,15 @@ static int real_samples(double *out, const uint8_t *src, rumi_dtype dtype,
       out[i] = value;
     }
     break;
+  // Warn when the double does not convert back to the stored integer. A
+  // value that rounds up to 2^64 or 2^63 does not convert back either.
   case RUMI_DT_UINT64: {
     for (R_xlen_t i = 0; i < samples; ++i) {
       uint64_t value;
       memcpy(&value, src + 8 * (size_t)i, 8);
-      inexact |= value > UINT64_C(9007199254740992);
       out[i] = (double)value;
+      inexact |= !(out[i] < 18446744073709551616.0 &&
+                   (uint64_t)out[i] == value);
     }
     break;
   }
@@ -329,9 +426,8 @@ static int real_samples(double *out, const uint8_t *src, rumi_dtype dtype,
     for (R_xlen_t i = 0; i < samples; ++i) {
       int64_t value;
       memcpy(&value, src + 8 * (size_t)i, 8);
-      inexact |= value > INT64_C(9007199254740992) ||
-                 value < -INT64_C(9007199254740992);
       out[i] = (double)value;
+      inexact |= !(out[i] < 9223372036854775808.0 && (int64_t)out[i] == value);
     }
     break;
   }
@@ -359,7 +455,7 @@ static int real_samples(double *out, const uint8_t *src, rumi_dtype dtype,
     break;
   }
   default:
-    Rf_error("cannot convert dtype %d to an R double array", (int)dtype);
+    bad("cannot convert dtype %d to an R double array", (int)dtype);
   }
   return inexact;
 }
@@ -389,7 +485,7 @@ static void set_dimensions(SEXP out, const rumi_layout *layout) {
   for (int i = 0; i < layout->ndim; ++i) {
     int64_t value = layout->shape[layout->ndim - i - 1];
     if (value > INT_MAX)
-      Rf_error("an output dimension exceeds R's integer limit");
+      bad("an output dimension exceeds R's integer limit");
     INTEGER(dims)[i] = (int)value;
   }
   Rf_setAttrib(out, R_DimSymbol, dims);
@@ -428,7 +524,8 @@ static SEXP decoded_array(SEXP bytes, rumi_dtype dtype,
     ++protect;
     int inexact = real_samples(REAL(out), RAW(bytes), dtype, samples);
     if (inexact)
-      Rf_warning("64-bit integer values above 2^53 lost precision as R doubles");
+      Rf_warningcall(R_NilValue, "64-bit integer values above 2^53 lost "
+                                 "precision as R doubles");
   }
 
   set_dimensions(out, layout);
@@ -443,7 +540,7 @@ static SEXP decoded_array(SEXP bytes, rumi_dtype dtype,
 
 static void fits_r(size_t bytes) {
   if (bytes > (size_t)R_XLEN_T_MAX)
-    Rf_error("Rumi output is too large for R");
+    bad("Rumi output is too large for R");
 }
 
 SEXP rumi_r_read(SEXP pointer, SEXP time_s, SEXP bands_s,
@@ -484,10 +581,10 @@ SEXP rumi_r_read(SEXP pointer, SEXP time_s, SEXP bands_s,
 SEXP rumi_r_read_many(SEXP pointers, SEXP windows_s, SEXP time_s,
                       SEXP bands_s, SEXP pattern_s) {
   if (TYPEOF(pointers) != VECSXP || XLENGTH(pointers) == 0)
-    Rf_error("`files` must not be empty");
+    bad("`sources` must not be empty");
   size_t n = (size_t)XLENGTH(pointers);
   if (TYPEOF(windows_s) != VECSXP || (size_t)XLENGTH(windows_s) != n)
-    Rf_error("`windows` must have one entry per dataset");
+    bad("`windows` must have one entry per source");
   rumi_read_item *items = (rumi_read_item *)R_alloc(n, sizeof(*items));
   rumi_header first;
   int y_size = 0, x_size = 0;
@@ -503,7 +600,7 @@ SEXP rumi_r_read_many(SEXP pointers, SEXP windows_s, SEXP time_s,
       y_size = item_y;
       x_size = item_x;
     } else if (item_y != y_size || item_x != x_size) {
-      Rf_error("every window must have the same height and width");
+      bad("every window must have the same height and width");
     }
     items[i] = (rumi_read_item){value->source, value->spec, y_off, x_off};
   }
@@ -546,7 +643,7 @@ static size_t element_size(SEXP x) {
   case CPLXSXP:
     return sizeof(Rcomplex);
   default:
-    Rf_error("`x` must be a raw, logical, integer, double or complex array");
+    bad("`x` must be a raw, logical, integer, double or complex array");
   }
 }
 
@@ -566,7 +663,7 @@ static uint8_t *elements(SEXP x) {
 }
 
 // R stores the pattern's axes, and each frame's axes, in reverse order.
-SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
+SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP dtype_s) {
   size_t width = element_size(x);
   rumi_frame_pattern p;
   fail(rumi_compile_frame_pattern(Rf_translateCharUTF8(STRING_ELT(pattern_s, 0)),
@@ -574,7 +671,7 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
   SEXP dims = Rf_getAttrib(x, R_DimSymbol);
   int ndim = Rf_isNull(dims) ? 1 : (int)XLENGTH(dims);
   if (ndim != p.input_ndim)
-    Rf_error("the pattern names %d axes, but `x` has %d dimensions",
+    bad("the pattern names %d axes, but `x` has %d dimensions",
              p.input_ndim, ndim);
 
   // indexed by rumi_axis; an axis the pattern omits has extent one
@@ -588,7 +685,7 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
     step *= n;
   }
   if (extent[RUMI_AXIS_BAND] > 65535)
-    Rf_error("`x` has %lld bands, more than the 65535 a file holds",
+    bad("`x` has %lld bands, more than the 65535 a file holds",
              (long long)extent[RUMI_AXIS_BAND]);
   uint16_t bands = (uint16_t)extent[RUMI_AXIS_BAND];
   uint32_t times = (uint32_t)extent[RUMI_AXIS_TIME];
@@ -602,17 +699,40 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
   fail(rumi_unit_name(unit, bands, times, layout, sizeof layout));
   int held_b = strchr(layout, 'b') != NULL;
   int held_t = strchr(layout, 't') != NULL;
+  uint32_t tiles_across, tiles_down;
   uint64_t count;
-  fail(rumi_frame_count(unit, across, length, tile, bands, times, NULL, NULL,
-                        &count));
+  fail(rumi_frame_count(unit, across, length, tile, bands, times,
+                        &tiles_across, &tiles_down, &count));
   if (count > (uint64_t)R_XLEN_T_MAX)
-    Rf_error("`x` cuts into more frames than an R list holds");
+    bad("`x` cuts into more frames than an R list holds");
+  // Band and time positions exist only for the axes the frame index walks.
+  uint8_t walked[2];
+  int nwalked = 0;
+  fail(rumi_unit_index_axes(unit, bands, times, walked, &nwalked));
+  int walks_b = 0, walks_t = 0;
+  for (int i = 0; i < nwalked; ++i) {
+    walks_b |= walked[i] == RUMI_AXIS_BAND;
+    walks_t |= walked[i] == RUMI_AXIS_TIME;
+  }
 
+  // R dims are int, so every one-based position fits an R integer.
   const uint8_t *src = elements(x);
   SEXP frames = PROTECT(Rf_allocVector(VECSXP, (R_xlen_t)count));
+  SEXP rows = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)count));
+  SEXP cols = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t)count));
+  SEXP band_at = PROTECT(walks_b ? Rf_allocVector(INTSXP, (R_xlen_t)count)
+                                 : R_NilValue);
+  SEXP time_at = PROTECT(walks_t ? Rf_allocVector(INTSXP, (R_xlen_t)count)
+                                 : R_NilValue);
   for (uint64_t k = 0; k < count; ++k) {
     rumi_frame_at at;
     fail(rumi_frame_locate(unit, across, length, tile, bands, times, k, &at));
+    INTEGER(rows)[k] = (int)at.row + 1;
+    INTEGER(cols)[k] = (int)at.col + 1;
+    if (walks_b)
+      INTEGER(band_at)[k] = (int)at.band + 1;
+    if (walks_t)
+      INTEGER(time_at)[k] = (int)at.time + 1;
     // the cut is ordered as held b, held t, h, w, which perm starts from
     int64_t cut[RUMI_MAX_AXES];
     int n = 0;
@@ -623,7 +743,7 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
     cut[n++] = stride[RUMI_AXIS_Y];
     cut[n++] = stride[RUMI_AXIS_X];
     if (n != at.ndim)
-      Rf_error("librumi returned a frame of %d axes for layout %s", at.ndim,
+      bad("librumi returned a frame of %d axes for layout %s", at.ndim,
                layout);
     int64_t base = (int64_t)at.row * tile * stride[RUMI_AXIS_Y] +
                    (int64_t)at.col * tile * stride[RUMI_AXIS_X];
@@ -657,15 +777,16 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
       INTEGER(frame_dims)[d] = (int)at.dims[at.ndim - 1 - d];
     Rf_setAttrib(frame, R_DimSymbol, frame_dims);
     // rumi_geozl_graph() reads it, so a frame compresses as the type it is written as.
-    Rf_setAttrib(frame, Rf_install("rumi_datatype"), datatype_s);
+    Rf_setAttrib(frame, Rf_install("rumi_dtype"), dtype_s);
     SET_VECTOR_ELT(frames, (R_xlen_t)k, frame);
     UNPROTECT(2);
   }
 
   static const char *const out_names[] = {
       "data", "layout", "frame_unit", "image_width", "image_length",
-      "tile_size", "bands", "time_count"};
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 8));
+      "tile_size", "bands", "time_count", "tiles_across", "tiles_down",
+      "row", "col", "band", "time"};
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 14));
   SET_VECTOR_ELT(out, 0, frames);
   SET_VECTOR_ELT(out, 1, Rf_mkString(layout));
   SET_VECTOR_ELT(out, 2, Rf_ScalarInteger(unit));
@@ -674,9 +795,47 @@ SEXP rumi_r_frames(SEXP x, SEXP pattern_s, SEXP tile_s, SEXP datatype_s) {
   SET_VECTOR_ELT(out, 5, Rf_ScalarInteger(tile));
   SET_VECTOR_ELT(out, 6, Rf_ScalarInteger(bands));
   SET_VECTOR_ELT(out, 7, Rf_ScalarReal(times));
-  names(out, out_names, 8);
-  UNPROTECT(2);
+  SET_VECTOR_ELT(out, 8, Rf_ScalarInteger((int)tiles_across));
+  SET_VECTOR_ELT(out, 9, Rf_ScalarInteger((int)tiles_down));
+  SET_VECTOR_ELT(out, 10, rows);
+  SET_VECTOR_ELT(out, 11, cols);
+  SET_VECTOR_ELT(out, 12, band_at);
+  SET_VECTOR_ELT(out, 13, time_at);
+  names(out, out_names, 14);
+  UNPROTECT(6);
   return out;
+}
+
+// shape is in R's dim() order, the reverse of the pattern's input axes.
+SEXP rumi_r_frame_start(SEXP shape_s, SEXP pattern_s, SEXP tile_s) {
+  rumi_frame_pattern p;
+  fail(rumi_compile_frame_pattern(Rf_translateCharUTF8(STRING_ELT(pattern_s, 0)),
+                                  &p));
+  if (XLENGTH(shape_s) != p.input_ndim)
+    bad("the pattern names %d axes, but `shape` has %d values",
+             p.input_ndim, (int)XLENGTH(shape_s));
+  double extent[6] = {1, 1, 1, 1, 1, 1};
+  for (int i = 0; i < p.input_ndim; ++i)
+    extent[p.input[i]] = REAL(shape_s)[p.input_ndim - 1 - i];
+  if (extent[RUMI_AXIS_BAND] > 65535)
+    bad("`shape` has %.0f bands, more than the 65535 a file holds",
+             extent[RUMI_AXIS_BAND]);
+  if (extent[RUMI_AXIS_TIME] > 4294967295.0 ||
+      extent[RUMI_AXIS_Y] > 4294967295.0 || extent[RUMI_AXIS_X] > 4294967295.0)
+    bad("`shape` values must be at most 4294967295");
+  uint16_t bands = (uint16_t)extent[RUMI_AXIS_BAND];
+  uint32_t times = (uint32_t)extent[RUMI_AXIS_TIME];
+  uint32_t length = (uint32_t)extent[RUMI_AXIS_Y];
+  uint32_t across = (uint32_t)extent[RUMI_AXIS_X];
+  uint16_t tile = (uint16_t)INTEGER(tile_s)[0];
+  uint8_t unit;
+  fail(rumi_frame_unit(&p, bands, times, &unit));
+  uint64_t count;
+  fail(rumi_frame_count(unit, across, length, tile, bands, times, NULL, NULL,
+                        &count));
+  uint64_t start;
+  fail(rumi_frame_start(bands, count, &start));
+  return Rf_ScalarReal((double)start);
 }
 
 static rumi_dtype dtype_named(const char *name) {
@@ -685,7 +844,7 @@ static rumi_dtype dtype_named(const char *name) {
   for (size_t i = 0; i < count; ++i)
     if (strcmp(registry[i].name, name) == 0)
       return (rumi_dtype)registry[i].code;
-  Rf_error("`datatype` \"%s\" is not a Rumi sample type", name);
+  bad("`dtype` \"%s\" is not a Rumi sample type", name);
 }
 
 SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
@@ -699,7 +858,7 @@ SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
   for (size_t i = 0; i < count; ++i) {
     SEXP payload = VECTOR_ELT(payloads_s, (R_xlen_t)i);
     if (TYPEOF(payload) != RAWSXP)
-      Rf_error("frame %zu has no payload", i + 1);
+      bad("frame %zu has no payload", i + 1);
     sizes[i] = (size_t)XLENGTH(payload);
     // Keep empty payloads distinct from null pointers.
     frames[i] = sizes[i] ? RAW(payload) : &empty;
@@ -715,7 +874,7 @@ SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
   desc.frame_unit = (uint8_t)shape[5];
   desc.dtype = dtype_named(Rf_translateCharUTF8(STRING_ELT(dtype_s, 0)));
   desc.transform = Rf_isNull(transform_s) ? NULL : REAL(transform_s);
-  desc.epsg = Rf_isNull(epsg_s) ? 0 : (uint32_t)INTEGER(epsg_s)[0];
+  desc.epsg = Rf_isNull(epsg_s) ? 0 : (uint32_t)REAL(epsg_s)[0];
   desc.pixel_is_point = LOGICAL(point_s)[0];
 
   size_t ntexts = (size_t)XLENGTH(texts_s);
@@ -743,22 +902,52 @@ SEXP rumi_r_write(SEXP path_s, SEXP payloads_s, SEXP shape_s, SEXP dtype_s,
   return header;
 }
 
+SEXP rumi_r_set_num_threads(SEXP n_s) {
+  fail(rumi_set_num_threads(INTEGER(n_s)[0]));
+  return R_NilValue;
+}
+
+SEXP rumi_r_get_num_threads(void) {
+  int n = 0;
+  fail(rumi_get_num_threads(&n));
+  return Rf_ScalarInteger(n);
+}
+
+SEXP rumi_r_set_checksum_verification(SEXP on_s) {
+  fail(rumi_set_checksum_verification(LOGICAL(on_s)[0] ? 1 : 0));
+  return R_NilValue;
+}
+
+SEXP rumi_r_get_checksum_verification(void) {
+  int on = 0;
+  fail(rumi_get_checksum_verification(&on));
+  return Rf_ScalarLogical(on != 0);
+}
+
 SEXP rumi_r_geozl_pack(SEXP x, SEXP dtype_s, SEXP nodata_s);
-SEXP rumi_r_geozl_itemsize(SEXP dtype_s);
+SEXP rumi_r_dtype_sizes(void);
 SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
                         SEXP error_s, SEXP dtype_s, SEXP nodata_s);
 SEXP rumi_r_geozl_error(SEXP ptr);
 SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);
 
 static const R_CallMethodDef calls[] = {
-    {"rumi_r_open", (DL_FUNC)&rumi_r_open, 2},
+    {"rumi_r_open", (DL_FUNC)&rumi_r_open, 3},
+    {"rumi_r_info", (DL_FUNC)&rumi_r_info, 2},
     {"rumi_r_close", (DL_FUNC)&rumi_r_close, 1},
     {"rumi_r_read", (DL_FUNC)&rumi_r_read, 5},
     {"rumi_r_read_many", (DL_FUNC)&rumi_r_read_many, 5},
     {"rumi_r_frames", (DL_FUNC)&rumi_r_frames, 4},
+    {"rumi_r_frame_start", (DL_FUNC)&rumi_r_frame_start, 3},
     {"rumi_r_write", (DL_FUNC)&rumi_r_write, 10},
+    {"rumi_r_set_num_threads", (DL_FUNC)&rumi_r_set_num_threads, 1},
+    {"rumi_r_get_num_threads", (DL_FUNC)&rumi_r_get_num_threads, 0},
+    {"rumi_r_set_checksum_verification",
+     (DL_FUNC)&rumi_r_set_checksum_verification, 1},
+    {"rumi_r_get_checksum_verification",
+     (DL_FUNC)&rumi_r_get_checksum_verification, 0},
     {"rumi_r_geozl_pack", (DL_FUNC)&rumi_r_geozl_pack, 3},
-    {"rumi_r_geozl_itemsize", (DL_FUNC)&rumi_r_geozl_itemsize, 1},
+    {"rumi_r_dtype_sizes", (DL_FUNC)&rumi_r_dtype_sizes, 0},
     {"rumi_r_geozl_graph", (DL_FUNC)&rumi_r_geozl_graph, 7},
     {"rumi_r_geozl_error", (DL_FUNC)&rumi_r_geozl_error, 1},
     {"rumi_r_geozl_compress", (DL_FUNC)&rumi_r_geozl_compress, 3},

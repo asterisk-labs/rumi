@@ -2,13 +2,22 @@
 % Please edit documentation in R/rumi.R
 \name{rumi_info}
 \alias{rumi_info}
-\title{Inspect a Rumi dataset}
+\title{Inspect a Rumi source or header}
 \usage{
-rumi_info(file)
+rumi_info(source = NULL, header = NULL)
 }
 \arguments{
-\item{file}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}.}
+\item{source}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}, a local path, URI or VSI
+path, or the file's bytes as a raw vector.}
+
+\item{header}{Raw external-header bytes. A dataset already carries one.}
+}
+\value{
+A \code{rumi_metadata} list. Its \code{time} holds \code{Date} values when every
+coordinate is a whole UTC day and UTC \code{POSIXct} values otherwise.
 }
 \description{
-Inspect a Rumi dataset
+A source alone is read and its canonical external header rebuilt. A header
+alone opens nothing, so \code{bands}, \code{time}, \code{time_kind}, \code{transform}, \code{crs}
+and \code{pixel_is_point} are \code{NULL}. Given both, Rumi checks that they match.
 }
