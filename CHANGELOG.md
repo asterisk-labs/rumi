@@ -126,6 +126,10 @@ Notable user-visible changes are recorded here.
   failed on that read.
 - Julia maps `RUMI_ERR_INVALID` to `ArgumentError`.
 
+### Fixed
+
+- R processes on Windows exit cleanly after a parallel read.
+
 ## [0.30.0] - 2026-11-11
 
 ### Breaking

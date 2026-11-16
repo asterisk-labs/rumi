@@ -930,6 +930,7 @@ SEXP rumi_r_geozl_graph(SEXP bytes, SEXP method_s, SEXP width_s, SEXP planes_s,
                         SEXP error_s, SEXP dtype_s, SEXP nodata_s);
 SEXP rumi_r_geozl_error(SEXP ptr);
 SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);
+SEXP rumi_r_shutdown_pool(void);
 
 static const R_CallMethodDef calls[] = {
     {"rumi_r_open", (DL_FUNC)&rumi_r_open, 3},
@@ -951,6 +952,7 @@ static const R_CallMethodDef calls[] = {
     {"rumi_r_geozl_graph", (DL_FUNC)&rumi_r_geozl_graph, 7},
     {"rumi_r_geozl_error", (DL_FUNC)&rumi_r_geozl_error, 1},
     {"rumi_r_geozl_compress", (DL_FUNC)&rumi_r_geozl_compress, 3},
+    {"rumi_r_shutdown_pool", (DL_FUNC)&rumi_r_shutdown_pool, 0},
     {NULL, NULL, 0}};
 
 void attribute_visible R_init_rumi(DllInfo *dll) {

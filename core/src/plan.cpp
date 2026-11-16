@@ -106,11 +106,14 @@ struct WorkerState {
     WorkerState& operator=(const WorkerState&) = delete;
 };
 
+// Windows DLL teardown can invalidate this thread-local state before its destructor.
+#ifndef _WIN32
 WorkerState& worker_state() noexcept
 {
     thread_local WorkerState ws;
     return ws;
 }
+#endif
 
 // Copy a plane row-wise when pixels are contiguous, otherwise sample-wise.
 void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
@@ -184,12 +187,12 @@ void say(std::string& out, const char* fmt, ...) noexcept
 rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
                          TransportSession* transport,
                          std::byte* output,
-                         std::string& msg) noexcept
+                         std::string& msg,
+                         WorkerState& ws) noexcept
 {
     char item[32] = "";
     if (t.item) std::snprintf(item, sizeof item, " (item %zu)", t.item);
 
-    WorkerState& ws = worker_state();
     if (!ws.dctx) {
         say(msg, "rumi: could not allocate OpenZL decompression context");
         return RUMI_ERR_OOM;
@@ -351,10 +354,11 @@ bool Executor::run(std::span<const FrameTask> tasks,
     std::atomic<int> st{RUMI_OK};
     std::mutex       first;
 
-    const auto run_one = [&st, &first, this, &spec, transport, output](const FrameTask& t) {
+    const auto run_one = [&st, &first, this, &spec, transport, output](
+        const FrameTask& t, WorkerState& ws) {
         if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
         std::string msg;
-        const rumi_status r = execute_task(t, spec, transport, output, msg);
+        const rumi_status r = execute_task(t, spec, transport, output, msg, ws);
         if (r != RUMI_OK) {
             int expected = RUMI_OK;
             if (st.compare_exchange_strong(expected, r,
@@ -387,13 +391,18 @@ bool Executor::run(std::span<const FrameTask> tasks,
 
         std::atomic<std::size_t> next{0};
         const auto drain = [&] {
+#ifdef _WIN32
+            WorkerState ws;
+#else
+            WorkerState& ws = worker_state();
+#endif
             for (;;) {
                 if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
                 const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
                 if (i + 1 >= groups.size()) return;
                 for (std::size_t k = groups[i]; k < groups[i + 1]; ++k) {
                     if (st.load(std::memory_order_relaxed) != RUMI_OK) return;
-                    run_one(tasks[order[k]]);
+                    run_one(tasks[order[k]], ws);
                 }
             }
         };
@@ -405,8 +414,13 @@ bool Executor::run(std::span<const FrameTask> tasks,
         }
         batch.wait();
     } else {
+#ifdef _WIN32
+        WorkerState ws;
+#else
+        WorkerState& ws = worker_state();
+#endif
         for (const FrameTask& t : tasks) {
-            run_one(t);
+            run_one(t, ws);
             if (st.load(std::memory_order_relaxed) != RUMI_OK) break;
         }
     }
