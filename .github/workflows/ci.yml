@@ -180,7 +180,7 @@ jobs:
         with:
           working-directory: bindings/r
           extra-packages: any::roxygen2
-      - name: Build R source package
+      - name: Prepare R source package
         shell: bash
         run: |
           set -euo pipefail
@@ -190,12 +190,17 @@ jobs:
 
           Path("bindings/r/src/link.cpp").write_text('''#define R_NO_REMAP
           #include <Rinternals.h>
+          #include <cstdio>
           #include "rumi/thread_pool.hpp"
 
           extern "C" SEXP rumi_r_shutdown_pool(void) {
               auto& global = rumi::detail::g_global_pool;
               auto* slot = global.current.exchange(nullptr, std::memory_order_acq_rel);
+              std::fprintf(stderr, "pool shutdown begin %p\\n", static_cast<void*>(slot));
+              std::fflush(stderr);
               if (slot && slot->owner == rumi::detail::current_pid()) delete slot;
+              std::fprintf(stderr, "pool shutdown done\\n");
+              std::fflush(stderr);
               return R_NilValue;
           }
           ''')
@@ -209,21 +214,24 @@ jobs:
           path.write_text(code.replace(marker, marker + '\n    {"rumi_r_shutdown_pool", (DL_FUNC)&rumi_r_shutdown_pool, 0},'))
           Path("bindings/r/R/zzz.R").write_text('''.onLoad <- function(libname, pkgname) {
             reg.finalizer(asNamespace(pkgname), function(e) {
+              cat("R exit hook begin\\n", file = stderr())
               if ("rumi" %in% names(getLoadedDLLs()))
                 .Call(rumi_r_shutdown_pool)
+              cat("R exit hook done\\n", file = stderr())
             }, onexit = TRUE)
           }
 
           .onUnload <- function(libpath) {
+            cat("R unload hook begin\\n", file = stderr())
             .Call(rumi_r_shutdown_pool)
+            cat("R unload hook done\\n", file = stderr())
           }
           ''')
           PY
           Rscript -e 'roxygen2::roxygenise("bindings/r")'
-          R CMD build bindings/r
       - name: Install R package
         shell: bash
-        run: R CMD INSTALL rumi_*.tar.gz
+        run: R CMD INSTALL bindings/r
       - name: Trace R package exit
         id: r_load
         shell: bash
@@ -260,6 +268,7 @@ jobs:
         timeout-minutes: 20
         run: |
           set -euo pipefail
+          R CMD build bindings/r
           if ! _R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_*.tar.gz; then
             test ! -f rumi.Rcheck/00install.out || cat rumi.Rcheck/00install.out
             exit 1
