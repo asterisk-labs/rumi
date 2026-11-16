@@ -192,7 +192,7 @@ jobs:
         timeout-minutes: 15
         run: |
           R CMD INSTALL rumi_*.tar.gz
-          Rscript -e 'testthat::test_dir("bindings/r/tests/testthat", reporter="progress"); cat("gc start\n"); flush(stdout()); gc(); cat("gc done\n"); flush(stdout())'
+          Rscript -e 'testthat::test_dir("bindings/r/tests/testthat", reporter="progress"); gc(); cat("unload start\n"); flush(stdout()); detach("package:rumi", unload=TRUE); cat("unload done\n"); flush(stdout())'
       - name: Check source package
         shell: bash
         run: |
