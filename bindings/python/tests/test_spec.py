@@ -1324,10 +1324,10 @@ def test_tensorflow_integration(tmp_path, dtype):
 
 
 def test_a_rejected_capsule_keeps_the_consumer_error(tmp_path):
-    bfloat16 = next(dtype for dtype in _NON_NUMPY_DTYPES
-                    if dtype.name == "bfloat16")
-    path, header, _raw = make_dtype_file(tmp_path, bfloat16)
+    uint16 = next(dtype for dtype in _DTYPES.values() if dtype.name == "uint16")
+    path, header, _raw = make_dtype_file(tmp_path, uint16)
     result = rumi.read(path, header, framework="dlpack")
+    result._tensor.dl_tensor.dtype.code = 255  # invalid DLPack dtype
     with pytest.raises((BufferError, RuntimeError, TypeError, ValueError)):
         np.from_dlpack(result)
 
