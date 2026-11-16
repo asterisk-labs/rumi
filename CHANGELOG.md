@@ -4,8 +4,72 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-16
+
+### Breaking
+
+- GeoZL 0.33.0 limits decoded `lanes` and `planar>zigzag>lanes` tiles to
+  256 MiB. Older oversized frames need rewriting as smaller tiles.
+- Python, R and Julia now share one contract for inputs and outputs. The
+  remaining differences are the language idioms the API pages list.
+- Python `rumi.write` returns only the external header, as R and Julia do.
+- A tuple is no longer a half-open range in Python. `time` and `bands` take an
+  int, a list, a `range` or a 1-D integer array, and Python and Julia refuse a
+  tuple, so `(1, 3)` cannot mean a range in one language and two positions in
+  another.
+- R `rumi_read` and `rumi_read_many` take `time` before `bands`, as the other
+  bindings list them. Their first parameters are `source` and `sources`, the
+  dataset field `path` is now `source`, and `rumi_close` takes `dataset`.
+- R calls the sample type `dtype`, not `datatype`, in `rumi_frames`,
+  `rumi_geozl_graph`, their results and each frame's `rumi_dtype` attribute.
+- Julia exports only `Dataset`, `FrameTable`, `Metadata` and `RumiError`, so
+  `Rumi.info` and `Rumi.read_many` take the prefix like every other call. A
+  `Dataset` holds `source`, `header` and `metadata`, and `GeoZL.Graph{T}`
+  names its sample type in `dtype`.
+- R and Julia return `Date` time coordinates when every step is a whole UTC
+  day, as Python returns `date`.
+- ISO time text follows one grammar in all three. Python now refuses compact
+  dates such as `20250808` and an hour without minutes, as R and Julia did.
+- Python refuses `crs=0` and a `pixel_is_point` that is not a bool.
+- Library failures other than an invalid request carry a kind, such as `io`
+  or `decode`. Python raises `rumi.RumiError` subclasses that still derive
+  from the earlier builtins, Julia throws `RumiError(kind, message)`, and R
+  signals conditions of class `rumi_error_<kind>` and `rumi_error`.
+- Trailer messages name bands and time steps as ordinals, such as "the 2nd
+  band has an empty text", so they read the same from zero- and one-based
+  bindings.
+- R names the batch axis `n` in `rumi_axes`, as the patterns do.
+- `rumi.geozl`, `rumi_geozl_*` and `Rumi.GeoZL` raise the texts and classes
+  of the geozl packages for the checks they share. A 16-byte sample type is an
+  invalid request, not an unsupported one, and graph and compress failures name
+  the method and the ZL error code.
+- The writer keeps time coordinates between the years 1 and 9999, which every
+  binding's date type holds. The core and the R and Julia readers still accept
+  any coordinate the format allows. Python, whose `datetime` holds only those
+  years, refuses the rest with a `ValueError` that names the step.
+- R refuses a matrix as `bands` or `time`, as Python and Julia do.
+- A Julia `Dataset` opened from bytes exposes them as a read-only view, so
+  nothing reachable through it can free the buffer the native source reads.
+
 ### Added
 
+- `rumi_info` and `Rumi.info` take a source, a header or both, as `rumi.info`
+  does, so R and Julia can rebuild a missing external header from the file.
+- R and Julia read from the file's bytes as well as from a path or URI, and R
+  `rumi_read_many` takes sources with their headers, as Python and Julia do.
+- R and Julia frame tables report `pattern`, `tiles_across`, `tiles_down` and
+  each frame's `row`, `col`, `band` and `time`.
+- `rumi_frame_start` and `Rumi.frame_start`, and the thread and checksum
+  settings `rumi_set_num_threads` and `Rumi.set_num_threads` with their
+  getters and checksum counterparts.
+- `Rumi.open(f, source, header)` closes the dataset when `f` returns.
+- Python takes a window as any sequence of four integers, and `read_many`
+  takes an `(n, 4)` array of windows or `None` for a whole image, as R and
+  Julia do.
+- `rumi.geozl.compress` takes the graph by position too.
+- `Metadata.dtype` compares equal to its name in Python, as in R and Julia.
+- R `crs` takes EPSG codes up to 4294967295 and an `sf` CRS object.
+- Graphs report `itemsize` in all three bindings, and print the same fields.
 - R and Julia can cut arrays into frames and write local `.rumi` files from
   compressed payloads. Both writers return the external header and accept band
   texts, time coordinates and EPSG georeferencing.
@@ -28,11 +92,15 @@ Notable user-visible changes are recorded here.
   `rumi_geozl_graph_error` and `rumi_geozl_graph_close`. A graph reports its
   normalized error recipe, and a text error must be a percentage or a recipe,
   as in the GeoZL packages. In R a frame from `rumi_frames()` carries its
-  datatype, which `rumi_geozl_graph()` uses. `rumi.write` still stores payloads
+  dtype, which `rumi_geozl_graph()` uses. `rumi.write` still stores payloads
   as given.
 
 ### Changed
 
+- Python `write` expands a leading `~` in its path, as R and Julia do.
+- R and Julia reads from a path or bytes with a header no longer read the
+  file's index and trailer to check the pair, as Python reads.
+  `rumi_open` and `Rumi.open` still check it.
 - `rumi-eo` no longer depends on the `geozl` package, and R and Julia need
   no separate GeoZL package to write.
 
@@ -722,7 +790,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/asterisk-labs/rumi/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/asterisk-labs/rumi/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/asterisk-labs/rumi/compare/v0.28.1...v0.29.0
 [0.28.1]: https://github.com/asterisk-labs/rumi/compare/v0.28.0...v0.28.1
