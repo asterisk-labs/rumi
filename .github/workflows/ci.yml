@@ -267,15 +267,22 @@ jobs:
           marker = '// Decoder context and reusable buffers for one worker.\nstruct WorkerState {'
           assert code.count(marker) == 1
           code = code.replace(marker, 'std::mutex g_worker_state_free_mutex;\n\n' + marker)
+          marker = '    WorkerState() {'
+          assert code.count(marker) == 1
+          code = code.replace(marker, marker + '\n        std::fprintf(stderr, "worker state create %p dctx %p\\n", static_cast<void*>(this), static_cast<void*>(dctx)); std::fflush(stderr);')
           old = '    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }'
           new = '''    ~WorkerState() {
-                  std::fprintf(stderr, "worker state free begin %p\\n", static_cast<void*>(dctx)); std::fflush(stderr);
+                  std::fprintf(stderr, "worker state free begin %p dctx %p\\n", static_cast<void*>(this), static_cast<void*>(dctx)); std::fflush(stderr);
                   std::lock_guard guard(g_worker_state_free_mutex);
                   if (dctx && !std::getenv("RUMI_TRACE_SKIP_DCTX_FREE")) ZL_DCtx_free(dctx);
                   std::fprintf(stderr, "worker state free done\\n"); std::fflush(stderr);
               }'''
           assert code.count(old) == 1
-          plan.write_text(code.replace(old, new))
+          code = code.replace(old, new)
+          marker = '    WorkerState& ws = worker_state();'
+          assert code.count(marker) == 1
+          code = code.replace(marker, marker + '\n    std::fprintf(stderr, "worker state use %p dctx %p\\n", static_cast<void*>(&ws), static_cast<void*>(ws.dctx)); std::fflush(stderr);')
+          plan.write_text(code)
           copyfile(pool, "bindings/r/src/ext/r/include/rumi/thread_pool.hpp")
           copyfile(plan, "bindings/r/src/ext/r/src/plan.cpp")
           PY
