@@ -16,9 +16,9 @@ struct _WriteDesc
     time_coords::UInt64
 end
 
-function _payloads(table::FrameTable)
-    payloads = table.compressed
-    length(payloads) == length(table.data) || throw(ArgumentError(
+function _payloads(frames::FrameTable)
+    payloads = frames.compressed
+    length(payloads) == length(frames.data) || throw(ArgumentError(
         "compressed must have one entry per frame"))
     missing = findfirst(isnothing, payloads)
     missing === nothing || throw(ArgumentError("frame $missing has no compressed bytes"))
@@ -51,8 +51,8 @@ end
 function _band_texts(bands)
     bands isa AbstractSet && throw(ArgumentError(
         "bands must be ordered; a set cannot preserve band order"))
-    bands isa AbstractVector || throw(ArgumentError(
-        "bands is a vector with one text per band; wrap a single text as " *
+    bands isa Union{AbstractVector,Tuple} || throw(ArgumentError(
+        "bands is a vector or tuple with one text per band; wrap a single text as " *
         "bands=[$(repr(bands))]"))
     texts = String[]
     for (band, text) in enumerate(bands)
@@ -66,20 +66,23 @@ function _band_texts(bands)
 end
 
 """
-    write(path, table; bands, time, transform=nothing, crs=nothing,
+    write(path, frames; bands, time, transform=nothing, crs=nothing,
           pixel_is_point=false) -> Vector{UInt8}
 
-Write the compressed frames and return the external header. Every frame needs
-compressed bytes. A failed write removes the incomplete file.
+Write the compressed frames of the FrameTable `frames` and return the external
+header. Every frame needs compressed bytes. A failed write removes the
+incomplete file.
 
-`bands` names each band. `time` has one `Date`, `DateTime` or ISO string per
-step, or a `(start, end)` pair per step. Dates and datetimes are UTC.
-`transform` takes six rasterio-order affine coefficients and requires an
-EPSG `crs`.
+`bands` names each band, as a vector or tuple of strings. `time` has one
+`Date`, `DateTime` or ISO string per step, or a `(start, end)` pair per step.
+Dates and datetimes are UTC. `transform` takes six rasterio-order affine
+coefficients and requires an EPSG `crs`.
 """
-function write(path::AbstractString, table::FrameTable{T}; bands, time,
-               transform=nothing, crs=nothing, pixel_is_point::Bool=false) where {T}
-    payloads = _payloads(table)
+function write(path::AbstractString, frames::FrameTable{T}; bands, time,
+               transform=nothing, crs=nothing, pixel_is_point=false) where {T}
+    pixel_is_point isa Bool || throw(ArgumentError(
+        "pixel_is_point must be true or false, got $(repr(pixel_is_point))"))
+    payloads = _payloads(frames)
     coefficients = transform === nothing ? Cdouble[] : _transform(transform)
     epsg = crs === nothing ? UInt32(0) : _epsg(crs)
     texts = _band_texts(bands)
@@ -93,10 +96,10 @@ function write(path::AbstractString, table::FrameTable{T}; bands, time,
         sizes = Csize_t[length(payload) for payload in payloads]
         GC.@preserve text_ptrs frame_ptrs sizes begin
             desc = _WriteDesc(
-                table.image_width, table.image_length, table.time_count,
-                table.tile_size, table.bands, _dtype_code(T),
+                frames.image_width, frames.image_length, frames.time_count,
+                frames.tile_size, frames.bands, _dtype_code(T),
                 isempty(coefficients) ? C_NULL : pointer(coefficients), epsg,
-                pixel_is_point, table.frame_unit,
+                pixel_is_point, frames.frame_unit,
                 pointer(text_ptrs), length(texts), kind, pointer(seconds), length(seconds),
             )
             _check(ccall(

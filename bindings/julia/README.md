@@ -13,10 +13,20 @@ meta = Rumi.info(file)
 close(file)
 ```
 
-Selections and window origins are one-based in Julia. The window order is
-`(row, column, height, width)`. Arrays use Julia's native memory order, so an
-Image is shaped `(X, Y, Band)` and a Cube `(X, Y, Band, Time)`. Metadata keeps
-Rumi's canonical `(Band, Y, X)` or `(Time, Band, Y, X)` shape.
+A source is a local path, a remote URI or the file's bytes. The `do` form,
+`Rumi.open(source, header) do file ... end`, closes the Dataset afterwards.
+`Rumi.info(source)` reads a file without its external header and rebuilds it
+in `meta.header`, and `Rumi.info(; header)` inspects a header alone.
+
+Selections and window origins are one-based in Julia. A selection is an
+integer, a vector or a range such as `2:5`, and a tuple is refused. The window
+order is `(row, column, height, width)`. Arrays use Julia's native memory
+order, so an Image is shaped `(X, Y, Band)` and a Cube `(X, Y, Band, Time)`.
+Metadata keeps Rumi's canonical `(Band, Y, X)` or `(Time, Band, Y, X)` shape.
+
+Invalid requests throw `ArgumentError`. Other failures throw `RumiError`, whose
+`kind` is a symbol such as `:io`, `:decode` or `:state`. Every function takes
+the `Rumi.` prefix, and the package exports only its types.
 
 Set `RUMI_LIB` to a built `librumi` while developing. A package release downloads
 the matching native artifact on first use and keeps it in the Julia depot.
@@ -25,7 +35,10 @@ the matching native artifact on first use and keeps it in the Julia depot.
 
 `Rumi.frames` cuts an array into frames, you compress each one with the
 [GeoZL](https://asterisk.coop/geozl/) built into the package, `Rumi.GeoZL`, and
-`Rumi.write` stores the payloads and returns the external header.
+`Rumi.write` stores the payloads and returns the external header. `Rumi.GeoZL`
+covers `graph` and `compress` only, with argument errors that read as in the
+GeoZL packages; `decompress`, `profile` and `coeffs` live in
+[GeoZL.jl](https://asterisk.coop/geozl/).
 
 ```julia
 using Dates
@@ -43,6 +56,9 @@ header = Rumi.write("scene.rumi", table; bands=["B02", "B03", "B04", "B08"],
 Base.write("scene.header", header)
 ```
 
-Patterns use the same axis names as Python. Julia holds those axes in reverse:
-this image is `(X, Y, Band)`, and each frame is ready for `Rumi.GeoZL.graph`.
-The array's element type sets the file's sample type.
+Patterns use the same axis names as Python. Julia holds those axes in reverse,
+so this image is `(X, Y, Band)`, and each frame is ready for `Rumi.GeoZL.graph`.
+The array's element type sets the file's sample type. Each table records where
+its frames go in `row`, `col`, `band` and `time`, and
+`Rumi.frame_start(size(image), pattern, 256)` gives the first frame's offset
+before anything is compressed.

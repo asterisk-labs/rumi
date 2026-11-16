@@ -93,12 +93,40 @@ end
 _sym(name::Symbol) = Libdl.dlsym(_library[], name)
 
 
+# Status codes from rumi.h, except RUMI_ERR_INVALID, which throws ArgumentError.
+const _ERROR_KINDS = Dict{Int,Symbol}(
+    2 => :io,
+    3 => :parse,
+    4 => :format,
+    5 => :decode,
+    6 => :oom,
+    7 => :unsupported,
+    8 => :state,
+    99 => :internal,
+)
+
+"""
+    RumiError(kind, message)
+
+A `librumi` failure other than an invalid request. `kind` names the status as
+one of `:io`, `:parse`, `:format`, `:decode`, `:oom`, `:unsupported`, `:state`
+or `:internal`. `RumiError(message)` is an `:internal` failure of the binding.
+"""
 struct RumiError <: Exception
+    kind::Symbol
     message::String
+
+    function RumiError(kind::Symbol, message::AbstractString)
+        kind in values(_ERROR_KINDS) ||
+            throw(ArgumentError("$(repr(kind)) is not a Rumi error kind"))
+        return new(kind, String(message))
+    end
 end
 
+RumiError(message::AbstractString) = RumiError(:internal, message)
 
-Base.showerror(io::IO, error::RumiError) = print(io, error.message)
+Base.showerror(io::IO, error::RumiError) =
+    print(io, "RumiError(", repr(error.kind), "): ", error.message)
 
 
 const _ERR_INVALID = 1
@@ -108,5 +136,61 @@ function _check(status::Integer)
     ptr = ccall(_sym(:rumi_last_error), Cstring, ())
     message = ptr == C_NULL ? "librumi failed with status $status" : unsafe_string(ptr)
     status == _ERR_INVALID && throw(ArgumentError(message))
-    throw(RumiError(message))
+    throw(RumiError(get(_ERROR_KINDS, Int(status), :internal), message))
+end
+
+
+"""
+    set_num_threads(n) -> Int
+
+Set the process-wide read thread count, a whole number from 1 to 1024. Set
+it before the first parallel read. Once the pool exists, a different count
+throws `RumiError` of kind `:state`. `RUMI_NUM_THREADS` gives the initial
+value and also accepts `ALL_CPUS`. Returns `n`.
+"""
+function set_num_threads(n)
+    n isa Integer && !(n isa Bool) ||
+        throw(ArgumentError("num_threads must be an integer, got $(repr(n))"))
+    typemin(Cint) <= n <= typemax(Cint) ||
+        throw(ArgumentError("num_threads must be in [1, 1024]"))
+    _check(ccall(_sym(:rumi_set_num_threads), Cint, (Cint,), n))
+    return Int(n)
+end
+
+"""
+    get_num_threads() -> Int
+
+Return the process-wide read thread count. It is the configured count before
+the first parallel read and the pool's fixed size afterwards.
+"""
+function get_num_threads()
+    out = Ref{Cint}(0)
+    _check(ccall(_sym(:rumi_get_num_threads), Cint, (Ref{Cint},), out))
+    return Int(out[])
+end
+
+"""
+    set_checksum_verification(on::Bool) -> Bool
+
+Turn process-wide OpenZL checksum verification on or off. Set it before the
+first decoded frame. Afterwards, a different value throws `RumiError` of kind
+`:state`. `RUMI_VERIFY` gives the initial value. Returns `on`.
+"""
+function set_checksum_verification(on)
+    on isa Bool ||
+        throw(ArgumentError("checksum verification must be a Bool, got $(repr(on))"))
+    _check(ccall(_sym(:rumi_set_checksum_verification), Cint, (Cint,), on))
+    return on
+end
+
+"""
+    get_checksum_verification() -> Bool
+
+Return whether OpenZL checksum verification is on. It is the configured value
+before the first decoded frame and the fixed value afterwards.
+"""
+function get_checksum_verification()
+    out = Ref{Cint}(0)
+    _check(ccall(_sym(:rumi_get_checksum_verification), Cint, (Ref{Cint},), out))
+    return out[] != 0
 end

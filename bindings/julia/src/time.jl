@@ -1,12 +1,22 @@
 const _INTERVAL = 0x01
 const _INSTANT = 0x02
 
+# Every binding's date type holds 0001-01-01 to 9999-12-31 UTC.
+const _FIRST_SECOND = -62135596800
+const _LAST_SECOND = 253402300799
+
+_ordinal(n::Integer) =
+    string(n, n % 100 in 11:13 ? "th" : get(("st", "nd", "rd"), n % 10, "th"))
+
 const _ISO_TIME = r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?(Z|z|[+-]\d{2}(?::?\d{2})?)?)?$"
 
 function _parse_time(text::AbstractString)
     m = match(_ISO_TIME, text)
     m === nothing && throw(ArgumentError("$(repr(text)) is not an ISO date or datetime"))
     fields = [parse(Int, value) for value in m.captures[1:6] if value !== nothing]
+    # DateTime takes 24:00 as the next midnight; ISO text here does not.
+    length(fields) > 3 && fields[4] > 23 &&
+        throw(ArgumentError("$(repr(text)) is not an ISO date or datetime"))
     fraction = m.captures[7]
     fraction === nothing || all(==('0'), fraction) || throw(ArgumentError(
         "$(repr(text)) carries a fraction of a second; rumi records whole seconds"))

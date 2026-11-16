@@ -23,7 +23,9 @@ end
     FrameTable
 
 Frames in file order. `data[i]` holds the samples; fill `compressed[i]`
-before calling [`write`](@ref).
+before calling [`write`](@ref). `row[i]` and `col[i]` give the one-based grid
+cell of frame `i`. `band[i]` and `time[i]` give its band and time step when
+frames are split by that axis, and `band` and `time` are `nothing` otherwise.
 """
 mutable struct FrameTable{T,N}
     data::Vector{Array{T,N}}
@@ -36,6 +38,13 @@ mutable struct FrameTable{T,N}
     frame_unit::UInt8
     layout::String
     dtype::String
+    pattern::String
+    tiles_across::Int
+    tiles_down::Int
+    row::Vector{Int}
+    col::Vector{Int}
+    band::Union{Nothing,Vector{Int}}
+    time::Union{Nothing,Vector{Int}}
 end
 
 Base.length(table::FrameTable) = length(table.data)
@@ -78,14 +87,14 @@ function _frame_unit(pattern::_FramePattern, bands, times)
 end
 
 function _frame_count(unit, width, len, tile, bands, times)
-    out = Ref{UInt64}(0)
+    across, down, out = Ref{UInt32}(0), Ref{UInt32}(0), Ref{UInt64}(0)
     _check(ccall(
         _sym(:rumi_frame_count), Cint,
         (UInt8, UInt32, UInt32, UInt16, UInt16, UInt32,
-         Ptr{UInt32}, Ptr{UInt32}, Ref{UInt64}),
-        unit, width, len, tile, bands, times, C_NULL, C_NULL, out,
+         Ref{UInt32}, Ref{UInt32}, Ref{UInt64}),
+        unit, width, len, tile, bands, times, across, down, out,
     ))
-    return Int(out[])
+    return Int(across[]), Int(down[]), Int(out[])
 end
 
 function _frame_locate(unit, width, len, tile, bands, times, index)
@@ -98,7 +107,31 @@ function _frame_locate(unit, width, len, tile, bands, times, index)
     return out[]
 end
 
+function _tile_size(tile_size)
+    tile_size isa Integer && !(tile_size isa Bool) ||
+        throw(ArgumentError("tile_size must be an integer"))
+    tile_size >= 0 || throw(ArgumentError("tile_size must not be negative, got $tile_size"))
+    tile_size <= typemax(UInt16) ||
+        throw(ArgumentError("tile_size must be at most 65535, got $tile_size"))
+    return Int(tile_size)
+end
+
+_input_roles(compiled::_FramePattern) =
+    [_axis_name(compiled.input[i]) for i in 1:Int(compiled.input_ndim)]
+
+# Julia dimension d holds the pattern's axis n - d + 1.
+function _extents(role, dims)
+    extent(name) = (d = findfirst(==(name), role); d === nothing ? 1 : Int(dims[d]))
+    bands, times, len, width = extent(:b), extent(:t), extent(:y), extent(:x)
+    bands <= typemax(UInt16) ||
+        throw(ArgumentError("band count must be in 1:65535, got $bands"))
+    max(times, len, width) <= typemax(UInt32) ||
+        throw(ArgumentError("time, height and width must each fit in 32 bits"))
+    return bands, times, len, width
+end
+
 """
+    frames(x, pattern, tile_size=512) -> FrameTable
     frames(x, pattern; tile_size=512) -> FrameTable
 
 Cut `x` into frames in file order. The pattern names axes in C order; Julia
@@ -106,30 +139,23 @@ holds them in reverse. For example, `"b (row h) (col w) -> row col b (h w)"`
 takes an `(x, y, band)` array. Edge frames are clipped. The element type
 sets the file's sample type.
 """
-function frames(x::AbstractArray, pattern::AbstractString; tile_size::Integer=512)
+frames(x::AbstractArray, pattern::AbstractString, tile_size) =
+    frames(x, pattern; tile_size)
+
+function frames(x::AbstractArray, pattern::AbstractString; tile_size=512)
     Base.require_one_based_indexing(x)
     T = eltype(x)
     code = _dtype_code(T)
-    tile_size isa Bool && throw(ArgumentError("tile_size must be an integer"))
-    tile_size >= 0 || throw(ArgumentError("tile_size must not be negative, got $tile_size"))
-    tile_size <= typemax(UInt16) ||
-        throw(ArgumentError("tile_size must be at most 65535, got $tile_size"))
-    tile = Int(tile_size)
+    tile = _tile_size(tile_size)
     compiled = _frame_pattern(pattern)
-    roles = [_axis_name(compiled.input[i]) for i in 1:Int(compiled.input_ndim)]
+    roles = _input_roles(compiled)
     n = length(roles)
     ndims(x) == n || throw(ArgumentError(
         "the pattern names $n axes ($(join(roles, ' '))), so x needs $n dimensions, " *
         "got $(ndims(x))"))
 
-    # Julia dimension d holds the pattern's axis n - d + 1.
     role = reverse(roles)
-    extent(name) = (d = findfirst(==(name), role); d === nothing ? 1 : size(x, d))
-    bands, times, len, width = extent(:b), extent(:t), extent(:y), extent(:x)
-    bands <= typemax(UInt16) ||
-        throw(ArgumentError("band count must be in 1:65535, got $bands"))
-    max(times, len, width) <= typemax(UInt32) ||
-        throw(ArgumentError("time, height and width must each fit in 32 bits"))
+    bands, times, len, width = _extents(role, size(x))
 
     # Singleton band and time axes are omitted from the stored layout.
     unit = _frame_unit(compiled, bands, times)
@@ -137,11 +163,18 @@ function frames(x::AbstractArray, pattern::AbstractString; tile_size::Integer=51
     held = Symbol.(split(layout))
     cut = [[name for name in (:b, :t) if name in held]; :y; :x]
     kept = [name for name in role if name in (:y, :x) || name in held]
+    walked = _index_order(unit, bands, times)
 
-    total = _frame_count(unit, width, len, tile, bands, times)
+    across, down, total = _frame_count(unit, width, len, tile, bands, times)
     data = Vector{Array{T,length(held)}}(undef, total)
+    rows, cols = Vector{Int}(undef, total), Vector{Int}(undef, total)
+    band = :b in walked ? Vector{Int}(undef, total) : nothing
+    step = :t in walked ? Vector{Int}(undef, total) : nothing
     for k in 1:total
         at = _frame_locate(unit, width, len, tile, bands, times, k - 1)
+        rows[k], cols[k] = Int(at.row) + 1, Int(at.col) + 1
+        band === nothing || (band[k] = Int(at.band) + 1)
+        step === nothing || (step[k] = Int(at.time) + 1)
         ys = Int(at.row) * tile .+ (1:Int(at.h))
         xs = Int(at.col) * tile .+ (1:Int(at.w))
         index = map(role) do name
@@ -176,5 +209,41 @@ function frames(x::AbstractArray, pattern::AbstractString; tile_size::Integer=51
     _, dtype = _dtype(code)
     return FrameTable(data, Vector{Union{Nothing,Vector{UInt8}}}(nothing, total),
                       Int(width), Int(len), tile, Int(bands), Int(times), unit,
-                      layout, dtype)
+                      layout, dtype, String(strip(pattern)), across, down,
+                      rows, cols, band, step)
+end
+
+"""
+    frame_start(shape, pattern, tile_size=512) -> Int
+    frame_start(shape, pattern; tile_size=512) -> Int
+
+Return the byte offset of the first frame that [`frames`](@ref) and
+[`write`](@ref) would give an array of size `shape`, without cutting it. The
+offset is also the size of everything the file stores before its first frame.
+`shape` is in `size(x)` order, the reverse of the pattern's input axes.
+"""
+frame_start(shape, pattern::AbstractString, tile_size) =
+    frame_start(shape, pattern; tile_size)
+
+function frame_start(shape, pattern::AbstractString; tile_size=512)
+    shape isa Union{Tuple,AbstractVector} &&
+        all(value -> value isa Integer && !(value isa Bool), shape) ||
+        throw(ArgumentError("shape must be a tuple or vector of integers"))
+    all(>=(0), shape) || throw(ArgumentError("shape must not hold a negative size"))
+    tile = _tile_size(tile_size)
+    compiled = _frame_pattern(pattern)
+    roles = _input_roles(compiled)
+    n = length(roles)
+    length(shape) == n || throw(ArgumentError(
+        "the pattern names $n axes ($(join(roles, ' '))), so shape needs $n sizes, " *
+        "got $(length(shape))"))
+    bands, times, len, width = _extents(reverse(roles), shape)
+    unit = _frame_unit(compiled, bands, times)
+    count = _frame_count(unit, width, len, tile, bands, times)[3]
+    out = Ref{UInt64}(0)
+    _check(ccall(
+        _sym(:rumi_frame_start), Cint,
+        (UInt32, UInt64, Ref{UInt64}), bands, count, out,
+    ))
+    return Int(out[])
 end

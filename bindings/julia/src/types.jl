@@ -55,6 +55,13 @@ struct _ReadItem
     x_off::Cint
 end
 
+"""
+    Metadata
+
+What [`info`](@ref) returns. A header inspected without its source leaves
+`bands`, `time`, `time_kind`, `transform`, `crs` and `pixel_is_point` as
+`nothing`.
+"""
 struct Metadata
     header::Vector{UInt8}
     shape::Tuple
@@ -72,14 +79,26 @@ struct Metadata
     pixel_is_point::Union{Nothing,Bool}
 end
 
+"""
+    Dataset
+
+A source paired with its external header, from [`open`](@ref). `source` is
+the path or URI as given, with `~` expanded, or for bytes a read-only view of
+the Dataset's own immutable copy, so resizing, writing or reassigning it never
+touches the buffer the native source reads. `header` is the external header
+and `metadata` what [`info`](@ref) returns. These fields cannot be reassigned.
+"""
 mutable struct Dataset
-    source::Ptr{Cvoid}
-    spec::Ptr{Cvoid}
-    metadata::Metadata
+    const source::Union{String,Base.CodeUnits{UInt8,String}}
+    const header::Vector{UInt8}
+    const metadata::Metadata
+    _source::Ptr{Cvoid}
+    _spec::Ptr{Cvoid}
+    # The bytes the native source borrows, or nothing for a path.
+    const _bytes::Union{Nothing,String}
 end
 
-info(file::Dataset) = file.metadata
-isopen(file::Dataset) = file.source != C_NULL && file.spec != C_NULL
+isopen(file::Dataset) = file._source != C_NULL && file._spec != C_NULL
 
 function show(io::IO, file::Dataset)
     state = isopen(file) ? "open" : "closed"
@@ -88,9 +107,9 @@ function show(io::IO, file::Dataset)
 end
 
 function close(file::Dataset)
-    source, spec = file.source, file.spec
-    file.source = C_NULL
-    file.spec = C_NULL
+    source, spec = file._source, file._spec
+    file._source = C_NULL
+    file._spec = C_NULL
     source == C_NULL || ccall(_sym(:rumi_source_free), Cvoid, (Ptr{Cvoid},), source)
     spec == C_NULL || ccall(_sym(:rumi_spec_destroy), Cvoid, (Ptr{Cvoid},), spec)
     return nothing

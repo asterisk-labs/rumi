@@ -8,7 +8,7 @@ using Libdl
 
 import Base: close, isopen, show
 
-export Dataset, FrameTable, Metadata, RumiError, info, read_many
+export Dataset, FrameTable, Metadata, RumiError
 
 include("lib.jl")
 include("types.jl")
