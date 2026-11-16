@@ -227,6 +227,50 @@ jobs:
             cat("R unload hook done\\n", file = stderr())
           }
           ''')
+          pool = Path("bindings/r/src/ext/r/include/rumi/thread_pool.hpp")
+          code = pool.read_text()
+          old = '''inline ThreadPool::~ThreadPool()
+          {
+              {
+                  std::lock_guard lock(mutex_);
+                  stop_ = true;
+              }
+              ready_.notify_all();
+              for (std::thread& w : workers_) {
+                  if (w.joinable()) w.join();
+              }
+          }
+          '''
+          new = '''inline ThreadPool::~ThreadPool()
+          {
+              std::fprintf(stderr, "pool dtor begin\\n"); std::fflush(stderr);
+              {
+                  std::lock_guard lock(mutex_);
+                  stop_ = true;
+              }
+              ready_.notify_all();
+              for (std::thread& w : workers_) {
+                  std::fprintf(stderr, "join begin\\n"); std::fflush(stderr);
+                  if (w.joinable()) w.join();
+                  std::fprintf(stderr, "join done\\n"); std::fflush(stderr);
+              }
+              std::fprintf(stderr, "pool dtor done\\n"); std::fflush(stderr);
+          }
+          '''
+          assert code.count(old) == 1
+          code = code.replace(old, new)
+          code = code.replace('#include <condition_variable>\n', '#include <condition_variable>\n#include <cstdio>\n', 1)
+          pool.write_text(code)
+          plan = Path("bindings/r/src/ext/r/src/plan.cpp")
+          code = plan.read_text()
+          old = '    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }'
+          new = '''    ~WorkerState() {
+                  std::fprintf(stderr, "worker state free begin\\n"); std::fflush(stderr);
+                  if (dctx) ZL_DCtx_free(dctx);
+                  std::fprintf(stderr, "worker state free done\\n"); std::fflush(stderr);
+              }'''
+          assert code.count(old) == 1
+          plan.write_text(code.replace(old, new))
           PY
           Rscript -e 'roxygen2::roxygenise("bindings/r")'
       - name: Install R package
@@ -256,6 +300,14 @@ jobs:
         timeout-minutes: 3
         continue-on-error: true
         run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); cat("settings tests done\n")'
+      - name: Trace settings crash with GDB
+        if: steps.r_settings.outcome == 'failure'
+        shell: bash
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          command -v gdb || exit 0
+          gdb -q -batch -ex run -ex 'thread apply all bt' --args Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="silent")'
       - name: Trace write test exit
         id: r_write
         shell: bash
