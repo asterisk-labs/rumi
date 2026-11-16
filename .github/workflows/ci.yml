@@ -227,7 +227,7 @@ jobs:
             cat("R unload hook done\\n", file = stderr())
           }
           ''')
-          pool = Path("bindings/r/src/ext/r/include/rumi/thread_pool.hpp")
+          pool = Path("core/include/rumi/thread_pool.hpp")
           code = pool.read_text()
           old = '''inline ThreadPool::~ThreadPool()
           {
@@ -261,7 +261,7 @@ jobs:
           code = code.replace(old, new)
           code = code.replace('#include <condition_variable>\n', '#include <condition_variable>\n#include <cstdio>\n', 1)
           pool.write_text(code)
-          plan = Path("bindings/r/src/ext/r/src/plan.cpp")
+          plan = Path("core/src/plan.cpp")
           code = plan.read_text()
           old = '    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }'
           new = '''    ~WorkerState() {
@@ -307,7 +307,8 @@ jobs:
         continue-on-error: true
         run: |
           command -v gdb || exit 0
-          gdb -q -batch -ex run -ex 'thread apply all bt' --args Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="silent")'
+          printf '%s\n' 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="silent")' > settings-debug.R
+          gdb -q -batch -ex run -ex 'thread apply all bt' --args Rscript settings-debug.R
       - name: Trace write test exit
         id: r_write
         shell: bash
