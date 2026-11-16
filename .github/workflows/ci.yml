@@ -185,6 +185,40 @@ jobs:
         run: |
           set -euo pipefail
           python tools/sync_r_vendor.py --check
+          python - <<'PY'
+          from pathlib import Path
+
+          Path("bindings/r/src/link.cpp").write_text('''#define R_NO_REMAP
+          #include <Rinternals.h>
+          #include "rumi/thread_pool.hpp"
+
+          extern "C" SEXP rumi_r_shutdown_pool(void) {
+              auto& global = rumi::detail::g_global_pool;
+              auto* slot = global.current.exchange(nullptr, std::memory_order_acq_rel);
+              if (slot && slot->owner == rumi::detail::current_pid()) delete slot;
+              return R_NilValue;
+          }
+          ''')
+          path = Path("bindings/r/src/rumi_r.c")
+          code = path.read_text()
+          marker = 'SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);'
+          assert code.count(marker) == 1
+          code = code.replace(marker, marker + '\nSEXP rumi_r_shutdown_pool(void);')
+          marker = '    {"rumi_r_geozl_compress", (DL_FUNC)&rumi_r_geozl_compress, 3},'
+          assert code.count(marker) == 1
+          path.write_text(code.replace(marker, marker + '\n    {"rumi_r_shutdown_pool", (DL_FUNC)&rumi_r_shutdown_pool, 0},'))
+          Path("bindings/r/R/zzz.R").write_text('''.onLoad <- function(libname, pkgname) {
+            reg.finalizer(asNamespace(pkgname), function(e) {
+              if ("rumi" %in% names(getLoadedDLLs()))
+                .Call(rumi_r_shutdown_pool)
+            }, onexit = TRUE)
+          }
+
+          .onUnload <- function(libpath) {
+            .Call(rumi_r_shutdown_pool)
+          }
+          ''')
+          PY
           Rscript -e 'roxygen2::roxygenise("bindings/r")'
           R CMD build bindings/r
       - name: Install R package
