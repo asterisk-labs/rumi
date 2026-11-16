@@ -187,6 +187,8 @@ jobs:
           python tools/sync_r_vendor.py --check
           Rscript -e 'roxygen2::roxygenise("bindings/r")'
           R CMD build bindings/r
+          R CMD INSTALL rumi_*.tar.gz
+          Rscript -e 'testthat::test_dir("bindings/r/tests/testthat", reporter="progress")'
           if ! _R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_*.tar.gz; then
             test ! -f rumi.Rcheck/00install.out || cat rumi.Rcheck/00install.out
             exit 1
