@@ -25,8 +25,9 @@ def frames(data: np.ndarray) -> rumi.FrameTable:
 
 
 def write(directory: Path, name: str, table: rumi.FrameTable) -> None:
-    path, header = rumi.write(
-        directory / f"{name}.rumi",
+    path = directory / f"{name}.rumi"
+    header = rumi.write(
+        path,
         table,
         bands=["B02", "B03", "B04"],
         time=[

@@ -57,8 +57,9 @@ def write(x, transform, epsg):
         frame.compressed = payloads[recipe]
         chosen[frame.band, frame.row, frame.col] = (RECIPES[recipe], len(payloads[recipe]))
     with tempfile.TemporaryDirectory() as tmp:
-        path, header = rumi.write(
-            Path(tmp) / "annecy.rumi",
+        path = Path(tmp) / "annecy.rumi"
+        header = rumi.write(
+            path,
             tf,
             bands=BANDS,
             time=[DATE],
@@ -67,7 +68,7 @@ def write(x, transform, epsg):
         )
         back = rumi.read(path, header, window=(TILE, TILE, TILE, TILE))
         assert np.array_equal(back, x[:, TILE : 2 * TILE, TILE : 2 * TILE])
-        size = Path(path).stat().st_size
+        size = path.stat().st_size
     return chosen, bytes(header), size
 
 

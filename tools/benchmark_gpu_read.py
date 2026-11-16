@@ -81,7 +81,7 @@ def prepare_data(args: argparse.Namespace) -> Path:
                 graph = graphs[frame.data.shape] = geozl.graph(
                     frame.data, RECIPES[name])
             frame.compressed = geozl.compress(frame.data, graph=graph)
-        _, header = rumi.write(
+        header = rumi.write(
             directory / f"{name}.rumi", frames,
             bands=[f"Band {b + 1}" for b in range(data.shape[0])],
             time=["2024-01-01"])
