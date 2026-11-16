@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=17">
+<link rel="stylesheet" href="assets/css/reading.css?v=19">
 </head>
 <body>
 <div class="page">
@@ -116,7 +116,7 @@ int rumi_api_version(void);</code></pre>
 
       <h3 id="rumi_version_string">rumi_version_string</h3>
 <pre><code class="sig language-c">const char* rumi_version_string(void);</code></pre>
-      <p>Returns the library version as a static string, such as <code>"0.30.0"</code>.</p>
+      <p>Returns the library version as a static string, such as <code>"0.31.0"</code>.</p>
 
       <h3 id="rumi_openzl_format_version">rumi_openzl_format_version</h3>
 <pre><code class="sig language-c">int rumi_openzl_format_version(void);</code></pre>
@@ -611,7 +611,7 @@ void rumi_geozl_graph_close(rumi_geozl_graph* graph);</code></pre>
         <tr><th>error</th><td><code>NULL</code> or <code>""</code> for lossless, a decimal bound such as <code>"0.5"</code> (LINEAR), a percentage such as <code>"1%"</code> (LOG), or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe. A zero bound is lossless. The raster fixes the domain a bounded graph accepts later tiles from.</td></tr>
         <tr><th>nodata</th><td>One <code>dtype</code> sample that marks missing data, or <code>NULL</code>. A NaN sample, or <code>NULL</code> with a NaN in a float raster, keeps every NaN as a hole.</td></tr>
       </table>
-      <p>Returns <code>RUMI_ERR_INVALID</code> for a recipe or geometry GeoZL refuses and <code>RUMI_ERR_UNSUPPORTED</code> for a sample width or a dtype it cannot bound.</p>
+      <p>Returns <code>RUMI_ERR_INVALID</code> for a recipe, geometry, sample width, sentinel or bound GeoZL refuses, <code>RUMI_ERR_OOM</code> when memory runs out, and <code>RUMI_ERR_INTERNAL</code> for any other GeoZL failure. A GeoZL failure names the method and ends with its ZL error code. The texts match the geozl packages.</p>
 
       <h3 id="rumi_geozl_compress">rumi_geozl_compress</h3>
 <pre><code class="sig language-c">rumi_status rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,

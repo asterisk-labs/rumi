@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=17">
+<link rel="stylesheet" href="assets/css/reading.css?v=19">
 </head>
 <body>
 <div class="page">
@@ -61,7 +61,7 @@
     <article class="content">
       <h1>Rumi</h1>
       <ul class="facts">
-        <li>Rumi 0.30.0, GPL-3.0 licence. The format may change before 1.0.</li>
+        <li>Rumi 0.31.0, GPL-3.0 licence. The format may change before 1.0.</li>
       </ul>
       <aside class="series" aria-label="Section">
         <p class="series-title">Docs, in 4 pages</p>
@@ -108,12 +108,12 @@ frames = rumi.frames(
 
 for frame in frames:
     payloads = [
-        rumi.geozl.compress(frame.data, graph=rumi.geozl.graph(frame.data, recipe))
+        rumi.geozl.compress(frame.data, rumi.geozl.graph(frame.data, recipe))
         for recipe in ("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes")
     ]
     frame.compressed = min(payloads, key=len)
 
-path, header = rumi.write(
+header = rumi.write(
     "annecy.rumi",
     frames,
     bands=names,
@@ -139,12 +139,12 @@ window &lt;- crop(bands, ext(x0, x0 + 12800, y0 - 12800, y0))
 image &lt;- aperm(as.array(window), c(2, 1, 3))
 
 frames &lt;- rumi_frames(image, "b (row h) (col w) -&gt; row col b (h w)",
-                      tile_size = 256, datatype = "uint16")
+                      tile_size = 256, dtype = "uint16")
 
 for (i in seq_along(frames$data)) {
   tile &lt;- frames$data[[i]]
   payloads &lt;- lapply(c("planar&gt;zigzag&gt;pfor", "planar&gt;zigzag&gt;lanes"), function(recipe)
-    rumi_geozl_compress(tile, rumi_geozl_graph(tile, recipe, datatype = "uint16")))
+    rumi_geozl_compress(tile, rumi_geozl_graph(tile, recipe, dtype = "uint16")))
   frames$compressed[[i]] &lt;- payloads[[which.min(lengths(payloads))]]
 }
 
@@ -227,7 +227,7 @@ size(chip)                                   # (256, 256, 4)</code></pre>
       <h2 class="part" id="what">What Rumi is</h2>
       <p>Training efficiently on Earth observation data means reading thousands of small windows, from many files, as fast as a GPU can take them. Rumi is a raster format built for that read.</p>
       <p>A Rumi file holds an <b>Image</b> <code>(B, Y, X)</code> or a temporal <b>Cube</b> <code>(T, B, Y, X)</code>, cut into tiles. Each tile is compressed on its own by <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a>, so a read fetches and decodes only the tiles under its window.</p>
-      <p><a href="api-python.html#write"><code>rumi.write</code></a> returns the file and a small <b>header</b>. You keep the header outside the file, in a catalog or a dataset index. It locates every tile, so a reader goes straight to the bytes it needs without opening the file first.</p>
+      <p><a href="api-python.html#write"><code>rumi.write</code></a> writes the file and returns a small <b>header</b>. You keep the header outside the file, in a catalog or a dataset index. It locates every tile, so a reader goes straight to the bytes it needs without opening the file first.</p>
       <figure class="diagram wide">
         <img src="img/rumi-layout.svg" alt="An array is written as a Rumi file and its external header." loading="lazy">
         <figcaption>A write produces the file and a small header that locates every frame in it.</figcaption>

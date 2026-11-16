@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=17">
+<link rel="stylesheet" href="assets/css/reading.css?v=19">
 </head>
 <body>
 <div class="page">
@@ -109,9 +109,9 @@ frames = rumi.frames(
 
 for frame in frames:
     graph = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
-    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
+    frame.compressed = rumi.geozl.compress(frame.data, graph)
 
-image_path, image_header = rumi.write(
+image_header = rumi.write(
     "image.rumi",
     frames,
     bands=[
@@ -122,7 +122,7 @@ image_path, image_header = rumi.write(
     ],
     time=["2026-01-01"],
 )
-image_again = rumi.read(image_path, image_header)</code></pre>
+image_again = rumi.read("image.rumi", image_header)</code></pre>
 <pre data-lang="R"><code class="language-r">set.seed(0)
 image &lt;- array(
   sample(0:4095, 1024 * 1024 * 4, replace = TRUE),
@@ -133,12 +133,12 @@ frames &lt;- rumi_frames(
   image,
   "b (row h) (col w) -&gt; row col (b h w)",
   tile_size = 256,
-  datatype = "uint16"
+  dtype = "uint16"
 )
 
 for (i in seq_along(frames$data)) {
   tile &lt;- frames$data[[i]]
-  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;zstd", datatype = "uint16")
+  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;zstd", dtype = "uint16")
   frames$compressed[[i]] &lt;- rumi_geozl_compress(tile, graph)
 }
 
@@ -180,7 +180,7 @@ image_header = Rumi.write(
 )
 image_again = Rumi.read("image.rumi", image_header)</code></pre>
 </div>
-      <p><code>image_header</code> is the small external index to keep with the file, in a catalog or a dataset manifest. Python also returns the path, as <code>image_path</code>.</p>
+      <p><code>image_header</code> is the small external index to keep with the file, in a catalog or a dataset manifest.</p>
       <p>Every file names each band and dates each time step. <code>bands</code> takes one text per band, in band order. A good text gives the band name, a short description and the wavelength.</p>
       <div class="note"><p><b>Every frame is explicit.</b> <a href="api-python.html#frames"><code>rumi.frames</code></a>, <code>rumi_frames</code> and <code>Rumi.frames</code> return the decoded frames. The loop builds a GeoZL graph for each frame and assigns its compressed payload. A write refuses a table in which any frame has no payload.</p></div>
 
@@ -212,7 +212,7 @@ tile_frames &lt;- rumi_frames(
   image,
   "b (row h) (col w) -&gt; row col b (h w)",
   tile_size = 256,
-  datatype = "uint16"
+  dtype = "uint16"
 )
 
 # One band-planar cell frame at each spatial position.
@@ -220,7 +220,7 @@ planar_cells &lt;- rumi_frames(
   image,
   "b (row h) (col w) -&gt; row col (b h w)",
   tile_size = 256,
-  datatype = "uint16"
+  dtype = "uint16"
 )
 
 # One pixel-interleaved cell frame at each spatial position.
@@ -228,7 +228,7 @@ chunky_cells &lt;- rumi_frames(
   image,
   "b (row h) (col w) -&gt; row col (h w b)",
   tile_size = 256,
-  datatype = "uint16"
+  dtype = "uint16"
 )</code></pre>
 <pre data-lang="Julia"><code class="language-julia"># One independently addressable frame per band and spatial tile.
 tile_frames = Rumi.frames(
@@ -278,9 +278,9 @@ cube_frames = rumi.frames(
 
 for frame in cube_frames:
     graph = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;zstd")
-    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
+    frame.compressed = rumi.geozl.compress(frame.data, graph)
 
-cube_path, cube_header = rumi.write(
+cube_header = rumi.write(
     "cube.rumi",
     cube_frames,
     bands=[
@@ -301,12 +301,12 @@ cube_frames &lt;- rumi_frames(
   cube,
   "t b (row h) (col w) -&gt; row col b t (h w)",
   tile_size = 256,
-  datatype = "uint16"
+  dtype = "uint16"
 )
 
 for (i in seq_along(cube_frames$data)) {
   tile &lt;- cube_frames$data[[i]]
-  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;zstd", datatype = "uint16")
+  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;zstd", dtype = "uint16")
   cube_frames$compressed[[i]] &lt;- rumi_geozl_compress(tile, graph)
 }
 
@@ -350,26 +350,26 @@ cube_header = Rumi.write(
         <tr><th>tile frames</th><td><code>row col b t (h w)</code> or <code>row col t b (h w)</code> keeps band and time separately addressable.</td></tr>
         <tr><th>cell frames</th><td><code>row col (b t h w)</code> lets one graph model the whole band and time block at each spatial position.</td></tr>
       </table>
-      <p><code>time</code> takes dates, datetimes, ISO strings or NumPy <code>datetime64</code> values, or one <code>(start, end)</code> interval per step. Its length must equal <code>T</code>. R takes <code>Date</code>, <code>POSIXct</code> or ISO strings, with intervals as a two-column matrix or a list of pairs. Julia takes <code>Date</code>, <code>DateTime</code> or ISO strings, with intervals as <code>(start, end)</code> tuples.</p>
+      <p><code>time</code> takes dates, datetimes, ISO strings or NumPy <code>datetime64</code> values, or one <code>(start, end)</code> interval per step. Its length must equal <code>T</code>. R takes <code>Date</code>, <code>POSIXct</code> or ISO strings, with intervals as a two-column matrix or a list of pairs. Julia takes <code>Date</code>, <code>DateTime</code> or ISO strings, with intervals as <code>(start, end)</code> tuples. An ISO string is a date such as <code>2026-01-01</code>, or a date and time such as <code>2026-01-01T10:30:00Z</code>, and all three read the same strings.</p>
 
       <h2 class="part" id="selection">Bands, times and windows</h2>
-      <p>A list picks exact positions and may reorder them. A two-item tuple is a half-open range. The optional output <code>pattern</code> changes the order of the returned axes, not what is stored.</p>
+      <p>A list picks exact positions and may reorder them. A range picks consecutive positions. The optional output <code>pattern</code> changes the order of the returned axes, not what is stored.</p>
 <div class="code-tabs">
 <pre data-lang="Python"><code class="language-python"># Exact positions, time 2 and bands 3 then 1.
 picked = rumi.read(
-    cube_path,
+    "cube.rumi",
     cube_header,
     time=[2],
     bands=[3, 1],
     window=(100, 200, 128, 128),
 )
 
-# Half-open ranges and a model-specific output order.
+# Ranges and a model-specific output order.
 reordered = rumi.read(
-    cube_path,
+    "cube.rumi",
     cube_header,
-    time=(0, 2),
-    bands=(1, 4),
+    time=range(0, 2),
+    bands=range(1, 4),
     window=(100, 200, 128, 128),
     pattern="t y x b",
 )</code></pre>
@@ -411,7 +411,7 @@ reordered = Rumi.read(
 )</code></pre>
 </div>
       <p><code>time=[2]</code> keeps exactly one step and keeps its time axis, so <code>picked</code> is <code>(1, 2, 128, 128)</code>. <code>bands=[3, 1]</code> keeps two bands, in that order. <code>window=(100, 200, 128, 128)</code> returns 128 rows and 128 columns starting at row 100, column 200. With <code>pattern="t y x b"</code>, <code>reordered</code> comes back as <code>(2, 128, 128, 3)</code>.</p>
-      <p>R and Julia count from one, so the same read asks for time 3, bands 4 and 2 and a window at row 101, column 201. A range such as <code>2:4</code> picks consecutive positions. <code>picked</code> comes back as <code>(128, 128, 2, 1)</code>. A pattern gives R and Julia the axes in reverse, so <code>reordered</code> is <code>(3, 128, 128, 2)</code>.</p>
+      <p>R and Julia count from one, so the same read asks for time 3, bands 4 and 2 and a window at row 101, column 201. Their ranges include both ends, so <code>2:4</code> is the three bands Python's <code>range(1, 4)</code> picks. <code>picked</code> comes back as <code>(128, 128, 2, 1)</code>. A pattern gives R and Julia the axes in reverse, so <code>reordered</code> is <code>(3, 128, 128, 2)</code>.</p>
 
       <h2 class="part" id="sources">Local and remote sources</h2>
       <p>This example runs as it is against the public Rumi fixtures. It reads the same bands and window from Source Cooperative, Hugging Face, the S3-compatible endpoint of Source Cooperative and a downloaded local file, then checks that all four results are identical.</p>
@@ -592,7 +592,6 @@ sources &lt;- c(
   sprintf("hf://datasets/%s@main/data/%s.rumi", product, names[2]),
   sprintf("s3://asterisk-labs/rumi-api-fixtures/data/%s.rumi", names[3])
 )
-files &lt;- Map(rumi_open, sources, headers)
 windows &lt;- list(
   c(1, 1, 128, 128),
   c(129, 193, 128, 128),
@@ -600,7 +599,8 @@ windows &lt;- list(
 )
 
 batch &lt;- rumi_read_many(
-  files,
+  sources,
+  headers,
   windows = windows,
   bands = 1:4
 )
@@ -620,7 +620,7 @@ windows = [
     (321, 257, 128, 128),
 ]
 
-batch = read_many(
+batch = Rumi.read_many(
     sources,
     headers;
     windows = windows,
@@ -629,36 +629,36 @@ batch = read_many(
 
 @assert size(batch) == (128, 128, 4, 3)</code></pre>
 </div>
-      <p>R and Julia put the items on the last axis instead, so <code>batch</code> is <code>(128, 128, 4, 3)</code> there. R opens each source with its header first.</p>
+      <p>R and Julia put the items on the last axis instead, so <code>batch</code> is <code>(128, 128, 4, 3)</code> there.</p>
       <p>Sources may mix local and remote storage. They must agree on tile size, dtype, band and time counts, and which axes their frames hold. The result keeps the input order even when ranges arrive in another order.</p>
       <div class="note"><p><b>Why not a Python loop?</b> A batch exposes the independent work of every item at once. Remote waits, local reads and OpenZL decoding then overlap while Rumi assembles one tensor of a known shape.</p></div>
 
       <h2 class="part" id="frameworks">Frameworks and devices</h2>
       <p>This section is Python only. R and Julia return their own arrays, in host memory.</p>
       <p>Choose the destination in the read call. Results pass through DLPack with no NumPy copy in between. A <code>device</code> such as <code>"cuda:0"</code> or <code>"mps"</code> decodes straight into CUDA or Metal memory, for any framework but NumPy.</p>
-<pre data-run="skip"><code class="language-python">numpy_chip = rumi.read(cube_path, cube_header)
+<pre data-run="skip"><code class="language-python">numpy_chip = rumi.read("cube.rumi", cube_header)
 torch_chip = rumi.read(
-    cube_path, cube_header, framework="torch"
+    "cube.rumi", cube_header, framework="torch"
 )
 jax_chip = rumi.read(
-    cube_path, cube_header, framework="jax"
+    "cube.rumi", cube_header, framework="jax"
 )
 tensorflow_chip = rumi.read(
-    cube_path, cube_header, framework="tensorflow"
+    "cube.rumi", cube_header, framework="tensorflow"
 )
 dlpack_chip = rumi.read(
-    cube_path, cube_header, framework="dlpack"
+    "cube.rumi", cube_header, framework="dlpack"
 )
 cuda_chip = rumi.read(
-    cube_path, cube_header,
+    "cube.rumi", cube_header,
     framework="torch", device="cuda:0"
 )
 jax_cuda_chip = rumi.read(
-    cube_path, cube_header,
+    "cube.rumi", cube_header,
     framework="jax", device="cuda:0"
 )
 mps_chip = rumi.read(
-    cube_path, cube_header,
+    "cube.rumi", cube_header,
     framework="torch", device="mps"
 )</code></pre>
       <p><code>framework</code> sets what comes back.</p>
@@ -689,29 +689,33 @@ checked = rumi.info(
     source="cube.rumi",
     header=recovered_header,
 )</code></pre>
-<pre data-lang="R"><code class="language-r">file &lt;- rumi_open("cube.rumi", cube_header)
-metadata &lt;- rumi_info(file)
+<pre data-lang="R"><code class="language-r">metadata &lt;- rumi_info("cube.rumi")
+recovered_header &lt;- metadata$header
 
 print(metadata$shape)         # 3 4 1024 1024
 print(metadata$tile)          # 256 256
 print(metadata$frame_layout)  # h w for the tile-frame Cube
 print(metadata$bands)         # the four band texts
 print(metadata$time)          # the three recorded dates
-rumi_close(file)</code></pre>
-<pre data-lang="Julia"><code class="language-julia">file = Rumi.open("cube.rumi", cube_header)
-metadata = info(file)
+
+# Supplying both checks the header against the source.
+checked &lt;- rumi_info("cube.rumi", header = recovered_header)</code></pre>
+<pre data-lang="Julia"><code class="language-julia">metadata = Rumi.info("cube.rumi")
+recovered_header = metadata.header
 
 println(metadata.shape)         # (3, 4, 1024, 1024)
 println(metadata.tile)          # (256, 256)
 println(metadata.frame_layout)  # h w for the tile-frame Cube
 println(metadata.bands)         # the four band texts
 println(metadata.time)          # the three recorded dates
-close(file)</code></pre>
+
+# Supplying both checks the header against the source.
+checked = Rumi.info("cube.rumi"; header = recovered_header)</code></pre>
 </div>
-      <p>R and Julia need the header to open the file. <code>rumi_info</code> and <code>info</code> then return the same fields.</p>
+      <p><code>rumi_info</code> and <code>Rumi.info</code> take the same three forms and return the same fields.</p>
       <table class="spec">
-        <tr><th>header only</th><td><code>rumi.info(header=...)</code> describes the read index without opening the source.</td></tr>
-        <tr><th>with a source</th><td><code>rumi.info(source=...)</code> also returns band texts, time coordinates, transform, CRS and a rebuilt header.</td></tr>
+        <tr><th>header only</th><td><code>rumi.info(header=...)</code>, <code>rumi_info(header = ...)</code> and <code>Rumi.info(; header)</code> describe the read index without opening the source.</td></tr>
+        <tr><th>with a source</th><td>A source also gives band texts, time coordinates, transform, CRS and a rebuilt header.</td></tr>
       </table>
       <p><a href="how-rumi-reads.html">How Rumi reads</a> follows a read from the request to the tensor, and the <a href="spec.html">specification</a> defines the file format.</p>
 

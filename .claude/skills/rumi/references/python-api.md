@@ -1,6 +1,6 @@
 # Python API
 
-Everything here describes `rumi` 0.30.0, as implemented in `bindings/python/rumi/`
+Everything here describes `rumi` 0.31.0, as implemented in `bindings/python/rumi/`
 (`_frames.py`, `geozl.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`,
 `_config.py`, `_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
 
@@ -32,19 +32,19 @@ pip install rumi-eo
   Import fails when neither exists or when the native C interface
   does not match the binding. The pre-1.0 API version remains 1.
 - Public names: `frames`, `FrameTable`, `Frame`, `geozl`, `frame_start`, `write`, `open`,
-  `Dataset`, `read`, `read_many`, `RumiArray`, `DType`, `info`, `Metadata`, `set_num_threads`,
-  `get_num_threads`, `set_checksum_verification`, `get_checksum_verification`,
-  `__version__`.
+  `Dataset`, `read`, `read_many`, `RumiArray`, `DType`, `RumiError`, `info`, `Metadata`,
+  `set_num_threads`, `get_num_threads`, `set_checksum_verification`,
+  `get_checksum_verification`, `__version__`.
   Everything under `rumi._*` is private.
 
 ## 2. `frames`, `FrameTable` and `Frame`
 
 ```text
-rumi.frames(arr, pattern, tile_size=512) -> rumi.FrameTable
+rumi.frames(x, pattern, tile_size=512) -> rumi.FrameTable
 ```
 
-Cuts `arr` with a frame pattern (`patterns.md`). The pattern's left side must name every
-axis of `arr`, in `arr`'s order. `tile_size` is the square nominal tile, 1 to 65535.
+Cuts `x` with a frame pattern (`patterns.md`). The pattern's left side must name every
+axis of `x`, in `x`'s order. `tile_size` is the square nominal tile, 1 to 65535.
 Every frame's `data` is C-contiguous and in the frame's axis order; edge frames are
 clipped.
 
@@ -94,33 +94,47 @@ empty payload `ValueError: frame 0 is empty`. `attach` refuses reserved names
 ```text
 rumi.geozl.graph(raster, method, *, width=None, planes=None, error=None, nodata=None)
     -> rumi.geozl.Graph
-rumi.geozl.compress(tile, *, graph) -> bytes
+rumi.geozl.compress(tile, graph) -> bytes
 ```
 
-These calls use the GeoZL linked into `librumi`. They cover graph creation and
-compression. For `coeffs`, `profile` or standalone `decompress`, use the separate
-`geozl` package.
+These calls use the GeoZL linked into `librumi`. `rumi.geozl` covers `graph` and
+`compress` only. `decompress`, `profile` and `coeffs` live in the separate `geozl`
+package.
 
 | Argument | Meaning |
 | --- | --- |
 | `raster` | samples of a rumi dtype in native byte order; for a bounded graph they fix the domain later tiles must fall in |
 | `method` | a recipe such as `"planar>zigzag>zstd"` |
-| `width`, `planes` | row width and stacked images; default `shape[-1]` and, for three or more axes, `shape[0]` |
+| `width`, `planes` | row width and stacked images, whole numbers from 1 to 4294967295; default `shape[-1]` and, for three or more axes, `shape[0]` |
 | `error` | `None` or zero for lossless, a number for LINEAR, `"1%"` for LOG, or a full LINEAR, LOG or SQRT recipe |
-| `nodata` | a sentinel value; NaN holes in a float raster are kept without one |
+| `nodata` | a sentinel number (`int`, `float`, NumPy scalar, `Decimal` or `Fraction`) that fits the dtype, whole and not NaN on an integer raster, checked exactly without rounding; NaN holes in a float raster are kept without one |
 
-- The core validates for every binding. `error=-1` raises `ValueError: error must not
-  be negative`, `planes=7` on a 3-band frame `ValueError: the planes do not split the
-  raster into whole rows`, and an unknown recipe `ValueError: GeoZL could not build the
-  graph: unknown method "nope"`.
-- `compress` refuses another dtype with `ValueError: the tile dtype is not the graph's`.
+- Argument checks the binding shares with the `geozl` package raise the same class and
+  text, with `rumi.geozl.` for `geozl.`. `error=True` raises `ValueError: error must not
+  be a boolean`, `width=3.7` `TypeError: width must be a whole number`, `planes=0`
+  `ValueError: planes must be from 1 to 4294967295`, `nodata="0"` `TypeError: nodata must
+  be a number`, `nodata=np.nan` on uint16 `ValueError: a uint16 raster cannot use NaN as
+  nodata`, an out-of-range sentinel `ValueError: nodata does not fit the dtype`, and
+  `compress(tile, None)` `TypeError: graph must be a rumi.geozl.Graph, got NoneType`.
+  `test_geozl.py` runs the same bad inputs through both packages.
+- The core validates the rest for every binding, with geozl's text and double quotes
+  where geozl prints a repr. `error=-1` raises `ValueError: error must not be negative,
+  got -1`, `error="150%"` `ValueError: relative error must be between 0% and 100%, got
+  "150%"`, and `planes=7` on a 3-band frame `ValueError: 7 planes do not split 5760
+  elements into whole rows of 40`. A recipe GeoZL refuses raises `ValueError: GeoZL graph
+  failed (method = "nope"): unknown method "nope" (ZL error code 21)`.
+- `compress` takes `graph` by position or by name. It refuses another dtype with
+  `ValueError: this graph was built for dtype uint16, got int16`.
 - `bool`, `complex64` and the other dtypes without a GeoZL code compress losslessly. A
-  bound or sentinel on them raises `NotImplementedError`, and `complex128` raises
-  `NotImplementedError: GeoZL compresses samples of 1, 2, 4 or 8 bytes`.
-- A `Graph` keeps `method`, `width`, `planes`, `dtype` and `nodata` as given. `error`
-  is the normalized recipe, as in `geozl.Graph`, so `error=0.5` reads back as
-  `"LINEAR:MAX_ERROR=0.5"` and `error=0` as `None`. A graph owns a compression
-  context, so use one per thread.
+  bound on them raises `ValueError: the quantizers do not support dtype complex64`, a
+  sentinel `ValueError: nodata needs a dtype geozl knows, got bool`, and `complex128`
+  `ValueError: dtype complex128 is 16 bytes per element, an OpenZL numeric stream is 1,
+  2, 4 or 8`.
+- A `Graph` keeps `method`, `width`, `planes`, `dtype`, `itemsize` (bytes per sample)
+  and `nodata` as given, and prints as `<rumi.geozl.Graph planar>zigzag>pfor, uint16,
+  row width 48, 1 plane, lossless>`. `error` is the normalized recipe, as in
+  `geozl.Graph`, so `error=0.5` reads back as `"LINEAR:MAX_ERROR=0.5"` and `error=0`
+  as `None`. A graph owns a compression context, so use one per thread.
 - `rumi.geozl` is a submodule, so `import rumi.geozl` and
   `from rumi.geozl import graph` work as well as `rumi.geozl.graph`.
 
@@ -136,41 +150,41 @@ input-axis order named by `pattern`; Rumi derives the band count, grid and numbe
 frames.
 
 ```text
-rumi.write(path, tf, *, bands, time, transform=None, crs=None, pixel_is_point=False)
-    -> (path, header)
+rumi.write(path, frames, *, bands, time, transform=None, crs=None, pixel_is_point=False)
+    -> header
 ```
 
 | Argument | Meaning |
 | --- | --- |
-| `path` | local filesystem path; returned unchanged. Remote URIs fail with `could not open s3://... for writing` |
-| `tf` | a `FrameTable` with every payload assigned |
+| `path` | local filesystem path; a leading `~` is expanded. Remote URIs fail with `could not open s3://... for writing` |
+| `frames` | a `FrameTable` with every payload assigned |
 | `bands` | required; one `str` per band, in band order, non-empty, unique and free of NUL (`writing.md`) |
-| `time` | required; one entry per time step: date, datetime, ISO string or `numpy.datetime64` for instants, `(start, end)` pairs for intervals (`writing.md`) |
+| `time` | required; one entry per time step: date, datetime, ISO string or `numpy.datetime64` for instants, `(start, end)` pairs for intervals (`writing.md`). ISO text is `YYYY-MM-DD`, or a date and `HH:MM[:SS[.000]]` joined by `T` or a space, with an optional `Z`, `+HH`, `+HHMM` or `+HH:MM` offset, the regex R and Julia use; `"20240825"` and `"2024-08-25T14"` raise `ValueError: ... is not an ISO date or datetime`. Every coordinate falls in the years 1 to 9999 UTC, or `ValueError: the 2nd time step falls outside the years 1 to 9999` |
 | `transform` | six affine coefficients `(x_res, row_rot, x_origin, col_rot, y_res, y_origin)`, or a nine-value affine matrix ending in `(0, 0, 1)` |
-| `crs` | EPSG code as `int`, `"EPSG:32718"`, `"32718"`, or any object with `to_epsg()` (rasterio and pyproj CRS) |
-| `pixel_is_point` | `True` anchors pixels at their centre; recorded even without a CRS |
+| `crs` | EPSG code from 1 to 4294967295 as `int`, `"EPSG:32718"`, `"32718"`, or any object with `to_epsg()` (rasterio and pyproj CRS); `0` and `"EPSG:0"` raise `ValueError` |
+| `pixel_is_point` | a `bool` or `numpy.bool_`; `True` anchors pixels at their centre and is recorded even without a CRS. Anything else raises `TypeError` |
 
-- `transform` and `crs` go together, or `ValueError: transform and crs must be given
+- `transform` and `crs` go together, or `ValueError: transform and a CRS must be given
   together`.
 - A missing payload raises `ValueError: 1 of 16 frames have no payload, first is 0;
   compress every frame before writing` before anything is opened.
-- `header` is `bytes`: 32 bytes plus the packed frame sizes (37 bytes for the 4-frame
+- `write` returns only `header`, as `bytes`: 32 bytes plus the packed frame sizes (37 bytes for the 4-frame
   Image in the canonical example). It carries no band texts, time or georeferencing.
 - The writer opens `path` with truncation. A failure after that removes the file.
 
 ## 5. `read`
 
 ```text
-rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
-          bands=None, window=None, device=None, decode_backend="auto")
+rumi.read(source, header=None, *, time=None, bands=None, window=None, pattern=None,
+          framework="numpy", device=None, decode_backend="auto")
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `source` | one `str` or `os.PathLike` (local path, URI or VSI path), the file's bytes as `bytes`, `bytearray` or `memoryview`, or a `rumi.Dataset` |
 | `header` | the bytes returned by `write` or `info(source=...).header`; required for a bare source, refused for a `Dataset` |
-| `time`, `bands` | `None` (all, file order), a list of zero-based positions (any order, repeats allowed), or a half-open `(start, stop)` tuple |
-| `window` | `None` (whole image) or a tuple `(row, column, height, width)` of integers |
+| `time`, `bands` | `None` (all, file order), one zero-based `int`, a list of positions (any order, repeats allowed), a `range`, or a 1-D integer NumPy array. A tuple raises `TypeError: bands takes a list or a range, not a tuple`, and a bool `TypeError: bands takes integer indices, not a bool`. A `range` expands no further than one entry past the axis |
+| `window` | `None` (whole image) or four integers `(row, column, height, width)` as a tuple, list or 1-D array, never a `str` |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
 | `framework` | `"numpy"` (default), `"torch"`, `"jax"`, `"tensorflow"`, or `"dlpack"` for a `RumiArray` |
 | `device` | `None` for CPU, `"cuda"` (the thread's current CUDA device) or `"cuda:N"` on Linux, or `"mps"` on macOS; any framework but `"numpy"` |
@@ -179,7 +193,7 @@ rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
 ```python
 cube = rumi.read(path, header)                                    # (3, 4, 300, 260)
 one = rumi.read(path, header, time=[2])                           # (1, 4, 300, 260)
-hwc = rumi.read(path, header, time=(0, 2), bands=(1, 4),
+hwc = rumi.read(path, header, time=range(0, 2), bands=range(1, 4),
                 window=(100, 200, 50, 50), pattern="t y x b")     # (2, 50, 50, 3)
 ```
 
@@ -195,13 +209,15 @@ with `close()` or a `with` block.
 ## 6. `read_many`
 
 ```text
-rumi.read_many(sources, headers=None, *, windows=None, framework="numpy", pattern=None,
-               time=None, bands=None, device=None, decode_backend="auto")
+rumi.read_many(sources, headers=None, *, windows=None, time=None, bands=None, pattern=None,
+               framework="numpy", device=None, decode_backend="auto")
 ```
 
 Without `windows`, `read_many` reads every image in full, so the images must share a
-size. When windows are given, `windows[i]` is read from `sources[i]`; their positions may
-differ, but their height and width must match. The result has a leading `n` axis in the
+size. When windows are given, `windows[i]` is read from `sources[i]`, and `None` reads
+that source's whole image. `windows` is a sequence of windows or an `(n, 4)` integer
+array with one window per row. Positions may differ, but every height and width must
+match. The result has a leading `n` axis in the
 order given (`n b y x`, or `n t b y x` for Cubes), also for one item. `time`, `bands`
 and `pattern` apply to every item, and a custom pattern must contain `n` when there is
 more than one item. Sources may repeat and may mix paths, URIs and bytes. See
@@ -232,13 +248,13 @@ bytes.
 | `header` | canonical header bytes | the header |
 | `shape` | `(B, Y, X)` or `(T, B, Y, X)` | same |
 | `time_count` | `T` | same |
-| `dtype` | `rumi.DType`; `numpy_dtype` is the exact NumPy scalar or `None` | same |
+| `dtype` | `rumi.DType`, equal to and hashed as its name, so `meta.dtype == "uint16"`; `numpy_dtype` is the exact NumPy scalar or `None` | same |
 | `tile` | `(height, width)` | same |
 | `frame_layout` | decoded frame axes, such as `"b h w"` | same |
 | `index_order` | band and time axes the index walks, outermost first, such as `("b", "t")`; `()` for cell frames | same |
 | `frames` | frame count | same |
 | `bands` | one text per band, in band order | `None` |
-| `time` | one uniform list: all `date` when every coordinate is a whole day, otherwise all UTC `datetime`; `(start, end)` tuples for intervals | `None` |
+| `time` | one uniform list: all `date` when every coordinate is a whole day, otherwise all UTC `datetime`; `(start, end)` tuples for intervals. A file from another writer with a coordinate outside the years 1 to 9999 raises a `RumiError` of kind `"format"`, also a `ValueError`: `the 1st time step falls outside the years 1 to 9999` | `None` |
 | `time_kind` | `"instant"` or `"interval"` | `None` |
 | `transform` | six floats, or `None` without a CRS | `None` |
 | `crs` | EPSG code or `None` | `None` |
@@ -268,7 +284,8 @@ rumi.get_num_threads()
 - One process-wide pool serves every read. The default is 1, or `RUMI_NUM_THREADS` (an
   integer in `[1, 1024]` or `ALL_CPUS`; invalid values are errors).
 - The first read that uses more than one thread pins the count. A later
-  `set_num_threads` with another value raises `RuntimeError`.
+  `set_num_threads` with another value raises a `RumiError` of kind `"state"`, which is a
+  `RuntimeError`.
 - `set_num_threads` accepts integers in `[1, 1024]`; `0` raises `ValueError`, `1.5` and
   `"4"` raise `TypeError`.
 - A forked child starts from its own environment (1 unless `RUMI_NUM_THREADS` is set) and
@@ -286,22 +303,36 @@ rumi.get_checksum_verification()
 - The default is `False`. `RUMI_VERIFY` accepts `1`, `true`, `on`, `yes`, `0`,
   `false`, `off`, or `no`; any other value is an error.
 - The first decoded frame pins the setting. A later `set_checksum_verification` with
-  another value raises `RuntimeError`. The setter accepts only `bool`.
+  another value raises a `RumiError` of kind `"state"`. The setter accepts only `bool`.
 - A forked child inherits the setting, pinned state included.
 
 ## 11. Exceptions
 
 C status codes map to Python exceptions in `_ffi.py`; the message is the core's error
-text.
+text. `RUMI_ERR_INVALID` stays a plain `ValueError`, like the binding's own argument
+checks. Every other status raises a subclass of `rumi.RumiError(Exception)` that also
+derives from the built-in listed here, so `except OSError` keeps working. `.kind` names
+the status as text, the same kinds R and Julia report.
 
-| Status | Exception | Typical source |
-| --- | --- | --- |
-| `RUMI_ERR_INVALID`, `RUMI_ERR_PARSE`, `RUMI_ERR_FORMAT` | `ValueError` | selections, patterns, headers, malformed files |
-| `RUMI_ERR_IO`, `RUMI_ERR_DECODE` | `OSError` | missing files, transport failures, OpenZL decode failures |
-| `RUMI_ERR_OOM` | `MemoryError` | allocations |
-| `RUMI_ERR_UNSUPPORTED` | `NotImplementedError` | a frame codec the reader does not know |
-| `RUMI_ERR_STATE` | `RuntimeError` | changing process configuration after it is pinned |
-| `RUMI_ERR_INTERNAL` | `RuntimeError` | bugs |
+| Status | `kind` | Also a | Typical source |
+| --- | --- | --- | --- |
+| `RUMI_ERR_INVALID` | none | `ValueError` | selections, patterns, a header that does not match its source |
+| `RUMI_ERR_IO` | `"io"` | `OSError` | missing files, transport failures |
+| `RUMI_ERR_PARSE` | `"parse"` | `ValueError` | malformed external headers |
+| `RUMI_ERR_FORMAT` | `"format"` | `ValueError` | malformed files |
+| `RUMI_ERR_DECODE` | `"decode"` | `OSError` | OpenZL decode failures, GPU calls |
+| `RUMI_ERR_OOM` | `"oom"` | `MemoryError` | allocations |
+| `RUMI_ERR_UNSUPPORTED` | `"unsupported"` | `NotImplementedError` | a frame codec the reader does not know |
+| `RUMI_ERR_STATE` | `"state"` | `RuntimeError` | changing process configuration after it is pinned |
+| `RUMI_ERR_INTERNAL` | `"internal"` | `RuntimeError` | bugs |
+
+```python
+try:
+    batch = rumi.read_many(urls, headers, windows=windows)
+except rumi.RumiError as error:
+    if error.kind != "io":
+        raise
+```
 
 Pattern errors raise `rumi._pattern.PatternError`, a `ValueError` subclass. The Python
 layer also raises `TypeError` for wrong argument types.

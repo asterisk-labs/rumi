@@ -1644,38 +1644,6 @@ pre code {
   line-height: 1.2;
 }
 
-.colophon {
-  flex-direction: column;
-  gap: 18px;
-  text-align: center;
-}
-
-.colophon .partners {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 18px 40px;
-}
-
-.colophon .partners a {
-  display: inline-flex;
-  opacity: .72;
-  filter: grayscale(1);
-  transition: opacity 160ms ease, filter 160ms ease;
-}
-
-.colophon .partners a:hover,
-.colophon .partners a:focus-visible {
-  opacity: 1;
-  filter: none;
-}
-
-.colophon .partners img {
-  display: block;
-  width: auto;
-}
-
 .heart {
   flex: 0 0 auto;
   width: 13px;
@@ -1742,8 +1710,8 @@ pre code {
 .by:focus-visible { color: var(--ink-soft); }
 
 .by img {
-  width: 13px;
-  height: 15px;
+  width: 109px;
+  height: auto;
   opacity: 0.74;
 }
 

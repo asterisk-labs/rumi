@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=17">
+<link rel="stylesheet" href="assets/css/reading.css?v=19">
 </head>
 <body>
 <div class="page">
@@ -84,10 +84,10 @@
       <p>A file is written in three steps. <code>frames</code> cuts an array into tiles, you compress each tile with <a href="#geozl"><code>rumi.geozl</code></a>, and <code>write</code> stores the payloads with the index and returns the external header.</p>
 
       <h3 id="frames">frames</h3>
-<pre><code class="sig language-python">rumi.frames(arr, pattern, tile_size=512) -&gt; FrameTable</code></pre>
+<pre><code class="sig language-python">rumi.frames(x, pattern, tile_size=512) -&gt; FrameTable</code></pre>
       <p>Splits an array into frames and returns them in file order. Frames at the right and bottom edges are clipped.</p>
       <table class="spec">
-        <tr><th>arr</th><td>Anything <code>np.asarray</code> accepts. Its axes can come in any order the pattern names.</td></tr>
+        <tr><th>x</th><td>Anything <code>np.asarray</code> accepts. Its axes can come in any order the pattern names.</td></tr>
         <tr><th>pattern</th><td>An einops-style pattern. The left side names every input axis, and a pair such as <code>(row h)</code> splits an image axis into a grid coordinate and a frame axis. The group on the right lists the axes stored together in one frame. Only <code>b</code> and <code>t</code> are reserved.</td></tr>
         <tr><th>tile_size</th><td>Height and width of a square tile, from 1 to 65535.</td></tr>
       </table>
@@ -112,54 +112,55 @@
       <p>One frame of a <code>FrameTable</code>. <code>data</code> is the tile to compress and <code>shape</code> its shape. <code>index</code>, <code>row</code>, <code>col</code> and <code>cell</code> place it in the grid, and <code>band</code> and <code>time</code> are set when the pattern stores one band or one time step per frame. <code>compressed</code> holds the payload once you assign it.</p>
 <pre data-run="skip"><code class="language-python">for frame in frames:
     g = rumi.geozl.graph(frame.data, "planar&gt;zigzag&gt;lanes")
-    frame.compressed = rumi.geozl.compress(frame.data, graph=g)</code></pre>
+    frame.compressed = rumi.geozl.compress(frame.data, g)</code></pre>
       <p>Each frame can use its own recipe, so a land tile and an ocean tile in one file can compress differently.</p>
 
       <h3 id="geozl">geozl</h3>
 <pre><code class="sig language-python">rumi.geozl.graph(raster, method, *, width=None, planes=None, error=None,
     nodata=None) -&gt; rumi.geozl.Graph
-rumi.geozl.compress(tile, *, graph) -&gt; bytes</code></pre>
-      <p>Compress frames with the GeoZL linked into Rumi. These calls cover graph creation and compression; <code>write</code> stores the resulting bytes.</p>
+rumi.geozl.compress(tile, graph) -&gt; bytes</code></pre>
+      <p>Compress frames with the GeoZL linked into Rumi, and <code>write</code> stores the resulting bytes. <code>rumi.geozl</code> covers <code>graph</code> and <code>compress</code> only. <code>decompress</code>, <code>profile</code> and <code>coeffs</code> live in the <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">geozl</a> package.</p>
       <table class="spec">
         <tr><th>raster</th><td>The samples the graph is built from. For a bounded error they also fix the domain later tiles must fall in, so use data spanning the product.</td></tr>
         <tr><th>method</th><td>A recipe such as <code>"planar&gt;zigzag&gt;lanes"</code>.</td></tr>
-        <tr><th>width, planes</th><td>Row width in samples and the number of stacked images. They default to the last axis and, for three or more axes, the first. Row predictors restart at each plane.</td></tr>
+        <tr><th>width, planes</th><td>Row width in samples and the number of stacked images, whole numbers from 1 to 4294967295. They default to the last axis and, for three or more axes, the first. Row predictors restart at each plane.</td></tr>
         <tr><th>error</th><td><code>None</code> or zero for lossless, a positive number for an absolute bound, a percentage such as <code>"1%"</code> for a relative one, or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe. Integers and 16, 32 and 64-bit floats take a bound.</td></tr>
-        <tr><th>nodata</th><td>A sentinel value that marks missing samples. NaN holes in a float raster are kept without one.</td></tr>
+        <tr><th>nodata</th><td>A sentinel number that marks missing samples. It must fit the dtype, and an integer raster takes a whole number, not NaN. NaN holes in a float raster are kept without one.</td></tr>
       </table>
-      <p>A graph is reusable for tiles of its dtype and is not thread-safe. <code>compress</code> refuses a tile of another dtype, and a bounded tile outside the graph's domain.</p>
+      <p>A <code>Graph</code> keeps <code>method</code>, <code>width</code>, <code>planes</code>, <code>dtype</code>, <code>itemsize</code> in bytes per sample, <code>error</code> as the full recipe, and <code>nodata</code>. It prints as <code>&lt;rumi.geozl.Graph planar&gt;zigzag&gt;pfor, uint16, row width 48, 1 plane, lossless&gt;</code>. A graph is reusable for tiles of its dtype and is not thread-safe. <code>compress</code> takes it by position or by name. It refuses a tile of another dtype, and a bounded tile outside the graph's domain.</p>
+      <p>A bad argument raises the same exception with the same text as in the geozl package, with <code>rumi.geozl.</code> in place of <code>geozl.</code>. A recipe GeoZL refuses raises <code>ValueError</code> in both, and other library refusals raise a <a href="#rumierror"><code>RumiError</code></a>.</p>
 
       <h3 id="write">write</h3>
-<pre><code class="sig language-python">rumi.write(path, tf, *, bands, time, transform=None, crs=None,
-    pixel_is_point=False) -&gt; tuple[path, bytes]</code></pre>
+<pre><code class="sig language-python">rumi.write(path, frames, *, bands, time, transform=None, crs=None,
+    pixel_is_point=False) -&gt; bytes</code></pre>
       <p>Writes a <code>FrameTable</code> to a local file. The payloads are stored as they are, without decoding or recompressing them.</p>
       <table class="spec">
-        <tr><th>path</th><td>A local path, as text or a path-like object.</td></tr>
-        <tr><th>tf</th><td>A <code>FrameTable</code> with a non-empty payload on every frame.</td></tr>
+        <tr><th>path</th><td>A local path, as text or a path-like object. A leading <code>~</code> is expanded.</td></tr>
+        <tr><th>frames</th><td>A <code>FrameTable</code> with a non-empty payload on every frame.</td></tr>
         <tr><th>bands</th><td>One unique, non-empty label per band, in band order, such as <code>"B4, Red, 665nm"</code>.</td></tr>
-        <tr><th>time</th><td>One entry per time step. An instant is a date, a datetime, an ISO string or a <code>numpy.datetime64</code>, and an interval is a <code>(start, end)</code> pair of them.</td></tr>
+        <tr><th>time</th><td>One entry per time step. An instant is a date, a datetime, an ISO string or a <code>numpy.datetime64</code>, and an interval is a <code>(start, end)</code> pair of them. ISO text is <code>YYYY-MM-DD</code>, or a date and <code>HH:MM</code> joined by <code>T</code> or a space, with optional seconds and an optional <code>Z</code>, <code>+HH</code>, <code>+HHMM</code> or <code>+HH:MM</code> offset. A fraction of a second must be all zeros, so <code>"20240825"</code> and <code>"2024-08-25T14"</code> are refused, as in R and Julia. Every coordinate falls in the years 1 to 9999 UTC.</td></tr>
         <tr><th>transform</th><td>Six affine coefficients in rasterio order, <code>(x_res, row_rot, x_origin, col_rot, y_res, y_origin)</code>. Give it together with <code>crs</code>.</td></tr>
-        <tr><th>crs</th><td>An EPSG code as an integer, a string such as <code>"EPSG:32718"</code>, or an object with <code>to_epsg()</code>.</td></tr>
-        <tr><th>pixel_is_point</th><td>Whether coordinates refer to pixel centres. The default refers to pixel corners.</td></tr>
+        <tr><th>crs</th><td>An EPSG code from 1 to 4294967295 as an integer, a string such as <code>"EPSG:32718"</code>, or an object with <code>to_epsg()</code>.</td></tr>
+        <tr><th>pixel_is_point</th><td>A <code>bool</code> or <code>numpy.bool_</code> that says whether coordinates refer to pixel centres. The default refers to pixel corners.</td></tr>
       </table>
-      <p>Returns <code>(path, header)</code>. The header is the external bytes that <code>read</code> and <code>read_many</code> need. A failure after the file is opened removes the partial file.</p>
+      <p>Returns the external header as <code>bytes</code>, which <code>read</code> and <code>read_many</code> need beside the file. A failure after the file is opened removes the partial file.</p>
 
       <h3 id="frame_start">frame_start</h3>
 <pre><code class="sig language-python">rumi.frame_start(shape, pattern, tile_size=512) -&gt; int</code></pre>
       <p>Returns the byte offset of the first frame, without building any frames. <code>shape</code> follows the axis order the pattern names. Everything before that offset is fixed by the shape, so it is known before anything is compressed.</p>
 
       <h2 class="part" id="reading">Reading</h2>
-      <p>A source is a local path, a remote URI or the file's bytes. Remote reads go through <a href="https://github.com/asterisk-labs/karu" rel="noopener noreferrer">Karu</a>, which covers HTTP, S3, GCS, Azure, Hugging Face, Source Cooperative and <code>/vsisubfile/</code>. Indices are zero-based, and <code>time</code> and <code>bands</code> take a list of indices or a half-open <code>(start, stop)</code> range.</p>
+      <p>A source is a local path, a remote URI or the file's bytes. Remote reads go through <a href="https://github.com/asterisk-labs/karu" rel="noopener noreferrer">Karu</a>, which covers HTTP, S3, GCS, Azure, Hugging Face, Source Cooperative and <code>/vsisubfile/</code>. Indices and window origins count from 0. <code>time</code> and <code>bands</code> take one index, a list of indices, a <code>range</code> or a 1-D integer NumPy array, and <code>None</code> selects them all. A tuple or a bool is refused, so a range is written <code>range(start, stop)</code>.</p>
 
       <h3 id="read">read</h3>
-<pre><code class="sig language-python">rumi.read(source, header=None, *, framework="numpy", pattern=None, time=None,
-    bands=None, window=None, device=None, decode_backend="auto")</code></pre>
+<pre><code class="sig language-python">rumi.read(source, header=None, *, time=None, bands=None, window=None,
+    pattern=None, framework="numpy", device=None, decode_backend="auto")</code></pre>
       <p>Reads one raster, or the part of it you select. Only the frames under the selection are fetched and decoded.</p>
       <table class="spec">
         <tr><th>source</th><td>A path, a URI, the file's bytes, or a <a href="#open"><code>Dataset</code></a>.</td></tr>
         <tr><th>header</th><td>The header <code>write</code> returned. For an existing file, <code>info(source=...).header</code> rebuilds it. A <code>Dataset</code> carries its own.</td></tr>
-        <tr><th>window</th><td><code>(row, column, height, width)</code> in pixels.</td></tr>
         <tr><th>time, bands</th><td>The time steps and bands to read.</td></tr>
+        <tr><th>window</th><td>Four integers <code>(row, column, height, width)</code> in pixels, as a tuple, a list or a 1-D array.</td></tr>
         <tr><th>pattern</th><td>The output axis order. The default is <code>(T, B, Y, X)</code>, without the time axis for an Image.</td></tr>
         <tr><th>framework</th><td><code>"numpy"</code>, <code>"torch"</code>, <code>"jax"</code>, <code>"tensorflow"</code> or <code>"dlpack"</code>. The last returns a <a href="#rumiarray"><code>RumiArray</code></a>.</td></tr>
         <tr><th>device</th><td><code>"cuda:N"</code> or <code>"mps"</code> decodes into GPU memory and hands it to the framework through DLPack, so it needs a framework other than <code>"numpy"</code>. A CUDA read makes the framework's current stream wait for it on the device.</td></tr>
@@ -170,12 +171,12 @@ rumi.geozl.compress(tile, *, graph) -&gt; bytes</code></pre>
       <p>GeoZL decodes on the GPU the frames that end in PFOR or PivCo, such as <code>planar&gt;zigzag&gt;lanes</code> or <code>planar&gt;zigzag&gt;pfor</code>. Other frames decode on the CPU and are copied over. <a href="https://asterisk.coop/geozl/gpu-codecs.html" rel="noopener noreferrer">What a GPU wants</a> explains why.</p>
 
       <h3 id="read_many">read_many</h3>
-<pre><code class="sig language-python">rumi.read_many(sources, headers=None, *, windows=None, framework="numpy",
-    pattern=None, time=None, bands=None, device=None, decode_backend="auto")</code></pre>
+<pre><code class="sig language-python">rumi.read_many(sources, headers=None, *, windows=None, time=None, bands=None,
+    pattern=None, framework="numpy", device=None, decode_backend="auto")</code></pre>
       <p>Reads one window from each source as a single plan and stacks the results along a leading <code>n</code> axis, in the order given. This is the call a training data loader makes.</p>
       <table class="spec">
-        <tr><th>windows</th><td>One <code>(row, column, height, width)</code> per source. All windows must be the same size, only their positions differ. Without <code>windows</code>, every whole image is read, and the images must share a size.</td></tr>
         <tr><th>headers</th><td>One header per source.</td></tr>
+        <tr><th>windows</th><td>One window per source, as in <code>read</code>, or <code>None</code> for that source's whole image. An <code>(n, 4)</code> integer array gives one window per row. All windows must be the same size, only their positions differ. Without <code>windows</code>, every whole image is read, and the images must share a size.</td></tr>
         <tr><th>other arguments</th><td>As in <code>read</code>, applied to every item.</td></tr>
       </table>
       <p>The sources must agree on tile size, band count, dtype, time step count and frame layout. Their image sizes may differ when <code>windows</code> is given. To read one window from one file several times, repeat it once per item.</p>
@@ -199,19 +200,42 @@ rumi.geozl.compress(tile, *, graph) -&gt; bytes</code></pre>
       <p>For a CUDA array, <code>__dlpack__(stream=...)</code> makes that stream wait on the device, and the memory returns to Rumi in that stream's order, so keep the stream alive while the tensor lives. JAX needs 64-bit types enabled for 64-bit samples.</p>
 
       <h3 id="dtype">DType</h3>
-      <p>The sample type of a file, in <code>Metadata.dtype</code>. It has <code>name</code>, <code>bits</code>, <code>itemsize</code>, <code>component_size</code>, the DLPack type code and the matching <code>numpy_dtype</code>, which is <code>None</code> for types NumPy lacks, such as bfloat16 and float8. Those still reach PyTorch and JAX through DLPack.</p>
+      <p>The sample type of a file, in <code>Metadata.dtype</code>. It compares equal to its name, so <code>meta.dtype == "uint16"</code>, and hashes as its name. It has <code>name</code>, <code>bits</code>, <code>itemsize</code>, <code>component_size</code>, the DLPack type code and the matching <code>numpy_dtype</code>, which is <code>None</code> for types NumPy lacks, such as bfloat16 and float8. Those still reach PyTorch and JAX through DLPack.</p>
+
+      <h2 class="part" id="errors">Errors</h2>
+
+      <h3 id="rumierror">RumiError</h3>
+<pre><code class="sig language-python">class rumi.RumiError(Exception):
+    kind: str</code></pre>
+      <p>An invalid request raises <code>ValueError</code> or <code>TypeError</code>, whether the binding or <code>librumi</code> refuses it. Every other failure raises a <code>RumiError</code> whose <code>kind</code> names it. The raised class also derives from the built-in exception named here, so <code>except OSError</code> still catches a missing file.</p>
+      <table class="spec">
+        <tr><th>"io"</th><td>A source could not be opened, read or written. An <code>OSError</code>.</td></tr>
+        <tr><th>"parse"</th><td>An external header is malformed. A <code>ValueError</code>.</td></tr>
+        <tr><th>"format"</th><td>The file is malformed, such as frame data that runs past the end of the source. A <code>ValueError</code>.</td></tr>
+        <tr><th>"decode"</th><td>A frame did not decode or decoded to an unexpected size, or a GPU call failed. An <code>OSError</code>.</td></tr>
+        <tr><th>"oom"</th><td>An allocation failed or its size cannot be represented. A <code>MemoryError</code>.</td></tr>
+        <tr><th>"unsupported"</th><td>The build or the machine lacks something the call needs, such as GPU support. A <code>NotImplementedError</code>.</td></tr>
+        <tr><th>"state"</th><td>A process-wide setting is already pinned to another value. A <code>RuntimeError</code>.</td></tr>
+        <tr><th>"internal"</th><td>An unexpected internal error. A <code>RuntimeError</code>.</td></tr>
+      </table>
+<pre data-run="skip"><code class="language-python">try:
+    chip = rumi.read(url, header, window=(0, 0, 256, 256))
+except rumi.RumiError as error:
+    if error.kind != "io":
+        raise
+    chip = None</code></pre>
 
       <h2 class="part" id="settings">Settings</h2>
 
       <h3 id="set_num_threads">set_num_threads, get_num_threads</h3>
 <pre><code class="sig language-python">rumi.set_num_threads(n) -&gt; int
 rumi.get_num_threads() -&gt; int</code></pre>
-      <p>The size of the process-wide pool that reads, decodes and plans GPU work, from 1 to 1024. Set it before the first parallel read. Once the pool or a GPU context exists, changing it raises <code>RuntimeError</code>. <code>RUMI_NUM_THREADS</code> gives the starting value and also accepts <code>ALL_CPUS</code>. Without it, each process starts with one thread, and so does each DDP rank and each forked worker.</p>
+      <p>The size of the process-wide pool that reads, decodes and plans GPU work, from 1 to 1024. Set it before the first parallel read. Once the pool or a GPU context exists, changing it raises a <code>RumiError</code> of kind <code>"state"</code>, which is also a <code>RuntimeError</code>. <code>RUMI_NUM_THREADS</code> gives the starting value and also accepts <code>ALL_CPUS</code>. Without it, each process starts with one thread, and so does each DDP rank and each forked worker.</p>
 
       <h3 id="set_checksum_verification">set_checksum_verification, get_checksum_verification</h3>
 <pre><code class="sig language-python">rumi.set_checksum_verification(on) -&gt; bool
 rumi.get_checksum_verification() -&gt; bool</code></pre>
-      <p>Whether OpenZL checks frame checksums while decoding. Set it before the first decoded frame, after which changing it raises <code>RuntimeError</code>. <code>RUMI_VERIFY</code> gives the starting value and accepts <code>0</code> or <code>1</code>, <code>false</code> or <code>true</code>, <code>off</code> or <code>on</code>, and <code>no</code> or <code>yes</code>.</p>
+      <p>Whether OpenZL checks frame checksums while decoding. Set it before the first decoded frame, after which changing it raises a <code>RumiError</code> of kind <code>"state"</code>. <code>RUMI_VERIFY</code> gives the starting value and accepts <code>0</code> or <code>1</code>, <code>false</code> or <code>true</code>, <code>off</code> or <code>on</code>, and <code>no</code> or <code>yes</code>.</p>
 
       <h3 id="version">__version__</h3>
       <p>The installed version of <code>rumi-eo</code>.</p>
@@ -240,6 +264,8 @@ rumi.get_checksum_verification() -&gt; bool</code></pre>
         <li><a href="#output">Output</a></li>
         <li><a href="#rumiarray">RumiArray</a></li>
         <li><a href="#dtype">DType</a></li>
+        <li><a href="#errors">Errors</a></li>
+        <li><a href="#rumierror">RumiError</a></li>
         <li><a href="#settings">Settings</a></li>
         <li><a href="#set_num_threads">set_num_threads, get_num_threads</a></li>
         <li><a href="#set_checksum_verification">set_checksum_verification, get_checksum_verification</a></li>

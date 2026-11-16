@@ -246,7 +246,7 @@ def read_trailer(data, h):
 
 ## 9. Versions
 
-- `SPEC.md` declares specification 0.1.0, status Draft. The file header, header blob and
+- `SPEC.md` declares specification 1.0.0, status Stable. The file header, header blob and
   trailer are each version 1.
 - The development reader accepts exactly the sample encodings listed in `SPEC.md`
   (`compatibility.md`).

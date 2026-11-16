@@ -54,10 +54,10 @@ image = np.random.default_rng(0).integers(0, 4096, (4, 1024, 1024), dtype=np.uin
 frames = rumi.frames(image, "b (row h) (col w) -> row col (b h w)", tile_size=512)
 for frame in frames:
     graph = rumi.geozl.graph(frame.data, "planar>zigzag>zstd")
-    frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
+    frame.compressed = rumi.geozl.compress(frame.data, graph)
 
-path, header = rumi.write("scene.rumi", frames, bands=["B2", "B3", "B4", "B8"],
-                          time=["2024-08-25"])
+path = "scene.rumi"
+header = rumi.write(path, frames, bands=["B2", "B3", "B4", "B8"], time=["2024-08-25"])
 with rumi.open(path, header) as file:
     chip = file.read(bands=[2, 3], window=(0, 0, 256, 256))
 ```

@@ -2,7 +2,8 @@
 
 Sources: `core/src/pattern.cpp` (both grammars), `UNIT_REGISTRY` and `effective_unit` in
 `core/include/rumi/rumi.hpp`, `default_pattern` in `core/src/capi.cpp`, the `frame_unit`
-and Frame index sections of `SPEC.md`. Shapes and messages below describe 0.29.0.
+and Frame index sections of `SPEC.md`. Shapes and messages below describe
+rumi 0.31.0.
 
 ## Contents
 
@@ -168,7 +169,8 @@ check raises a plain `ValueError`.
 | `b (row h) -> row (b h)` | `the input needs exactly two split axes, the spatial ones` |
 | `... -> row col (b h w` | `unbalanced '(' in the output` |
 | a 2-axis pattern on a 3-D array | `the pattern names 2 axes (y x), got shape (4, 70, 50)` |
-| `tile_size=0` | `tile_size must be in [1, 65535], got 0` |
+| `tile_size=0` | `tile_size must be at least 1` |
+| `tile_size=70000` | `tile_size must be at most 65535, got 70000` |
 
 Output patterns raise `ValueError` from `read`:
 

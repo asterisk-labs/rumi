@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/reading.css?v=17">
+<link rel="stylesheet" href="assets/css/reading.css?v=19">
 </head>
 <body>
 <div class="page">
@@ -77,7 +77,7 @@
           <li><a href="api-js.html">JavaScript</a></li>
         </ol>
       </aside>
-      <p>Write Rumi files from R arrays, or read selected windows, bands and time steps. The reader pairs each file with its external header.</p>
+      <p>Write Rumi files from R arrays, or read selected windows, bands and time steps. The reader pairs each source, a path or the file's bytes, with its external header.</p>
 
       <h2 class="part" id="install">Install</h2>
 <pre data-run="skip"><code class="language-r">install.packages("rumi", repos = "https://asterisk-labs.r-universe.dev")
@@ -88,27 +88,32 @@ remotes::install_github("asterisk-labs/rumi", subdir = "bindings/r")</code></pre
 <pre data-run="skip"><code class="language-r">library(rumi)
 
 header &lt;- readBin("scene.header", "raw", file.info("scene.header")$size)
-file &lt;- rumi_open("scene.rumi", header)
-chip &lt;- rumi_read(file, bands = c(4, 8), time = 1:3,
+dataset &lt;- rumi_open("scene.rumi", header)
+chip &lt;- rumi_read(dataset, time = 1:3, bands = c(4, 8),
                   window = c(1, 1, 256, 256))
 dim(chip)                                    # 256 256 2 3
-rumi_close(file)</code></pre>
+rumi_close(dataset)</code></pre>
 
       <h2 class="part" id="functions">Functions</h2>
-      <p>Bad arguments and native library errors stop with an R error.</p>
+      <p>Bad arguments stop with an R error, and native failures signal a classed condition, as <a href="#errors">Errors</a> describes.</p>
 
       <h3 id="rumi_open">rumi_open</h3>
-<pre><code class="sig language-r">rumi_open(path, header)</code></pre>
+<pre><code class="sig language-r">rumi_open(source, header)</code></pre>
       <p>Opens a source with its external header. Opening checks the header against the source and reads the metadata, and every later read uses this pair.</p>
       <table class="spec">
-        <tr><th>path</th><td>One local path, URI or VSI path. A leading <code>~</code> is expanded.</td></tr>
+        <tr><th>source</th><td>One local path, URI or VSI path, or the file's bytes as a raw vector. A leading <code>~</code> is expanded. The dataset keeps a raw vector alive while it is open.</td></tr>
         <tr><th>header</th><td>The external header as a raw vector, as <code>readBin()</code> returns it.</td></tr>
       </table>
-      <p>Returns a <code>rumi_dataset</code> with the fields <code>pointer</code>, <code>path</code>, <code>header</code> and <code>metadata</code>. <code>print</code> shows the shape, dtype, tile, frame layout, bands, CRS and first time step. It wraps native state, so it does not survive saving and reloading. Garbage collection closes it, and <a href="#rumi_close"><code>rumi_close</code></a> closes it at once.</p>
+      <p>Returns a <code>rumi_dataset</code> with the fields <code>pointer</code>, <code>source</code>, <code>header</code> and <code>metadata</code>. <code>print</code> shows the shape, dtype, tile, frame layout, bands, CRS and first time step. It wraps native state, so it does not survive saving and reloading. Garbage collection closes it, and <a href="#rumi_close"><code>rumi_close</code></a> closes it at once.</p>
 
       <h3 id="rumi_info">rumi_info</h3>
-<pre><code class="sig language-r">rumi_info(file)</code></pre>
-      <p>Returns the metadata read by <code>rumi_open</code> as a <code>rumi_metadata</code> list. It reads nothing from the source.</p>
+<pre><code class="sig language-r">rumi_info(source = NULL, header = NULL)</code></pre>
+      <p>Inspects a source, an external header or both, and returns a <code>rumi_metadata</code> list. A dataset from <code>rumi_open</code> returns the metadata it read, and passing a header beside it is an error. A path or raw vector alone is read and its canonical external header rebuilt in <code>header</code>. A header alone opens nothing, so <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code> are <code>NULL</code>. Given both, Rumi checks that they match.</p>
+      <table class="spec">
+        <tr><th>source</th><td>A dataset from <code>rumi_open</code>, a path or the file's bytes as a raw vector, or <code>NULL</code>.</td></tr>
+        <tr><th>header</th><td>The external header as a raw vector, or <code>NULL</code>. At least one of the two is required.</td></tr>
+      </table>
+      <p>The list holds these fields.</p>
       <table class="spec">
         <tr><th>shape</th><td>Rumi's canonical <code>(Band, Y, X)</code> for an Image or <code>(Time, Band, Y, X)</code> for a Cube.</td></tr>
         <tr><th>time_count</th><td>Number of time steps, 1 for an Image.</td></tr>
@@ -118,86 +123,117 @@ rumi_close(file)</code></pre>
         <tr><th>index_order</th><td>The band and time axes the frame index walks, outermost first.</td></tr>
         <tr><th>frames</th><td>Number of frames.</td></tr>
         <tr><th>bands</th><td>Band descriptions.</td></tr>
-        <tr><th>time</th><td>UTC <code>POSIXct</code> values. Intervals are a matrix with the columns <code>start</code> and <code>end</code>.</td></tr>
+        <tr><th>time</th><td><code>Date</code> values when every coordinate is a whole UTC day, and UTC <code>POSIXct</code> values otherwise. Intervals are a matrix with the columns <code>start</code> and <code>end</code>.</td></tr>
         <tr><th>time_kind</th><td><code>"instant"</code>, <code>"interval"</code> or <code>NULL</code>.</td></tr>
         <tr><th>transform, crs</th><td>The six affine coefficients and the EPSG code, or <code>NULL</code> when the file has no CRS.</td></tr>
         <tr><th>pixel_is_point</th><td><code>TRUE</code> for a PixelIsPoint raster, <code>FALSE</code> for PixelIsArea.</td></tr>
         <tr><th>header</th><td>The header bytes.</td></tr>
       </table>
-<pre data-run="skip"><code class="language-r">info &lt;- rumi_info(file)
+<pre data-run="skip"><code class="language-r">info &lt;- rumi_info(dataset)
 info$shape                                   # 2 3 6 8
-info$bands                                   # "B02" "B03" "B04"</code></pre>
+info$bands                                   # "B02" "B03" "B04"
+
+header &lt;- rumi_info("scene.rumi")$header    # rebuild a lost header
+rumi_info(header = header)$bands             # NULL</code></pre>
 
       <h3 id="rumi_read">rumi_read</h3>
-<pre><code class="sig language-r">rumi_read(file, header = NULL, bands = NULL, time = NULL,
+<pre><code class="sig language-r">rumi_read(source, header = NULL, time = NULL, bands = NULL,
     window = NULL, pattern = NULL)</code></pre>
-      <p>Reads a window and a selection of bands and time steps. Only the frames the read needs are fetched.</p>
+      <p>Reads a window and a selection of time steps and bands. Only the frames the read needs are fetched.</p>
       <table class="spec">
-        <tr><th>file</th><td>A dataset from <code>rumi_open</code>, or a path. A path is opened with <code>header</code> and closed after the read.</td></tr>
-        <tr><th>header</th><td>The external header when <code>file</code> is a path. A dataset already carries one, so passing it there is an error.</td></tr>
-        <tr><th>bands</th><td>Whole one-based band indices in output order, or <code>NULL</code> for all.</td></tr>
+        <tr><th>source</th><td>A dataset from <code>rumi_open</code>, a path or the file's bytes as a raw vector. A path or raw vector is read with <code>header</code> and closed after the read.</td></tr>
+        <tr><th>header</th><td>The external header when <code>source</code> is not a dataset. A dataset already carries one, so passing it there is an error.</td></tr>
         <tr><th>time</th><td>Whole one-based time indices in output order, or <code>NULL</code> for all.</td></tr>
+        <tr><th>bands</th><td>Whole one-based band indices in output order, or <code>NULL</code> for all.</td></tr>
         <tr><th>window</th><td><code>c(row, column, height, width)</code> with a one-based origin, or <code>NULL</code> for the whole image. It must lie inside the image.</td></tr>
         <tr><th>pattern</th><td>An output pattern that arranges the result, as in <a href="#arrays">Arrays</a>. <code>NULL</code> keeps the native order.</td></tr>
       </table>
       <p>Returns an array shaped <code>(X, Y, Band)</code> for an Image or <code>(X, Y, Band, Time)</code> for a Cube. A Cube keeps its time dimension when one step is selected.</p>
-<pre data-run="skip"><code class="language-r">chip &lt;- rumi_read(file, time = c(2, 1), bands = c(3, 1),
+      <p>A path or raw vector is read with its header alone, as Python's <code>rumi.read</code> does. It skips the index and trailer that <code>rumi_open</code> reads to check the pair, which saves range requests on a remote source. The result then has no band or time dimnames, and its <code>rumi_metadata</code> attribute holds only the header's fields. Open a dataset first for the labels.</p>
+<pre data-run="skip"><code class="language-r">chip &lt;- rumi_read(dataset, time = c(2, 1), bands = c(3, 1),
                   window = c(2, 3, 3, 4))
 dim(chip)                                    # 4 3 2 2
 
-band &lt;- rumi_read("scene.rumi", header, bands = 1)</code></pre>
+band &lt;- rumi_read("scene.rumi", header, bands = 1)
+bytes &lt;- readBin("scene.rumi", "raw", file.info("scene.rumi")$size)
+same &lt;- rumi_read(bytes, header, bands = 1)</code></pre>
 
       <h3 id="rumi_read_many">rumi_read_many</h3>
-<pre><code class="sig language-r">rumi_read_many(files, windows = NULL, bands = NULL, time = NULL,
-    pattern = NULL)</code></pre>
-      <p>Reads one window from each of several datasets in one call and stacks them along a last sample dimension, as a training batch needs.</p>
+<pre><code class="sig language-r">rumi_read_many(sources, headers = NULL, windows = NULL, time = NULL,
+    bands = NULL, pattern = NULL)</code></pre>
+      <p>Reads one window from each of several sources in one call and stacks them along a last <code>n</code> dimension, as a training batch needs.</p>
       <table class="spec">
-        <tr><th>files</th><td>A list of datasets from <code>rumi_open</code>.</td></tr>
-        <tr><th>windows</th><td>One <code>c(row, column, height, width)</code> per dataset, as a list or as the rows of a matrix. All windows have the same height and width. <code>NULL</code> reads each whole image.</td></tr>
-        <tr><th>others</th><td>As in <a href="#rumi_read"><code>rumi_read</code></a>, applied to every dataset.</td></tr>
+        <tr><th>sources</th><td>A list of datasets from <code>rumi_open</code>, or a list or character vector of paths and raw vectors. Datasets and bare sources do not mix.</td></tr>
+        <tr><th>headers</th><td>A list with one raw external header per source when <code>sources</code> are not datasets. Each source is read with its header alone, as in <a href="#rumi_read"><code>rumi_read</code></a>, and closed after the read.</td></tr>
+        <tr><th>windows</th><td>One <code>c(row, column, height, width)</code> per source, as a list or as the rows of a matrix. All windows have the same height and width. A <code>NULL</code> entry reads that whole image, and <code>NULL</code> reads every whole image, which must then share a size.</td></tr>
+        <tr><th>others</th><td>As in <a href="#rumi_read"><code>rumi_read</code></a>, applied to every source.</td></tr>
       </table>
-      <p>Returns <code>(X, Y, Band, Sample)</code>, or <code>(X, Y, Band, Time, Sample)</code> when the first dataset is a Cube. Dimension names come from the first dataset.</p>
-<pre data-run="skip"><code class="language-r">batch &lt;- rumi_read_many(list(file, file),
+      <p>Returns <code>(X, Y, Band, n)</code>, or <code>(X, Y, Band, Time, n)</code> when the first source is a Cube. Dimension names come from the first dataset, and sources read with their headers alone have no band or time names.</p>
+<pre data-run="skip"><code class="language-r">batch &lt;- rumi_read_many(list(dataset, dataset),
                         windows = list(c(1, 1, 2, 3), c(3, 4, 2, 3)),
                         bands = 2)
-dim(batch)                                   # 3 2 1 2 2</code></pre>
+dim(batch)                                   # 3 2 1 2 2
+
+batch &lt;- rumi_read_many(c("a.rumi", "b.rumi"), list(header_a, header_b),
+                        windows = rbind(c(1, 1, 256, 256), c(257, 1, 256, 256)))</code></pre>
 
       <h3 id="rumi_close">rumi_close</h3>
-<pre><code class="sig language-r">rumi_close(file)</code></pre>
+<pre><code class="sig language-r">rumi_close(dataset)</code></pre>
       <p>Releases the native source and header and returns <code>NULL</code> invisibly. A later read on the dataset stops with an error, and closing it again does nothing.</p>
 
       <h3 id="rumi_frames">rumi_frames</h3>
-<pre><code class="sig language-r">rumi_frames(x, pattern, tile_size = 512L, datatype = NULL)</code></pre>
+<pre><code class="sig language-r">rumi_frames(x, pattern, tile_size = 512L, dtype = NULL)</code></pre>
       <p>Cuts an array into frames in file order, clipping edge tiles. Compress each frame with <a href="#rumi_geozl_graph"><code>rumi_geozl_graph</code></a> and <a href="#rumi_geozl_graph"><code>rumi_geozl_compress</code></a> before writing.</p>
       <table class="spec">
         <tr><th>x</th><td>An array of samples. It holds the pattern's input axes in reverse, so <code>"b (row h) (col w)"</code> takes <code>(X, Y, Band)</code>, the shape <code>rumi_read</code> returns.</td></tr>
         <tr><th>pattern</th><td>The frame pattern <a href="api-python.html#frames">Python</a> takes, in C order, such as <code>"b (row h) (col w) -&gt; row col b (h w)"</code>.</td></tr>
         <tr><th>tile_size</th><td>Height and width of a square tile, from 1 to 65535.</td></tr>
-        <tr><th>datatype</th><td>The sample type the payloads are compressed as, such as <code>"uint16"</code>. <code>NULL</code> takes <code>"int32"</code> for an integer array, <code>"float64"</code> for double, <code>"uint8"</code> for raw, <code>"bool"</code> for logical and <code>"complex128"</code> for complex.</td></tr>
+        <tr><th>dtype</th><td>The sample type the payloads are compressed as, such as <code>"uint16"</code>. <code>NULL</code> takes <code>"int32"</code> for an integer array, <code>"float64"</code> for double, <code>"uint8"</code> for raw, <code>"bool"</code> for logical and <code>"complex128"</code> for complex.</td></tr>
       </table>
-      <p>The returned <code>rumi_frames</code> list has <code>data</code>, <code>compressed</code> and layout fields. Fill each <code>compressed</code> entry with raw bytes. A <code>b h w</code> frame is an R array shaped <code>(w, h, band)</code>, and every frame carries <code>datatype</code> as its <code>rumi_datatype</code> attribute, so <a href="#rumi_geozl_graph"><code>rumi_geozl_graph</code></a> compresses it as that type.</p>
+      <p>The returned <code>rumi_frames</code> list has <code>data</code>, <code>compressed</code> and layout fields. Fill each <code>compressed</code> entry with raw bytes. A <code>b h w</code> frame is an R array shaped <code>(w, h, band)</code>, and every frame carries <code>dtype</code> as its <code>rumi_dtype</code> attribute, so <a href="#rumi_geozl_graph"><code>rumi_geozl_graph</code></a> compresses it as that type.</p>
+      <table class="spec">
+        <tr><th>data, compressed</th><td>One array per frame in file order, and a list of <code>NULL</code> to fill with payloads.</td></tr>
+        <tr><th>layout, frame_unit</th><td>The axes of one frame, such as <code>"h w"</code>, and the code the file records for them.</td></tr>
+        <tr><th>image_width, image_length, tile_size</th><td>The image size and the tile size.</td></tr>
+        <tr><th>bands, time_count</th><td>The number of bands and time steps.</td></tr>
+        <tr><th>dtype, pattern</th><td>The sample type and the frame pattern text.</td></tr>
+        <tr><th>tiles_across, tiles_down</th><td>The tile grid.</td></tr>
+        <tr><th>row, col, band, time</th><td>One-based integer positions, one per frame. <code>band</code> and <code>time</code> are <code>NULL</code> unless the frames are split by that axis.</td></tr>
+      </table>
 <pre data-run="skip"><code class="language-r">frames &lt;- rumi_frames(image, "b (row h) (col w) -&gt; row col b (h w)",
-                      tile_size = 256, datatype = "uint16")
+                      tile_size = 256, dtype = "uint16")
 for (i in seq_along(frames$data)) {
   tile &lt;- frames$data[[i]]
-  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;pfor", datatype = "uint16")
+  graph &lt;- rumi_geozl_graph(tile, "planar&gt;zigzag&gt;pfor")
   frames$compressed[[i]] &lt;- rumi_geozl_compress(tile, graph)
-}</code></pre>
+}
+frames$band[1:3]                             # 1 2 3</code></pre>
+
+      <h3 id="rumi_frame_start">rumi_frame_start</h3>
+<pre><code class="sig language-r">rumi_frame_start(shape, pattern, tile_size = 512L)</code></pre>
+      <p>Returns the byte offset of the first frame without cutting an array. It is also the size of everything a file stores before its first frame, and it matches Python's <code>rumi.frame_start</code>.</p>
+      <table class="spec">
+        <tr><th>shape</th><td>The dimensions of the array <code>rumi_frames</code> would cut, in <code>dim()</code> order. That is the reverse of the pattern's input axes, so <code>"b (row h) (col w)"</code> takes <code>c(X, Y, Band)</code>.</td></tr>
+        <tr><th>pattern, tile_size</th><td>As in <a href="#rumi_frames"><code>rumi_frames</code></a>.</td></tr>
+      </table>
+      <p>Returns the offset in bytes as a double.</p>
+<pre data-run="skip"><code class="language-r">rumi_frame_start(c(70, 40, 2), "b (row h) (col w) -&gt; row col b (h w)", 16)  # 812</code></pre>
 
       <h3 id="rumi_geozl_graph">rumi_geozl_graph, rumi_geozl_compress</h3>
 <pre><code class="sig language-r">rumi_geozl_graph(x, method, width = NULL, planes = NULL, error = NULL,
-    nodata = NULL, datatype = NULL)
+    nodata = NULL, dtype = NULL)
 rumi_geozl_compress(x, graph)</code></pre>
-      <p>Compress frames with the <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> linked into Rumi. These calls build a graph and return compressed bytes for <code>rumi_write</code>.</p>
+      <p>Compress frames with the <a href="https://asterisk.coop/geozl/" rel="noopener noreferrer">GeoZL</a> linked into Rumi. These calls build a graph and return compressed bytes for <code>rumi_write</code>. <code>rumi_geozl_*</code> covers graph and compress only. Decompress, profile and coeffs live in the geozl R package, which reads the same frames.</p>
       <table class="spec">
-        <tr><th>x</th><td>Samples as a double, integer, logical or raw vector or array, converted to <code>datatype</code>. A raw vector is taken as native samples already. For a bounded error the graph's <code>x</code> also fixes the domain later tiles must fall in.</td></tr>
+        <tr><th>x</th><td>Samples as a double, integer, logical or raw vector or array, converted to <code>dtype</code>. A raw vector is taken as native samples already. For a bounded error the graph's <code>x</code> also fixes the domain later tiles must fall in.</td></tr>
         <tr><th>method</th><td>A recipe such as <code>"planar&gt;zigzag&gt;pfor"</code>.</td></tr>
         <tr><th>width, planes</th><td>Row width in samples and the number of stacked images. They default to <code>dim(x)[1]</code> and, for three or more dimensions, the last one, which is the planes of a <code>b h w</code> frame.</td></tr>
         <tr><th>error</th><td><code>NULL</code> or <code>0</code> for lossless, a positive number for an absolute bound, a percentage such as <code>"1%"</code> for a relative one, or a full <code>LINEAR</code>, <code>LOG</code> or <code>SQRT</code> recipe.</td></tr>
         <tr><th>nodata</th><td>A sentinel value. <code>NA</code> and <code>NaN</code> in <code>x</code> are stored as it, and <code>NaN</code> selects NaN handling, which float rasters with missing values get without asking.</td></tr>
-        <tr><th>datatype</th><td>The storage type, as <code>rumi_frames</code> takes it, or terra's <code>"INT2U"</code> and GDAL's <code>"UInt16"</code> names. A frame from <code>rumi_frames</code> uses its own datatype and refuses another. Otherwise the default follows the type of <code>x</code>.</td></tr>
+        <tr><th>dtype</th><td>The storage type, as <code>rumi_frames</code> takes it, or terra's <code>"INT2U"</code> and GDAL's <code>"UInt16"</code> names. A frame from <code>rumi_frames</code> uses its own dtype and refuses another. Otherwise the default follows the type of <code>x</code>.</td></tr>
       </table>
-      <p><code>rumi_geozl_compress</code> returns the frame as a raw vector for a <code>compressed</code> entry. A graph wraps native state, so it is not thread-safe and does not survive saving and reloading.</p>
+      <p>The graph is a <code>rumi_geozl_graph</code> list with the fields <code>method</code>, <code>width</code>, <code>planes</code>, <code>dtype</code>, <code>itemsize</code>, <code>error</code> and <code>nodata</code>, where <code>itemsize</code> is the bytes per sample. <code>print</code> shows them as geozl's <code>geozl_graph</code> does, for example <code>&lt;rumi_geozl_graph&gt; planar&gt;zigzag&gt;pfor, uint16, row width 48, 1 plane, lossless</code>. <code>rumi_geozl_compress</code> returns the frame as a raw vector for a <code>compressed</code> entry. A graph wraps native state, so it is not thread-safe and does not survive saving and reloading.</p>
+      <p>A bad argument stops with a plain error and a <code>NULL</code> call. R checks what the core cannot see, such as a logical <code>error</code> or a <code>nodata</code> outside the dtype, in the words of the geozl R package, with <code>rumi_geozl_</code> in place of <code>geozl_</code> where it names a call. The core checks the error text, the plane split and the dtype in words that follow the geozl packages. A refusal by the native library follows the <a href="#errors">Errors</a> rule, and names the call and the method, as in <code>GeoZL graph failed (method = "m")</code>.</p>
 
       <h3 id="rumi_write">rumi_write</h3>
 <pre><code class="sig language-r">rumi_write(path, frames, bands, time, transform = NULL, crs = NULL,
@@ -209,7 +245,7 @@ rumi_geozl_compress(x, graph)</code></pre>
         <tr><th>bands</th><td>One unique, non-empty text per band, in band order, such as <code>"B4, Red, 665nm"</code>.</td></tr>
         <tr><th>time</th><td>One entry per time step. An instant is a <code>Date</code>, a <code>POSIXct</code> or an ISO string such as <code>"2025-08-08"</code>. Steps that cover an interval take a two-column matrix of starts and ends, or a list of start and end pairs. A <code>Date</code> marks midnight UTC.</td></tr>
         <tr><th>transform</th><td>Six affine coefficients in rasterio order, <code>(x_res, row_rot, x_origin, col_rot, y_res, y_origin)</code>. Give it together with <code>crs</code>.</td></tr>
-        <tr><th>crs</th><td>An EPSG code, such as <code>32631</code> or <code>"EPSG:32631"</code>.</td></tr>
+        <tr><th>crs</th><td>An EPSG code from 1 to 4294967295, such as <code>32631</code> or <code>"EPSG:32631"</code>, or an sf <code>crs</code> object, whose <code>crs$epsg</code> is used. Zero is refused.</td></tr>
         <tr><th>pixel_is_point</th><td><code>TRUE</code> when coordinates refer to pixel centres. The default refers to pixel corners.</td></tr>
       </table>
       <p>Returns the external header as raw bytes. Keep it with the path, for example with <code>writeBin()</code>. A failed write removes the partial file.</p>
@@ -218,9 +254,30 @@ rumi_geozl_compress(x, graph)</code></pre>
                      transform = c(10, 0, 500000, 0, -10, 8000000), crs = 32618)
 writeBin(header, "scene.header")</code></pre>
 
+      <h3 id="settings">rumi_set_num_threads, rumi_set_checksum_verification</h3>
+<pre><code class="sig language-r">rumi_set_num_threads(n)
+rumi_get_num_threads()
+rumi_set_checksum_verification(on)
+rumi_get_checksum_verification()</code></pre>
+      <p>Set and read the process-wide read thread count and OpenZL checksum verification, as Python's calls of the same names do. Set them before the first read. The first parallel read fixes the thread count and the first decoded frame fixes checksum verification. A later change to another value signals a <code>rumi_error_state</code> condition.</p>
+      <table class="spec">
+        <tr><th>n</th><td>A whole number of threads from 1 to 1024.</td></tr>
+        <tr><th>on</th><td><code>TRUE</code> to verify checksums, <code>FALSE</code> to skip them.</td></tr>
+      </table>
+      <p>The setters return the accepted value invisibly. The getters return an integer and a logical.</p>
+<pre data-run="skip"><code class="language-r">rumi_set_num_threads(8)
+rumi_get_num_threads()                       # 8</code></pre>
+
+      <h2 class="part" id="errors">Errors</h2>
+      <p>A bad argument, or a request the native library calls invalid, stops with a plain R error. Every other native failure signals a condition of class <code>c("rumi_error_&lt;kind&gt;", "rumi_error", "error", "condition")</code> with the fields <code>message</code>, <code>call</code>, which is <code>NULL</code>, and <code>kind</code>. The kind is one of <code>"io"</code>, <code>"parse"</code>, <code>"format"</code>, <code>"decode"</code>, <code>"oom"</code>, <code>"unsupported"</code>, <code>"state"</code> and <code>"internal"</code>, the same names Python's <code>RumiError.kind</code> and Julia's <code>RumiError</code> carry.</p>
+<pre data-run="skip"><code class="language-r">chip &lt;- tryCatch(
+  rumi_read("s3://bucket/scene.rumi", header, bands = 1),
+  rumi_error_io = function(e) NULL           # retry later
+)</code></pre>
+
       <h2 class="part" id="arrays">Arrays</h2>
       <p>R is column-major, so the axes run in reverse of Python. An Image reads as <code>(X, Y, Band)</code> and a Cube as <code>(X, Y, Band, Time)</code>, with the same memory as Python's <code>(Band, Y, X)</code> and <code>(Time, Band, Y, X)</code>. Indices and window origins are one-based, and <code>window</code> keeps the <code>(row, column, height, width)</code> order.</p>
-      <p>The result carries dimnames for bands and time steps, a <code>rumi_axes</code> attribute naming each dimension and a <code>rumi_metadata</code> attribute with the file's metadata. Time names are UTC timestamps, and an interval is written as <code>start/end</code>.</p>
+      <p>The result carries dimnames for bands and time steps, a <code>rumi_axes</code> attribute naming each dimension and a <code>rumi_metadata</code> attribute with the file's metadata. Time names are dates when every coordinate is a whole UTC day and UTC timestamps otherwise, and an interval is written as <code>start/end</code>. A read from a path or raw vector has the header's metadata alone, so it has no band or time names. <code>rumi_read_many</code> names its last dimension <code>n</code>.</p>
       <p>A pattern uses the axes <code>n</code>, <code>t</code>, <code>b</code>, <code>y</code> and <code>x</code> as in <a href="api-python.html">Python</a>, and R gets them in reverse. <code>"b x y"</code> gives a <code>(Y, X, Band)</code> array, the order of <code>terra::as.array()</code>. An axis left out must have length one after selection. A result read with a pattern has no dimnames and no Rumi attributes.</p>
       <p>A frame pattern in <code>rumi_frames</code> reads the same way. <code>"b (row h) (col w)"</code> takes an <code>(X, Y, Band)</code> array, so an array from <code>terra::as.array()</code> needs <code>aperm(x, c(2, 1, 3))</code> first.</p>
 
@@ -229,8 +286,8 @@ writeBin(header, "scene.header")</code></pre>
       <p>R has no 8-bit float, so the five float8 types return their native bytes as a raw array of class <code>rumi_float8_array</code>.</p>
 
       <h2 class="part" id="coverage">What it covers</h2>
-      <p>The R binding writes and reads on the CPU. It has no <code>frame_start</code>, GPU read or thread and checksum setter.</p>
-      <p>Reads use one decode thread and skip OpenZL checksums unless <code>RUMI_NUM_THREADS</code> or <code>RUMI_VERIFY=1</code> is set before the first read. <code>RUMI_NUM_THREADS</code> takes a count or <code>ALL_CPUS</code>, and <code>Sys.setenv()</code> sets it from R.</p>
+      <p>The R binding writes and reads on the CPU. It has no GPU read.</p>
+      <p>Reads use one decode thread and skip OpenZL checksums unless <a href="#settings"><code>rumi_set_num_threads</code></a> and <code>rumi_set_checksum_verification</code> change them, or <code>RUMI_NUM_THREADS</code> or <code>RUMI_VERIFY=1</code> is set before the first read. <code>RUMI_NUM_THREADS</code> takes a count or <code>ALL_CPUS</code>.</p>
 
       <nav class="pager" aria-label="Pages">
         <a class="prev" href="api-c.html"><span>Previous</span>C</a>
@@ -249,8 +306,11 @@ writeBin(header, "scene.header")</code></pre>
         <li><a href="#rumi_read_many">rumi_read_many</a></li>
         <li><a href="#rumi_close">rumi_close</a></li>
         <li><a href="#rumi_frames">rumi_frames</a></li>
+        <li><a href="#rumi_frame_start">rumi_frame_start</a></li>
         <li><a href="#rumi_geozl_graph">rumi_geozl_graph</a></li>
         <li><a href="#rumi_write">rumi_write</a></li>
+        <li><a href="#settings">Settings</a></li>
+        <li><a href="#errors">Errors</a></li>
         <li><a href="#arrays">Arrays</a></li>
         <li><a href="#types">Sample types</a></li>
         <li><a href="#coverage">What it covers</a></li>

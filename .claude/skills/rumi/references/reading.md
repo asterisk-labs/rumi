@@ -100,9 +100,13 @@ Nothing else is cached: no object bytes, sizes or metadata survive a call.
 
 | Argument | Accepts | Refuses |
 | --- | --- | --- |
-| `time`, `bands` | `None` (all, file order); a list of zero-based positions in any order, repeats allowed, NumPy integers included; a half-open `(start, stop)` tuple | NumPy arrays (`TypeError: bands: expected tuple or list, got ndarray`), empty lists (`ValueError: bands and n_bands must agree (both empty or both set)`), positions outside the axis |
-| `window` | `None`, or a tuple `(row, column, height, width)` of integers inside the image | lists (`TypeError: window: expected (row, column, height, width) tuple`), negative origins, empty sizes, windows past the edge (`ValueError: window: requested window is out of image bounds`) |
+| `time`, `bands` | `None` (all, file order); one zero-based `int`; a list of positions in any order, repeats allowed, NumPy integers included; a `range`; a 1-D integer NumPy array | tuples (`TypeError: bands takes a list or a range, not a tuple`), bools (`TypeError: bands takes integer indices, not a bool`), empty selections (`ValueError: bands selects no band`), positions outside the axis (`ValueError: bands selects the 5th band, but this file has 4`) |
+| `window` | `None`, or four integers `(row, column, height, width)` inside the image, as a tuple, a list or a 1-D array | `str` and other lengths (`TypeError: window: expected four integers (row, column, height, width)`), negative origins (`ValueError: the window starts before the image`), empty sizes (`ValueError: the window height and width must be positive`), windows past the edge (`ValueError: the window extends past the image, which is 1000 rows by 1000 columns`) |
 
+- A tuple is refused so that `(1, 3)` never means a range in one binding and two
+  positions in another. Pass `[1, 3]` for two positions and `range(1, 3)` for a range. A
+  `range` is expanded no further than one entry past the axis, so `range(10**9)` fails
+  at once.
 - Windows are never padded. Clamp training crops so they stay inside each image.
 - The selection sets each axis length; the file sets which axes exist. Default output
   patterns and `pattern=` are in `patterns.md` section 5.
@@ -135,9 +139,13 @@ batch = rumi.read_many(
 ```
 
 - Omit `windows` to read every image in full. The images must share a size
-  (`ValueError: item 2: image is 96x160, not 96x96`).
+  (`ValueError: item 2: image is 96x160, not 96x96; pass windows to read images of
+  different sizes`).
+- `windows` is a list with one entry per source, or an `(n, 4)` integer array with one
+  window per row. A `None` entry reads that source's whole image.
 - Explicit windows share one height and width. Each is checked against its own image
-  (`ValueError: item 2: requested window out of bounds`).
+  (`ValueError: item 2: the window extends past the image, which is 96 rows by 96
+  columns`).
 - Items must agree on tile size, band count, dtype, time count, and which of band and
   time a frame holds. `b h w` and `h w b` files batch together; `h w` and `b h w` do not
   (`ValueError: item 2: frame layout mismatch, 'h w' against 'b h w'`). With explicit
@@ -233,7 +241,9 @@ loader = torch.utils.data.DataLoader(Windows(paths, headers, windows), batch_siz
 - Decoded frames and other input-sized allocations are limited to 1 GiB per process by
   default. Raising it is a C call, `rumi_set_max_frame_bytes(n)` (`0` restores the
   default); from Python only through the private `rumi._ffi.lib`.
-- Refusals: `that window reaches N frames, past the N bytes of ranges this reader will
-  allocate` and `selecting every time step is past what this reader will allocate; pass
-  the steps you want`.
+- A read whose time count alone passes the limit is refused with `selecting every time
+  step is past what this reader will allocate; pass the steps you want`. A header whose
+  frames decode past it raises `a decoded frame is past the size limit for this reader`.
+  `rumi_plan_ranges` refuses `that window reaches N frames, past the N bytes of ranges
+  this reader will allocate`.
 - Headers whose frame sizes vary are expanded in memory, up to 64 MiB of index.

@@ -54,7 +54,9 @@ two values in one byte; it is not part of this registry.
 
 `rumi.info(...).dtype` is a `rumi.DType`. It exposes `name`, `itemsize`,
 `component_size`, `sample_format`, `bits`, `dlpack`, and `numpy_dtype`. The last
-value is `None` for types NumPy cannot represent.
+value is `None` for types NumPy cannot represent. A `DType` compares equal to its
+name and hashes as it, so `meta.dtype == "bfloat16"` holds. R and Julia hold the name
+itself.
 
 Reads accept:
 

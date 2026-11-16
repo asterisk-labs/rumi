@@ -1,8 +1,12 @@
 # Debugging
 
-Messages below describe rumi 0.30.0 (GeoZL 0.32.0).
+Messages below describe rumi 0.31.0 (GeoZL 0.33.0).
 Numeric values inside them vary; match on the text. Pattern messages are in
 `patterns.md` section 7 and `time=` messages in `writing.md` section 6.
+
+The prefix names the builtin class to catch. Invalid requests raise it directly. Every
+other library failure raises a `rumi.RumiError` that also derives from it, and its
+`.kind` names the failure (`python-api.md` section 11).
 
 ## Contents
 
@@ -29,12 +33,12 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `TypeError: dtype <U1 is not supported by rumi's NumPy writer` | type outside the registry | cast to a registered writable type (`dtypes.md`) |
 | `ValueError: expected 4 (b h w) frames for this grid, got 3` | `FrameTable(...)` with the wrong number of frames | cut one frame per index position (`patterns.md` section 4) |
 | `ValueError: frame K at row R col C has shape S, expected E` | a hand-cut frame in the wrong order or shape | follow the frame order; clip edge frames |
-| `TypeError: frame 0 must be bytes-like, got int` / `ValueError: frame 0 is empty` | bad payload assignment | assign the bytes GeoZL returned |
+| `TypeError: frame 0 must be bytes-like, got int` / `ValueError: the 1st frame has an empty payload` | bad payload assignment | assign the bytes GeoZL returned |
 | `KeyError: "'data' is not assignable, only 'compressed' is"` | assigning another column | only `tf["compressed"] = ...` |
 | `AttributeError: this frame holds every axis and is identified by its cell; use 'cell'` | `frame.tile` on a cell frame | use `frame.cell` |
 | `AttributeError: this frame holds every band and has no separate band index` | `frame.band` on a cell frame | the band is an axis of `frame.data` |
 | `ValueError: 1 of 16 frames have no payload, first is 0; compress every frame before writing` | missing payloads | compress every frame |
-| `ValueError: transform and crs must be given together` | only one of them | pass both, or neither |
+| `ValueError: transform and a CRS must be given together` | only one of them | pass both, or neither |
 | `ValueError: a transform is six coefficients (x_res, row_rot, x_origin, col_rot, y_res, y_origin), got 5` | short transform | pass six values in `Affine` order |
 | `ValueError: crs must be an EPSG code, got 'WGS84'` | WKT, PROJ or a name | an EPSG code or an object with `to_epsg()` |
 | `ValueError: EPSG:99999 is not a projected or geographic CRS` | unknown or unsupported code | a projected or geographic EPSG code |
@@ -52,12 +56,12 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `OSError: rumi: unexpected frame output (type 4, width 1, size 16384; expected numeric width 2, size 16384)` | payload compressed from other bytes than `frame.data` | recompress `frame.data` (`writing.md` section 5) |
 | `NotImplementedError: rumi: file uses an unknown OpenZL custom codec (CTid N)` | a frame graph with a codec Rumi does not link | recompress with standard OpenZL or GeoZL codecs |
 | `NotImplementedError: rumi: file uses a geozl codec this build lacks, update geozl (CTid N)` | frame written by a newer GeoZL | upgrade Rumi |
-| `ValueError: bands: index 4 out of [0, 4)` / `ValueError: time: index 3 out of [0, 3)` | position outside the axis | zero-based positions |
-| `ValueError: bands: slice (0, 5) out of [0, 4]` | range past the axis | half-open `(start, stop)` within the axis |
-| `ValueError: bands and n_bands must agree (both empty or both set)` | an empty list | pass `None` for all, or at least one position |
-| `TypeError: bands: expected tuple or list, got ndarray` | NumPy selection | `.tolist()` |
-| `TypeError: window: expected (row, column, height, width) tuple` | a list window | a tuple |
-| `ValueError: window: requested window is out of image bounds` | window past the edge | clamp the window |
+| `ValueError: bands selects the 5th band, but this file has 4` / `ValueError: time selects the 4th time step, but this file has 3` | position outside the axis, or a `range` past it | zero-based positions within the axis |
+| `ValueError: bands selects no band` | an empty list or `range` | pass `None` for all, or at least one position |
+| `TypeError: bands takes a list or a range, not a tuple` | a tuple selection | `[1, 3]` for two positions, `range(1, 3)` for a range |
+| `TypeError: bands takes an integer, a list, a range or a 1-D integer array, got str` | another type, or a 2-D or float array | an `int`, a list, a `range` or a 1-D integer array |
+| `TypeError: window: expected four integers (row, column, height, width)` | a `str`, or not four values | `(row, column, height, width)` as a tuple, list or 1-D array |
+| `ValueError: the window extends past the image, which is 1000 rows by 1000 columns` / `ValueError: the window starts before the image` | window outside the image | clamp the window |
 | `ValueError: b > 1 needs b in the pattern` | output pattern drops an axis longer than one | select one position or keep the axis |
 | `ValueError: unknown framework 'cupy'; expected ...` | unsupported framework | choose `numpy`, `torch`, `jax`, `tensorflow`, or `dlpack` |
 | `RuntimeError: this RumiArray was already exported` | second export of one result | keep the first array or tensor |
@@ -74,7 +78,9 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `ValueError: windows[1]: every window must be the same size; got 9x9 after 8x8` | mixed sizes | one size per call |
 | `ValueError: item 2: dtype mismatch` (also tile size, band count, time step count) | incompatible files | batch compatible files separately |
 | `ValueError: item 2: frame layout mismatch, 'h w' against 'b h w'` | tile and cell layouts mixed | batch per layout family |
-| `ValueError: item 2: requested window out of bounds` | window outside that item's image | clamp per item |
+| `ValueError: item 2: image is 96x160, not 96x96; pass windows to read images of different sizes` | whole images of different sizes | pass `windows` |
+| `ValueError: item 2: the window extends past the image, which is 96 rows by 96 columns` | window outside that item's image | clamp per item |
+| `TypeError: windows: an array holds one (row, column, height, width) row per source, got shape (2, 3)` | a `windows` array that is not `(n, 4)` | one row of four integers per source |
 | `ValueError: n > 1 needs n in the pattern` | custom pattern without `n` | add `n` |
 
 ### Sources and transport
@@ -84,7 +90,7 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 | `OSError: could not open missing.rumi: missing.rumi: No such file or directory` | local path | check the working directory |
 | `OSError: could not resolve /vsizip/x.zip/a.rumi: unsupported virtual filesystem '/vsizip/'; ...` | unsupported VSI handler | extract, or use `/vsisubfile/` for stored members |
 | `OSError: transport read failed at 560: https://...: HTTP 404: ... NoSuchKey ...` | missing remote object | check the URI |
-| `OSError: could not open https://...: HTTP 404: ...` | `rumi.info(source=...)` on a missing object | check the URI |
+| `OSError: could not open https://...: https://...: HTTP 404: ...` | `rumi.info(source=...)` on a missing object | check the URI |
 | `OSError: transport read failed at 560: /vsis3/...: no AWS credentials; set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, install a custom provider, or set AWS_NO_SIGN_REQUEST=YES for a public object` | no credentials | configure credentials (`reading.md` section 2) |
 | `HTTP Error 403: Forbidden` from `urllib` on `data.source.coop` | no `User-Agent` on your own download | send a `User-Agent` header |
 
@@ -92,12 +98,14 @@ Numeric values inside them vary; match on the text. Pattern messages are in
 
 | Message (excerpt) | Cause | Fix |
 | --- | --- | --- |
-| `ValueError: info needs source, header, or both` | no argument | pass `source=` or `header=` |
+| `ValueError: info needs a source, a header, or both` | no argument | pass `source=` or `header=` |
 | `TypeError: header must be bytes-like, got str` | text header | bytes |
 | `ValueError: external header does not match source` | stale or foreign header | rebuild it from the source |
 | `RuntimeError: thread count is pinned at 4, not 8` | pool already started | configure before the first parallel read, or use a new process |
-| `ValueError: num_threads must be in [1, 1024], got 0` / `TypeError: num_threads must be an integer, got 1.5` | bad count | an `int` in range |
-| `ValueError: that window reaches N frames, past the N bytes of ranges this reader will allocate` | a huge window of tile frames | smaller reads, or raise `rumi_set_max_frame_bytes` |
+| `RuntimeError: checksum verification is pinned at 0, not 1` | a frame was already decoded | configure before the first read, or use a new process |
+| `ValueError: num_threads must be in [1, 1024]` / `TypeError: num_threads must be an integer, got 1.5` | bad count | an `int` in range |
+| `ValueError: selecting every time step is past what this reader will allocate; pass the steps you want` | `time=None` on a file with very many steps | pass the steps you want |
+| `ValueError: that window reaches N frames, past the N bytes of ranges this reader will allocate` | `rumi_plan_ranges` over a huge window of tile frames | smaller windows, or raise `rumi_set_max_frame_bytes` |
 | `ValueError: a decoded frame is past the size limit for this reader` | a frame above 1 GiB decoded | smaller tiles, or raise the limit from C |
 
 ## 2. Library loading and editable installs

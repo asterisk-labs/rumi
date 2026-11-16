@@ -18,7 +18,7 @@ each frame may use its own compression graph. A small external header locates ev
 frame without opening the file, so a read fetches and decodes only the frames its
 selection touches.
 
-This skill describes **rumi 0.30.0** (GeoZL 0.32.0, OpenZL
+This skill describes **rumi 0.31.0** (GeoZL 0.33.0, OpenZL
 `b7f498b`, Karu 0.4.0).
 Check `rumi.__version__`. If it differs, trust the installed source, `SPEC.md`
 and `CHANGELOG.md` over this file.
@@ -30,7 +30,7 @@ and `CHANGELOG.md` over this file.
   (`h w`), or a whole grid cell with every band and step (`b h w`, `h w b`, `t b h w`, ...).
 - `rumi.write` never compresses. Assign `frame.compressed` for every frame, usually
   `rumi.geozl.compress(frame.data, ...)` with the GeoZL inside `librumi`; `rumi.write`
-  stores the payloads and returns `(path, header)`.
+  stores the payloads and returns only the header bytes.
 - Every file names its bands and dates its steps. `rumi.write` requires `bands=`, one
   text per band, and `time=`, one date, datetime or `(start, end)` pair per step. Both
   go in a trailer after the frames, so they never move a frame and a read never touches
@@ -56,8 +56,9 @@ for frame in frames:                        # edge frames may be smaller than th
     graph = rumi.geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
-path, header = rumi.write(
-    "scene.rumi", frames,
+path = "scene.rumi"
+header = rumi.write(
+    path, frames,
     bands=["B2, Blue, 492nm", "B3, Green, 560nm", "B4, Red, 665nm", "B8, NIR, 833nm"],
     time=["2024-08-25"],
     transform=(10.0, 0.0, 500000.0, 0.0, -10.0, 8000000.0), crs="EPSG:32718",
@@ -96,20 +97,27 @@ band or time selection. Measure compression when more than one layout fits the r
 - **A frame holds the tile alone or the tile with every axis longer than one.**
   `row col t (b h w)` on a Cube is refused, and axes of length one are dropped: a
   one-band Cube written as `(t b h w)` stores `t h w`.
-- **Selections** are lists (any order, duplicates allowed) or half-open `(start, stop)`
-  tuples. NumPy arrays and empty lists are refused; `window` must be a tuple.
+- **Selections** take `None`, one `int`, a list (any order, duplicates allowed), a
+  `range` or a 1-D integer NumPy array. A tuple is refused, so `(1, 3)` never reads as a
+  range, and an empty selection is refused. A `window` is four integers as a tuple, list
+  or 1-D array.
 - **The file decides which output axes exist.** `time=[2]` on a Cube still returns
   `(1, B, h, w)`; drop an axis with `pattern="b y x"` only when its extent is one.
 - **`read_many`** reads each source in full unless `windows` is given. Full images must
   share a size; explicit windows must share a size but may come from images with
-  different extents. Sources must also agree on tile size, band count, dtype, time count
-  and which of band and time a frame holds. The `n` axis stays for one item.
+  different extents. `windows` may be an `(n, 4)` array, and a `None` entry reads that
+  whole image. Sources must also agree on tile size, band count, dtype, time count and
+  which of band and time a frame holds. The `n` axis stays for one item.
 - **Threads** are process-wide: `rumi.set_num_threads(n)` or `RUMI_NUM_THREADS` before
   the first parallel read; a different value after pinning is an error. A forked worker starts at 1
   unless its environment sets `RUMI_NUM_THREADS`.
 - **Checksums are off**: decoded type and byte count are still checked.
   `rumi.set_checksum_verification(True)` or `RUMI_VERIFY=1` enables OpenZL checksums.
   Set it before the first read; a different value after pinning is an error.
+- **Errors.** Invalid requests raise `ValueError` or `TypeError`. Every other library
+  failure raises a `rumi.RumiError` whose `.kind` names it, such as `"io"`, `"decode"` or
+  `"state"`. Each one also derives from a builtin, `OSError` for I/O and decode failures,
+  `ValueError` for malformed headers and files, `RuntimeError` for state.
 - **Framework exports.** Every dtype has an exact CPU DLPack form accepted by PyTorch.
   NumPy, JAX and TensorFlow accept their exact subsets; JAX needs `jax_enable_x64` for
   64-bit types. Compatibility is checked before I/O. A `RumiArray` from

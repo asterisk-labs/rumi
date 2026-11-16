@@ -3,7 +3,7 @@
 Sources: `bindings/python/rumi/_write.py`, `geozl.py` and `_time.py`,
 `core/src/write.cpp`, `core/src/geozl.cpp`, `core/src/trailer.cpp`,
 `core/src/geokeys.cpp`, and the Georeferencing, Trailer and Header blob sections of
-`SPEC.md`. Examples describe rumi after 0.30.0, whose `rumi.geozl` links GeoZL 0.32.0.
+`SPEC.md`. Examples describe rumi 0.31.0, whose `rumi.geozl` links GeoZL 0.33.0.
 
 ## Contents
 
@@ -20,7 +20,7 @@ Sources: `bindings/python/rumi/_write.py`, `geozl.py` and `_time.py`,
 ## 1. The pipeline
 
 ```text
-array --rumi.frames--> FrameTable --you compress--> payloads --rumi.write--> (path, header)
+array --rumi.frames--> FrameTable --you compress--> payloads --rumi.write--> header
 ```
 
 Rumi checks structure (frame count, shapes, dtype, boolean values, band text, time and
@@ -41,7 +41,7 @@ for frame in frames:
         graph = graphs[frame.shape] = rumi.geozl.graph(frame.data, "planar>zigzag>zstd")
     frame.compressed = rumi.geozl.compress(frame.data, graph=graph)
 
-path, header = rumi.write("scene.rumi", frames, bands=bands, time=["2026-01-01"])
+header = rumi.write("scene.rumi", frames, bands=bands, time=["2026-01-01"])
 ```
 
 - A graph built per frame (as in `SKILL.md`) and a graph cached per `frame.shape` write
@@ -111,6 +111,9 @@ the byte values zero and one.
 | a custom OpenZL codec | `NotImplementedError: rumi: file uses an unknown OpenZL custom codec (CTid N)` |
 | a GeoZL codec newer than the linked GeoZL | `NotImplementedError: rumi: file uses a geozl codec this build lacks, update geozl (CTid N)` |
 
+Decode failures raise a `rumi.RumiError` of kind `"decode"`, which is an `OSError`. An
+unknown codec raises kind `"unsupported"`, which is a `NotImplementedError`.
+
 Each payload must be non-empty and below 4 GiB (its size is a `uint32`). The linked
 OpenZL accepts frame format versions up to 27
 (`rumi._ffi.lib.rumi_openzl_format_version()`).
@@ -134,13 +137,16 @@ rumi.write("cube.rumi", cube_frames, bands=bands,
   NUL, at most 65535 bytes of UTF-8, and different from the others. The recommended text
   gives the band name, a short description and the wavelength, as in Earth Engine's band
   tables. Rumi stores the text and never interprets it.
-- Time entries: `datetime.date`, `datetime.datetime`, ISO date or datetime strings, or
-  `numpy.datetime64`. The outer value is a list (or other iterable) with one entry per
-  step; a `(start, end)` tuple is one interval. A step without a single instant, such as
+- A time entry is a `datetime.date`, a `datetime.datetime`, ISO text or a
+  `numpy.datetime64`. ISO text is `YYYY-MM-DD`, or a date and `HH:MM[:SS[.000]]` joined
+  by `T` or a space, with an optional `Z` or offset (`+02`, `+0200`, `-02:00`). R and
+  Julia use the same grammar, so `"20250808"` and `"2025-08-08T10"` are refused
+  everywhere. The outer value is a list (or other iterable) with one entry per step; a
+  `(start, end)` tuple is one interval. A step without a single instant, such as
   a DEM or an annual composite, takes an interval.
 - UTC, whole seconds. Naive datetimes are UTC; aware datetimes and ISO offsets are
   converted (`"2026-01-03T10:30:00+02:00"` is stored as 08:30 UTC). A fraction of a second
-  is refused.
+  other than zero is refused.
 - Instants never decrease. Intervals have `start < end` and may meet or leave gaps, but
   never overlap.
 - Storage is days when every coordinate is a whole UTC day, else seconds, as residuals
@@ -155,22 +161,24 @@ rumi.write("cube.rumi", cube_frames, bands=bands,
 | missing | `TypeError: write() missing 1 required keyword-only argument: 'bands'` |
 | two texts for three bands | `ValueError: a file with 3 bands needs one text per band; got 2` |
 | `"B4, Red"` | `TypeError: bands is a list with one text per band; wrap a single text as bands=['B4, Red']` |
-| a repeated text | `ValueError: bands 0 and 2 have the same text` |
-| `""` | `ValueError: band 1 has an empty text` |
+| a repeated text | `ValueError: the 1st and 3rd bands have the same text` |
+| `""` | `ValueError: the 2nd band has an empty text` |
 | a text with `"\x00"` | `ValueError: band 1 text contains a NUL character, which a C string cannot carry` |
-| a text over 65535 bytes | `ValueError: band 0 text is 65536 bytes, past the 65535 a trailer stores` |
+| a text over 65535 bytes | `ValueError: band 0 text exceeds the 65535 bytes a trailer stores` |
 
 | `time=` | Error |
 | --- | --- |
 | `None` | `TypeError: every file labels its time steps; pass one date per step, or a (start, end) pair for a step without a single instant` |
-| one entry for three steps | `ValueError: a instant axis needs one entry per time step, so 3 of them; got 1` |
+| one entry for three steps | `ValueError: an instant axis needs one entry per time step, so 3 of them; got 1` |
 | `"2026-01-01"` | `TypeError: time is a list with one entry per time step; wrap a single coordinate as time=['2026-01-01']` |
 | `("2026-01-01", "2026-01-02")` | `TypeError: a tuple is one step's start and end, so it cannot be the list of steps; wrap it as time=[(start, end)]` |
 | instants mixed with pairs | `ValueError: a file records one kind of time step, so the list is either all plain coordinates (instants) or all pairs (intervals), not a mix` |
 | microseconds | `ValueError: 2026-01-01T00:00:00.000005 carries a fraction of a second; rumi records whole seconds; round the value before writing` |
-| decreasing instants | `ValueError: time coordinate 1 goes backwards` |
-| overlapping intervals | `ValueError: time step 0 ends after step 1 starts; rumi records steps that meet or leave a gap, never steps that overlap` |
+| decreasing instants | `ValueError: the 2nd time step goes backwards` |
+| overlapping intervals | `ValueError: the 1st time step ends after the 2nd starts; rumi records steps that meet or leave a gap, never steps that overlap` |
+| an interval whose end is not after its start | `ValueError: the 1st time step starts at or after it ends, so it covers nothing` |
 | integers | `TypeError: a time coordinate is a date, a datetime or an ISO string, got int` |
+| `"20250808"` | `ValueError: '20250808' is not an ISO date or datetime` |
 
 ## 7. Georeferencing
 
@@ -187,11 +195,12 @@ rumi.write("scene.rumi", frames, bands=bands, time=time,
   rasterio's `Affine`. A GDAL geotransform `(x_origin, x_res, row_rot, y_origin, col_rot,
   y_res)` must be converted first. Fewer than six values raise `ValueError: a transform is
   six coefficients ...`.
-- `crs` is an EPSG code: an `int`, `"EPSG:4326"`, `"4326"`, or an object with `to_epsg()`
-  (rasterio and pyproj CRS). WKT, PROJ strings and names are refused (`crs must be an EPSG
-  code, got 'WGS84'`). The code must be a projected or geographic CRS in the bundled EPSG
-  table (`EPSG:99999 is not a projected or geographic CRS`); compound, vertical and
-  engineering CRSs cannot be stored.
+- `crs` is an EPSG code from 1 to 4294967295, given as an `int`, `"EPSG:4326"`, `"4326"`,
+  or an object with `to_epsg()` (rasterio and pyproj CRS). Zero is refused (`crs must be
+  an EPSG code from 1 to 4294967295, got 0`). WKT, PROJ strings and names are refused
+  (`crs must be an EPSG code, got 'WGS84'`). The code must be a projected or geographic
+  CRS in the bundled EPSG table (`EPSG:99999 is not a projected or geographic CRS`);
+  compound, vertical and engineering CRSs cannot be stored.
 - `transform` and `crs` travel together. Without them the file records undefined
   georeferencing, and `Metadata.transform` and `Metadata.crs` are `None`.
 - `pixel_is_point=True` records PixelIsPoint; the default is PixelIsArea.
@@ -241,8 +250,8 @@ with ThreadPoolExecutor(8) as pool:
 - `write` validates everything it can before opening the file, then opens it with
   truncation. A failure after that removes the file, including a file that existed
   before, so write under a new name and rename.
-- Writer-side refusals: `expected N frames for this grid, got M`, `frame N has an empty
-  payload`, `frame N is X bytes, over the uint32 the header holds`, `N variable-size
-  frames need an expanded index larger than this reader accepts` (above 5,592,405 frames
-  of varying size), and `the trailer would be N bytes, past the 67108864 a reader
-  accepts`.
+- The writer also refuses with `expected 4 (b h w) frames for this grid, got 3`, `the
+  1st frame has an empty payload`, `the Nth frame is X bytes, over the uint32 the header
+  holds`, `N variable-size frames need an expanded index larger than this reader
+  accepts` (above 5,592,405 frames of varying size), and `band texts exceed the trailer
+  size a reader accepts` (67108864 bytes).

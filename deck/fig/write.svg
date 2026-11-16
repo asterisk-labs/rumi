@@ -10,8 +10,8 @@
 </style>
 <rect width="1000" height="430" fill="#FFFFFF"/>
 
-<text class="mono ink" x="105" y="65" font-size="20">path, header = rumi.write("scene.rumi", frames, ...)</text>
-<path d="M105 80h612" fill="none" stroke="#4E04EB" stroke-width="1.7"/>
+<text class="mono ink" x="105" y="65" font-size="20">header = rumi.write("scene.rumi", frames, ...)</text>
+<path d="M105 80h540" fill="none" stroke="#4E04EB" stroke-width="1.7"/>
 <path d="M500 92v48H315v38" fill="none" stroke="#7B828D" stroke-width="1.8" marker-end="url(#arrow)"/>
 <path d="M500 140h250v38" fill="none" stroke="#7B828D" stroke-width="1.8" marker-end="url(#arrow)"/>
 
