@@ -187,6 +187,7 @@ jobs:
           python tools/sync_r_vendor.py --check
           python - <<'PY'
           from pathlib import Path
+          from shutil import copyfile
 
           Path("bindings/r/src/link.cpp").write_text('''#define R_NO_REMAP
           #include <Rinternals.h>
@@ -263,16 +264,21 @@ jobs:
           pool.write_text(code)
           plan = Path("core/src/plan.cpp")
           code = plan.read_text()
+          marker = '// Decoder context and reusable buffers for one worker.\nstruct WorkerState {'
+          assert code.count(marker) == 1
+          code = code.replace(marker, 'std::mutex g_worker_state_free_mutex;\n\n' + marker)
           old = '    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }'
           new = '''    ~WorkerState() {
-                  std::fprintf(stderr, "worker state free begin\\n"); std::fflush(stderr);
+                  std::fprintf(stderr, "worker state free begin %p\\n", static_cast<void*>(dctx)); std::fflush(stderr);
+                  std::lock_guard guard(g_worker_state_free_mutex);
                   if (dctx && !std::getenv("RUMI_TRACE_SKIP_DCTX_FREE")) ZL_DCtx_free(dctx);
                   std::fprintf(stderr, "worker state free done\\n"); std::fflush(stderr);
               }'''
           assert code.count(old) == 1
           plan.write_text(code.replace(old, new))
+          copyfile(pool, "bindings/r/src/ext/r/include/rumi/thread_pool.hpp")
+          copyfile(plan, "bindings/r/src/ext/r/src/plan.cpp")
           PY
-          Rscript -e 'roxygen2::roxygenise("bindings/r")'
       - name: Install R package
         shell: bash
         run: R CMD INSTALL bindings/r
