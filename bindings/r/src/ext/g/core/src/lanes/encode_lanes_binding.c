@@ -19,8 +19,7 @@ ZL_Report EI_geozl_lanes(ZL_Encoder *encoder, const ZL_Input *input) {
 
   const size_t width = ZL_Input_eltWidth(input);
   const size_t count = ZL_Input_numElts(input);
-  if (!geozl_pivco_lanes_width_ok(width) || count > UINT_MAX ||
-      count > SIZE_MAX / width)
+  if (!geozl_pivco_lanes_size_ok(count, width) || count > UINT_MAX)
     return ZL_returnError(ZL_ErrorCode_node_invalid_input);
 
   uint8_t header[LANES_HEADER_MAX];

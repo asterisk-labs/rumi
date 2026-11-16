@@ -25,7 +25,7 @@ ZL_Report EI_geozl_planar_zigzag_lanes(ZL_Encoder *eictx,
 
   const size_t eltWidth = ZL_Input_eltWidth(in);
   const size_t nbElts = ZL_Input_numElts(in);
-  if (!geozl_pivco_lanes_width_ok(eltWidth))
+  if (!geozl_pivco_lanes_size_ok(nbElts, eltWidth))
     return ZL_returnError(ZL_ErrorCode_node_invalid_input);
   // The lane histogram counts in unsigned, as OpenZL's encoder does.
   if (nbElts > UINT_MAX)

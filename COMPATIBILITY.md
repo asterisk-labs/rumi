@@ -34,12 +34,12 @@ contain a breaking change, and the changelog calls it out.
 
 ## GeoZL and OpenZL
 
-The `extern/geozl` submodule is pinned to GeoZL 0.32.0. GeoZL carries upstream
+The `extern/geozl` submodule is pinned to GeoZL 0.33.0. GeoZL carries upstream
 OpenZL commit `b7f498b`.
 
 GeoZL is linked into `librumi`, and Python, R and Julia compress with it, so
 none of them depends on a GeoZL package. The JavaScript reader uses
-`@asterisk-labs/geozl` 0.32.0.
+`@asterisk-labs/geozl` 0.33.0.
 
 Rumi's tests write frames with the GeoZL Python binding built from the
 submodule, so they always match the C core Rumi vendors. The R and Julia

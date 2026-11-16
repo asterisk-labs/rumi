@@ -10,6 +10,8 @@
 #define GEOZL_PIVCO_LANE_HEADER_SIZE (1 + 2 + 4)
 #define GEOZL_PIVCO_LANE_PIVCO 0
 #define GEOZL_PIVCO_LANE_PFOR 1
+// OpenZL allocates the stream before checking the caller's output buffer.
+#define GEOZL_PIVCO_LANES_MAX_BYTES ((size_t)256 << 20)
 
 typedef struct {
   uint8_t mode;
@@ -27,6 +29,11 @@ typedef struct {
 } GeozlPivcoLanes;
 
 int geozl_pivco_lanes_width_ok(size_t width);
+
+static inline int geozl_pivco_lanes_size_ok(size_t count, size_t width) {
+  return geozl_pivco_lanes_width_ok(width) &&
+         count <= GEOZL_PIVCO_LANES_MAX_BYTES / width;
+}
 
 // lanes contains width contiguous byte streams, each count bytes long.
 // The two output streams are committed here; laneHeaders receives one

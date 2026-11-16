@@ -66,7 +66,7 @@ ZL_Report geozl_pivco_lanes_encode(ZL_Encoder *encoder, const uint8_t *lanes,
                                    uint8_t *laneHeaders) {
   ZL_RESULT_DECLARE_SCOPE_REPORT(encoder);
   if (encoder == NULL || laneHeaders == NULL ||
-      !geozl_pivco_lanes_width_ok(width) || blockSize == 0 ||
+      !geozl_pivco_lanes_size_ok(count, width) || blockSize == 0 ||
       blockSize > ZL_PIVCO_MAX_BLOCK_SIZE || count > UINT_MAX ||
       (count != 0 && lanes == NULL))
     return ZL_returnError(ZL_ErrorCode_node_invalid_input);
@@ -148,7 +148,7 @@ int geozl_pivco_lanes_parse(GeozlPivcoLanes *decoded,
                             const uint8_t *weights, size_t weightsSize,
                             size_t bitsSize) {
   if (decoded == NULL || laneHeaders == NULL ||
-      !geozl_pivco_lanes_width_ok(width) ||
+      !geozl_pivco_lanes_size_ok(count, width) ||
       laneHeadersSize != width * GEOZL_PIVCO_LANE_HEADER_SIZE ||
       blockSize == 0 || blockSize > ZL_PIVCO_MAX_BLOCK_SIZE ||
       count > UINT_MAX || (weightsSize != 0 && weights == NULL))
