@@ -27,7 +27,7 @@ def _write(path, data, pattern=PATTERN):
         if graph is None:
             graph = graphs[frame.data.shape] = geozl.graph(frame.data, GRAPH)
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    return rumi.write(path, tf, **labels(tf))
+    return path, rumi.write(path, tf, **labels(tf))
 
 
 @pytest.fixture(scope="module")
@@ -575,7 +575,7 @@ class TestRejections:
         "window, message",
         [((-1, 0, 32, 32), "item 2: the window starts before the image"),
          ((0, -1, 32, 32), "item 2: the window starts before the image"),
-         ((0, 0, 32), "expected \\(row, column, height, width\\)")],
+         ((0, 0, 32), "expected four integers \\(row, column, height, width\\)")],
     )
     def test_a_malformed_window_is_named(self, pair, window, message):
         paths, headers = pair

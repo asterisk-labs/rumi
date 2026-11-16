@@ -1,10 +1,13 @@
 """Freeze the public Python surface independently of private modules."""
 
 import inspect
+import pickle
 import subprocess
 import sys
 
+import pytest
 import rumi
+from rumi._ffi import _check, lib
 
 PUBLIC = (
     "DType",
@@ -13,6 +16,7 @@ PUBLIC = (
     "FrameTable",
     "Metadata",
     "RumiArray",
+    "RumiError",
     "frame_start",
     "frames",
     "geozl",
@@ -48,22 +52,22 @@ def test_import_keeps_optional_frameworks_lazy():
 def test_public_function_parameters_stay_stable():
     expected = {
         "frame_start": ("shape", "pattern", "tile_size"),
-        "frames": ("arr", "pattern", "tile_size"),
+        "frames": ("x", "pattern", "tile_size"),
         "get_checksum_verification": (),
         "get_num_threads": (),
         "info": ("source", "header"),
         "open": ("source", "header"),
         "read": (
-            "source", "header", "framework", "pattern", "time", "bands", "window",
+            "source", "header", "time", "bands", "window", "pattern", "framework",
             "device", "decode_backend",
         ),
         "read_many": (
-            "sources", "headers", "windows", "framework", "pattern", "time", "bands",
+            "sources", "headers", "windows", "time", "bands", "pattern", "framework",
             "device", "decode_backend",
         ),
         "set_checksum_verification": ("on",),
         "set_num_threads": ("n",),
-        "write": ("path", "tf", "bands", "time", "transform", "crs", "pixel_is_point"),
+        "write": ("path", "frames", "bands", "time", "transform", "crs", "pixel_is_point"),
     }
     for name, parameters in expected.items():
         assert tuple(inspect.signature(getattr(rumi, name)).parameters) == parameters
@@ -83,3 +87,30 @@ def test_read_defaults_stay_stable():
     assert all(many[name].default is None
                for name in ("windows", "pattern", "time", "bands", "device"))
     assert many["decode_backend"].default == "auto"
+
+
+@pytest.mark.parametrize("status, kind, builtin", [
+    ("RUMI_ERR_IO", "io", OSError),
+    ("RUMI_ERR_PARSE", "parse", ValueError),
+    ("RUMI_ERR_FORMAT", "format", ValueError),
+    ("RUMI_ERR_DECODE", "decode", OSError),
+    ("RUMI_ERR_OOM", "oom", MemoryError),
+    ("RUMI_ERR_UNSUPPORTED", "unsupported", NotImplementedError),
+    ("RUMI_ERR_STATE", "state", RuntimeError),
+    ("RUMI_ERR_INTERNAL", "internal", RuntimeError),
+])
+def test_every_failure_status_raises_its_kind(status, kind, builtin):
+    with pytest.raises(rumi.RumiError) as raised:
+        _check(getattr(lib, status))
+    assert raised.value.kind == kind
+    assert isinstance(raised.value, builtin)
+    # DataLoader workers send exceptions to the parent by pickling them.
+    again = pickle.loads(pickle.dumps(raised.value))
+    assert type(again) is type(raised.value)
+    assert str(again) == str(raised.value)
+
+
+def test_an_invalid_request_is_a_plain_value_error():
+    with pytest.raises(ValueError) as raised:
+        _check(lib.RUMI_ERR_INVALID)
+    assert type(raised.value) is ValueError

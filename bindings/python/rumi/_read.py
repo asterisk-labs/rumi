@@ -5,17 +5,29 @@ import os
 from collections.abc import Sequence
 from typing import TypeAlias, cast
 
+import numpy as np
+
 from ._dataset import Dataset
 from ._dlpack import RumiArray
 from ._ffi import _check, c_int, ffi, lib
 from ._framework import resolve_framework
 from ._native import Header, ReadSource, _Source, _Spec, normalize_source
 
-Axis = tuple[int, int] | list[int] | None
-Window = tuple[int, int, int, int] | None
+Axis = int | list[int] | range | np.ndarray | None
+Window = Sequence[int] | np.ndarray | None
 _ReadSource = ReadSource
 _ReadTarget: TypeAlias = ReadSource | Dataset
 _WINDOW = ("row", "column", "height", "width")
+
+
+def _index(value, name: str) -> int:
+    # bool is an int, so it would otherwise pass as 0 or 1.
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} takes integer indices, not a bool")
+    try:
+        return operator.index(value)
+    except TypeError:
+        raise TypeError(f"{name}: every index must be an integer") from None
 
 
 # Python indices are zero-based; the C API uses one-based indices.
@@ -23,33 +35,47 @@ def _resolve_axis(sel: Axis, name: str, total: int) -> list[int] | None:
     if sel is None:
         return None
     if isinstance(sel, tuple):
-        if len(sel) != 2:
-            raise ValueError(f"{name}: tuple must be (start, stop)")
-        try:
-            start, stop = map(operator.index, sel)
-        except TypeError:
-            raise TypeError(f"{name}: start and stop must be integers") from None
-        # One bad index is enough for C to reject an out-of-bounds range.
-        if start < 0:
-            sel = [start]
-        elif stop <= start:
-            sel = []
-        elif start >= total:
-            sel = [start]
-        elif stop > total:
-            sel = [total]
-        else:
-            sel = list(range(start, stop))
-    elif not isinstance(sel, list):
-        raise TypeError(f"{name}: expected tuple or list, got {type(sel).__name__}")
-    try:
-        out = [operator.index(i) for i in sel]
-    except TypeError:
-        raise TypeError(f"{name}: every index must be an integer") from None
+        raise TypeError(f"{name} takes a list or a range, not a tuple")
+    values: Sequence
+    if isinstance(sel, (bool, np.bool_, int, np.integer)):
+        values = [sel]
+    elif isinstance(sel, list):
+        values = sel
+    elif isinstance(sel, range):
+        # One index past the axis is enough for C to reject the range.
+        picked: list[int] = []
+        for i in sel:
+            picked.append(i)
+            if not 0 <= i < total:
+                break
+        values = picked
+    elif isinstance(sel, np.ndarray) and sel.ndim == 1 and sel.dtype.kind in "iu":
+        values = sel.tolist()
+    else:
+        raise TypeError(f"{name} takes an integer, a list, a range or a 1-D integer "
+                        f"array, got {type(sel).__name__}")
+    out = [_index(i, name) for i in values]
     for i in out:
         if not -(1 << 31) <= i < (1 << 31) - 1:
             raise ValueError(f"{name}: index {i} exceeds the C API limit")
     return [i + 1 for i in out]
+
+
+def _window(window, name: str) -> tuple[int, int, int, int]:
+    """Return ``(row, column, height, width)`` from four integers."""
+    if isinstance(window, np.ndarray) and window.ndim == 1:
+        window = window.tolist()
+    if (isinstance(window, (str, bytes, bytearray)) or not isinstance(window, Sequence)
+            or len(window) != 4):
+        raise TypeError(f"{name}: expected four integers (row, column, height, width)")
+    try:
+        row, column, height, width = (
+            c_int(_index(v, name), f"{name} {n}")
+            for n, v in zip(_WINDOW, window, strict=True))
+    except TypeError:
+        raise TypeError(f"{name}: row, column, height and width must be integers") \
+            from None
+    return row, column, height, width
 
 
 def _resolve_window(window: Window, image_height: int, image_width: int) \
@@ -57,15 +83,7 @@ def _resolve_window(window: Window, image_height: int, image_width: int) \
     """Return ``(row, height, column, width)``; None covers the whole image."""
     if window is None:
         return 0, image_height, 0, image_width
-    if not isinstance(window, tuple) or len(window) != 4:
-        raise TypeError("window: expected (row, column, height, width) tuple")
-    try:
-        row, column, height, width = (
-            c_int(operator.index(v), f"window {n}")
-            for n, v in zip(_WINDOW, window, strict=True))
-    except TypeError:
-        raise TypeError("window: row, column, height and width must be integers") \
-            from None
+    row, column, height, width = _window(window, "window")
     return row, height, column, width
 
 
@@ -97,24 +115,33 @@ def _read_one(src: _Source, spec: _Spec,
     return RumiArray(out[0], spec.fields.dtype)
 
 
-def _resolve_windows(windows) -> tuple[list[int], list[int], int, int]:
+def _window_entries(windows) -> list | None:
+    """Return one window entry per source from a sequence or an (n, 4) array."""
+    if windows is None:
+        return None
+    if isinstance(windows, np.ndarray):
+        if windows.ndim != 2 or windows.shape[1] != 4:
+            raise TypeError(
+                f"windows: an array holds one (row, column, height, width) row per "
+                f"source, got shape {windows.shape}")
+        return windows.tolist()
+    return list(windows)
+
+
+def _resolve_windows(windows: list | None, specs: Sequence[_Spec]) \
+        -> tuple[list[int], list[int], int, int]:
     """Split windows into row offsets, column offsets and the size they share."""
+    if windows is None:
+        windows = _whole_images(specs)
     rows: list[int] = []
     cols: list[int] = []
     size: tuple[int, int] | None = None
-    for i, window in enumerate(windows):
-        if not isinstance(window, tuple) or len(window) != 4:
-            raise TypeError(
-                f"windows[{i}]: expected (row, column, height, width) tuple"
-            )
-        try:
-            row, column, height, width = (
-                c_int(operator.index(v), f"windows[{i}] {n}")
-                for n, v in zip(_WINDOW, window, strict=True))
-        except TypeError:
-            raise TypeError(
-                f"windows[{i}]: row, column, height and width must be integers"
-            ) from None
+    for i, (window, spec) in enumerate(zip(windows, specs, strict=True)):
+        if window is None:
+            row, column = 0, 0
+            height, width = spec.fields.image_length, spec.fields.image_width
+        else:
+            row, column, height, width = _window(window, f"windows[{i}]")
         if size is None:
             size = (height, width)
         elif (height, width) != size:
@@ -175,8 +202,8 @@ def _decode_backend_code(value: str) -> int:
 
 
 def read(source: _ReadTarget, header: Header | None = None, *,
-         framework: str = "numpy", pattern: str | None = None,
          time: Axis = None, bands: Axis = None, window: Window = None,
+         pattern: str | None = None, framework: str = "numpy",
          device: str | None = None, decode_backend: str = "auto"):
     """Read one rumi raster.
 
@@ -186,9 +213,12 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     ``header`` is the value returned by ``write``. For an existing file, use
     ``info(source=...).header`` to rebuild it.
 
-    ``time`` and ``bands`` accept a list of indices or a half-open
-    ``(start, stop)`` range. ``window`` is ``(row, column, height, width)``.
-    Indices are zero-based. ``pattern`` controls the output axis order.
+    ``time`` and ``bands`` take one index, a list of indices, a ``range`` or
+    a 1-D integer NumPy array, and None selects every entry. A tuple is
+    refused, so a range is always written as ``range(start, stop)``.
+    ``window`` is four integers ``(row, column, height, width)`` as a tuple,
+    a list or a 1-D array. Indices and the window origin count from 0.
+    ``pattern`` controls the output axis order.
 
     ``framework`` selects ``"numpy"``, ``"torch"``, ``"jax"``,
     ``"tensorflow"``, or ``"dlpack"``. The last returns a RumiArray
@@ -246,18 +276,25 @@ def read(source: _ReadTarget, header: Header | None = None, *,
 
 def read_many(sources: Sequence[_ReadTarget],
               headers: Sequence[Header] | None = None, *,
-              windows: Sequence[tuple[int, int, int, int]] | None = None,
-              framework: str = "numpy", pattern: str | None = None,
+              windows: Sequence[Window] | np.ndarray | None = None,
               time: Axis = None, bands: Axis = None,
+              pattern: str | None = None, framework: str = "numpy",
               device: str | None = None, decode_backend: str = "auto"):
     """Read one fixed-size window per source, or every whole image.
 
+    ``headers[i]`` is the header ``write`` returned for ``sources[i]``.
+    For an existing file, use ``info(source=...).header`` to rebuild it.
+
     ``windows[i]`` is the ``(row, column, height, width)`` read from
-    ``sources[i]``. Every window must be the same size, because the result is
-    one array with a leading ``n`` axis; only the position may differ. Without
-    ``windows``, each whole image is read, and the images must share a size.
-    Items come back in the order given, along the ``n`` axis, including a
-    one-item call.
+    ``sources[i]``, or None for that source's whole image. ``windows`` may
+    also be an ``(n, 4)`` integer array with one window per row. Every window
+    must be the same size, because the result is one array with a leading
+    ``n`` axis; only the position may differ. Without ``windows``, each whole
+    image is read, and the images must share a size. Items come back in the
+    order given, along the ``n`` axis, including a one-item call.
+
+    ``time``, ``bands`` and ``pattern`` work as in ``read`` and apply to
+    every item.
 
     ``read_many`` executes every item as one plan. To read one shared window,
     repeat it once per source.
@@ -269,8 +306,6 @@ def read_many(sources: Sequence[_ReadTarget],
     Reads use rumi's process-wide thread pool. Call ``set_num_threads`` before
     the first parallel read to set its size.
 
-    ``headers[i]`` is the header returned with ``sources[i]`` by ``write``.
-    For an existing file, use ``info(source=...).header`` to rebuild it.
     ``device="cuda:N"`` or ``device="mps"`` returns the batch on that GPU
     through DLPack, as for ``read``. ``decode_backend="cpu"`` decodes all
     selected frames on the CPU before placing their samples on the GPU;
@@ -282,7 +317,7 @@ def read_many(sources: Sequence[_ReadTarget],
     sources = list(sources)
     if not sources:
         raise ValueError("read_many requires at least one item")
-    raw_windows = None if windows is None else list(windows)
+    raw_windows = _window_entries(windows)
 
     if all(isinstance(source, Dataset) for source in sources):
         if headers is not None:
@@ -319,9 +354,7 @@ def read_many(sources: Sequence[_ReadTarget],
     fields = specs[0].fields
     times = _resolve_axis(time, "time", fields.time_count)
     picked_bands = _resolve_axis(bands, "bands", fields.samples_per_pixel)
-    if raw_windows is None:
-        raw_windows = _whole_images(specs)
-    y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows)
+    y_offs, x_offs, y_size, x_size = _resolve_windows(raw_windows, specs)
     output_pattern = _resolve_pattern(pattern)
 
     if device not in (None, "cpu"):

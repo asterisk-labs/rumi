@@ -23,7 +23,7 @@ def encode_path(path: FilePath) -> bytes:
     value = os.fspath(path)
     if not isinstance(value, str):
         raise TypeError("path must be str or path-like returning str")
-    return os.fsencode(value)
+    return os.fsencode(os.path.expanduser(value))
 
 
 class _Source:

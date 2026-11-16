@@ -249,7 +249,7 @@ def test_a_broken_trailer_is_refused(tmp_path, part, at, value, because):
 
 
 @pytest.mark.parametrize("text, because", [
-    (b"", "band 0 has an empty text"),
+    (b"", "the 1st band has an empty text"),
     (b"\xc0\xaf", "not valid UTF-8"),                   # an overlong "/"
     (b"\xed\xa0\x80", "not valid UTF-8"),               # a surrogate
     (b"a\x00b", "NUL"),
@@ -397,7 +397,7 @@ def test_base_offset_matches_the_derivation(tmp_path, shape, tile):
 
 def test_the_blob_agrees_with_the_derivation(tmp_path):
     tf = make_frame()
-    _path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
+    blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
     fields = _Spec(blob).fields
     assert fields.base_frame_offset == derive_base_offset(tf.bands, len(tf))
 
@@ -733,8 +733,8 @@ def test_an_undefined_crs_file_is_accepted(tmp_path):
 
 def test_blob_from_file_matches_blob_from_write(tmp_path):
     tf = make_frame()
-    path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf),
-                            transform=NORTH_UP, crs=UTM18S)
+    path = tmp_path / "a.rumi"
+    blob = rumi.write(path, tf, **labels(tf), transform=NORTH_UP, crs=UTM18S)
     assert rumi.info(source=path).header == blob
 
 
@@ -748,8 +748,8 @@ def test_pixels_survive_the_round_trip(tmp_path):
         g = graphs.setdefault(t.data.shape,
                               geozl.graph(t.data, "planar>zigzag>entropy"))
         t.compressed = geozl.compress(t.data, graph=g)
-    path, header = rumi.write(tmp_path / "a.rumi", tf, **labels(tf),
-                              transform=NORTH_UP, crs=UTM18S)
+    path = tmp_path / "a.rumi"
+    header = rumi.write(path, tf, **labels(tf), transform=NORTH_UP, crs=UTM18S)
     assert np.array_equal(rumi.read(path, header), data)
     assert _Spec(header).fields.base_frame_offset == \
            derive_base_offset(3, len(tf))
@@ -875,6 +875,24 @@ def test_steps_out_of_order_are_refused(tmp_path, kind, coords, because):
                       pack_trailer(kind, coords), steps)
     with pytest.raises(ValueError, match=because):
         rumi.info(source=path)
+
+
+@pytest.mark.parametrize("kind, coords", [
+    (2, [19723, 3_000_000]),                          # an instant past 9999
+    (2, [-800_000, 19723]),                           # an instant before year 1
+    (1, [19723, 19754, 19782, 3_000_000]),            # an interval that ends past 9999
+])
+def test_a_time_python_cannot_hold_is_named_by_its_step(tmp_path, kind, coords):
+    """Another writer may store a day Python's datetime has no value for."""
+    steps = len(coords) if kind == 2 else len(coords) // 2
+    path = dated_file(tmp_path / "far.rumi", pack_trailer(kind, coords), steps)
+    nth = "1st" if coords[0] < 0 else "2nd"
+    with pytest.raises(rumi.RumiError,
+                       match=f"^the {nth} time step falls outside the years 1 to 9999$") as raised:
+        rumi.info(source=path)
+    # The same kind as R's rumi_error_format and Julia's RumiError(:format).
+    assert raised.value.kind == "format"
+    assert isinstance(raised.value, ValueError)
 
 
 def test_a_canonical_trailer_built_from_the_spec_is_accepted(tmp_path):
@@ -1329,7 +1347,8 @@ def test_a_complex_frame_may_decode_as_its_components(tmp_path, dtype, component
     for t in tf:
         parts = t.data.view(component)
         t.compressed = geozl.compress(parts, graph=geozl.graph(parts, "planar>zigzag>zstd"))
-    path, header = rumi.write(tmp_path / "complex.rumi", tf, **labels(tf))
+    path = tmp_path / "complex.rumi"
+    header = rumi.write(path, tf, **labels(tf))
 
     assert np.array_equal(rumi.read(path, header), data)
     assert np.array_equal(rumi.read(path, header, bands=[1], window=(5, 7, 30, 30)),
@@ -1350,7 +1369,8 @@ def test_a_frame_of_another_width_is_refused(tmp_path, dtype, view, widths):
     for t in tf:
         raw = t.data.view(view)
         t.compressed = geozl.compress(raw, graph=geozl.graph(raw, "id>zstd"))
-    path, header = rumi.write(tmp_path / "wide.rumi", tf, **labels(tf))
+    path = tmp_path / "wide.rumi"
+    header = rumi.write(path, tf, **labels(tf))
     with pytest.raises(OSError, match=f"expected numeric width {widths}, size"):
         rumi.read(path, header)
 

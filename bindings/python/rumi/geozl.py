@@ -1,4 +1,7 @@
+import math
+import numbers
 import operator
+from decimal import Decimal
 from typing import Any
 
 import numpy as np
@@ -11,6 +14,12 @@ __all__ = ["Graph", "compress", "graph"]
 
 Error = int | float | str | None
 
+# width and planes cross the C API as uint32_t
+_UINT32_MAX = 2**32 - 1
+
+# The argument checks below raise the geozl package's classes and texts, so both
+# packages refuse the same input the same way. The core checks the rest.
+
 
 def _is_native(dt: np.dtype) -> bool:
     return dt.byteorder in ("=", "|") or dt.newbyteorder("=") == dt
@@ -18,8 +27,11 @@ def _is_native(dt: np.dtype) -> bool:
 
 def _samples(tile: ArrayLike) -> tuple[np.ndarray, int]:
     arr = np.ascontiguousarray(tile)
+    if arr.dtype.hasobject:
+        raise ValueError("object arrays hold references, not samples")
     if not _is_native(arr.dtype):
-        raise ValueError("samples must be in native byte order; byte-swap them first")
+        raise ValueError(f"dtype {arr.dtype} is not native byte order; the "
+                         f"kernels read native, byte-swap it first")
     return arr, dtype_code(arr.dtype)
 
 
@@ -27,51 +39,93 @@ def _error_text(error: Error) -> bytes | None:
     if error is None:
         return None
     if isinstance(error, (bool, np.bool_)):
-        raise TypeError("error must be a number, a percentage or a recipe, not a bool")
+        raise ValueError("error must not be a boolean")
     if isinstance(error, (int, np.integer)):
         return str(int(error)).encode()
     if isinstance(error, (float, np.floating)):
         return str(error).encode()
-    if isinstance(error, str):
-        if "\x00" in error:
-            raise ValueError("error contains a NUL character, which a C string cannot carry")
-        # A bare number is LINEAR only as a number, as in the geozl package.
-        if ":" not in error and not error.endswith("%"):
-            raise ValueError('a text error is a percentage such as "1%" or a LINEAR, '
-                             'LOG or SQRT recipe')
-        return error.encode("utf-8")
-    raise TypeError("error must be a number, a percentage or a recipe")
+    if not isinstance(error, str):
+        raise ValueError(f"error must be a number, percentage or recipe, got "
+                         f"{error!r}")
+    if "\x00" in error:
+        raise ValueError("error must not contain a NUL character")
+    # A bare number is LINEAR only as a number, as in the geozl package.
+    if ":" not in error and not error.endswith("%"):
+        raise ValueError(f"error must be a number, a percentage such as \"10%\", "
+                         f"or a LINEAR, LOG or SQRT recipe, got {error!r}")
+    return error.encode("utf-8")
+
+
+def _count(value: Any, name: str) -> int:
+    # index() refuses floats and strings, where int() would truncate 3.7.
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be a whole number")
+    try:
+        number = operator.index(value)
+    except TypeError:
+        raise TypeError(f"{name} must be a whole number") from None
+    if not 1 <= number <= _UINT32_MAX:
+        raise ValueError(f"{name} must be from 1 to {_UINT32_MAX}")
+    return number
 
 
 def _nodata_sample(value: Any, dtype: np.dtype) -> bytes:
-    v = np.asarray(value)
-    if v.ndim != 0:
-        raise TypeError("nodata must be one sample")
+    if isinstance(value, np.ndarray):
+        number = value.ndim == 0 and value.dtype.kind in "iuf"
+    else:
+        number = (isinstance(value, (numbers.Real, Decimal)) and
+                  not isinstance(value, (bool, np.bool_)))
+    if not number:
+        raise TypeError("nodata must be a number")
+    # A signaling Decimal NaN raises on every comparison, so it becomes the
+    # float a quiet one converts to.
+    if isinstance(value, Decimal) and value.is_nan():
+        value = float("-nan" if value.is_signed() else "nan")
+    # The core refuses a sentinel on these whatever its value, in geozl's words.
+    if dtype == np.float16 or dtype.kind not in "iuf":
+        return bytes(dtype.itemsize)
     # Preserve the bit pattern of a NumPy scalar, including signaling NaNs.
     if isinstance(value, (np.generic, np.ndarray)) and value.dtype != dtype:
         value = value.item()
-    if dtype.kind in "iu" and v.dtype.kind == "f" and v != np.floor(v):
-        raise ValueError("nodata must be a whole number on an integer raster")
-    if (dtype.kind in "iu" and v.dtype.kind in "iufO" and
-            not np.iinfo(dtype).min <= v.item() <= np.iinfo(dtype).max):
-        raise OverflowError("nodata does not fit the dtype")
-    with np.errstate(over="raise"):
-        return np.asarray(value, dtype=dtype).tobytes()
+    if dtype.kind in "iu":
+        # Python arithmetic checks a Fraction or a Decimal exactly, never truncated.
+        x = value.item() if isinstance(value, (np.generic, np.ndarray)) else value
+        if x != x:
+            raise ValueError(f"a {dtype} raster cannot use NaN as nodata")
+        if abs(x) != math.inf and x != int(x):
+            raise ValueError(f"nodata {value} is not a whole number, it cannot "
+                             f"be a sentinel on {dtype}")
+        if not np.iinfo(dtype).min <= x <= np.iinfo(dtype).max:
+            raise ValueError("nodata does not fit the dtype")
+        return np.asarray(int(x), dtype=dtype).tobytes()
+    try:
+        with np.errstate(over="raise"):
+            packed = np.asarray(value, dtype=dtype)
+    except (OverflowError, FloatingPointError):
+        raise ValueError("nodata does not fit the dtype") from None
+    # NumPy turns a Decimal past the dtype into infinity without a warning.
+    if np.isinf(packed) and abs(np.asarray(value).item()) != math.inf:
+        raise ValueError("nodata does not fit the dtype")
+    return packed.tobytes()
 
 
 class Graph:
     """A reusable compression graph returned by :func:`graph`.
 
-    Its native context is not safe for concurrent calls.
+    It keeps ``method``, ``width``, ``planes``, ``dtype``, ``itemsize`` (bytes
+    per sample), ``error`` and ``nodata``. Its native context is not safe for
+    concurrent calls.
     """
 
-    __slots__ = ("_h", "_dtype", "method", "width", "planes", "error", "nodata")
+    __slots__ = ("_h", "_dtype", "method", "width", "planes", "itemsize", "error",
+                 "nodata")
 
     _h: Any
     _dtype: np.dtype
     method: str
     width: int
     planes: int
+    itemsize: int
     error: str | None
     nodata: Any
 
@@ -88,6 +142,7 @@ class Graph:
         g.width = width
         g.planes = planes
         g._dtype = dtype
+        g.itemsize = dtype.itemsize
         g.error = error
         g.nodata = nodata
         return g
@@ -95,6 +150,12 @@ class Graph:
     @property
     def dtype(self) -> np.dtype:
         return self._dtype
+
+    def __repr__(self) -> str:
+        plane_word = "plane" if self.planes == 1 else "planes"
+        return (f"<rumi.geozl.Graph {self.method}, {self.dtype}, row width "
+                f"{self.width}, {self.planes} {plane_word}, "
+                f"{self.error or 'lossless'}>")
 
 
 def graph(raster: ArrayLike, method: str, *, width: int | None = None,
@@ -108,22 +169,21 @@ def graph(raster: ArrayLike, method: str, *, width: int | None = None,
     The raster sets the domain for later lossy tiles. ``nodata`` marks missing
     samples; without it, NaNs in a float raster are detected automatically.
     """
-    if not isinstance(method, str):
-        raise TypeError("method must be a GeoZL graph such as 'planar>zigzag>pfor'")
+    if not isinstance(method, str) or not method:
+        raise ValueError(f"method must be a recipe name, got {method!r}")
     if "\x00" in method:
-        raise ValueError("method contains a NUL character, which a C string cannot carry")
+        raise ValueError("method must not contain a NUL character")
     text = _error_text(error)
     arr, code = _samples(raster)
     if width is None:
         if arr.ndim < 2:
             raise ValueError("give width for a 1d raster")
         width = arr.shape[-1]
+    else:
+        width = _count(width, "width")
     if planes is None:
         planes = arr.shape[0] if arr.ndim >= 3 else 1
-    try:
-        width, planes = operator.index(width), operator.index(planes)
-    except TypeError:
-        raise TypeError("width and planes must be integers") from None
+    planes = _count(planes, "planes")
     sample = None if nodata is None else _nodata_sample(nodata, arr.dtype)
 
     out = ffi.new("rumi_geozl_graph**")
@@ -140,14 +200,16 @@ def graph(raster: ArrayLike, method: str, *, width: int | None = None,
                       error=None if recipe == ffi.NULL else ffi.string(recipe).decode())
 
 
-def compress(tile: ArrayLike, *, graph: Graph) -> bytes:
+def compress(tile: ArrayLike, graph: Graph) -> bytes:
     """Compress a tile with a prepared graph and return its frame bytes.
 
-    The dtype must match; geometry is not checked. A lossy tile outside the
-    graph's domain is rejected.
+    ``graph`` may be given by position or by name. The dtype must match;
+    geometry is not checked. A lossy tile outside the graph's domain is
+    rejected.
     """
     if not isinstance(graph, Graph):
-        raise TypeError("graph must come from rumi.geozl.graph")
+        raise TypeError(f"graph must be a rumi.geozl.Graph, got "
+                        f"{type(graph).__name__}")
     arr, code = _samples(tile)
     out = ffi.new("unsigned char**")
     size = ffi.new("size_t*")

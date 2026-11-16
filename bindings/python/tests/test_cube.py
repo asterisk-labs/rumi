@@ -36,7 +36,8 @@ def store(tmp_path, name, arr=None, tile=TILE, time=None, stem=None):
             f.data, graph=geozl.graph(f.data, "planar>zigzag>zstd"))
     stem = stem or name.replace(" ", "_")[:40]
     given = labels(tf) if time is None else {**labels(tf), "time": time}
-    return tf, *rumi.write(tmp_path / f"{stem}.rumi", tf, **given)
+    path = tmp_path / f"{stem}.rumi"
+    return tf, path, rumi.write(path, tf, **given)
 
 
 @pytest.mark.parametrize("name", list(LAYOUTS))
@@ -136,7 +137,7 @@ def test_a_selection_reaches_the_right_steps(name, tmp_path):
 def test_named_selection_reaches_the_same_cube_window(tmp_path):
     src = cube()
     _tf, path, header = store(tmp_path, "planar")
-    got = rumi.read(path, header, time=(1, 3), bands=[2, 0],
+    got = rumi.read(path, header, time=range(1, 3), bands=[2, 0],
                     window=(4, 4, 16, 32))
     assert np.array_equal(np.asarray(got), src[1:3][:, [2, 0], 4:20, 4:36])
 

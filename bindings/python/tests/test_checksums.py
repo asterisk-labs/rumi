@@ -28,7 +28,7 @@ def image(tmp_path_factory):
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
     path = tmp_path_factory.mktemp("checksums") / "img.rumi"
-    path, _ = rumi.write(path, tf, **labels(tf))
+    rumi.write(path, tf, **labels(tf))
     return str(path)
 
 

@@ -225,7 +225,8 @@ def store(tmp_path, pattern, arr, **kw):
             graph = graphs[frame.data.shape] = geozl.graph(
                 frame.data, "planar>zigzag>zstd")
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    return rumi.write(tmp_path / "a.rumi", tf, **{**labels(tf), **kw})
+    path = tmp_path / "a.rumi"
+    return path, rumi.write(path, tf, **{**labels(tf), **kw})
 
 
 def cube(dtype="uint16"):

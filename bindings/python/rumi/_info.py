@@ -127,7 +127,7 @@ def _metadata(source: _Source | None, header: Header | None) -> Metadata:
             bands = [ffi.string(result.band_texts[b]).decode("utf-8")
                      for b in range(result.band_text_count)]
             coords = [int(result.time[i]) for i in range(result.time_coords)]
-            values = from_seconds_axis(coords)
+            values = from_seconds_axis(coords, result.time_type)
             if result.time_type == INSTANT:
                 steps = values
                 kind = "instant"

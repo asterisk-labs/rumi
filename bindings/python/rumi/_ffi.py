@@ -384,16 +384,61 @@ lib = _load_lib()
 _check_native_abi(lib)
 
 
-_STATUS_TO_EXC = {
+class RumiError(Exception):
+    """A failure librumi reports for a valid request.
+
+    ``kind`` names the failure as ``"io"``, ``"parse"``, ``"format"``,
+    ``"decode"``, ``"oom"``, ``"unsupported"``, ``"state"`` or
+    ``"internal"``. Each raised error also derives from the built-in
+    exception for its kind, so ``except OSError`` still catches I/O failures.
+    """
+
+    kind = "internal"
+
+
+class RumiIOError(RumiError, OSError):
+    kind = "io"
+
+
+class RumiParseError(RumiError, ValueError):
+    kind = "parse"
+
+
+class RumiFormatError(RumiError, ValueError):
+    kind = "format"
+
+
+class RumiDecodeError(RumiError, OSError):
+    kind = "decode"
+
+
+class RumiMemoryError(RumiError, MemoryError):
+    kind = "oom"
+
+
+class RumiUnsupportedError(RumiError, NotImplementedError):
+    kind = "unsupported"
+
+
+class RumiStateError(RumiError, RuntimeError):
+    kind = "state"
+
+
+class RumiInternalError(RumiError, RuntimeError):
+    kind = "internal"
+
+
+# An invalid request stays a plain ValueError, like the binding's own checks.
+_STATUS_TO_EXC: dict[int, type[Exception]] = {
     lib.RUMI_ERR_INVALID:     ValueError,
-    lib.RUMI_ERR_IO:          IOError,
-    lib.RUMI_ERR_PARSE:       ValueError,
-    lib.RUMI_ERR_FORMAT:      ValueError,
-    lib.RUMI_ERR_DECODE:      IOError,
-    lib.RUMI_ERR_OOM:         MemoryError,
-    lib.RUMI_ERR_UNSUPPORTED: NotImplementedError,
-    lib.RUMI_ERR_STATE:       RuntimeError,
-    lib.RUMI_ERR_INTERNAL:    RuntimeError,
+    lib.RUMI_ERR_IO:          RumiIOError,
+    lib.RUMI_ERR_PARSE:       RumiParseError,
+    lib.RUMI_ERR_FORMAT:      RumiFormatError,
+    lib.RUMI_ERR_DECODE:      RumiDecodeError,
+    lib.RUMI_ERR_OOM:         RumiMemoryError,
+    lib.RUMI_ERR_UNSUPPORTED: RumiUnsupportedError,
+    lib.RUMI_ERR_STATE:       RumiStateError,
+    lib.RUMI_ERR_INTERNAL:    RumiInternalError,
 }
 
 
@@ -403,7 +448,7 @@ def _check(rc):
     err = lib.rumi_last_error()
     msg = (ffi.string(err).decode("utf-8", errors="replace")
            if err != ffi.NULL else "(no error message)")
-    raise _STATUS_TO_EXC.get(rc, RuntimeError)(msg)
+    raise _STATUS_TO_EXC.get(rc, RumiInternalError)(msg)
 
 
 _C_RANGE = {

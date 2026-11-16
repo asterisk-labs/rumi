@@ -2,6 +2,8 @@ import operator
 from collections.abc import Iterable, Set
 from itertools import islice
 
+import numpy as np
+
 from ._dtype import dtype_code
 from ._ffi import _check, c_int, ffi, lib
 from ._native import FilePath, encode_path
@@ -9,24 +11,37 @@ from ._pattern import compile_pattern, frame_count
 from ._time import compile_axis
 
 
+def _integer(value, message: str) -> int:
+    # bool is an int, so it would otherwise pass as 0 or 1.
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(message)
+    try:
+        return operator.index(value)
+    except TypeError:
+        raise TypeError(message) from None
+
+
 def _epsg(crs) -> int:
     """Return an EPSG code accepted by the writer."""
-    if isinstance(crs, bool):
+    if isinstance(crs, (bool, np.bool_)):
         raise TypeError("crs must be an EPSG code")
-    if isinstance(crs, int):
-        return c_int(crs, "crs", "uint32_t")
-    if isinstance(crs, str):
+    code = None
+    if isinstance(crs, (int, np.integer)):
+        code = int(crs)
+    elif isinstance(crs, str):
         text = crs.strip()
         if text.upper().startswith("EPSG:"):
             text = text[5:]
-        if text.isdigit():
-            return c_int(int(text), "crs", "uint32_t")
-    code = getattr(crs, "to_epsg", None)
-    if callable(code):
-        got = code()
-        if got:
-            return c_int(int(got), "crs", "uint32_t")
-    raise ValueError(f"crs must be an EPSG code, got {crs!r}")
+        if text.isascii() and text.isdigit():
+            code = int(text)
+    elif callable(getattr(crs, "to_epsg", None)):
+        code = crs.to_epsg()
+    if code is None:
+        raise ValueError(f"crs must be an EPSG code, got {crs!r}")
+    # The core reads EPSG 0 as a file without a CRS, so it cannot name one.
+    if code == 0:
+        raise ValueError("crs must be an EPSG code from 1 to 4294967295, got 0")
+    return c_int(int(code), "crs", "uint32_t")
 
 
 def _desc(tf, transform, crs, pixel_is_point):
@@ -39,6 +54,9 @@ def _desc(tf, transform, crs, pixel_is_point):
     d.tile_size = tf.tile_size
     d.samples_per_pixel = tf.bands
     d.dtype = dtype_code(tf.dtype)
+    if not isinstance(pixel_is_point, (bool, np.bool_)):
+        raise TypeError(
+            f"pixel_is_point must be a bool, got {type(pixel_is_point).__name__}")
     d.pixel_is_point = 1 if pixel_is_point else 0
     d.frame_unit = tf.frame_unit
 
@@ -129,18 +147,13 @@ def frame_start(shape, pattern, tile_size=512) -> int:
     first frame.
     """
     p = compile_pattern(pattern)
-    try:
-        dims = tuple(operator.index(value) for value in shape)
-    except TypeError:
-        raise TypeError("shape must contain integers") from None
+    dims = tuple(_integer(value, "shape must contain integers") for value in shape)
     if len(dims) != len(p.input_axes):
         raise ValueError(
             f"the pattern names {len(p.input_axes)} axes "
             f"({' '.join(p.input_axes)}), got shape {dims}")
-    try:
-        tile = c_int(operator.index(tile_size), "tile_size", "uint16_t")
-    except TypeError:
-        raise TypeError("tile_size must be an integer") from None
+    tile = c_int(_integer(tile_size, "tile_size must be an integer"), "tile_size",
+                 "uint16_t")
 
     extents = dict(zip(p.input_axes, dims, strict=True))
     bands = c_int(extents.get("b", 1), "band count", "uint16_t")
@@ -175,45 +188,48 @@ def write_frames(path: FilePath, frames: Iterable[bytes], tf, *, bands, time,
         lib.rumi_free(out[0])
 
 
-def write(path, tf, *, bands, time, transform=None, crs=None,
-          pixel_is_point=False):
+def write(path, frames, *, bands, time, transform=None, crs=None,
+          pixel_is_point=False) -> bytes:
     """Write a compressed FrameTable to a rumi file.
 
     ``path`` is a local filesystem path. It must be text or a path-like object
-    returning text.
+    returning text. A leading ``~`` is expanded.
 
-    ``tf`` is a ``FrameTable`` with a non-empty compressed payload assigned to
-    every frame. Rumi stores those payloads without decoding or recompressing
-    them.
+    ``frames`` is a ``FrameTable`` with a non-empty compressed payload
+    assigned to every frame. Rumi stores those payloads without decoding or
+    recompressing them.
 
     ``bands`` contains one non-empty, unique text per band, in band order. A
     useful label includes the name, description and wavelength, such as
     ``"B4, Red, 665nm"``.
 
     ``time`` contains one entry per time step. An instant may be a date,
-    datetime, ISO string or ``numpy.datetime64``. An interval is a
-    ``(start, end)`` pair using the same value types.
+    datetime, ISO string or ``numpy.datetime64``. ISO text is ``YYYY-MM-DD``,
+    or a date and ``HH:MM`` joined by ``T`` or a space, with optional seconds
+    and an optional ``Z``, ``+HH``, ``+HHMM`` or ``+HH:MM`` offset. A fraction
+    of a second must be all zeros. An interval is a ``(start, end)`` pair
+    using the same value types.
 
     ``transform`` contains six affine coefficients in rasterio order:
     ``(x_res, row_rot, x_origin, col_rot, y_res, y_origin)``. It must be given
-    together with ``crs``, an EPSG integer, an ``"EPSG:32718"`` string or an
-    object implementing ``to_epsg()``.
+    together with ``crs``, an EPSG integer from 1 to 4294967295, an
+    ``"EPSG:32718"`` string or an object implementing ``to_epsg()``.
 
-    ``pixel_is_point`` records whether coordinates refer to pixel centres.
-    The default records PixelIsArea, whose coordinates refer to pixel corners.
+    ``pixel_is_point`` is a bool that records whether coordinates refer to
+    pixel centres. The default records PixelIsArea, whose coordinates refer
+    to pixel corners.
 
-    Returns ``(path, header)`` with ``path`` unchanged and ``header`` as the
-    external bytes needed by ``read`` and ``read_many``. A failure after the
-    file is opened removes the incomplete output.
+    Returns the external header as bytes, the value ``read`` and
+    ``read_many`` need beside the file. A failure after the file is opened
+    removes the incomplete output.
     """
-    frames = tf["compressed"]
-    missing = [i for i, f in enumerate(frames) if f is None]
+    payloads = frames["compressed"]
+    missing = [i for i, f in enumerate(payloads) if f is None]
     if missing:
         raise ValueError(
-            f"{len(missing)} of {len(frames)} frames have no payload, first is "
+            f"{len(missing)} of {len(payloads)} frames have no payload, first is "
             f"{missing[0]}; compress every frame before writing")
 
-    header = write_frames(path, frames, tf, bands=bands, time=time,
-                          transform=transform, crs=crs,
-                          pixel_is_point=pixel_is_point)
-    return path, header
+    return write_frames(path, payloads, frames, bands=bands, time=time,
+                        transform=transform, crs=crs,
+                        pixel_is_point=pixel_is_point)

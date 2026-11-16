@@ -20,9 +20,9 @@ def stored(tmp_path, name="scene", width=32):
     for frame in table:
         graph = geozl.graph(frame.data, "planar>zigzag>zstd")
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    return rumi.write(
-        tmp_path / f"{name}.rumi", table, bands=["red", "nir"],
-        time=["2024-08-25"], transform=TRANSFORM, crs=32718)
+    path = tmp_path / f"{name}.rumi"
+    return path, rumi.write(path, table, bands=["red", "nir"], time=["2024-08-25"],
+                            transform=TRANSFORM, crs=32718)
 
 
 def test_source_returns_complete_metadata(tmp_path):
@@ -47,6 +47,18 @@ def test_source_returns_complete_metadata(tmp_path):
     assert metadata.pixel_is_point is False
 
 
+def test_a_dtype_compares_equal_to_its_name(tmp_path):
+    _path, header = stored(tmp_path)
+    dtype = rumi.info(header=header).dtype
+    assert dtype == "uint16"
+    assert "uint16" == dtype
+    assert dtype != "int16"
+    assert dtype != 2
+    assert dtype == rumi.info(header=header).dtype
+    assert {dtype: 1}["uint16"] == 1
+    assert hash(dtype) == hash("uint16")
+
+
 def many_frames(tmp_path):
     # 2000 frames need a 24452-byte header region, past the 16 KiB first read.
     data = np.zeros((1, 640, 800), dtype=np.uint16)
@@ -55,8 +67,8 @@ def many_frames(tmp_path):
     graph = geozl.graph(table[0].data, "planar>zigzag>zstd")
     for frame in table:
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    return rumi.write(tmp_path / "many.rumi", table, bands=["red"],
-                      time=["2024-08-25"])
+    path = tmp_path / "many.rumi"
+    return path, rumi.write(path, table, bands=["red"], time=["2024-08-25"])
 
 
 @pytest.fixture

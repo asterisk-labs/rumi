@@ -20,8 +20,8 @@ def write(tmp_path, name, time):
     for f in tf:
         f.compressed = geozl.compress(
             f.data, graph=geozl.graph(f.data, "planar>zigzag>zstd"))
-    path, _header = rumi.write(tmp_path / f"{name}.rumi", tf,
-                               bands=["red", "nir"], time=time)
+    path = tmp_path / f"{name}.rumi"
+    rumi.write(path, tf, bands=["red", "nir"], time=time)
     return str(path)
 
 
@@ -35,6 +35,18 @@ def time_fields(path):
 
 def scale_of(path):
     return struct.unpack_from("<I", time_fields(path), 18)[0]
+
+
+def write_steps(tmp_path, time):
+    """A two-step Cube with these time coordinates."""
+    data = np.arange(2 * 16 * 16, dtype=np.uint8).reshape(2, 1, 16, 16)
+    tf = rumi.frames(data, "t b (row h) (col w) -> row col t b (h w)", 16)
+    for frame in tf:
+        frame.compressed = geozl.compress(
+            frame.data, graph=geozl.graph(frame.data, "id>zstd"))
+    path = tmp_path / "steps.rumi"
+    rumi.write(path, tf, bands=["red"], time=time)
+    return path
 
 
 def test_every_file_labels_its_time_steps(tmp_path):
@@ -71,9 +83,8 @@ def test_a_second_scale_axis_has_one_python_type(tmp_path):
     for frame in tf:
         frame.compressed = geozl.compress(
             frame.data, graph=geozl.graph(frame.data, "id>zstd"))
-    path, _ = rumi.write(
-        tmp_path / "mixed-clock.rumi", tf, bands=["red"],
-        time=["2024-08-25", "2024-08-26T01:00:00Z"])
+    path = tmp_path / "mixed-clock.rumi"
+    rumi.write(path, tf, bands=["red"], time=["2024-08-25", "2024-08-26T01:00:00Z"])
     assert rumi.info(source=path).time == [
         dt.datetime(2024, 8, 25, tzinfo=UTC),
         dt.datetime(2024, 8, 26, 1, tzinfo=UTC),
@@ -228,3 +239,58 @@ def test_a_whole_second_still_goes_through(tmp_path):
     path = write(tmp_path, "whole", ["2024-08-25T14:32:07Z"])
     assert rumi.info(source=path).time == [
         dt.datetime(2024, 8, 25, 14, 32, 7, tzinfo=UTC)]
+
+
+@pytest.mark.parametrize("text", [
+    "2024-08-25T14:32:07",
+    "2024-08-25 14:32:07z",
+    "2024-08-25T14:32:07.000Z",
+    "2024-08-25T09:32:07,0-05",
+    "2024-08-25T20:02:07+0530",
+    "2024-08-25T20:02:07+05:30",
+])
+def test_iso_text_follows_the_grammar_of_every_binding(tmp_path, text):
+    assert rumi.info(source=write(tmp_path, "iso", [text])).time == [
+        dt.datetime(2024, 8, 25, 14, 32, 7, tzinfo=UTC)]
+
+
+def test_iso_text_may_omit_the_seconds(tmp_path):
+    path = write(tmp_path, "minutes", ["2024-08-25T14:32"])
+    assert rumi.info(source=path).time == [dt.datetime(2024, 8, 25, 14, 32, tzinfo=UTC)]
+
+
+@pytest.mark.parametrize("text, because", [
+    ("20240825", "not an ISO date or datetime"),
+    ("2024-08-25T14", "not an ISO date or datetime"),
+    ("2024-08-25T1432", "not an ISO date or datetime"),
+    ("2024-08-25+01:00", "not an ISO date or datetime"),
+    ("2024-08-25\n", "not an ISO date or datetime"),
+    ("2024-02-30", "not an ISO date or datetime"),
+    ("2024-08-25T24:00", "not an ISO date or datetime"),
+    ("2024-08-25T14:60", "not an ISO date or datetime"),
+    ("2024-08-25T14:32:07.010", "fraction of a second"),
+    ("2024-08-25T14:32+24:00", "invalid UTC offset"),
+    ("2024-08-25T14:32+05:60", "invalid UTC offset"),
+])
+def test_iso_text_outside_the_grammar_is_refused(tmp_path, text, because):
+    with pytest.raises(ValueError, match=because):
+        write(tmp_path, "iso", [text])
+
+
+def test_the_first_and_last_second_of_the_calendar_round_trip(tmp_path):
+    path = write_steps(tmp_path, ["0001-01-01T00:00:00Z", "9999-12-31T23:59:59Z"])
+    assert rumi.info(source=path).time == [
+        dt.datetime(1, 1, 1, tzinfo=UTC), dt.datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)]
+
+
+@pytest.mark.parametrize("time, nth", [
+    (["0000-01-01", "2024-08-25"], "1st"),
+    (["0001-01-01T00:30+01:00", "2024-08-25"], "1st"),
+    (["2024-08-25", "9999-12-31T23:30-01:00"], "2nd"),
+    (["2024-08-25", np.datetime64("12000-01-01")], "2nd"),
+    ([("0000-12-31", "2024-08-25"), ("2024-08-25", "2024-08-26")], "1st"),
+])
+def test_a_time_outside_the_years_1_to_9999_is_refused(tmp_path, time, nth):
+    with pytest.raises(ValueError,
+                       match=f"^the {nth} time step falls outside the years 1 to 9999$"):
+        write_steps(tmp_path, time)

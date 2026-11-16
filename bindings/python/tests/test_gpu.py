@@ -57,8 +57,8 @@ def scenes(tmp_path_factory):
             graph = geozl.graph(
                 frame.data, recipe)
             frame.compressed = geozl.compress(frame.data, graph=graph)
-        path, header = rumi.write(
-            directory / f"scene-{i}.rumi", table, **labels(table))
+        path = directory / f"scene-{i}.rumi"
+        header = rumi.write(path, table, **labels(table))
         out.append((path, header, data))
     return out
 
@@ -75,9 +75,8 @@ def mps_scene(tmp_path_factory):
             graph=geozl.graph(
                 frame.data, "planar>zigzag>lanes"),
         )
-    path, header = rumi.write(
-        tmp_path_factory.mktemp("mps") / "scene.rumi",
-        table, **labels(table))
+    path = tmp_path_factory.mktemp("mps") / "scene.rumi"
+    header = rumi.write(path, table, **labels(table))
     return path, header, data
 
 
@@ -344,8 +343,8 @@ def test_failed_read_leaves_the_decoder_usable(tmp_path, decode_backend):
         for frame in table:
             graph = geozl.graph(frame.data, "planar>zigzag>pfor")
             frame.compressed = geozl.compress(frame.data, graph=graph)
-        path, header = rumi.write(
-            tmp_path / f"scene-{i}.rumi", table, **labels(table))
+        path = tmp_path / f"scene-{i}.rumi"
+        header = rumi.write(path, table, **labels(table))
         images.append(data)
         paths.append(path)
         headers.append(header)

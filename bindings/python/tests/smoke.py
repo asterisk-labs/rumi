@@ -32,9 +32,9 @@ def main() -> int:
     tf["compressed"] = [bytes([i % 251]) * (8 + i) for i in range(len(tf))]
 
     with tempfile.TemporaryDirectory() as d:
-        path, header = rumi.write(Path(d) / "smoke.rumi", tf, bands=BANDS,
-                                  time=["2024-08-25"], transform=TRANSFORM,
-                                  crs=CRS)
+        path = Path(d) / "smoke.rumi"
+        header = rumi.write(path, tf, bands=BANDS, time=["2024-08-25"],
+                            transform=TRANSFORM, crs=CRS)
         facts = rumi.info(header=header)
         on_disk = rumi.info(source=path)
         blob = Path(path).read_bytes()

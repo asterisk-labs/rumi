@@ -34,7 +34,7 @@ def image(tmp_path_factory):
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
     path = tmp_path_factory.mktemp("read") / "img.rumi"
-    path, header = rumi.write(path, tf, **labels(tf))
+    header = rumi.write(path, tf, **labels(tf))
     return str(path), header, data
 
 
@@ -84,7 +84,8 @@ def test_read_validates_arguments_before_opening_source(image, kwargs, message):
         rumi.read("does-not-exist.rumi", header, **kwargs)
 
 
-@pytest.mark.parametrize("selection", [(-10**12, 1), (-1, 2), (0, 10**12)])
+@pytest.mark.parametrize("selection", [
+    range(-10**12, 1), range(-1, 2), range(0, 10**12), range(10**12, 0, -1)])
 def test_invalid_range_does_not_expand_before_validation(image, selection):
     path, header, _data = image
     with pytest.raises(ValueError):
@@ -112,12 +113,111 @@ def test_read_many_validates_windows_before_opening_sources(image):
 @pytest.mark.parametrize("selection", [
     {"bands": [1.5]},
     {"bands": ["1"]},
-    {"bands": (0.0, 2)},
+    {"bands": np.array([0.0, 2.0])},
 ])
 def test_axis_indices_are_integers(image, selection):
     path, header, _data = image
     with pytest.raises(TypeError, match="integer"):
         rumi.read(path, header, **selection)
+
+
+@pytest.mark.parametrize("bands, want", [
+    (1, [1]),
+    (np.int64(2), [2]),
+    ([2, 0], [2, 0]),
+    (range(1, 3), [1, 2]),
+    (range(2, -1, -2), [2, 0]),
+    (np.array([2, 0]), [2, 0]),
+    (np.array([1], np.uint8), [1]),
+])
+def test_a_selection_is_an_index_a_list_a_range_or_an_array(image, bands, want):
+    path, header, data = image
+    assert np.array_equal(rumi.read(path, header, bands=bands), data[want])
+
+
+@pytest.mark.parametrize("name", ["time", "bands"])
+def test_a_tuple_selection_is_refused(image, name):
+    path, header, _data = image
+    with pytest.raises(TypeError, match=f"^{name} takes a list or a range, not a tuple$"):
+        rumi.read(path, header, **{name: (0, 1)})
+
+
+@pytest.mark.parametrize("bands", [True, np.bool_(False), [0, True]])
+def test_a_bool_selection_is_refused(image, bands):
+    path, header, _data = image
+    with pytest.raises(TypeError, match="^bands takes integer indices, not a bool$"):
+        rumi.read(path, header, bands=bands)
+
+
+@pytest.mark.parametrize("bands", [
+    np.array([True, False]), np.zeros((1, 2), int), {0, 1}, "0", (b for b in [0])])
+def test_a_selection_of_another_kind_is_refused(image, bands):
+    path, header, _data = image
+    with pytest.raises(TypeError, match="^bands takes an integer, a list, a range"):
+        rumi.read(path, header, bands=bands)
+
+
+def test_a_range_stops_one_entry_past_the_axis(image):
+    path, header, _data = image
+    with pytest.raises(ValueError, match="selects the 4th band, but this file has 3"):
+        rumi.read(path, header, bands=range(10**18))
+
+
+@pytest.mark.parametrize("window", [
+    (10, 30, 64, 64), [10, 30, 64, 64], np.array([10, 30, 64, 64]),
+    np.array([10, 30, 64, 64], np.uint16)])
+def test_a_window_is_any_sequence_of_four_integers(image, window):
+    path, header, data = image
+    assert np.array_equal(rumi.read(path, header, window=window), data[:, 10:74, 30:94])
+
+
+@pytest.mark.parametrize("window, because", [
+    ("0088", "expected four integers"),
+    ((0, 0, 8), "expected four integers"),
+    ([0, 0, 8, 8, 8], "expected four integers"),
+    (np.zeros((1, 4), int), "expected four integers"),
+    ((0, 0, 8.0, 8), "must be integers"),
+    ((0, 0, True, 8), "must be integers"),
+    (np.array([0.0, 0.0, 8.0, 8.0]), "must be integers"),
+])
+def test_a_window_that_is_not_four_integers_is_refused(image, window, because):
+    path, header, _data = image
+    with pytest.raises(TypeError, match=f"^window: .*{because}"):
+        rumi.read(path, header, window=window)
+
+
+def test_read_many_takes_windows_as_an_array(image):
+    path, header, data = image
+    windows = np.array([[0, 0, 32, 32], [10, 30, 32, 32]])
+    got = rumi.read_many([path, path], [header, header], windows=windows)
+    assert np.array_equal(got, np.stack([data[:, :32, :32], data[:, 10:42, 30:62]]))
+    with pytest.raises(TypeError, match=r"one \(row, column, height, width\) row"):
+        rumi.read_many([path, path], [header, header], windows=windows[:, :3])
+
+
+def test_a_window_of_none_reads_that_whole_image(image):
+    path, header, data = image
+    got = rumi.read_many([path, path], [header, header],
+                         windows=[None, [0, 0, 100, 130]])
+    assert np.array_equal(got, np.stack([data, data]))
+    with pytest.raises(ValueError, match=r"windows\[1\].*same size"):
+        rumi.read_many([path, path], [header, header], windows=[None, (0, 0, 32, 32)])
+
+
+def test_a_failure_carries_its_kind(image, tmp_path):
+    path, header, _data = image
+    with pytest.raises(rumi.RumiError) as raised:
+        rumi.read(tmp_path / "missing.rumi", header)
+    assert raised.value.kind == "io"
+    assert isinstance(raised.value, OSError)
+    with pytest.raises(rumi.RumiError) as raised:
+        rumi.info(header=b"garbage")
+    assert raised.value.kind == "parse"
+    assert isinstance(raised.value, ValueError)
+    # An invalid request stays a plain ValueError.
+    with pytest.raises(ValueError) as refused:
+        rumi.read(path, header, bands=[99])
+    assert not isinstance(refused.value, rumi.RumiError)
 
 
 def test_dlpack_copy_is_not_silently_ignored(image):
@@ -191,7 +291,8 @@ def test_fused_planar_pfor_frame_round_trips(tmp_path):
         graph = geozl.graph(frame.data, "planar>zigzag>pfor")
         frame.compressed = geozl.compress(frame.data, graph=graph)
 
-    path, header = rumi.write(tmp_path / "planar-pfor.rumi", tf, **labels(tf))
+    path = tmp_path / "planar-pfor.rumi"
+    header = rumi.write(path, tf, **labels(tf))
     assert np.array_equal(rumi.read(path, header), data)
 
 
@@ -211,7 +312,6 @@ def test_both_sources_agree(image):
 
 @pytest.mark.parametrize("window, error", [
     ((0, 0, 32), TypeError),
-    ([0, 0, 32, 32], TypeError),
     ((0, 0, "32", 32), TypeError),
     ((-1, 0, 32, 32), ValueError),
     ((0, 0, 0, 32), ValueError),
@@ -351,7 +451,7 @@ def cell_image(tmp_path_factory):
             g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
         t.compressed = geozl.compress(t.data, graph=g)
     path = tmp_path_factory.mktemp("cell") / "img.rumi"
-    path, header = rumi.write(path, tf, **labels(tf))
+    header = rumi.write(path, tf, **labels(tf))
     return str(path), header, data
 
 
@@ -382,7 +482,8 @@ def test_every_layout_reads_the_same_window(tmp_path, bands):
             if g is None:
                 g = graphs[t.data.shape] = geozl.graph(t.data, GRAPH)
             t.compressed = geozl.compress(t.data, graph=g)
-        path, header = rumi.write(tmp_path / f"{unit}.rumi", tf, **labels(tf))
+        path = tmp_path / f"{unit}.rumi"
+        header = rumi.write(path, tf, **labels(tf))
         out[unit] = np.asarray(
             rumi.read(str(path), header, bands=bands,
                       window=(30, 20, 40, 70)))
@@ -400,7 +501,8 @@ def test_a_chunky_frame_holds_the_pixel_spectrum(tmp_path):
     assert tf[-1].data.shape == (6, 26, 4)          # the corner, cut to bounds
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    path, header = rumi.write(tmp_path / "chunky.rumi", tf, **labels(tf))
+    path = tmp_path / "chunky.rumi"
+    header = rumi.write(path, tf, **labels(tf))
     assert rumi.info(header=header).frame_layout == "h w b"
     assert np.array_equal(rumi.read(str(path), header), data)
 
@@ -409,7 +511,8 @@ def _write(tmp_path, name, data, unit, tile=16):
     tf = rumi.frames(data, PATTERNS[unit], tile)
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    path, header = rumi.write(tmp_path / f"{name}.rumi", tf, **labels(tf))
+    path = tmp_path / f"{name}.rumi"
+    header = rumi.write(path, tf, **labels(tf))
     return str(path), header
 
 
@@ -443,7 +546,7 @@ def test_a_chunky_read_decodes_each_frame_once(tmp_path):
     tf = rumi.frames(data, PATTERNS["chunky"], 32)
     for t in tf:
         t.compressed = geozl.compress(t.data, graph=geozl.graph(t.data, GRAPH))
-    _path, header = rumi.write(tmp_path / "chunky.rumi", tf, **labels(tf))
+    header = rumi.write(tmp_path / "chunky.rumi", tf, **labels(tf))
     one = plan(header, bands=[0], y=(0, 100), x=(0, 130))
     all_five = plan(header, bands=[0, 1, 2, 3, 4], y=(0, 100), x=(0, 130))
     assert len(one) == len(all_five) == len(tf)
@@ -476,7 +579,8 @@ def test_a_cell_batch_round_trips(tmp_path):
         for t in tf:
             t.compressed = geozl.compress(t.data,
                                           graph=geozl.graph(t.data, GRAPH))
-        path, header = rumi.write(tmp_path / f"s{i}.rumi", tf, **labels(tf))
+        path = tmp_path / f"s{i}.rumi"
+        header = rumi.write(path, tf, **labels(tf))
         paths.append(str(path))
         headers.append(header)
         cubes.append(cube)
@@ -493,7 +597,8 @@ def test_bool_reads_through_numpy_torch_and_dlpack(tmp_path):
     for t in tf:
         raw = t.data.view(np.uint8)
         t.compressed = geozl.compress(raw, graph=geozl.graph(raw, GRAPH))
-    path, header = rumi.write(tmp_path / "bool.rumi", tf, **labels(tf))
+    path = tmp_path / "bool.rumi"
+    header = rumi.write(path, tf, **labels(tf))
 
     assert np.array_equal(rumi.read(path, header), data)
     tensor = rumi.read(path, header, framework="torch")

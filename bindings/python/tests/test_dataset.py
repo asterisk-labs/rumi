@@ -17,11 +17,8 @@ def dataset(tmp_path_factory):
     for frame in table:
         graph = geozl.graph(frame.data, "planar>zigzag>zstd")
         frame.compressed = geozl.compress(frame.data, graph=graph)
-    path, header = rumi.write(
-        tmp_path_factory.mktemp("dataset") / "image.rumi",
-        table,
-        **labels(table),
-    )
+    path = tmp_path_factory.mktemp("dataset") / "image.rumi"
+    header = rumi.write(path, table, **labels(table))
     return rumi.open(path, header), data
 
 

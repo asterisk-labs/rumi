@@ -8,7 +8,7 @@ def set_num_threads(n: int) -> int:
 
     ``n`` is an integer from 1 to 1024. Set it before the first parallel read;
     once the process-wide pool or a GPU context exists, changing its size
-    raises ``RuntimeError``.
+    raises a ``RumiError`` of kind ``"state"``, which is a ``RuntimeError``.
 
     ``RUMI_NUM_THREADS`` provides the initial value and also accepts
     ``ALL_CPUS``. A forked child reads the variable independently and defaults
@@ -40,7 +40,8 @@ def set_checksum_verification(on: bool) -> bool:
     """Set process-wide OpenZL checksum verification.
 
     ``on`` must be ``bool``. Set it before the first decoded frame; afterwards,
-    changing the process-wide setting raises ``RuntimeError``.
+    changing the process-wide setting raises a ``RumiError`` of kind
+    ``"state"``, which is a ``RuntimeError``.
 
     ``RUMI_VERIFY`` provides the initial value and accepts ``0``/``1``,
     ``false``/``true``, ``off``/``on`` and ``no``/``yes``.

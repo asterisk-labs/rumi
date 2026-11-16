@@ -206,6 +206,9 @@ class FrameTable:
             raise ValueError(
                 f"the pattern names {len(p.input_axes)} axes "
                 f"({' '.join(p.input_axes)}), got shape {arr.shape}")
+        # bool is an int, so it would otherwise pass as a tile of 1.
+        if isinstance(tile_size, (bool, np.bool_)):
+            raise TypeError("tile_size must be an integer")
         try:
             tile = c_int(operator.index(tile_size), "tile_size", "uint16_t")
         except TypeError:
@@ -462,10 +465,10 @@ def _frame_bytes(v, i):
     return bytes(v)
 
 
-def frames(arr, pattern, tile_size=512):
+def frames(x, pattern, tile_size=512):
     """Split an array into a FrameTable.
 
-    ``arr`` is converted to a NumPy array. Its axes may appear in any order
+    ``x`` is converted to a NumPy array. Its axes may appear in any order
     named by ``pattern``.
 
     ``pattern`` names every input axis on its left side. A pair such as
@@ -484,4 +487,4 @@ def frames(arr, pattern, tile_size=512):
     Returns a ``FrameTable`` in file order. Each frame is C-contiguous and
     follows the stored axis order selected by ``pattern``.
     """
-    return FrameTable.from_array(arr, pattern, tile_size)
+    return FrameTable.from_array(x, pattern, tile_size)

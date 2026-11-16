@@ -5,9 +5,12 @@ import numpy as np
 from ._ffi import _check, ffi, lib
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class DType:
-    """A Rumi sample type and its exact decoded representation."""
+    """A Rumi sample type and its exact decoded representation.
+
+    A DType compares equal to its name, so ``meta.dtype == "uint16"``.
+    """
 
     code: int
     name: str
@@ -23,6 +26,17 @@ class DType:
 
     def __str__(self) -> str:
         return self.name
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, DType):
+            return self.name == other.name
+        if isinstance(other, str):
+            return self.name == other
+        return NotImplemented
+
+    # Hashing the name keeps a DType and its name on the same dict key.
+    def __hash__(self) -> int:
+        return hash(self.name)
 
 
 def _load_registry() -> dict[int, DType]:

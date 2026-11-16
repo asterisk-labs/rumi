@@ -59,12 +59,20 @@ def test_frame_start_matches_the_writer_layout():
     ((2, 40), TILE, 16, ValueError, "pattern names 3 axes"),
     ((2, 0, 70), TILE, 16, ValueError, "must be positive"),
     ((2, 40.5, 70), TILE, 16, TypeError, "shape must contain integers"),
+    ((True, 40, 70), TILE, 16, TypeError, "shape must contain integers"),
+    ((2, 40, np.bool_(True)), TILE, 16, TypeError, "shape must contain integers"),
+    ((2, 40, 70), TILE, True, TypeError, "tile_size must be an integer"),
     ((2, 40, 70), TILE, 0, ValueError, "tile_size must be at least 1"),
     ((2, 40, 70), TILE, 70000, ValueError, "tile_size must be at most 65535"),
 ])
 def test_frame_start_validates_geometry(shape, pattern, tile, error, message):
     with pytest.raises(error, match=message):
         rumi.frame_start(shape, pattern, tile)
+
+
+def test_frames_refuse_a_bool_tile_size():
+    with pytest.raises(TypeError, match="^tile_size must be an integer$"):
+        rumi.frames(np.zeros((2, 40, 70), np.uint16), TILE, True)
 
 
 def test_write_path_is_text_or_pathlike():
@@ -310,6 +318,37 @@ def test_crs_forms_agree(tmp_path):
     write_frames(b, tf["compressed"], tf, **labels(tf),
                  transform=NORTH_UP, crs="EPSG:32718")
     assert a.read_bytes() == b.read_bytes()
+    c = tmp_path / "numpy.rumi"
+    write_frames(c, tf["compressed"], tf, **labels(tf),
+                 transform=NORTH_UP, crs=np.int64(UTM18S))
+    assert a.read_bytes() == c.read_bytes()
+    with pytest.raises(TypeError, match="EPSG"):
+        write_frames(c, tf["compressed"], tf, **labels(tf),
+                     transform=NORTH_UP, crs=np.bool_(True))
+
+
+@pytest.mark.parametrize("crs", [0, "0", "EPSG:0"])
+def test_epsg_zero_is_refused(tmp_path, crs):
+    tf = make_frame()
+    with pytest.raises(ValueError, match="^crs must be an EPSG code from 1 to 4294967295"):
+        rumi.write(tmp_path / "a.rumi", tf, **labels(tf), transform=NORTH_UP, crs=crs)
+    assert not (tmp_path / "a.rumi").exists()
+
+
+@pytest.mark.parametrize("value", [1, 0, "yes", None])
+def test_pixel_is_point_is_a_bool(tmp_path, value):
+    tf = make_frame()
+    with pytest.raises(TypeError, match="^pixel_is_point must be a bool"):
+        rumi.write(tmp_path / "a.rumi", tf, **labels(tf), transform=NORTH_UP,
+                   crs=UTM18S, pixel_is_point=value)
+
+
+def test_a_numpy_bool_is_a_bool(tmp_path):
+    tf = make_frame()
+    path = tmp_path / "a.rumi"
+    rumi.write(path, tf, **labels(tf), transform=NORTH_UP, crs=UTM18S,
+               pixel_is_point=np.bool_(True))
+    assert geokeys(path)[1][RASTER] == 2
 
 
 def test_unknown_epsg_is_refused(tmp_path):
@@ -321,7 +360,9 @@ def test_unknown_epsg_is_refused(tmp_path):
 
 def test_write_blob_round_trip(tmp_path):
     tf = make_frame()
-    path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
+    path = tmp_path / "a.rumi"
+    blob = rumi.write(path, tf, **labels(tf))
+    assert type(blob) is bytes
 
     header = rumi.info(header=blob)
     assert header.shape == (tf.bands, tf.image_length, tf.image_width)
@@ -330,6 +371,14 @@ def test_write_blob_round_trip(tmp_path):
     assert header.frames == len(tf)
     assert _Spec(blob).fields.base_frame_offset == header_bytes(tf)
     assert rumi.info(source=path).header == blob
+
+
+def test_write_expands_a_leading_tilde(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    tf = make_frame()
+    header = rumi.write("~/a.rumi", tf, **labels(tf))
+    assert rumi.info(source=tmp_path / "a.rumi").header == header
+    assert rumi.info(source="~/a.rumi").header == header
 
 
 def test_an_unwritable_path_is_an_os_error_that_names_it(tmp_path):
@@ -344,7 +393,7 @@ def test_an_unwritable_path_is_an_os_error_that_names_it(tmp_path):
 def test_edge_tiles(tmp_path):
     tf = make_frame(shape=(3, 257, 256), tile_size=128)
     assert {t.data.shape for t in tf} == {(128, 128), (1, 128)}
-    _path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
+    blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
     h = rumi.info(header=blob)
     assert h.shape == (3, 257, 256)
     assert h.frames == len(tf)
@@ -359,7 +408,8 @@ def test_nominal_tile_larger_than_image_round_trips(tmp_path):
         graph = geozl.graph(frame.data, "planar>zigzag>zstd")
         frame.compressed = geozl.compress(frame.data, graph=graph)
 
-    path, header = rumi.write(tmp_path / "clipped.rumi", table, **labels(table))
+    path = tmp_path / "clipped.rumi"
+    header = rumi.write(path, table, **labels(table))
 
     assert np.array_equal(rumi.read(path, header), data)
     assert rumi.info(source=path).header == header
@@ -369,7 +419,7 @@ def test_nominal_tile_larger_than_image_round_trips(tmp_path):
 def test_a_unit_must_fit_the_raster(tmp_path):
     """A singleton band axis is omitted from the recorded frame unit."""
     tf = make_frame(shape=(1, 40, 40), tile_size=16, pattern=CELL)
-    _path, header = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
+    header = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
     assert rumi.info(header=header).frame_layout == "h w"
 
     claim = bytearray(header)
@@ -397,7 +447,8 @@ def test_the_file_names_its_own_layout(tmp_path):
     """FrameUnit preserves the decoded layout when rebuilding the header."""
     for pattern, want in ((TILE, "h w"), (CELL, "b h w"), (CHUNKY, "h w b")):
         tf = make_frame(shape=(3, 40, 40), tile_size=16, pattern=pattern)
-        path, header = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
+        path = tmp_path / "a.rumi"
+        header = rumi.write(path, tf, **labels(tf))
         assert rumi.info(header=header).frame_layout == want
         assert rumi.info(source=path).frame_layout == want
         assert rumi.info(source=path).header == header
@@ -406,7 +457,7 @@ def test_the_file_names_its_own_layout(tmp_path):
 def test_cell_frame_count(tmp_path):
     """Cell layouts contain one frame per grid position."""
     tf = make_frame(shape=(3, 257, 256), tile_size=128, pattern=CELL)
-    _path, blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
+    blob = rumi.write(tmp_path / "a.rumi", tf, **labels(tf))
     h = rumi.info(header=blob)
     assert h.frame_layout == "b h w"
     assert h.frames == len(tf) == tf.tiles_across * tf.tiles_down
@@ -485,7 +536,8 @@ def test_a_boolean_mask_uses_the_bool_dtype(tmp_path):
     for f in tf:
         buf = f.data.view(np.uint8)
         f.compressed = geozl.compress(buf, graph=geozl.graph(buf, "planar>zigzag>zstd"))
-    path, header = rumi.write(tmp_path / "mask.rumi", tf, **labels(tf))
+    path = tmp_path / "mask.rumi"
+    header = rumi.write(path, tf, **labels(tf))
 
     h = rumi.info(header=header)
     assert h.dtype.name == "bool"
@@ -531,8 +583,8 @@ def test_every_file_names_its_bands(tmp_path):
     (["band 0"], ValueError, "one text per band; got 1"),
     (["band 0", "band 1", "band 2"], ValueError, "one text per band; got more than 2"),
     ("band 0", TypeError, "one text per band"),
-    (["band 0", "band 0"], ValueError, "bands 0 and 1 have the same text"),
-    (["band 0", ""], ValueError, "band 1 has an empty text"),
+    (["band 0", "band 0"], ValueError, "the 1st and 2nd bands have the same text"),
+    (["band 0", ""], ValueError, "the 2nd band has an empty text"),
     (["band 0", "a\x00b"], ValueError, "NUL"),
     (["band 0", "\ud800"], ValueError, "UTF-8"),
     (["band 0", 7], TypeError, "a band text is a str"),
@@ -582,9 +634,10 @@ def test_writer_rejects_unordered_time(tmp_path, container):
 
 def test_writer_preserves_generator_order(tmp_path):
     tf = make_frame()
-    path, _ = rumi.write(tmp_path / "a.rumi", tf,
-                         bands=(b for b in ["nir", "red"]),
-                         time=(t for t in ["2024-01-01"]))
+    path = tmp_path / "a.rumi"
+    rumi.write(path, tf,
+               bands=(b for b in ["nir", "red"]),
+               time=(t for t in ["2024-01-01"]))
     assert rumi.info(source=path).bands == ["nir", "red"]
 
 
