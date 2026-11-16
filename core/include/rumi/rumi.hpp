@@ -1068,6 +1068,7 @@ private:
     rumi_dtype        dtype_;
     std::size_t       sample_bytes_;
     std::string       error_;
+    std::string       method_;
 };
 
 }  // namespace rumi

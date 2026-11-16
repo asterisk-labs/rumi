@@ -103,20 +103,22 @@ check_order(const TimeAxis& axis)
         const std::size_t steps = c.size() / 2;
         for (std::size_t i = 0; i < steps; ++i) {
             if (c[2 * i] >= c[2 * i + 1]) {
-                return errf("time step %zu starts at or after it ends, so it "
-                            "covers nothing", i);
+                return errf("the %s time step starts at or after it ends, so "
+                            "it covers nothing", ordinal(i + 1).c_str());
             }
             if (i + 1 < steps && c[2 * i + 1] > c[2 * i + 2]) {
-                return errf("time step %zu ends after step %zu starts; rumi "
+                return errf("the %s time step ends after the %s starts; rumi "
                             "records steps that meet or leave a gap, never "
-                            "steps that overlap", i, i + 1);
+                            "steps that overlap", ordinal(i + 1).c_str(),
+                            ordinal(i + 2).c_str());
             }
         }
         return {};
     }
     for (std::size_t i = 1; i < c.size(); ++i) {
         if (c[i] < c[i - 1]) {
-            return errf("time coordinate %zu goes backwards", i);
+            return errf("the %s time step goes backwards",
+                        ordinal(i + 1).c_str());
         }
     }
     return {};
@@ -184,15 +186,18 @@ check_bands(const std::vector<std::string>& texts, std::uint16_t bands)
     }
     for (std::size_t b = 0; b < texts.size(); ++b) {
         const std::string& text = texts[b];
-        if (text.empty()) return errf("band %zu has an empty text", b);
+        const std::string nth = ordinal(b + 1);
+        if (text.empty()) return errf("the %s band has an empty text", nth.c_str());
         if (text.size() > MAX_BAND_TEXT_BYTES) {
-            return errf("band %zu text is %zu bytes, past the %zu a trailer "
-                        "stores", b, text.size(), MAX_BAND_TEXT_BYTES);
+            return errf("the %s band text is %zu bytes, past the %zu a trailer "
+                        "stores", nth.c_str(), text.size(), MAX_BAND_TEXT_BYTES);
         }
         if (text.find('\0') != std::string::npos) {
-            return errf("band %zu text contains a NUL byte", b);
+            return errf("the %s band text contains a NUL byte", nth.c_str());
         }
-        if (!valid_utf8(text)) return errf("band %zu text is not valid UTF-8", b);
+        if (!valid_utf8(text)) {
+            return errf("the %s band text is not valid UTF-8", nth.c_str());
+        }
     }
 
     // Sorting indices finds a repeated text without comparing every pair.
@@ -204,8 +209,9 @@ check_bands(const std::vector<std::string>& texts, std::uint16_t bands)
     });
     for (std::size_t k = 1; k < order.size(); ++k) {
         if (texts[order[k - 1]] == texts[order[k]]) {
-            return errf("bands %zu and %zu have the same text", order[k - 1],
-                        order[k]);
+            return errf("the %s and %s bands have the same text",
+                        ordinal(order[k - 1] + 1).c_str(),
+                        ordinal(order[k] + 1).c_str());
         }
     }
     return {};
@@ -219,6 +225,17 @@ axis_from_seconds(std::uint8_t type, std::span<const std::int64_t> seconds)
     if (auto ok = check_type(type); !ok) return std::unexpected(ok.error());
     if (auto ok = check_coord_budget(seconds.size()); !ok) {
         return std::unexpected(ok.error());
+    }
+    // Every binding's date type holds 0001-01-01 to 9999-12-31 UTC, so the writer
+    // keeps to it and each reader can return what any binding wrote.
+    constexpr std::int64_t first_second = -62135596800;
+    constexpr std::int64_t last_second = 253402300799;
+    for (std::size_t i = 0; i < seconds.size(); ++i) {
+        if (seconds[i] < first_second || seconds[i] > last_second) {
+            const std::size_t step = type == TIME_INTERVAL ? i / 2 : i;
+            return errf("the %s time step falls outside the years 1 to 9999",
+                        ordinal(step + 1).c_str());
+        }
     }
     TimeAxis axis;
     axis.type  = type;
@@ -328,12 +345,14 @@ decode_trailer(std::span<const std::byte> bytes, std::uint16_t bands,
     for (std::size_t b = 0; b < bands; ++b) {
         std::uint16_t n = 0;
         if (bytes.size() - at < sizeof n) {
-            return errf("the trailer ends before the length of band %zu", b);
+            return errf("the trailer ends before the length of the %s band",
+                        ordinal(b + 1).c_str());
         }
         std::memcpy(&n, bytes.data() + at, sizeof n);
         at += sizeof n;
         if (bytes.size() - at < n) {
-            return errf("band %zu text runs past the end of the trailer", b);
+            return errf("the %s band text runs past the end of the trailer",
+                        ordinal(b + 1).c_str());
         }
         out.bands.emplace_back(
             reinterpret_cast<const char*>(bytes.data() + at), n);

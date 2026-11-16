@@ -1,8 +1,8 @@
 # rumi
 
-- Specification 0.1.0
-- Status Draft
-- Date 2026-09-24
+- Specification 1.0.0
+- Status Stable
+- Date 2026-11-15
 - License GPLv3
 
 rumi is stateless raster storage for AI4EO. Its GeoTIFF-inspired format stores
@@ -940,4 +940,5 @@ allocation or decode. This does not make the rumi file invalid.
 
 ## Changelog
 
+- 1.0.0. First stable version.
 - 0.1.0. Initial draft.

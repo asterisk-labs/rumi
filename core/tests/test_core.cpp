@@ -1606,9 +1606,9 @@ void test_trailer_bands()
     };
     OK(says(refusal({"red", "nir"}, 1), "one text per band"));
     OK(says(refusal({"red"}, 2), "one text per band"));
-    OK(says(refusal({""}, 1), "band 0 has an empty text"));
-    OK(says(refusal({"red", std::string("n\0r", 3)}, 2), "band 1 text contains a NUL"));
-    OK(says(refusal({"red", "nir", "red"}, 3), "bands 0 and 2 have the same text"));
+    OK(says(refusal({""}, 1), "the 1st band has an empty text"));
+    OK(says(refusal({"red", std::string("n\0r", 3)}, 2), "the 2nd band text contains a NUL"));
+    OK(says(refusal({"red", "nir", "red"}, 3), "the 1st and 3rd bands have the same text"));
     OK(says(refusal({std::string(65536, 'x')}, 1), "past the 65535"));
     OK(refusal({std::string(65535, 'x')}, 1).empty());
     // Overlong forms, surrogates, code points past U+10FFFF, stray and cut
@@ -1636,17 +1636,17 @@ void test_trailer_bands()
             twin[second] = std::byte{'a'};
             twin[second + 1] = std::byte{'b'};
             auto dec = rumi::decode_trailer(twin, 2, 1);
-            OK(!dec && says(dec.error(), "bands 0 and 1 have the same text"));
+            OK(!dec && says(dec.error(), "the 1st and 2nd bands have the same text"));
 
             auto broken = *pair;
             broken[second] = std::byte{0xFF};
             dec = rumi::decode_trailer(broken, 2, 1);
-            OK(!dec && says(dec.error(), "band 1 text is not valid UTF-8"));
+            OK(!dec && says(dec.error(), "the 2nd band text is not valid UTF-8"));
 
             auto nul = *pair;
             nul[second] = std::byte{0};
             dec = rumi::decode_trailer(nul, 2, 1);
-            OK(!dec && says(dec.error(), "band 1 text contains a NUL"));
+            OK(!dec && says(dec.error(), "the 2nd band text contains a NUL"));
         }
 
         rumi::TrailerHead head{rumi::TRAILER_MAGIC, rumi::TRAILER_VERSION};
@@ -1655,7 +1655,7 @@ void test_trailer_bands()
         std::memcpy(empty.data(), &head, sizeof head);
         std::memcpy(empty.data() + sizeof head + 2, &fields, sizeof fields);
         auto dec = rumi::decode_trailer(empty, 1, 1);
-        OK(!dec && says(dec.error(), "band 0 has an empty text"));
+        OK(!dec && says(dec.error(), "the 1st band has an empty text"));
     }
 }
 
@@ -1745,6 +1745,19 @@ void test_trailer_budgets()
             rumi::MAX_TIME_COORD_BYTES / sizeof(std::int64_t) + 1, 0);
         auto axis = rumi::axis_from_seconds(rumi::TIME_INSTANT, seconds);
         OK(!axis && says(axis.error(), "time coordinates"));
+    }
+
+    CASE("the writer keeps time to the years 1 to 9999")
+    {
+        const std::int64_t first = -62135596800, last = 253402300799;
+        const std::int64_t inside[] = {first, last};
+        OK(rumi::axis_from_seconds(rumi::TIME_INSTANT, inside).has_value());
+        const std::int64_t early[] = {0, first - 1};
+        auto axis = rumi::axis_from_seconds(rumi::TIME_INSTANT, early);
+        OK(!axis && says(axis.error(), "the 2nd time step falls outside the years 1 to 9999"));
+        const std::int64_t late[] = {0, 86400, 86400, last + 1};
+        axis = rumi::axis_from_seconds(rumi::TIME_INTERVAL, late);
+        OK(!axis && says(axis.error(), "the 2nd time step falls outside the years 1 to 9999"));
     }
 
     CASE("a tiny arithmetic trailer cannot expand past the time-axis budget")
@@ -2287,7 +2300,8 @@ void test_geozl_c_api()
     std::size_t out_size = 0;
     EQ(rumi_geozl_compress(graph, RUMI_DT_INT16, tile.data(), bytes, &out,
                            &out_size), RUMI_ERR_INVALID);
-    OK(std::strcmp(rumi_last_error(), "the tile dtype is not the graph's") == 0);
+    OK(std::strcmp(rumi_last_error(),
+                   "this graph was built for dtype uint16, got int16") == 0);
     EQ(rumi_geozl_compress(graph, RUMI_DT_UINT16, tile.data(), bytes - 1, &out,
                            &out_size), RUMI_ERR_INVALID);
     OK(out == nullptr);
@@ -2324,26 +2338,30 @@ void test_geozl_c_api()
     };
     const Refusal refusals[] = {
         {"-1", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
-         "error must not be negative"},
+         "error must not be negative, got -1"},
         {"100%", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
-         "a relative error must be between 0% and 100%"},
+         "relative error must be between 0% and 100%, got \"100%\""},
         {"-5%", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
-         "a relative error must be between 0% and 100%"},
+         "relative error must be between 0% and 100%, got \"-5%\""},
         {"ten%", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
-         "a relative error looks like 10%"},
+         "relative error must look like \"10%\", got \"ten%\""},
         {"inf", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
-         "error must be a finite number, a percentage such as 1% or a "
-         "LINEAR, LOG or SQRT recipe"},
+         "error must be finite, got inf"},
+        {"-Infinity", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "error must be finite, got -Infinity"},
+        {"ten", nullptr, RUMI_DT_UINT16, 1, RUMI_ERR_INVALID,
+         "error must be a number, a percentage such as \"10%\", or a LINEAR, "
+         "LOG or SQRT recipe, got \"ten\""},
         {nullptr, nullptr, RUMI_DT_UINT16, 3, RUMI_ERR_INVALID,
-         "the planes do not split the raster into whole rows"},
+         "3 planes do not split 256 elements into whole rows of 16"},
         {nullptr, nullptr, RUMI_DT_UINT16, 0, RUMI_ERR_INVALID,
          "width and planes must be positive"},
-        {"1", nullptr, RUMI_DT_BFLOAT16, 1, RUMI_ERR_UNSUPPORTED,
-         "a bounded error needs an integer, float16, float32 or float64 dtype"},
-        {nullptr, &sentinel, RUMI_DT_BFLOAT16, 1, RUMI_ERR_UNSUPPORTED,
-         "nodata needs an integer, float16, float32 or float64 dtype"},
+        {"1", nullptr, RUMI_DT_BFLOAT16, 1, RUMI_ERR_INVALID,
+         "the quantizers do not support dtype bfloat16"},
+        {nullptr, &sentinel, RUMI_DT_BFLOAT16, 1, RUMI_ERR_INVALID,
+         "nodata needs a dtype geozl knows, got bfloat16"},
         {nullptr, &half_one, RUMI_DT_FLOAT16, 1, RUMI_ERR_INVALID,
-         "a float16 raster carries no nodata sentinel; NaN still works"},
+         "a half float carries no sentinel, NaN still works on one"},
         {nullptr, nullptr, static_cast<rumi_dtype>(12), 1, RUMI_ERR_INVALID,
          "unknown dtype"},
     };
@@ -2358,11 +2376,15 @@ void test_geozl_c_api()
     none = nullptr;
     EQ(rumi_geozl_graph_open("planar>zigzag>zstd", RUMI_DT_COMPLEX128,
                              tile.data(), 32, 1, 1, nullptr, nullptr, &none),
-       RUMI_ERR_UNSUPPORTED);
+       RUMI_ERR_INVALID);
+    OK(std::strcmp(rumi_last_error(), "dtype complex128 is 16 bytes per element, "
+                   "an OpenZL numeric stream is 1, 2, 4 or 8") == 0);
     EQ(rumi_geozl_graph_open("no such graph", RUMI_DT_UINT16, tile.data(),
                              bytes, 16, 1, nullptr, nullptr, &none),
        RUMI_ERR_INVALID);
-    OK(std::strncmp(rumi_last_error(), "GeoZL could not build the graph: ", 33) == 0);
+    OK(std::strncmp(rumi_last_error(),
+                    "GeoZL graph failed (method = \"no such graph\"): ", 47) == 0);
+    OK(std::strstr(rumi_last_error(), " (ZL error code ") != nullptr);
     EQ(rumi_geozl_graph_open(nullptr, RUMI_DT_UINT16, tile.data(), bytes, 16, 1,
                              nullptr, nullptr, &none), RUMI_ERR_INVALID);
     OK(none == nullptr);

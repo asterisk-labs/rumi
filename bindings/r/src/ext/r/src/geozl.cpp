@@ -2,6 +2,7 @@
 
 #include "geozl/geozl.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +30,16 @@ int geozl_code(rumi_dtype dtype) noexcept
         case RUMI_DT_FLOAT64: return GEOZL_DT_F64;
         default:              return -1;
     }
+}
+
+const char* dtype_name(rumi_dtype dtype) noexcept
+{
+    const rumi_dtype_info* table = nullptr;
+    const std::size_t rows = rumi_dtype_registry(&table);
+    for (std::size_t i = 0; i < rows; ++i) {
+        if (table[i].code == static_cast<std::uint8_t>(dtype)) return table[i].name;
+    }
+    return "unknown";
 }
 
 // Count decimal places without rounding through floating point.
@@ -96,25 +107,37 @@ std::expected<std::string, Error> normalize_error(const char* error)
         }
     }
     if (text.find(':') != std::string_view::npos) return std::string(text);
+    // The texts follow the geozl packages, with the value as the binding wrote it.
+    const std::string got(text);
     if (text.ends_with('%')) {
         if (!read_decimal(text.substr(0, text.size() - 1), value)) {
-            return fail(RUMI_ERR_INVALID, "a relative error looks like 10%");
+            return failf(RUMI_ERR_INVALID,
+                         "relative error must look like \"10%%\", got \"%s\"",
+                         got.c_str());
         }
         if (value.zero) return std::string();
         if (value.negative || value.digits >= 3) {
-            return fail(RUMI_ERR_INVALID,
-                        "a relative error must be between 0% and 100%");
+            return failf(RUMI_ERR_INVALID,
+                         "relative error must be between 0%% and 100%%, got \"%s\"",
+                         got.c_str());
         }
-        return "LOG:MAX_ERROR=" + std::string(text);
+        return "LOG:MAX_ERROR=" + got;
     }
     if (!read_decimal(text, value)) {
-        return fail(RUMI_ERR_INVALID,
-                    "error must be a finite number, a percentage such as 1% "
-                    "or a LINEAR, LOG or SQRT recipe");
+        std::string word = got.substr(got.starts_with('-') || got.starts_with('+'));
+        for (char& c : word) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (word == "inf" || word == "infinity" || word == "nan") {
+            return failf(RUMI_ERR_INVALID, "error must be finite, got %s", got.c_str());
+        }
+        return failf(RUMI_ERR_INVALID,
+                     "error must be a number, a percentage such as \"10%%\", or a "
+                     "LINEAR, LOG or SQRT recipe, got \"%s\"", got.c_str());
     }
     if (value.zero) return std::string();
-    if (value.negative) return fail(RUMI_ERR_INVALID, "error must not be negative");
-    return "LINEAR:MAX_ERROR=" + std::string(text);
+    if (value.negative) {
+        return failf(RUMI_ERR_INVALID, "error must not be negative, got %s", got.c_str());
+    }
+    return "LINEAR:MAX_ERROR=" + got;
 }
 
 bool is_nan(const unsigned char* p, rumi_dtype dtype) noexcept
@@ -150,7 +173,7 @@ std::uint64_t sample_bits(const unsigned char* p, std::size_t width) noexcept
     }
 }
 
-std::unexpected<Error> geozl_failure(int code, const char* what,
+std::unexpected<Error> geozl_failure(int code, const std::string& what,
                                      const char* reason)
 {
     const rumi_status status =
@@ -158,8 +181,9 @@ std::unexpected<Error> geozl_failure(int code, const char* what,
         : code == ZL_ErrorCode_parameter_invalid
               || code == ZL_ErrorCode_graph_invalid ? RUMI_ERR_INVALID
         : RUMI_ERR_INTERNAL;
-    if (!*reason) return fail(status, what);
-    return fail(status, std::string(what) + ": " + reason);
+    const std::string zl = " (ZL error code " + std::to_string(code) + ")";
+    if (!*reason) return fail(status, what + zl);
+    return fail(status, what + ": " + reason + zl);
 }
 
 }  // namespace
@@ -187,8 +211,9 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
     if (sample_bytes == 0) return fail(RUMI_ERR_INVALID, "unknown dtype");
     if (sample_bytes != 1 && sample_bytes != 2 && sample_bytes != 4
         && sample_bytes != 8) {
-        return fail(RUMI_ERR_UNSUPPORTED,
-                    "GeoZL compresses samples of 1, 2, 4 or 8 bytes");
+        return failf(RUMI_ERR_INVALID,
+                     "dtype %s is %zu bytes per element, an OpenZL numeric "
+                     "stream is 1, 2, 4 or 8", dtype_name(dtype), sample_bytes);
     }
     if (n_bytes % sample_bytes) {
         return fail(RUMI_ERR_INVALID, "the raster does not hold whole samples");
@@ -198,17 +223,17 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
         return fail(RUMI_ERR_INVALID, "width and planes must be positive");
     }
     if (planes > 1 && (samples % planes || samples / planes % width)) {
-        return fail(RUMI_ERR_INVALID,
-                    "the planes do not split the raster into whole rows");
+        return failf(RUMI_ERR_INVALID,
+                     "%u planes do not split %zu elements into whole rows of %u",
+                     planes, samples, width);
     }
 
     auto recipe = normalize_error(error);
     if (!recipe) return std::unexpected(std::move(recipe.error()));
     const int code = geozl_code(dtype);
     if (!recipe->empty() && code < 0) {
-        return fail(RUMI_ERR_UNSUPPORTED,
-                    "a bounded error needs an integer, float16, float32 or "
-                    "float64 dtype");
+        return failf(RUMI_ERR_INVALID, "the quantizers do not support dtype %s",
+                     dtype_name(dtype));
     }
 
     // A NaN sentinel would match one payload, so any NaN marks a hole.
@@ -225,13 +250,13 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
             }
         }
     } else if (code < 0) {
-        return fail(RUMI_ERR_UNSUPPORTED,
-                    "nodata needs an integer, float16, float32 or float64 dtype");
+        return failf(RUMI_ERR_INVALID, "nodata needs a dtype geozl knows, got %s",
+                     dtype_name(dtype));
     } else if (is_nan(static_cast<const unsigned char*>(nodata), dtype)) {
         mode = GEOZL_NODATA_NAN;
     } else if (dtype == RUMI_DT_FLOAT16) {
         return fail(RUMI_ERR_INVALID,
-                    "a float16 raster carries no nodata sentinel; NaN still works");
+                    "a half float carries no sentinel, NaN still works on one");
     } else {
         mode = GEOZL_NODATA_VALUE;
         bits = sample_bits(static_cast<const unsigned char*>(nodata), sample_bytes);
@@ -240,6 +265,7 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
     // Own the graph before another allocation can throw.
     std::unique_ptr<GeozlGraph> out(new GeozlGraph(nullptr, dtype, sample_bytes));
     out->error_ = std::move(*recipe);
+    out->method_ = method;
     // OpenZL wants a pointer even for an empty stream.
     static const std::uint64_t empty = 0;
     char message[GEOZL_MESSAGE_BYTES] = {};
@@ -248,7 +274,10 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
         out->error_.empty() ? nullptr : out->error_.c_str(), code < 0 ? 0 : code,
         mode, bits, n_bytes ? raster : &empty, samples, sample_bytes, message,
         sizeof message);
-    if (rc != 0) return geozl_failure(rc, "GeoZL could not build the graph", message);
+    if (rc != 0) {
+        return geozl_failure(rc, "GeoZL graph failed (method = \"" + out->method_ + "\")",
+                             message);
+    }
     return out;
 }
 
@@ -257,7 +286,8 @@ GeozlGraph::compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
                      unsigned char** out)
 {
     if (dtype != dtype_) {
-        return fail(RUMI_ERR_INVALID, "the tile dtype is not the graph's");
+        return failf(RUMI_ERR_INVALID, "this graph was built for dtype %s, got %s",
+                     dtype_name(dtype_), dtype_name(dtype));
     }
     if (!tile && n_bytes) return fail(RUMI_ERR_INVALID, "the tile is null");
     if (n_bytes % sample_bytes_) {
@@ -273,7 +303,10 @@ GeozlGraph::compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
         }
     }
     const std::size_t capacity = geozl_2d_compress_bound_c(n_bytes, 0);
-    if (capacity == 0) return fail(RUMI_ERR_INVALID, "the tile has no frame size bound");
+    if (capacity == 0) {
+        return failf(RUMI_ERR_INVALID, "a tile of %zu bytes has no frame size bound",
+                     n_bytes);
+    }
     auto* frame = static_cast<unsigned char*>(std::malloc(capacity));
     if (!frame) return fail(RUMI_ERR_OOM, "allocation failed");
 
@@ -285,7 +318,8 @@ GeozlGraph::compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
         &size, message, sizeof message);
     if (rc != 0) {
         std::free(frame);
-        return geozl_failure(rc, "GeoZL could not compress the tile", message);
+        return geozl_failure(rc, "GeoZL compress failed (method = \"" + method_ + "\")",
+                             message);
     }
     if (size < capacity) {
         if (void* fitted = std::realloc(frame, size ? size : 1)) {
