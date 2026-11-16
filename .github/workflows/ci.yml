@@ -180,15 +180,23 @@ jobs:
         with:
           working-directory: bindings/r
           extra-packages: any::roxygen2
-      - name: Check source package
+      - name: Build R source package
         shell: bash
         run: |
           set -euo pipefail
           python tools/sync_r_vendor.py --check
           Rscript -e 'roxygen2::roxygenise("bindings/r")'
           R CMD build bindings/r
+      - name: Trace R test cleanup
+        shell: bash
+        timeout-minutes: 15
+        run: |
           R CMD INSTALL rumi_*.tar.gz
-          Rscript -e 'testthat::test_dir("bindings/r/tests/testthat", reporter="progress")'
+          Rscript -e 'testthat::test_dir("bindings/r/tests/testthat", reporter="progress"); cat("gc start\n"); flush(stdout()); gc(); cat("gc done\n"); flush(stdout())'
+      - name: Check source package
+        shell: bash
+        run: |
+          set -euo pipefail
           if ! _R_CHECK_CRAN_INCOMING_REMOTE_=false R CMD check --no-manual rumi_*.tar.gz; then
             test ! -f rumi.Rcheck/00install.out || cat rumi.Rcheck/00install.out
             exit 1
