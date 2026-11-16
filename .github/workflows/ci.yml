@@ -270,6 +270,7 @@ jobs:
           marker = '    WorkerState() {'
           assert code.count(marker) == 1
           code = code.replace(marker, marker + '\n        std::fprintf(stderr, "worker state create %p dctx %p\\n", static_cast<void*>(this), static_cast<void*>(dctx)); std::fflush(stderr);')
+          code = code.replace('#include <numeric>\n', '#include <numeric>\n#include <optional>\n', 1)
           old = '    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }'
           new = '''    ~WorkerState() {
                   std::fprintf(stderr, "worker state free begin %p dctx %p\\n", static_cast<void*>(this), static_cast<void*>(dctx)); std::fflush(stderr);
@@ -281,7 +282,13 @@ jobs:
           code = code.replace(old, new)
           marker = '    WorkerState& ws = worker_state();'
           assert code.count(marker) == 1
-          code = code.replace(marker, marker + '\n    std::fprintf(stderr, "worker state use %p dctx %p\\n", static_cast<void*>(&ws), static_cast<void*>(ws.dctx)); std::fflush(stderr);')
+          code = code.replace(marker, '''    std::optional<WorkerState> local;
+              if (std::getenv("RUMI_TRACE_LOCAL_WORKER_STATE")) local.emplace();
+              WorkerState& ws = local ? *local : worker_state();
+              std::fprintf(stderr, "worker state use %p dctx %p\\n", static_cast<void*>(&ws), static_cast<void*>(ws.dctx)); std::fflush(stderr);''')
+          marker = '        compressed, t.compressed_size);'
+          assert code.count(marker) == 1
+          code = code.replace(marker, marker + '\n    std::fprintf(stderr, "worker state after decode %p dctx %p\\n", static_cast<void*>(&ws), static_cast<void*>(ws.dctx)); std::fflush(stderr);')
           plan.write_text(code)
           copyfile(pool, "bindings/r/src/ext/r/include/rumi/thread_pool.hpp")
           copyfile(plan, "bindings/r/src/ext/r/src/plan.cpp")
@@ -321,6 +328,14 @@ jobs:
         env:
           RUMI_TRACE_SKIP_DCTX_FREE: '1'
         run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); cat("settings tests done\n")'
+      - name: Trace settings with stack decoder context
+        id: r_local
+        shell: bash
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          RUMI_TRACE_LOCAL_WORKER_STATE: '1'
+        run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-settings.R", reporter="progress"); cat("stack context tests done\n")'
       - name: Trace write test exit
         id: r_write
         shell: bash
@@ -328,7 +343,7 @@ jobs:
         continue-on-error: true
         run: Rscript -e 'testthat::test_file("bindings/r/tests/testthat/test-write.R", reporter="progress"); cat("write tests done\n")'
       - name: Check source package
-        if: steps.r_load.outcome == 'success' && steps.r_geozl.outcome == 'success' && steps.r_read.outcome == 'success' && steps.r_early.outcome == 'success' && steps.r_settings.outcome == 'success' && steps.r_write.outcome == 'success'
+        if: steps.r_load.outcome == 'success' && steps.r_geozl.outcome == 'success' && steps.r_read.outcome == 'success' && steps.r_early.outcome == 'success' && steps.r_settings.outcome == 'success' && steps.r_local.outcome == 'success' && steps.r_write.outcome == 'success'
         shell: bash
         timeout-minutes: 20
         run: |
@@ -348,6 +363,7 @@ jobs:
           test '${{ steps.r_read.outcome }}' = success
           test '${{ steps.r_early.outcome }}' = success
           test '${{ steps.r_settings.outcome }}' = success
+          test '${{ steps.r_local.outcome }}' = success
           test '${{ steps.r_write.outcome }}' = success
 
   core:
