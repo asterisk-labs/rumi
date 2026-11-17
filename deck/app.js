@@ -44,13 +44,24 @@
     transition.finished.then(cleanDirection, cleanDirection);
   }
 
+  // A slide with data-steps takes next and prev itself until its first or last step.
+  function step(by) {
+    var s = slides[cur];
+    if (!s || !s.dataset.steps) return false;
+    var at = Number(s.dataset.step || 1) + by;
+    if (at < 1 || at > Number(s.dataset.steps)) return false;
+    s.dataset.step = String(at);
+    return true;
+  }
+
   function next() {
-    goTo(cur + 1);
+    if (!step(1)) goTo(cur + 1);
   }
 
   function prev() {
-    goTo(cur - 1);
+    if (!step(-1)) goTo(cur - 1);
   }
+
 
   document.addEventListener('keydown', function (e) {
     if (e.target.closest && e.target.closest('input')) return;
@@ -76,7 +87,7 @@
 
   if (deck) {
     deck.addEventListener('click', function (event) {
-      if (event.target.closest('a, button, input, .ix-fig, .path-fig svg, .race-chart')) return;
+      if (event.target.closest('a, button, input, .ix-fig, .path-fig svg, .race-chart, .wr')) return;
       next();
     });
 

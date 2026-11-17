@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=League+Spartan:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261115zu">
-  <script defer src="app.js?v=20261115t"></script>
+  <link rel="stylesheet" href="styles.css?v=20261117a">
+  <script defer src="app.js?v=20261117a"></script>
 </head>
 <body>
   <div class="progress" id="progress"></div>
@@ -29,20 +29,67 @@
       </div>
     </section>
 
+    <section class="slide" aria-label="The Asterisk stack for AI">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 15</span></header>
+      <h1>Rumi is one layer of the <span class="title-mark">Asterisk stack for AI</span></h1>
+      <figure class="st-wrap">
+        <svg class="st-fig" viewBox="0 0 864 376" role="img" aria-label="The Asterisk stack for AI, with arrows from caller to callee. The model calls TACO and Rumi. TACO calls cozip, Rumi and Karu. cozip calls Karu and can hold Rumi files. Rumi, highlighted, calls GeoZL, which runs on OpenZL, and Karu.">
+          <defs>
+            <marker id="st-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#777"/></marker>
+            <marker id="st-arrow-on" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#492ae8"/></marker>
+          </defs>
+          <text class="st-layer" x="0" y="32">training</text>
+          <text class="st-layer" x="0" y="112">datasets</text>
+          <text class="st-layer" x="0" y="192">files</text>
+          <text class="st-layer" x="0" y="272">codecs</text>
+          <text class="st-layer" x="0" y="352">bytes</text>
+          <rect class="st-box st-open" x="132" y="0" width="732" height="54"/>
+          <text class="st-name" x="148" y="24">PyTorch, JAX, TensorFlow</text>
+          <text class="st-text" x="148" y="44">your model, fed tensors through DLPack on a CPU or a GPU</text>
+          <rect class="st-box" x="132" y="80" width="440" height="54"/>
+          <text class="st-name" x="148" y="104">TACO</text>
+          <text class="st-text" x="148" y="124">AI-ready datasets, one sample per example</text>
+          <rect class="st-box" x="172" y="160" width="280" height="54"/>
+          <text class="st-name" x="188" y="184">cozip</text>
+          <text class="st-text" x="188" y="204">a ZIP you open like a table</text>
+          <rect class="st-box st-rumi" x="512" y="160" width="352" height="54"/>
+          <text class="st-name" x="528" y="184">Rumi</text>
+          <text class="st-text" x="528" y="204">tensors read by window, band and time</text>
+          <rect class="st-box" x="512" y="240" width="270" height="54"/>
+          <text class="st-name" x="528" y="264">GeoZL</text>
+          <text class="st-text" x="528" y="284">Earth observation codecs, on OpenZL</text>
+          <rect class="st-box" x="132" y="320" width="732" height="54"/>
+          <text class="st-name" x="148" y="344">Karu</text>
+          <text class="st-text" x="148" y="364">batched byte-range reads from files, HTTP, S3, GCS, Azure, Hugging Face and Source Cooperative</text>
+          <image href="../img/rumi-logo.svg" x="818" y="167" width="34" height="40"/>
+          <path class="st-call" d="M300 54 V78" marker-end="url(#st-arrow)"/>
+          <path class="st-call" d="M300 134 V158" marker-end="url(#st-arrow)"/>
+          <path class="st-call" d="M540 134 V158" marker-end="url(#st-arrow)"/>
+          <path class="st-call" d="M152 134 V318" marker-end="url(#st-arrow)"/>
+          <path class="st-call" d="M300 214 V318" marker-end="url(#st-arrow)"/>
+          <path class="st-call on" d="M700 54 V158" marker-end="url(#st-arrow-on)"/>
+          <path class="st-call on" d="M640 214 V238" marker-end="url(#st-arrow-on)"/>
+          <path class="st-call on" d="M823 214 V318" marker-end="url(#st-arrow-on)"/>
+          <path class="st-hold" d="M452 190 H508" marker-end="url(#st-arrow)"/>
+          <text class="st-tag" x="481" y="182">holds</text>
+        </svg>
+      </figure>
+    </section>
+
     <section class="slide intro" aria-label="GeoTIFF and Rumi file layouts">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">02 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 15</span></header>
       <h1>GeoTIFF permits <span class="title-mark red">many layouts</span></h1>
       <figure><img src="../img/problem-rumi-geotiff-flavours.svg?v=20261114" alt="A diagram of GeoTIFF's valid tile, interleave and compression arrangements."></figure>
     </section>
 
     <section class="slide intro" aria-label="Rumi file profile">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">03 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 15</span></header>
       <h1>Rumi permits only <span class="title-mark">one container profile</span></h1>
       <figure><img src="../img/approach-rumi-one-layout.svg?v=20261114" alt="One fixed Rumi container profile. Ten frame units choose tile or cell sample layout without changing the file structure."></figure>
     </section>
 
     <section class="slide" aria-label="The Rumi data model">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">04 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 15</span></header>
       <h1>Rumi follows <span class="title-mark">its own data model</span></h1>
       <figure class="dm-wrap">
         <svg class="dm-fig" viewBox="0 0 864 352" role="img" aria-label="The Rumi data model. A tile is h by w, one band or time step at one grid position. A cell is (B, h, w) or (T, B, h, w), all samples at one grid position. An Image is (B, Y, X) and a Cube (T, B, Y, X). An ImageCollection is a set of Images and a CubeCollection a set of Cubes, neither need share a grid.">
@@ -108,8 +155,30 @@
       </figure>
     </section>
 
+    <section class="slide" aria-label="Writing a Rumi file" data-steps="5" data-step="1">
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 15</span></header>
+      <h1>Cut, compress your way. <span class="title-mark">Rumi just writes.</span></h1>
+      <div class="wr">
+        <div class="wr-tabs" role="tablist" aria-label="Steps">
+          <button type="button" role="tab" data-to="1">the data</button>
+          <button type="button" role="tab" data-to="2">frames by tile</button>
+          <button type="button" role="tab" data-to="3">or by cell</button>
+          <button type="button" role="tab" data-to="4">compress</button>
+          <button type="button" role="tab" data-to="5">write</button>
+        </div>
+        <div class="wr-main">
+          <pre class="wr-code"><code></code></pre>
+          <div class="wr-vis" aria-hidden="true">
+            <div class="wr-stage"></div>
+            <p class="wr-label"></p>
+          </div>
+        </div>
+        <p class="wr-note"></p>
+      </div>
+    </section>
+
     <section class="slide" aria-label="What a write returns">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">05 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 15</span></header>
       <h1>Rumi writes an external header for <span class="title-mark">stateless reads</span></h1>
       <figure class="write-fig">
         <svg viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header.">
@@ -145,7 +214,7 @@
     </section>
 
     <section class="slide" aria-label="The file">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">06 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">08 / 15</span></header>
       <h1>Rumi's file header is <span class="title-mark">predictable</span></h1>
       <svg class="mini" viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header. The file is highlighted.">
         <defs>
@@ -182,7 +251,7 @@
     </section>
 
     <section class="slide" aria-label="The external header fields">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">07 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">09 / 15</span></header>
       <h1>Rumi's external header locates <span class="title-mark">every frame</span></h1>
       <svg class="mini" viewBox="10 8 630 164" role="img" aria-label="An array is written as a Rumi file and its external header. The external header is highlighted.">
         <defs>
@@ -247,7 +316,7 @@
     </section>
 
     <section class="slide index-compare" aria-label="External header size and frame offsets">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">08 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">10 / 15</span></header>
       <h1>Rumi's external header stores sizes, not offsets</h1>
       <div class="fig wm-view ix-fig">
         <div class="ix-input">
@@ -270,13 +339,13 @@
           <div class="bar"><div class="block rumi" data-row="ext"><span data-part="fixed"></span><span class="size" data-part="size"></span></div><span class="aside">32 fixed bytes, then every frame size</span></div>
           <div class="total rumi" data-total="ext"></div>
         </div>
-        <p class="ix-note">GeoTIFF from GDAL, tiled 256 &times; 256, interleave <span class="ix-il">band</span>, uint16, ZSTD. External header frame sizes at 16 bits each, as in Lake Annecy.</p>
+        <p class="ix-note">GeoTIFF from GDAL, tiled 256 &times; 256, interleave <span class="ix-il">band</span>, uint16, ZSTD. External header frame sizes at 16 bits each.</p>
         <p class="index-saving">The external header is <strong class="ix-r1">7.6&times; smaller</strong> than the GeoTIFF index and <strong class="ix-r2">7.1&times; smaller</strong> than Rumi's file header.</p>
       </div>
     </section>
 
     <section class="slide" aria-label="A read on the CPU">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">09 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">11 / 15</span></header>
       <h1><span class="title-mark">On the CPU</span>, frames decode in RAM</h1>
       <div class="fig path-fig">
         <pre class="code"><code>rumi.<span class="tok-fn">read</span>(path, header, framework=<span class="tok-str">"torch"</span>)</code></pre>
@@ -306,7 +375,7 @@
     </section>
 
     <section class="slide" aria-label="Reading on a GPU">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">10 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">12 / 15</span></header>
       <h1><span class="title-mark">On a GPU</span>, compressed bytes cross PCIe</h1>
       <div class="fig path-fig">
         <svg viewBox="0 0 864 254" role="img" aria-label="Rumi plans the read and allocates the output on cuda:0. Karu fetches every range into pinned host memory. Rumi sends the 206 kB of compressed frames across PCIe in groups that fit the decoder memory. GeoZL decodes them on the GPU and writes each crop into the 524 kB tensor, which PyTorch takes through DLPack once its stream has waited for the read." data-speed="2" data-path="[[215,51,0],[290,51,-1],[290,109,-1],[365,109,1],[440,109,-1],[440,51,-1],[515,51,2],[590,51,-1],[590,167,-1],[665,167,3],[732,167,-1],[732,225,-1],[800,225,4]]">
@@ -338,7 +407,7 @@
     </section>
 
     <section class="slide" aria-label="Sentinel-2 benchmark">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">11 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">13 / 15</span></header>
       <h1>A Sentinel-2 scene reaches the <span class="title-mark">GPU in 61 ms</span></h1>
       <div class="fig race">
         <p class="race-setup">One CPU thread and an NVIDIA A100. Red, green and blue of one Sentinel-2 tile, 723 MB, already in memory.</p>
@@ -359,7 +428,7 @@
     </section>
 
     <section class="slide" aria-label="Training with DDP">
-      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">12 / 13</span></header>
+      <header><span class="brand"><img class="brand-icon" src="../img/rumi-logo.svg" alt=""><span class="brand-name">rumi</span></span><span class="count">14 / 15</span></header>
       <h1>Rumi <span class="title-mark">scales with every GPU</span> you add</h1>
       <div class="fig dl-fig" data-rows="44,84,124,164,204" data-decode="3">
         <pre class="code dl-code"><code><span class="tok-kw">def</span> <span class="tok-fn">__getitems__</span>(self, indices):
@@ -440,7 +509,7 @@
     if (new URLSearchParams(window.location.search).has('embed')) document.documentElement.classList.add('is-embedded');
   </script>
   <script>
-    // The small file of slide 6 and its external header on slide 7. Pointing at a block says what it holds and where it sits.
+    // The small file of slide 8 and its external header on slide 9. Pointing at a block says what it holds and where it sits.
     (function () {
       var FRAME = 'The 4 bands of one 256 by 256 cell, 524,288 bytes of uint16 before compression. Its size is known only once GeoZL has compressed it.';
       var INFO = {
@@ -512,7 +581,7 @@
     })();
   </script>
   <script>
-    // The index sizes of slide 8 for any shape. The GeoTIFF is what GDAL writes as a tiled
+    // The index sizes of slide 10 for any shape. The GeoTIFF is what GDAL writes as a tiled
     // BigTIFF, measured with GDAL 3.12, the Rumi file header is what rumi.frame_start gives,
     // and the external header keeps 32 fixed bytes and 16 bits per frame, as in Lake Annecy.
     // Offsets leave their IFD entry from 2 frames and sizes from 3; band arrays from 5 bands.
@@ -602,7 +671,7 @@
     })();
   </script>
   <script>
-    // The CPU and GPU reads of slides 9 and 10. The dot is the data, it moves without
+    // The CPU and GPU reads of slides 11 and 12. The dot is the data, it moves without
     // stopping to the lane of the library that handles it, pauses only where the frames are
     // decoded and grows there, and runs again when its slide comes back or the route is
     // clicked. The GPU route moves faster and barely pauses to decode, so it ends first,
@@ -684,7 +753,7 @@
     })();
   </script>
   <script>
-    // The race of slide 11, the four warm reads of the GeoZL Sentinel-2 benchmark on one
+    // The race of slide 13, the four warm reads of the GeoZL Sentinel-2 benchmark on one
     // linear clock. Two seconds of reading play in 1.2, so JPEG2000 is still decoding
     // when the clock stops. It runs again when the slide comes back or the chart is clicked.
     (function () {
@@ -731,7 +800,7 @@
     })();
   </script>
   <script>
-    // The DDP loop of slide 12, one column per rank and one row per step. The four batches
+    // The DDP loop of slide 14, one column per rank and one row per step. The four batches
     // go down their columns together and grow while GeoZL decodes them on each GPU. After
     // the backward pass each GPU sends its gradient to the next one around the ring, the
     // last back to the first, and all four pulse when the averaged gradients are back.
@@ -829,6 +898,111 @@
         else animations.forEach(function (animation) { animation.cancel(); });
       }).observe(slide, { attributes: true, attributeFilter: ['class'] });
       if (slide.classList.contains('active')) run();
+    })();
+  </script>
+  <script>
+    // Slide 6, writing a Rumi file. Every piece is one band of one tile, drawn as a thin
+    // 3D slab, and the same twelve slabs carry every step. Only their place, size, depth
+    // and colour change, so each step eases into the next and back. Stacked tight they
+    // read as one block, apart as frames by tile, joined per tile as frames by cell,
+    // coloured by recipe, and flattened into the file. The arrows step through the slide
+    // before they move on (app.js), the tabs jump to a step, and it starts at step 1.
+    (function () {
+      var slide = document.querySelector('.slide[aria-label="Writing a Rumi file"]');
+      if (!slide) return;
+      var stage = slide.querySelector('.wr-stage');
+      var code = slide.querySelector('.wr-code code');
+      var label = slide.querySelector('.wr-label');
+      var note = slide.querySelector('.wr-note');
+      var BANDS = 3, TILES = 4, W = 60, D = 16;
+      var fn = function (t) { return '<span class="tok-fn">' + t + '</span>'; };
+      var str = function (t) { return '<span class="tok-str">' + t + '</span>'; };
+      var kw = function (t) { return '<span class="tok-kw">' + t + '</span>'; };
+      var num = function (t) { return '<span class="tok-num">' + t + '</span>'; };
+      var com = function (t) { return '<span class="tok-com">' + t + '</span>'; };
+      var DATA = 'image  ' + com('# (3, 512, 512) uint16, red, green and blue');
+      var CUT = function (pattern) {
+        return 'frames = rumi.' + fn('frames') + '(image, ' + str('"b (row h) (col w) -&gt; <span class="wr-pat">' + pattern + '</span>"') + ',\n                     tile_size=' + num('256') + ')';
+      };
+      var LOOP = kw('for') + ' frame ' + kw('in') + ' frames:\n' +
+        '    recipe = ' + str('"med&gt;zigzag&gt;entropy"') + ' ' + kw('if') + ' frame.row == ' + num('0') + ' \\\n' +
+        '        ' + kw('else') + ' ' + str('"planar&gt;zigzag&gt;pfor"') + '\n' +
+        '    graph = rumi.geozl.' + fn('graph') + '(frame.data, recipe)\n' +
+        '    frame.compressed = rumi.geozl.' + fn('compress') + '(frame.data, graph)';
+      var LOOP_SHORT = kw('for') + ' frame ' + kw('in') + ' frames:\n    ...  ' + com('# compressed as above, each with its recipe');
+      var WRITE = 'header = rumi.' + fn('write') + '(' + str('"scene.rumi"') + ', frames,\n                    bands=bands, time=[' + str('"2026-01-01"') + '])';
+      var hot = function (t) { return '<span class="wr-hot">' + t + '</span>'; };
+      var STEPS = [
+        { code: [hot(DATA)], label: 'one block of data', note: 'Start from the data, here one <span class="title-mark">RGB image</span>.' },
+        { code: [DATA, hot(CUT('row col b (h w)'))], label: '12 frames, one band of one tile each', note: 'Rumi cuts it into frames. <span class="title-mark">By tile</span>, every band of every tile is a frame of its own.' },
+        { code: [DATA, hot(CUT('row col (b h w)'))], label: '4 frames, the bands of one tile joined', note: 'Or <span class="title-mark">by cell</span>, the bands of each tile join along the band axis into one frame. Same data, different frames.' },
+        { code: [DATA, CUT('row col (b h w)'), hot(LOOP)], label: 'each frame with its own recipe', note: 'The loop is yours. Every frame can take <span class="title-mark">its own recipe</span>, by band, place, date or anything else.' },
+        { code: [DATA, CUT('row col (b h w)'), LOOP_SHORT, hot(WRITE)], label: 'scene.rumi, and its external header beside it', note: 'rumi.write stores each payload <span class="title-mark">as it is</span> and returns the external header that locates every frame.' }
+      ];
+      var slabs = [];
+      for (var t = 0; t < TILES; t++) {
+        for (var b = 0; b < BANDS; b++) {
+          var el = document.createElement('span');
+          el.className = 'wr-slab';
+          el.innerHTML = '<i class="wr-front"></i><i class="wr-top"></i><i class="wr-side"></i>';
+          var tx = t % 2, ty = Math.floor(t / 2);
+          // Front bands over back ones, and a tile over the side of the tile to its left and
+          // the top of the tile below it, so the block closes and nothing reorders later.
+          el.style.zIndex = String((BANDS - b) * 10 + (1 - ty) * 3 + tx);
+          stage.appendChild(el);
+          slabs.push({ el: el, t: t, b: b, tx: tx, ty: ty });
+        }
+      }
+      var head = document.createElement('span');
+      head.className = 'wr-head';
+      head.textContent = 'file header';
+      stage.appendChild(head);
+      // the external header rumi.write returns, kept beside the file, not in it
+      var ext = document.createElement('span');
+      ext.className = 'wr-ext';
+      ext.textContent = 'external header';
+      stage.appendChild(ext);
+
+      // left, top, front width, front height and depth of a slab at each step
+      function place(p, step) {
+        if (step === 1) return [30 + p.tx * W + p.b * D, 76 + p.ty * W - p.b * D, W, W, D];
+        if (step === 2) return [14 + p.tx * 84 + p.b * 36, 94 + p.ty * 76 - p.b * 36, W, W, D];
+        if (step <= 4) return [20 + p.tx * 112 + p.b * D, 62 + p.ty * 100 - p.b * D, W, W, D];
+        return [70 + (p.t * BANDS + p.b) * 19, 112, 19, 40, 0];
+      }
+      function show(step) {
+        var st = STEPS[step - 1];
+        code.innerHTML = st.code.join('\n\n');
+        label.textContent = st.label;
+        note.innerHTML = st.note;
+        slide.querySelectorAll('.wr-tabs button').forEach(function (btn) {
+          btn.setAttribute('aria-selected', String(Number(btn.dataset.to) === step));
+        });
+        stage.dataset.step = String(step);
+        slabs.forEach(function (p) {
+          var r = place(p, step);
+          var st = p.el.style;
+          st.left = r[0] + 'px';
+          st.top = r[1] + 'px';
+          st.setProperty('--fw', r[2] + 'px');
+          st.setProperty('--fh', r[3] + 'px');
+          st.setProperty('--d', r[4] + 'px');
+          p.el.dataset.recipe = step >= 4 ? (p.ty === 0 ? 'med' : 'pfor') : '';
+          p.el.classList.toggle('is-start', p.b === 0);
+          p.el.classList.toggle('is-end', p.t === TILES - 1 && p.b === BANDS - 1);
+        });
+      }
+
+      slide.querySelectorAll('.wr-tabs button').forEach(function (btn) {
+        btn.addEventListener('click', function () { slide.dataset.step = btn.dataset.to; });
+      });
+      new MutationObserver(function (list) {
+        list.forEach(function (m) {
+          if (m.attributeName === 'data-step') show(Number(slide.dataset.step));
+          if (m.attributeName === 'class' && !slide.classList.contains('active')) slide.dataset.step = '1';
+        });
+      }).observe(slide, { attributes: true, attributeFilter: ['class', 'data-step'] });
+      show(1);
     })();
   </script>
   <script>

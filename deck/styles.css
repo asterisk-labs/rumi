@@ -105,7 +105,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .who { font-size: 26px; font-weight: 600; letter-spacing: -.03em; line-height: 1; }
 .who span { display: block; margin-top: 4px; color: var(--dim); font-size: 14px; font-weight: 400; letter-spacing: 0; }
 
-/* 08 The index sizes. */
+/* 10 The index sizes. */
 .bars { display: grid; grid-template-columns: 150px 600px 1fr; row-gap: 16px; column-gap: 16px; align-items: center; }
 .bar { display: flex; height: 46px; }
 .bar .block { display: flex; overflow: hidden; border: 1.5px solid #777; }
@@ -133,7 +133,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .index-saving { border-left: 3px solid var(--violet); padding-left: 12px; color: var(--soft); font-size: 18px; line-height: 1.2; }
 .index-saving strong { color: var(--hot); font-weight: 600; }
 
-/* The request comparison of slide 5. */
+/* The request comparison of slide 7. */
 .trips { display: grid; grid-template-columns: 210px 1fr 110px; row-gap: 10px; align-items: center; }
 .trip-who { font-size: 18px; color: var(--soft); }
 .trip { display: flex; align-items: center; gap: 6px; height: 30px; }
@@ -145,7 +145,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .trip-n { font: 500 14px var(--mono); text-align: right; color: var(--dim); }
 .trip-n.hot { color: var(--violet); }
 
-/* 09 The call, in the colours of the docs code blocks. */
+/* 11 The call, in the colours of the docs code blocks. */
 .code {
   align-self: center;
   margin: 0;
@@ -159,7 +159,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .tok-str { color: #17803d; }
 .tok-num { color: #c2410c; }
 
-/* 09 and 10 The CPU and GPU reads, one lane for each library, drawn like the read of the landing page. */
+/* 11 and 12 The CPU and GPU reads, one lane for each library, drawn like the read of the landing page. */
 .path-fig { gap: 12px; }
 .path-fig svg { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; }
 .pt-band { fill: transparent; }
@@ -188,7 +188,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .pt-glow { fill: var(--violet); opacity: .18; }
 .path-note { color: var(--dim); font-size: 14.5px; line-height: 1.3; text-align: center; }
 
-/* 11 The Sentinel-2 benchmark of the GeoZL notebook as a race, Rumi in violet, the gains in orange. */
+/* 13 The Sentinel-2 benchmark of the GeoZL notebook as a race, Rumi in violet, the gains in orange. */
 .race { gap: 18px; }
 .race-setup { color: var(--dim); font-size: 16px; line-height: 1.3; }
 .race-chart { display: grid; row-gap: 12px; cursor: pointer; }
@@ -218,7 +218,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .race-links a:hover,
 .race-links a:focus-visible { background: #ece9fd; outline: none; }
 
-/* 12 The DDP loop, one column per rank and one row per library, drawn like slides 9 and 10. */
+/* 14 The DDP loop, one column per rank and one row per library, drawn like slides 11 and 12. */
 .dl-fig { gap: 14px; }
 .dl-code { padding: 10px 18px; font-size: 13px; line-height: 1.6; }
 .tok-kw { color: #492ae8; }
@@ -233,7 +233,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .dl-grad-dot { fill: #fe6b37; }
 .dl-grad-glow { fill: #fe6b37; opacity: .2; }
 
-/* 05 The write, the graphic of img/rumi-layout.svg with the deck fonts. */
+/* 07 The write, the graphic of img/rumi-layout.svg with the deck fonts. */
 .write-fig { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
 .write-fig svg { display: block; width: 680px; height: auto; }
 .write-fig text { font-family: var(--sans); fill: #222; }
@@ -242,8 +242,8 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .write-fig figcaption { color: var(--dim); font-size: 18px; }
 .write-fig .trips { align-self: stretch; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--rule); }
 
-/* 06 and 07 The file and the external header, with the file map rules of docs/assets/css/reading.css. */
-/* 06 and 07 carry a small copy of the write graphic, the output they show in violet. */
+/* 08 and 09 The file and the external header, with the file map rules of docs/assets/css/reading.css. */
+/* 08 and 09 carry a small copy of the write graphic, the output they show in violet. */
 .mini { position: absolute; top: 74px; right: 48px; width: 180px; height: auto; }
 .mini text { font-family: var(--sans); fill: #222; font-size: 30px; text-anchor: middle; dominant-baseline: middle; }
 .mini .box,
@@ -309,7 +309,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
   white-space: nowrap;
 }
 
-/* Slides 6 to 8, in the Asterisk colours of the slide 2 figure. Violet for what the
+/* Slides 8 to 10, in the Asterisk colours of the slide 3 figure. Violet for what the
    tensor predicts, yellow for what only compressing gives, and orange for the offsets the
    external header leaves out. */
 .wm-view { --hot: #fe6b37; }
@@ -364,7 +364,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .slide.intro figure { flex: 1; min-height: 0; width: 100%; margin: 0; display: flex; align-items: center; justify-content: center; }
 .slide.intro figure img { width: 100%; height: 100%; display: block; object-fit: contain; }
 
-/* 07 The external header on one line, every size drawn as count_min plus its stored difference. */
+/* 09 The external header on one line, every size drawn as count_min plus its stored difference. */
 .hl-line .wm-known { gap: 6px; margin-top: 10px; }
 .hl-line .wm-known .wm-before { flex-basis: 324px; }
 .hx-sizes { display: flex; flex-direction: column; height: 140px; }
@@ -377,7 +377,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .hx-diff { color: var(--ink-soft); font: 10.5px/1 var(--mono); white-space: nowrap; writing-mode: vertical-rl; transform: rotate(180deg); }
 .hx-base { margin: 0; padding: 6px 8px; border: 1px solid #f7cc09; background: #fdf5d0; color: var(--ink-soft); font: 500 12px/1.3 var(--sans); text-align: center; }
 
-/* 04 The data model, redrawn from img/rumi-data-model.svg in the deck colours. */
+/* 05 The data model, redrawn from img/rumi-data-model.svg in the deck colours. */
 .dm-wrap { flex: 1; min-height: 0; margin: 0; display: flex; align-items: center; }
 .dm-fig { width: 100%; height: auto; overflow: visible; }
 .dm-fig text { font-family: var(--sans); fill: var(--ink); }
@@ -402,12 +402,12 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .dm-v .l { stroke: #b6aaf6; }
 .dm-pick { fill: #ece9fd; stroke: #492ae8; stroke-width: 1.5; }
 
-/* The layout tabs of slide 8. */
+/* The layout tabs of slide 10. */
 .fs-tabs { display: flex; justify-content: center; gap: 22px; }
 .fs-tabs button { padding: 4px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--dim); font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 .fs-tabs button.is-on { border-color: var(--ink); color: var(--ink); }
 
-/* 08 The index sizes for any shape. Big fields so a click lands on the number. */
+/* 10 The index sizes for any shape. Big fields so a click lands on the number. */
 .ix-input { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .ix-input p { margin: 0; color: var(--ink-soft); font-size: 17px; }
 .ix-dim { width: calc(4ch + 14px); margin: 0; padding: 4px 6px; border: 0; border-bottom: 1.5px dashed #c2410c; background: none; color: #c2410c; font: 500 17px var(--mono); text-align: center; cursor: text; }
@@ -419,3 +419,67 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 .ix-note { margin: 0; color: var(--dim); font-size: 13px; }
 .ix-fig .index-saving { margin-top: 22px; }
 .ix-fig .ix-note { margin-top: -6px; }
+
+/* 02 The Asterisk stack for AI, Rumi in violet. */
+.st-wrap { flex: 1; min-height: 0; margin: 0; display: flex; align-items: center; }
+.st-fig { width: 100%; height: auto; overflow: visible; }
+.st-fig text { font-family: var(--sans); fill: var(--ink); }
+.st-fig .st-layer { font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; fill: var(--dim); }
+.st-box { fill: #f6f6f4; stroke: #777; stroke-width: 1.2; }
+.st-open { fill: none; stroke: #999; stroke-dasharray: 5 4; }
+.st-rumi { fill: #ece9fd; stroke: #492ae8; stroke-width: 2.4; }
+.st-fig .st-name { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.st-fig .st-text { font-size: 14px; fill: var(--dim); }
+.st-call { fill: none; stroke: #777; stroke-width: 1.5; }
+.st-call.on { stroke: #492ae8; stroke-width: 2; }
+.st-hold { fill: none; stroke: #777; stroke-width: 1.5; stroke-dasharray: 4 3; }
+.st-fig .st-tag { font: 500 11px var(--mono); fill: var(--dim); text-anchor: middle; }
+
+/* 06 Writing a Rumi file. One block of data that changes with every step, and one code
+   block that grows, its newest lines in full ink. */
+.wr { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+.wr-tabs { display: flex; gap: 20px; }
+.wr-tabs button { padding: 4px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--dim); font: 500 12px var(--mono); cursor: pointer; }
+.wr-tabs button[aria-selected="true"] { border-color: var(--ink); color: var(--ink); }
+.wr-main { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: center; }
+.wr-code { margin: 0; height: 236px; padding: 14px 18px; background: var(--wash); color: #9aa0a8; font: 12.5px/1.6 var(--mono); white-space: pre; overflow: hidden; }
+.wr-code .tok-fn, .wr-code .tok-str, .wr-code .tok-kw, .wr-code .tok-num { color: inherit; }
+.wr-hot { color: var(--ink); }
+.wr-hot .tok-fn { color: #0a5fb4; }
+.wr-hot .tok-str { color: #17803d; }
+.wr-hot .tok-kw { color: #492ae8; }
+.wr-hot .tok-num { color: #c2410c; }
+.wr-hot .tok-com { color: #8a919c; }
+.wr-vis { display: flex; flex-direction: column; gap: 8px; }
+.wr-stage { position: relative; height: 230px; }
+/* A slab is one band of one tile, a front with a top and a side of depth --d. Its sizes
+   are registered so they ease like any length. Edges show only where a slab stands on
+   its own, by tile and in the file; stacked into a block or a cell they melt away. */
+@property --fw { syntax: '<length>'; inherits: true; initial-value: 60px; }
+@property --fh { syntax: '<length>'; inherits: true; initial-value: 60px; }
+@property --d { syntax: '<length>'; inherits: true; initial-value: 16px; }
+.wr-slab { --edge: #f1f1f3; --face: #f1f1f3; --lid: #e3e4e8; --flank: #d4d6db; position: absolute; width: 0; height: 0; transition: left 700ms cubic-bezier(.4, 0, .2, 1), top 700ms cubic-bezier(.4, 0, .2, 1), --fw 700ms cubic-bezier(.4, 0, .2, 1), --fh 700ms cubic-bezier(.4, 0, .2, 1), --d 700ms cubic-bezier(.4, 0, .2, 1); }
+.wr-slab i { position: absolute; display: block; transition: background-color 500ms ease, box-shadow 500ms ease; }
+.wr-slab .wr-front { left: 0; top: 0; width: var(--fw); height: var(--fh); background: var(--face); box-shadow: inset 0 0 0 1.5px var(--edge); }
+.wr-slab .wr-top { left: 0; top: calc(-1 * var(--d)); width: calc(var(--fw) + var(--d)); height: var(--d); background: var(--lid); clip-path: polygon(0 100%, var(--d) 0, 100% 0, var(--fw) 100%); }
+.wr-slab .wr-side { left: var(--fw); top: calc(-1 * var(--d)); width: var(--d); height: calc(var(--fh) + var(--d)); background: var(--flank); clip-path: polygon(0 var(--d), 100% 0, 100% var(--fh), 0 100%); }
+.wr-stage[data-step="2"] .wr-slab { --edge: #8a8f98; }
+.wr-slab[data-recipe="med"] { --face: #ece9fd; --lid: #d9d3fb; --flank: #c4bbf7; }
+.wr-slab[data-recipe="pfor"] { --face: #ffeae1; --lid: #ffd8c6; --flank: #fcc4aa; }
+/* In the file the slabs lie flat, side by side, with an edge only where a frame starts. */
+.wr-stage[data-step="5"] .wr-slab .wr-front { box-shadow: inset 0 1.5px 0 #25231f, inset 0 -1.5px 0 #25231f; }
+.wr-stage[data-step="5"] .wr-slab.is-start .wr-front { box-shadow: inset 0 1.5px 0 #25231f, inset 0 -1.5px 0 #25231f, inset 1.5px 0 0 #25231f; }
+.wr-stage[data-step="5"] .wr-slab.is-end .wr-front { box-shadow: inset 0 1.5px 0 #25231f, inset 0 -1.5px 0 #25231f, inset -1.5px 0 0 #25231f; }
+.wr-head { position: absolute; left: 6px; top: 112px; width: 64px; height: 40px; text-align: center; line-height: 1.15; display: flex; align-items: center; justify-content: center; background: var(--ink); color: #fff; font: 500 10.5px var(--mono); opacity: 0; transition: opacity 400ms ease; }
+.wr-stage[data-step="5"] .wr-head { opacity: 1; transition-delay: 300ms; }
+/* The external header sits apart from the file, the way rumi.write returns it. */
+.wr-ext { position: absolute; left: 6px; top: 176px; height: 30px; padding: 0 12px; display: flex; align-items: center; border: 1.5px solid var(--ink); background: #fdf5d0; color: var(--ink); font: 500 11px var(--mono); opacity: 0; transform: translateY(8px); transition: opacity 400ms ease, transform 400ms ease; }
+.wr-stage[data-step="5"] .wr-ext { opacity: 1; transform: none; transition-delay: 500ms; }
+.wr-label { color: var(--dim); font: 500 12px var(--mono); }
+.wr-note { color: var(--ink-soft); font-size: 18px; line-height: 1.35; min-height: 1.35em; }
+.wr-note .title-mark { color: var(--ink); font-weight: 600; }
+/* The part of the pattern that changes between tile and cell gets marked as it appears. */
+.wr-hot .wr-pat { padding: 0 3px; background: linear-gradient(#c4ffc2, #c4ffc2) no-repeat left center / 0 100%; color: var(--ink); font-weight: 700; animation: wr-mark 650ms cubic-bezier(.4, 0, .2, 1) 250ms forwards; }
+@keyframes wr-mark { to { background-size: 100% 100%; } }
+@media (prefers-reduced-motion: reduce) { .wr-hot .wr-pat { animation: none; background-size: 100% 100%; } }
+@media (prefers-reduced-motion: reduce) { .wr-slab, .wr-slab i, .wr-head { transition: none !important; } }
