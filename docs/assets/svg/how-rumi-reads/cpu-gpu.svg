@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="340" viewBox="0 0 760 340" role="img" aria-labelledby="cpu-gpu-title cpu-gpu-desc">
+<title id="cpu-gpu-title">The CPU path and the GPU path</title>
+<desc id="cpu-gpu-desc">Both paths use the same plan. On the CPU, Rumi workers decode each frame with OpenZL and GeoZL into an output buffer in host memory. On a GPU, the compressed bytes are staged in host memory in groups of at most 256 MiB, and GeoZL routes each frame. Frames whose recipe ends in PFOR or PivCo lanes expand on the GPU. Any other frame decodes on the CPU and is copied up. Every crop lands in an output tensor in GPU memory.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px;text-anchor:middle}
+.label{fill:#25231f;font-size:11.5px;font-weight:700;text-anchor:middle}
+.sub{fill:#706b76;font-size:9.5px;text-anchor:middle}
+.box{fill:#ffffff;stroke:#d4d0d9;stroke-width:1.2}
+.shared{fill:#f1eefc;stroke:#d4d0d9;stroke-width:1.2}
+.pick{fill:#6249d8;fill-opacity:.22;stroke:#6249d8;stroke-width:1.4}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+</style>
+<defs><marker id="arrow-cpu-gpu" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+
+<rect class="shared" x="40" y="20" width="680" height="40"/>
+<text class="label" x="380" y="38">The same plan</text>
+<text class="sub" x="380" y="52">frames, byte ranges and destinations, from the external header</text>
+
+<text class="figure-stage" x="200" y="86">ON THE CPU</text>
+<text class="figure-stage" x="560" y="86">ON A GPU</text>
+
+
+<rect class="box" x="60" y="98" width="280" height="50"/>
+<text class="label" x="200" y="119">Fetch the ranges</text>
+<text class="sub" x="200" y="135">remote ranges through Karu, local ones by the workers</text>
+
+<rect class="box" x="420" y="98" width="280" height="50"/>
+<text class="label" x="560" y="119">Fetch the ranges into host staging</text>
+<text class="sub" x="560" y="135">through Karu, in groups of at most 256 MiB</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-cpu-gpu)" d="M200 150V176"/>
+<path class="figure-arrow" marker-end="url(#arrow-cpu-gpu)" d="M500 150V176"/>
+<path class="figure-arrow" marker-end="url(#arrow-cpu-gpu)" d="M630 150V176"/>
+
+<rect class="box" x="60" y="178" width="280" height="64"/>
+<text class="label" x="200" y="202">Decode on the Rumi workers</text>
+<text class="sub" x="200" y="218">one OpenZL decoder per thread,</text>
+<text class="sub" x="200" y="231">GeoZL codecs registered</text>
+
+<rect class="box" x="420" y="178" width="150" height="64"/>
+<text class="label" x="495" y="202">PFOR or PivCo</text>
+<text class="sub" x="495" y="218">expands on the GPU</text>
+<text class="sub" x="495" y="231">and writes in place</text>
+
+<rect class="box" x="580" y="178" width="120" height="64"/>
+<text class="label" x="640" y="202">Any other frame</text>
+<text class="sub" x="640" y="218">decodes on the CPU</text>
+<text class="sub" x="640" y="231">and is copied up</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-cpu-gpu)" d="M200 244V270"/>
+<path class="figure-arrow" marker-end="url(#arrow-cpu-gpu)" d="M495 244V270"/>
+<path class="figure-arrow" marker-end="url(#arrow-cpu-gpu)" d="M640 244V270"/>
+
+<rect class="pick" x="60" y="272" width="280" height="50"/>
+<text class="label" x="200" y="293">Output in host memory</text>
+<text class="sub" x="200" y="309">one buffer, allocated once</text>
+
+<rect class="pick" x="420" y="272" width="280" height="50"/>
+<text class="label" x="560" y="293">Output in GPU memory</text>
+<text class="sub" x="560" y="309">one tensor, allocated once</text>
+</svg>

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="270" viewBox="0 0 760 270" role="img" aria-labelledby="place-title place-desc">
+<title id="place-title">Two ways a frame reaches the output</title>
+<desc id="place-desc">A frame that covers a whole tile in the stored order decodes straight into its place in the output buffer. Any other frame decodes into the worker's scratch buffer first, and only the requested rectangle is copied into the output.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.label{fill:#25231f;font-size:11px;font-weight:700;text-anchor:middle}
+.sub{fill:#706b76;font-size:9.5px;text-anchor:middle}
+.box{fill:#ffffff;stroke:#d4d0d9;stroke-width:1.2}
+.bytes{fill:#f1eefc;stroke:#d4d0d9;stroke-width:1.2}
+.line{stroke:#d4d0d9;stroke-width:1}
+.pick{fill:#6249d8;fill-opacity:.22;stroke:#6249d8;stroke-width:1.4}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+</style>
+<defs><marker id="arrow-place" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+
+<text class="figure-stage" x="40" y="24">THE FRAME IS A WHOLE TILE, IN STORED ORDER</text>
+
+<rect class="bytes" x="40" y="44" width="70" height="70"/>
+<line class="line" x1="40" y1="58" x2="110" y2="58"/>
+<line class="line" x1="40" y1="72" x2="110" y2="72"/>
+<line class="line" x1="40" y1="86" x2="110" y2="86"/>
+<line class="line" x1="40" y1="100" x2="110" y2="100"/>
+<text class="sub" x="75" y="128">compressed frame</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-place)" d="M120 79H548"/>
+<text class="sub" x="334" y="70">decode straight into the output</text>
+
+<rect class="box" x="560" y="44" width="160" height="70"/>
+<rect class="pick" x="560" y="44" width="80" height="70"/>
+<text class="sub" x="640" y="128">output buffer</text>
+
+<text class="figure-stage" x="40" y="160">ANY OTHER FRAME</text>
+
+<rect class="bytes" x="40" y="180" width="70" height="70"/>
+<line class="line" x1="40" y1="194" x2="110" y2="194"/>
+<line class="line" x1="40" y1="208" x2="110" y2="208"/>
+<line class="line" x1="40" y1="222" x2="110" y2="222"/>
+<line class="line" x1="40" y1="236" x2="110" y2="236"/>
+<text class="sub" x="75" y="264">compressed frame</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-place)" d="M120 215H268"/>
+<text class="sub" x="194" y="206">decode</text>
+
+<rect class="box" x="280" y="180" width="70" height="70"/>
+<rect class="pick" x="315" y="215" width="35" height="35"/>
+<text class="sub" x="315" y="264">worker scratch</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-place)" d="M360 215H548"/>
+<text class="sub" x="454" y="206">copy only the crop</text>
+
+<rect class="box" x="560" y="180" width="160" height="70"/>
+<rect class="pick" x="560" y="180" width="40" height="35"/>
+<text class="sub" x="640" y="264">output buffer</text>
+</svg>

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="200" viewBox="0 0 760 200" role="img" aria-labelledby="read-path-title read-path-desc">
+<title id="read-path-title">One read from request to tensor</title>
+<desc id="read-path-desc">A read goes through five steps. You make a request. Rumi plans it from the external header alone. Karu fetches only the planned byte ranges. OpenZL with the GeoZL codecs decodes each frame into the output buffer. The buffer is handed over as a DLPack tensor without a copy.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px;text-anchor:middle}
+.label{fill:#25231f;font-size:12px;font-weight:700;text-anchor:middle}
+.sub{fill:#706b76;font-size:9.5px;text-anchor:middle}
+.box{fill:#ffffff;stroke:#d4d0d9;stroke-width:1.2}
+.pick{fill:#6249d8;fill-opacity:.22;stroke:#6249d8;stroke-width:1.4}
+.figure-arrow{fill:none;stroke:#7d7884;stroke-width:1.4}
+.bracket{fill:none;stroke:#b9b3c2;stroke-width:1}
+</style>
+<defs><marker id="arrow-read-path" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker></defs>
+
+<text class="figure-stage" x="84" y="34">YOU</text>
+<text class="figure-stage" x="232" y="34">RUMI</text>
+<text class="figure-stage" x="380" y="34">KARU</text>
+<text class="figure-stage" x="528" y="34">OPENZL + GEOZL</text>
+<text class="figure-stage" x="676" y="34">DLPACK</text>
+
+<rect class="box" x="20" y="48" width="128" height="74"/>
+<text class="label" x="84" y="76">Request</text>
+<text class="sub" x="84" y="94">bands, window,</text>
+<text class="sub" x="84" y="107">pattern, device</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-read-path)" d="M150 85H166"/>
+
+<rect class="box" x="168" y="48" width="128" height="74"/>
+<text class="label" x="232" y="76">Plan</text>
+<text class="sub" x="232" y="94">which frames, and</text>
+<text class="sub" x="232" y="107">where each one goes</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-read-path)" d="M298 85H314"/>
+
+<rect class="box" x="316" y="48" width="128" height="74"/>
+<text class="label" x="380" y="76">Fetch</text>
+<text class="sub" x="380" y="94">only the byte ranges</text>
+<text class="sub" x="380" y="107">of those frames</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-read-path)" d="M446 85H462"/>
+
+<rect class="box" x="464" y="48" width="128" height="74"/>
+<text class="label" x="528" y="76">Decode</text>
+<text class="sub" x="528" y="94">each frame into its</text>
+<text class="sub" x="528" y="107">place in the output</text>
+
+<path class="figure-arrow" marker-end="url(#arrow-read-path)" d="M594 85H610"/>
+
+<rect class="pick" x="612" y="48" width="128" height="74"/>
+<text class="label" x="676" y="76">Tensor</text>
+<text class="sub" x="676" y="94">handed to PyTorch,</text>
+<text class="sub" x="676" y="107">NumPy or JAX, no copy</text>
+
+<path class="bracket" d="M20 140V148H296V140"/>
+<text class="sub" x="158" y="166">reads only the external header</text>
+<path class="bracket" d="M316 140V148H592V140"/>
+<text class="sub" x="454" y="166">reads the file, frame by frame</text>
+</svg>

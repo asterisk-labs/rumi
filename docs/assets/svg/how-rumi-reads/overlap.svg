@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="230" viewBox="0 0 760 230" role="img" aria-labelledby="overlap-title overlap-desc">
+<title id="overlap-title">Fetching and decoding overlap</title>
+<desc id="overlap-desc">Rumi submits every remote range of the read to Karu at once. While Karu downloads, the Rumi workers decode the local frames, then decode each wave of remote frames as soon as it has arrived. The tensor is ready after the last wave.</desc>
+<style>
+svg{font-family:Arial,Helvetica,sans-serif}
+.figure-stage{fill:#6249d8;font-size:9px;font-weight:800;letter-spacing:1px}
+.lane{fill:#25231f;font-size:11px;font-weight:700}
+.sub{fill:#706b76;font-size:9.5px;text-anchor:middle}
+.subl{fill:#706b76;font-size:9.5px}
+.track{fill:#f7f6f9;stroke:#e4e1e8}
+.io{fill:#ffffff;stroke:#7d7884;stroke-width:1.2}
+.work{fill:#6249d8;fill-opacity:.22;stroke:#6249d8;stroke-width:1.4}
+.local{fill:#f1eefc;stroke:#d4d0d9;stroke-width:1.2}
+.tick{stroke:#6249d8;stroke-width:1.4}
+.hand{fill:none;stroke:#6249d8;stroke-width:1;stroke-dasharray:3 3}
+.axis{fill:none;stroke:#7d7884;stroke-width:1.4}
+.end{stroke:#25231f;stroke-width:1.2;stroke-dasharray:2 3}
+</style>
+<defs>
+<marker id="arrow-overlap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#7d7884" d="M0 0 10 5 0 10Z"/></marker>
+<marker id="arrow-overlap-hand" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#6249d8" d="M0 0 10 5 0 10Z"/></marker>
+</defs>
+
+<text class="figure-stage" x="20" y="24">ONE READ, OVER TIME</text>
+
+<text class="lane" x="20" y="74">Karu I/O threads</text>
+<text class="subl" x="20" y="88">four by default</text>
+<rect class="track" x="170" y="56" width="560" height="36"/>
+<rect class="io" x="180" y="62" width="150" height="10"/>
+<rect class="io" x="190" y="76" width="140" height="10"/>
+<rect class="io" x="336" y="62" width="150" height="10"/>
+<rect class="io" x="336" y="76" width="140" height="10"/>
+<rect class="io" x="492" y="62" width="120" height="10"/>
+<rect class="io" x="482" y="76" width="130" height="10"/>
+<line class="tick" x1="330" y1="52" x2="330" y2="96"/>
+<line class="tick" x1="486" y1="52" x2="486" y2="96"/>
+<line class="tick" x1="612" y1="52" x2="612" y2="96"/>
+<text class="sub" x="330" y="46">ranges land</text>
+<text class="sub" x="486" y="46">ranges land</text>
+<text class="sub" x="612" y="46">last ranges land</text>
+
+<text class="lane" x="20" y="144">Rumi workers</text>
+<text class="subl" x="20" y="158">one by default</text>
+<rect class="track" x="170" y="126" width="560" height="36"/>
+<rect class="local" x="180" y="132" width="90" height="24"/>
+<text class="sub" x="225" y="148">local frames</text>
+<rect class="work" x="334" y="132" width="90" height="24"/>
+<text class="sub" x="379" y="148">wave 1</text>
+<rect class="work" x="490" y="132" width="90" height="24"/>
+<text class="sub" x="535" y="148">wave 2</text>
+<rect class="work" x="616" y="132" width="90" height="24"/>
+<text class="sub" x="661" y="148">wave 3</text>
+
+<path class="hand" marker-end="url(#arrow-overlap-hand)" d="M330 96V128"/>
+<path class="hand" marker-end="url(#arrow-overlap-hand)" d="M486 96V128"/>
+<path class="hand" marker-end="url(#arrow-overlap-hand)" d="M612 96V128"/>
+
+<line class="end" x1="712" y1="118" x2="712" y2="172"/>
+<text class="sub" x="712" y="186">tensor ready</text>
+<text class="sub" x="180" y="186">submit every remote range</text>
+<line class="end" x1="180" y1="118" x2="180" y2="172"/>
+
+<path class="axis" marker-end="url(#arrow-overlap)" d="M170 206H730"/>
+<text class="subl" x="20" y="210">time</text>
+</svg>
