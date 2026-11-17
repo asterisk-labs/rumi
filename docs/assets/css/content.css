@@ -2,11 +2,11 @@
   position: relative;
   isolation: isolate;
   min-width: 0;
-  min-height: clamp(520px, calc(100svh - 150px), 650px);
+  min-height: clamp(520px, calc(100svh - 150px), 720px);
   display: grid;
-  grid-template-columns: minmax(330px, 0.88fr) minmax(500px, 1.12fr);
+  grid-template-columns: minmax(400px, 430px) minmax(0, 1fr);
   align-items: center;
-  gap: clamp(36px, 5vw, 72px);
+  gap: 64px;
   padding-block: clamp(12px, 2vh, 24px);
 }
 

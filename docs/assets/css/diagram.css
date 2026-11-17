@@ -7,6 +7,11 @@
   margin: 0;
 }
 
+/* Side by side with the text, the drawing sits a little left of its column. */
+@media (min-width: 861px) {
+  .reader { position: relative; left: -28px; }
+}
+
 /* the call, above the drawing so it keeps its size */
 .reader-call {
   display: block;
@@ -20,7 +25,7 @@
 
 .reader > svg {
   width: 100%;
-  height: clamp(366px, calc(59vh - 34px), 446px);
+  height: clamp(440px, calc(78vh - 34px), 600px);
   display: block;
   font-family: var(--mono);
   overflow: visible;
@@ -287,5 +292,5 @@
 }
 
 @media (min-width: 861px) and (max-height: 760px) {
-  .reader > svg { height: 376px; }
+  .reader > svg { height: 440px; }
 }
