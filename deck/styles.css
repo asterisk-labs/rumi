@@ -483,3 +483,30 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 @keyframes wr-mark { to { background-size: 100% 100%; } }
 @media (prefers-reduced-motion: reduce) { .wr-hot .wr-pat { animation: none; background-size: 100% 100%; } }
 @media (prefers-reduced-motion: reduce) { .wr-slab, .wr-slab i, .wr-head { transition: none !important; } }
+
+/* 15 The languages slide, five languages and one format, and one code block that follows
+   the language picked. JavaScript reads the files itself and decodes with GeoZL wasm. */
+.lnx { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+.ln-fig { display: block; width: 100%; height: auto; overflow: visible; }
+.ln-fig text { font-family: var(--sans); }
+.ln-fig .lg text { font-family: Arial, Helvetica, sans-serif; }
+.ln-hit { fill: transparent; cursor: pointer; }
+.ln-fig .ln-name { fill: var(--ink); font-size: 17px; font-weight: 600; text-anchor: middle; }
+.ln-fig .ln-how { fill: var(--dim); font: 500 12px var(--mono); text-anchor: middle; }
+.ln-fig .ln-wasm-name { fill: #654FF0; font: 500 12px var(--mono); }
+.ln-edge { fill: none; stroke: #c9cbd3; stroke-width: 2; transition: stroke 160ms ease; }
+.ln-edge.is-on { stroke: #492ae8; stroke-width: 2.5; }
+.ln-fig g.ln { opacity: .55; transition: opacity 160ms ease; }
+.ln-fig g.ln.is-on { opacity: 1; }
+.ln-core { fill: #ece9fd; stroke: #492ae8; stroke-width: 2; }
+.ln-bus { stroke: #c9cbd3; stroke-width: 2; }
+.ln-core-hit { fill: transparent; cursor: pointer; }
+.ln-core.is-on { stroke-width: 3.5; fill: #ddd6fc; }
+.ln-fig .ln-wasm .lg { opacity: .55; transition: opacity 160ms ease; }
+.ln-fig .ln-wasm.is-on .lg { opacity: 1; }
+.ln-fig .ln-core-name { fill: var(--ink); font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+.ln-fig .ln-core-sub { fill: var(--ink-soft); font-size: 13.5px; }
+.ln-tabs { display: flex; gap: 18px; margin-bottom: 6px; }
+.ln-tabs button { padding: 4px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--dim); font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.ln-tabs button[aria-selected="true"] { border-color: var(--ink); color: var(--ink); }
+.ln-code pre { margin: 0; padding: 10px 16px; min-height: 64px; background: var(--wash); color: var(--ink); font: 13px/1.6 var(--mono); white-space: pre; overflow: hidden; }
