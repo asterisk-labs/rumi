@@ -62,6 +62,16 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 include(GNUInstallDirs)
 
+# GeoZL and OpenZL run inside every read and write, so a sanitized build
+# instruments them too, and undefined behavior fails the run.
+if(RUMI_SANITIZE)
+    add_compile_options(-fsanitize=${RUMI_SANITIZE} -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${RUMI_SANITIZE})
+    if(RUMI_SANITIZE MATCHES "undefined")
+        add_compile_options(-fno-sanitize-recover=undefined)
+    endif()
+endif()
+
 # Link geozl and OpenZL statically into rumi without exporting their APIs.
 set(BUILD_SHARED_LIBS OFF)
 set(GEOZL_BUILD_KERNELS_SHARED OFF CACHE BOOL "" FORCE)   # the cffi kernels lib is a Python concern
