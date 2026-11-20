@@ -2,7 +2,7 @@ import math
 import numbers
 import operator
 from decimal import Decimal
-from typing import Any
+from typing import Any, NoReturn
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -114,7 +114,7 @@ class Graph:
 
     It keeps ``method``, ``width``, ``planes``, ``dtype``, ``itemsize`` (bytes
     per sample), ``error`` and ``nodata``. Threads may share it, and their
-    compress calls take turns.
+    compress calls take turns. It cannot be pickled or copied.
     """
 
     __slots__ = ("_h", "_dtype", "method", "width", "planes", "itemsize", "error",
@@ -150,6 +150,11 @@ class Graph:
     @property
     def dtype(self) -> np.dtype:
         return self._dtype
+
+    def __reduce__(self) -> NoReturn:
+        raise TypeError("a rumi.geozl.Graph holds a native compression context and "
+                        "cannot be pickled or copied; build one graph per "
+                        "worker from the same raster and recipe")
 
     def __repr__(self) -> str:
         plane_word = "plane" if self.planes == 1 else "planes"

@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Breaking
+
+- `rumi.geozl.Graph` refuses `pickle`, `copy.copy` and `copy.deepcopy` with
+  `TypeError`, as `geozl.Graph` does. A copy used to share the native handle.
+
 ### Changed
 
 - Local CPU reads skip a copy of the task list; interleaved reads use

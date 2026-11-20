@@ -1,6 +1,8 @@
 """rumi.geozl writes the frames the GeoZL package writes, with rumi's codec."""
 
+import copy
 import inspect
+import pickle
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from fractions import Fraction
@@ -143,6 +145,13 @@ def test_threads_that_share_a_graph_take_turns():
     with ThreadPoolExecutor(4) as pool:
         frames = list(pool.map(lambda _: rumi.geozl.compress(raster, graph), range(64)))
     assert frames == [want] * 64
+
+
+def test_a_graph_cannot_be_pickled_or_copied():
+    graph = rumi.geozl.graph(_counts(), "planar>zigzag>zstd")
+    for clone in (pickle.dumps, copy.copy, copy.deepcopy):
+        with pytest.raises(TypeError, match="cannot be pickled or copied"):
+            clone(graph)
 
 
 @pytest.mark.parametrize("error", [None, 0, "0%", 3, 0.01, "1%", "LINEAR:MAX_ERROR=0.02"])
