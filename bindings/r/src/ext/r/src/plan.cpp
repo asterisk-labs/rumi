@@ -78,32 +78,40 @@ bool pin_checksum_setting() noexcept
     return (state & CHECKSUM_ON) != 0;
 }
 
+struct DCtxFree {
+    void operator()(ZL_DCtx* dctx) const noexcept { ZL_DCtx_free(dctx); }
+};
+using DCtxPtr = std::unique_ptr<ZL_DCtx, DCtxFree>;
+
+// A decoder context with the GeoZL codecs and the pinned checksum setting, or
+// null when OpenZL cannot allocate or register them.
+DCtxPtr make_dctx() noexcept
+{
+    DCtxPtr dctx(ZL_DCtx_create());
+    if (!dctx || ZL_isError(geozl_register_decoders(dctx.get()))) return nullptr;
+    const ZL_TernaryParam check = pin_checksum_setting()
+        ? ZL_TernaryParam_enable : ZL_TernaryParam_disable;
+    (void) ZL_DCtx_setParameter(dctx.get(), ZL_DParam_stickyParameters, 1);
+    (void) ZL_DCtx_setParameter(dctx.get(), ZL_DParam_checkCompressedChecksum,
+                                check);
+    (void) ZL_DCtx_setParameter(dctx.get(), ZL_DParam_checkContentChecksum,
+                                check);
+    return dctx;
+}
+
 // Decoder context and reusable buffers for one worker.
 struct WorkerState {
-    ZL_DCtx*               dctx = ZL_DCtx_create();
+    DCtxPtr                dctx = make_dctx();
     std::vector<std::byte> compressed;
     std::vector<std::byte> scratch;
 
-    WorkerState() {
-        // Treat decoder registration failure as unavailable worker state.
-        if (dctx && ZL_isError(geozl_register_decoders(dctx))) {
-            ZL_DCtx_free(dctx);
-            dctx = nullptr;
-        }
-        if (dctx) {
-            const ZL_TernaryParam check = pin_checksum_setting()
-                ? ZL_TernaryParam_enable : ZL_TernaryParam_disable;
-            (void) ZL_DCtx_setParameter(dctx, ZL_DParam_stickyParameters, 1);
-            (void) ZL_DCtx_setParameter(dctx, ZL_DParam_checkCompressedChecksum,
-                                        check);
-            (void) ZL_DCtx_setParameter(dctx, ZL_DParam_checkContentChecksum,
-                                        check);
-        }
+    // A context that could not be made is tried again on the next frame, so
+    // one allocation failure does not disable the worker for good.
+    ZL_DCtx* context() noexcept
+    {
+        if (!dctx) dctx = make_dctx();
+        return dctx.get();
     }
-    ~WorkerState() { if (dctx) ZL_DCtx_free(dctx); }
-
-    WorkerState(const WorkerState&)            = delete;
-    WorkerState& operator=(const WorkerState&) = delete;
 };
 
 // Windows DLL teardown can invalidate this thread-local state before its destructor.
@@ -210,7 +218,8 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
     char item[32] = "";
     if (t.item) std::snprintf(item, sizeof item, " (item %zu)", t.item);
 
-    if (!ws.dctx) {
+    ZL_DCtx* const dctx = ws.context();
+    if (!dctx) {
         say(msg, "rumi: could not allocate OpenZL decompression context");
         return RUMI_ERR_OOM;
     }
@@ -266,11 +275,11 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
     // Validate decoded type and size before copying samples.
     ZL_OutputInfo info;
     const ZL_Report rep = ZL_DCtx_decompressTyped(
-        ws.dctx, &info, frame, t.frame_bytes,
+        dctx, &info, frame, t.frame_bytes,
         compressed, t.compressed_size);
 
     if (ZL_isError(rep)) {
-        const char* ctx = ZL_DCtx_getErrorContextString(ws.dctx, rep);
+        const char* ctx = ZL_DCtx_getErrorContextString(dctx, rep);
         unsigned long ctid = 0;
         if (missing_custom_codec(ctx, &ctid)) {
             const char* what = geozl_owns_ctid(ctid)

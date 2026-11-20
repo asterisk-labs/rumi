@@ -21,6 +21,8 @@ Notable user-visible changes are recorded here.
   decoder handle.
 - A read into memory that is not aligned to its samples decodes through
   scratch, where GeoZL used to write the samples misaligned.
+- A decode worker whose OpenZL context could not be allocated tries again on
+  its next frame instead of failing every later read.
 
 ## [0.31.0] - 2026-11-16
 
