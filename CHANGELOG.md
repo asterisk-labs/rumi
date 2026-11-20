@@ -16,6 +16,7 @@ Notable user-visible changes are recorded here.
 - `rumi_write_base_offset` no longer allocates memory per frame.
 - Out-of-memory paths no longer free a transport client twice or leak a GPU
   decoder handle.
+- A thread-pool job releases its captures before its batch's `wait` returns.
 
 ## [0.31.0] - 2026-11-16
 

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <new>
 #include <random>
 #include <span>
@@ -1204,6 +1205,15 @@ void test_thread_pool_batches()
         // Batch destruction waits for jobs that capture its state.
     }
     EQ(ran.load(std::memory_order_relaxed), 1000);
+
+    CASE("a batch job releases its captures before wait returns")
+    auto held = std::make_shared<int>(0);
+    {
+        rumi::ThreadPool::Batch batch(pool);
+        for (int i = 0; i < 64; ++i) batch.submit([held] { (void) held; });
+        batch.wait();
+        EQ(held.use_count(), 1L);
+    }
 }
 
 }  // namespace

@@ -122,7 +122,8 @@ inline void ThreadPool::Batch::submit(std::function<void()> job)
     }
     try {
         pool_.enqueue([this, job = std::move(job)]() mutable {
-            job();
+            // Destroy captures before signaling wait().
+            std::exchange(job, nullptr)();
             std::lock_guard lock(mutex_);
             if (--pending_ == 0) done_.notify_all();
         });
