@@ -184,8 +184,15 @@ tokenize(std::string_view side, const char* where)
         } else if (is_name_char(c)) {
             name.push_back(c);
         } else {
+            // Keep errors valid UTF-8 for non-ASCII input.
+            const auto byte = static_cast<unsigned char>(c);
             char buf[64];
-            std::snprintf(buf, sizeof buf, "unexpected '%c' in the %s", c, where);
+            if (byte > ' ' && byte < 0x7F) {
+                std::snprintf(buf, sizeof buf, "unexpected '%c' in the %s", c, where);
+            } else {
+                std::snprintf(buf, sizeof buf, "unexpected byte 0x%02X in the %s",
+                              unsigned{byte}, where);
+            }
             return err(buf);
         }
     }

@@ -27,8 +27,9 @@ pattern grammar.
 
 - **Input.** `b` and `t` name the band and time axes. Each parenthesised pair splits one
   image axis into a grid axis and a tile-local axis: the first pair is Y, the second X.
-  Split names are free identifiers (`(row h)`, `(y h)`, `(r i)`). The input lists the
-  array's axes in the array's own order, so `(row h) (col w) b` cuts a `(Y, X, B)` array.
+  Split names are any ASCII letters, digits and `_` (`(row h)`, `(y h)`, `(r i)`). The
+  input lists the array's axes in the array's own order, so `(row h) (col w) b` cuts a
+  `(Y, X, B)` array.
 - **Output.** The two grid names come first, in Y then X order. Band and time axes that
   the frame index walks follow, outermost first. The trailing parenthesised group is the
   decoded frame.

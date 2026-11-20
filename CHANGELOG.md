@@ -20,7 +20,8 @@ Notable user-visible changes are recorded here.
   unknown dtype everywhere. `rumi_geozl_graph_open` used to treat it as that
   code.
 - Frame-pattern names take only ASCII letters, digits and `_`, so the process
-  locale no longer decides whether a pattern parses.
+  locale no longer decides whether a pattern parses. The error names a byte
+  outside printable ASCII in hex, so it stays valid text.
 - `rumi_write_base_offset` no longer allocates memory per frame.
 - Out-of-memory paths no longer free a transport client twice or leak a GPU
   decoder handle.

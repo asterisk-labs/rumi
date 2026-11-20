@@ -1305,15 +1305,22 @@ void test_frame_pattern()
         }
     }
 
-    CASE("a non-ASCII name is refused in any locale")
-    // Python and R set LC_CTYPE from the environment.
+    CASE("a non-ASCII name is refused in available locales")
+    // Latin-1 classifies 0xE9 as a letter.
     const char* was = std::setlocale(LC_CTYPE, nullptr);
     const std::string saved = was ? was : "C";
-    std::setlocale(LC_CTYPE, "en_US.UTF-8");
-    auto accented = rumi::compile_frame_pattern(
+    auto utf8 = rumi::compile_frame_pattern(
         "b (row\xC3\xAA h) (col w) -> row\xC3\xAA col (b h w)");
+    OK(!utf8 && utf8.error().find("unexpected byte 0xC3 in the input")
+                    != std::string::npos);
+    for (const char* locale : {"C", "fr_FR.ISO8859-1", "en_US.UTF-8"}) {
+        if (!std::setlocale(LC_CTYPE, locale)) continue;
+        auto accented = rumi::compile_frame_pattern(
+            "b (row\xE9 h) (col w) -> row\xE9 col (b h w)");
+        OK(!accented && accented.error().find("unexpected byte 0xE9 in the input")
+                            != std::string::npos);
+    }
     std::setlocale(LC_CTYPE, saved.c_str());
-    OK(!accented && accented.error().find("unexpected") != std::string::npos);
 
     CASE("a layout round trips through its name")
     for (std::uint8_t u : {UNIT_HW, UNIT_AHW, UNIT_HWA}) {
