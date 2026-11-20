@@ -967,8 +967,11 @@ build_blob_from_source(Source& source, FileGeo* geo = nullptr,
 build_blob_from_file(const char* path, FileGeo* geo = nullptr,
                      Trailer* trailer = nullptr) noexcept;
 
-// Wraps a decoded rumi-owned buffer as a DLManagedTensorVersioned. The tensor
-// deleter frees the malloc'd data; nullptr reports an allocation failure.
+// Use this allocator pair for CPU DLPack data.
+[[nodiscard]] std::byte* allocate_dlpack_data(std::size_t size) noexcept;
+void free_dlpack_data(void* data) noexcept;
+
+// The tensor owns data on success; the caller owns it on failure.
 [[nodiscard]] DLManagedTensorVersioned*
 build_dlpack(void* data, rumi_dtype dtype,
              const std::int64_t* shape, int ndim) noexcept;

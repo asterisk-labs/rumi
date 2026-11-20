@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Windows, DLPack reads release their CPU buffers with the aligned
+  allocator that made them.
+
 ## [0.31.0] - 2026-11-16
 
 ### Breaking

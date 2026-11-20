@@ -901,13 +901,13 @@ void test_dtype_table()
 void test_dlpack_wrappers()
 {
     CASE("bool has byte storage and the DLPack bool type")
-    void* data = std::malloc(3);
+    void* data = rumi::allocate_dlpack_data(3);
     const std::int64_t shape[] = {3};
     DLManagedTensorVersioned* tensor =
         rumi::build_dlpack(data, RUMI_DT_BOOL, shape, 1);
     OK(tensor != nullptr);
     if (!tensor) {
-        std::free(data);
+        rumi::free_dlpack_data(data);
         return;
     }
     EQ(tensor->dl_tensor.dtype.code, std::uint8_t(kDLBool));
@@ -920,12 +920,12 @@ void test_dlpack_wrappers()
     else rumi_dlpack_free(tensor);
 
     CASE("a legacy DLPack wrapper owns the versioned tensor")
-    data = std::malloc(4 * sizeof(std::uint16_t));
+    data = rumi::allocate_dlpack_data(4 * sizeof(std::uint16_t));
     const std::int64_t legacy_shape[] = {4};
     tensor = rumi::build_dlpack(data, RUMI_DT_UINT16, legacy_shape, 1);
     OK(tensor != nullptr);
     if (!tensor) {
-        std::free(data);
+        rumi::free_dlpack_data(data);
         return;
     }
 
@@ -985,13 +985,13 @@ void test_dlpack_capsule_destructor()
     EQ(g_deleted, 1);
 
     CASE("the capsule destructor frees a legacy wrapper and its tensor")
-    void* data = std::malloc(2 * sizeof(std::uint16_t));
+    void* data = rumi::allocate_dlpack_data(2 * sizeof(std::uint16_t));
     const std::int64_t shape[] = {2};
     DLManagedTensorVersioned* inner =
         rumi::build_dlpack(data, RUMI_DT_UINT16, shape, 1);
     OK(inner != nullptr);
     if (!inner) {
-        std::free(data);
+        rumi::free_dlpack_data(data);
         return;
     }
     DLManagedTensor* legacy = rumi_dlpack_legacy(inner);

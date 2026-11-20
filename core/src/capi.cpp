@@ -13,10 +13,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#  include <malloc.h>
-#endif
-
 // Error state.
 
 namespace {
@@ -28,34 +24,10 @@ struct FreeDeleter {
     void operator()(void* ptr) const noexcept { std::free(ptr); }
 };
 
-struct AlignedFreeDeleter {
-    void operator()(void* ptr) const noexcept
-    {
-#ifdef _WIN32
-        _aligned_free(ptr);
-#else
-        std::free(ptr);
-#endif
-    }
+struct DlpackDataFree {
+    void operator()(std::byte* ptr) const noexcept { rumi::free_dlpack_data(ptr); }
 };
-
-// DLPack documents 256-byte aligned data pointers; JAX copies CPU buffers
-// that are not 64-byte aligned.
-constexpr std::size_t DLPACK_BUFFER_ALIGNMENT = 256;
-
-std::byte* allocate_dlpack_buffer(std::size_t size) noexcept
-{
-#ifdef _WIN32
-    return static_cast<std::byte*>(
-        _aligned_malloc(size ? size : 1, DLPACK_BUFFER_ALIGNMENT));
-#else
-    void* data = nullptr;
-    if (::posix_memalign(&data, DLPACK_BUFFER_ALIGNMENT, size ? size : 1) != 0) {
-        return nullptr;
-    }
-    return static_cast<std::byte*>(data);
-#endif
-}
+using DlpackData = std::unique_ptr<std::byte, DlpackDataFree>;
 
 // Move assignment avoids a newer libstdc++ symbol required by assign().
 void set_error(std::string_view msg) noexcept
@@ -1106,24 +1078,21 @@ rumi_read_gpu(rumi_gpu* gpu, rumi_source* src, const rumi_spec* spec,
 }
 
 static rumi_status
-finish_dlpack(std::byte* buffer,
+finish_dlpack(DlpackData buffer,
               const std::expected<void, rumi::Error>& r,
               const rumi::Header& h, const rumi::LayoutPlan& plan,
               DLManagedTensorVersioned** out)
 {
-    if (!r) {
-        std::free(buffer);
-        return finish_read(r);
-    }
+    if (!r) return finish_read(r);
     DLManagedTensorVersioned* t = rumi::build_dlpack(
-        buffer, h.dtype, plan.shape.data(),
+        buffer.get(), h.dtype, plan.shape.data(),
         static_cast<int>(plan.shape.size()));
     if (!t) {
         // Parsed headers always carry a registered DLPack dtype.
-        std::free(buffer);
         set_error("out of memory allocating DLPack metadata");
         return RUMI_ERR_OOM;
     }
+    (void) buffer.release();  // the tensor deleter frees it
     *out = t;
     return RUMI_OK;
 }
@@ -1232,8 +1201,7 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
             return status;
         }
 
-        std::unique_ptr<std::byte, AlignedFreeDeleter> buffer(
-            allocate_dlpack_buffer(setup.need));
+        DlpackData buffer(rumi::allocate_dlpack_data(setup.need));
         if (!buffer) {
             set_error("could not allocate the read buffer");
             return RUMI_ERR_OOM;
@@ -1244,7 +1212,7 @@ rumi_read_dlpack(rumi_source* src, const rumi_spec* spec,
                                    std::span<const int>(setup.picked_b),
                                    y_off, y_size, x_off, x_size,
                                    setup.layout, buffer.get());
-        return finish_dlpack(buffer.release(), r, h, setup.layout, out);
+        return finish_dlpack(std::move(buffer), r, h, setup.layout, out);
     });
 }
 
@@ -1463,8 +1431,7 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
             return st;
         }
 
-        std::unique_ptr<std::byte, AlignedFreeDeleter> buffer(
-            allocate_dlpack_buffer(setup.selection.need));
+        DlpackData buffer(rumi::allocate_dlpack_data(setup.selection.need));
         if (!buffer) {
             set_error("could not allocate the read buffer");
             return RUMI_ERR_OOM;
@@ -1478,7 +1445,7 @@ rumi_read_many_dlpack(const rumi_read_item* items, size_t n_items,
             std::span<const int>(setup.selection.picked_t),
             std::span<const int>(setup.selection.picked_b),
             y_size, x_size, setup.selection.layout, buffer.get());
-        return finish_dlpack(buffer.release(), r, items[0].spec->h,
+        return finish_dlpack(std::move(buffer), r, items[0].spec->h,
                              setup.selection.layout, out);
     });
 }

@@ -7,6 +7,40 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifdef _WIN32
+#  include <malloc.h>
+#endif
+
+namespace rumi {
+
+// DLPack uses 256-byte alignment; JAX copies unaligned CPU buffers.
+constexpr std::size_t DLPACK_DATA_ALIGNMENT = 256;
+
+std::byte* allocate_dlpack_data(std::size_t size) noexcept
+{
+#ifdef _WIN32
+    return static_cast<std::byte*>(
+        _aligned_malloc(size ? size : 1, DLPACK_DATA_ALIGNMENT));
+#else
+    void* data = nullptr;
+    if (::posix_memalign(&data, DLPACK_DATA_ALIGNMENT, size ? size : 1) != 0) {
+        return nullptr;
+    }
+    return static_cast<std::byte*>(data);
+#endif
+}
+
+void free_dlpack_data(void* data) noexcept
+{
+#ifdef _WIN32
+    _aligned_free(data);
+#else
+    std::free(data);
+#endif
+}
+
+}  // namespace rumi
+
 // Tensor metadata, shape, and strides share one allocation; data is separate.
 // A GPU tensor keeps its device memory in manager_ctx.
 extern "C" void rumi_dlpack_free(DLManagedTensorVersioned* self)
@@ -16,7 +50,7 @@ extern "C" void rumi_dlpack_free(DLManagedTensorVersioned* self)
         rumi::GpuDecoder::release(
             static_cast<rumi::GpuOutput*>(self->manager_ctx));
     } else {
-        std::free(self->dl_tensor.data);
+        rumi::free_dlpack_data(self->dl_tensor.data);
     }
     std::free(self);
 }
