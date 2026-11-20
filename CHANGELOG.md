@@ -17,6 +17,7 @@ Notable user-visible changes are recorded here.
 - Out-of-memory paths no longer free a transport client twice or leak a GPU
   decoder handle.
 - A thread-pool job releases its captures before its batch's `wait` returns.
+- `tools/gen_epsg_kinds.py` drops EPSG codes the registry lists twice.
 
 ## [0.31.0] - 2026-11-16
 
