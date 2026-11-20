@@ -541,6 +541,8 @@ parse_blob(std::span<const std::byte> blob);
 [[nodiscard]] const rumi_dtype_info*
 dtype_table(std::size_t* count) noexcept;
 
+[[nodiscard]] const rumi_dtype_info* find_dtype(rumi_dtype dtype) noexcept;
+
 // Resolve a sample encoding, or return RUMI_DT_UNKNOWN.
 [[nodiscard]] rumi_dtype
 sample_to_dtype(std::uint8_t sample_format,

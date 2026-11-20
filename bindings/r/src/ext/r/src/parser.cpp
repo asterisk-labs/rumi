@@ -124,6 +124,15 @@ const rumi_dtype_info* dtype_table(std::size_t* count) noexcept
     return k_dtype_table;
 }
 
+// Match the whole enum value, not just its low byte.
+const rumi_dtype_info* find_dtype(rumi_dtype dtype) noexcept
+{
+    for (const rumi_dtype_info& row : k_dtype_table) {
+        if (row.code == std::to_underlying(dtype)) return &row;
+    }
+    return nullptr;
+}
+
 // Each (sample_format, bits) pair identifies one dtype.
 rumi_dtype sample_to_dtype(std::uint8_t sample_format,
                            std::uint8_t bits) noexcept
@@ -141,14 +150,8 @@ rumi_dtype sample_to_dtype(std::uint8_t sample_format,
 // Decoded storage width of one sample.
 std::size_t dtype_size(rumi_dtype dt) noexcept
 {
-    std::size_t n = 0;
-    const rumi_dtype_info* t = dtype_table(&n);
-    for (std::size_t i = 0; i < n; ++i) {
-        if (t[i].code == std::to_underlying(dt)) {
-            return t[i].storage_bytes;
-        }
-    }
-    return 0;
+    const rumi_dtype_info* row = find_dtype(dt);
+    return row ? row->storage_bytes : 0;
 }
 
 std::expected<Header, ParseError>
@@ -195,13 +198,9 @@ parse_blob(std::span<const std::byte> blob)
     h.sample_format     = bh.sample_format;
     h.frame_unit        = bh.frame_unit;
     h.dtype             = dt;
-    std::size_t dtype_count = 0;
-    const rumi_dtype_info* dtypes = dtype_table(&dtype_count);
-    for (std::size_t i = 0; i < dtype_count; ++i) {
-        if (dtypes[i].code != std::to_underlying(dt)) continue;
-        h.bytes_per_sample = dtypes[i].storage_bytes;
-        h.component_bytes = dtypes[i].component_bytes;
-        break;
+    if (const rumi_dtype_info* row = find_dtype(dt)) {
+        h.bytes_per_sample = row->storage_bytes;
+        h.component_bytes = row->component_bytes;
     }
 
     h.tiles_across = 1 + (bh.image_width  - 1) / bh.tile_width;

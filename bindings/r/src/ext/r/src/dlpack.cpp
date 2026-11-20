@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <utility>
 
 #ifdef _WIN32
 #  include <malloc.h>
@@ -118,14 +117,8 @@ constexpr DLDataType dt(unsigned code, unsigned bits, unsigned lanes) noexcept
 
 DLDataType dtype_to_dlpack(rumi_dtype d) noexcept
 {
-    std::size_t n = 0;
-    const rumi_dtype_info* t = dtype_table(&n);
-    for (std::size_t i = 0; i < n; ++i) {
-        if (t[i].code == std::to_underlying(d)) {
-            return dt(t[i].dl_code, t[i].dl_bits, t[i].dl_lanes);
-        }
-    }
-    return dt(0, 0, 0);
+    const rumi_dtype_info* row = find_dtype(d);
+    return row ? dt(row->dl_code, row->dl_bits, row->dl_lanes) : dt(0, 0, 0);
 }
 
 }  // namespace

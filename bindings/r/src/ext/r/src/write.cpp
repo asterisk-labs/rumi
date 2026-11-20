@@ -58,16 +58,11 @@ Entry adopt(std::uint16_t tag, std::uint16_t type,
 // Look up the on-disk sample encoding in the dtype registry.
 bool sample_encoding(rumi_dtype dt, std::uint8_t* sf, std::uint8_t* bits) noexcept
 {
-    std::size_t n = 0;
-    const rumi_dtype_info* rows = dtype_table(&n);
-    for (std::size_t i = 0; i < n; ++i) {
-        if (rows[i].code == dt) {
-            *sf   = rows[i].sample_format;
-            *bits = rows[i].bits;
-            return true;
-        }
-    }
-    return false;
+    const rumi_dtype_info* row = find_dtype(dt);
+    if (!row) return false;
+    *sf   = row->sample_format;
+    *bits = row->bits;
+    return true;
 }
 
 std::expected<std::vector<Entry>, std::string>

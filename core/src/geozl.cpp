@@ -35,12 +35,8 @@ int geozl_code(rumi_dtype dtype) noexcept
 
 const char* dtype_name(rumi_dtype dtype) noexcept
 {
-    const rumi_dtype_info* table = nullptr;
-    const std::size_t rows = rumi_dtype_registry(&table);
-    for (std::size_t i = 0; i < rows; ++i) {
-        if (table[i].code == std::to_underlying(dtype)) return table[i].name;
-    }
-    return "unknown";
+    const rumi_dtype_info* row = find_dtype(dtype);
+    return row ? row->name : "unknown";
 }
 
 // Count decimal places without rounding through floating point.
