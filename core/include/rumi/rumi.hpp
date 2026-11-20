@@ -35,6 +35,7 @@ namespace rumi {
 
 class ThreadPool;
 
+RUMI_PRINTF_LIKE(1, 0)
 [[nodiscard]] std::string vformat_message(const char* fmt, std::va_list ap);
 RUMI_PRINTF_LIKE(1, 2)
 [[nodiscard]] std::string format_message(const char* fmt, ...);

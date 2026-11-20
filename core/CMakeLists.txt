@@ -120,7 +120,7 @@ target_compile_definitions(rumi_config INTERFACE
 )
 # Warning flags for rumi sources only.
 target_compile_options(rumi_config INTERFACE
-    $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Wformat=2>
     $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4 /permissive->
 )
 if(RUMI_WERROR)
