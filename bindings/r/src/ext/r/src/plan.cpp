@@ -244,9 +244,14 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         compressed = ws.compressed.data();
     }
 
-    // Direct tasks decode into output; all others decode into scratch.
-    std::byte* frame = t.direct ? output + t.destination : nullptr;
-    if (!t.direct) {
+    // Direct tasks decode into output; all others decode into scratch. OpenZL
+    // skips its alignment check when a codec writes in place, so a direct
+    // frame whose samples would land misaligned goes through scratch too.
+    const std::size_t align = std::min<std::size_t>(spec.bytes_per_sample, 8);
+    const bool direct = t.direct
+        && reinterpret_cast<std::uintptr_t>(output + t.destination) % align == 0;
+    std::byte* frame = direct ? output + t.destination : nullptr;
+    if (!direct) {
         if (ws.scratch.size() < spec.frame_bytes) {
             try {
                 ws.scratch.resize(spec.frame_bytes);
@@ -315,7 +320,12 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         }
     }
 
-    if (!t.direct) copy_rect(t, spec, frame, output);
+    if (direct) return RUMI_OK;
+    if (t.direct) {
+        std::memcpy(output + t.destination, frame, t.frame_bytes);
+    } else {
+        copy_rect(t, spec, frame, output);
+    }
     return RUMI_OK;
 }
 

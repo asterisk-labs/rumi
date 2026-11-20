@@ -2312,6 +2312,14 @@ void test_geozl_c_api()
                      back.data(), bytes), RUMI_OK);
     }
     OK(back == tile);
+
+    CASE("a direct read into memory not aligned to its samples goes through scratch")
+    std::vector<unsigned char> odd(bytes + 1);
+    if (src && spec) {
+        EQ(rumi_read(src, spec, nullptr, 0, nullptr, 0, 0, 16, 0, 16, nullptr,
+                     odd.data() + 1, bytes), RUMI_OK);
+    }
+    OK(std::memcmp(odd.data() + 1, tile.data(), bytes) == 0);
     rumi_spec_destroy(spec);
     rumi_source_free(src);
     rumi_free(blob);

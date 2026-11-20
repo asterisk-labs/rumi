@@ -19,6 +19,8 @@ Notable user-visible changes are recorded here.
   the process locale. Errors report non-ASCII bytes in hex.
 - Allocation failures no longer free a transport client twice or leak a GPU
   decoder handle.
+- A read into memory that is not aligned to its samples decodes through
+  scratch, where GeoZL used to write the samples misaligned.
 
 ## [0.31.0] - 2026-11-16
 
