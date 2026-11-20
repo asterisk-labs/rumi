@@ -22,7 +22,6 @@ void put(std::vector<std::byte>& out, T value)
     std::memcpy(out.data() + at, &value, sizeof(T));
 }
 
-// IFD entry and encoded value. TileOffsets is filled after the base is known.
 struct Entry {
     std::uint16_t          tag;
     std::uint16_t          type;
@@ -93,8 +92,7 @@ geo_entries(const WriteDesc& d)
 
 std::vector<Entry>
 base_entries(const WriteDesc& d, std::uint64_t frame_count,
-             std::uint8_t sf, std::uint8_t bits,
-             const std::vector<std::uint32_t>& counts_pm)
+             std::uint8_t sf, std::uint8_t bits)
 {
     const std::uint16_t spp = d.samples_per_pixel;
     std::vector<Entry> e;
@@ -106,7 +104,7 @@ base_entries(const WriteDesc& d, std::uint64_t frame_count,
     e.push_back(pack(TAG_TILE_WIDTH,        TIFF_SHORT, {d.tile_size}));
     e.push_back(pack(TAG_TILE_LENGTH,       TIFF_SHORT, {d.tile_size}));
     e.push_back(Entry{TAG_TILE_OFFSETS,     TIFF_LONG8, frame_count, {}});
-    e.push_back(pack(TAG_TILE_BYTE_COUNTS,  TIFF_LONG,  counts_pm));
+    e.push_back(Entry{TAG_TILE_BYTE_COUNTS, TIFF_LONG,  frame_count, {}});
     e.push_back(pack(TAG_SAMPLE_FORMAT,     TIFF_SHORT,
                      std::vector<std::uint16_t>(spp, sf)));
     return e;
@@ -188,11 +186,10 @@ struct Layout {
 };
 
 std::expected<Layout, std::string>
-plan(const WriteDesc& d, const Grid& g,
-     const std::vector<std::uint32_t>& counts_pm)
+plan(const WriteDesc& d, const Grid& g)
 {
     Layout l;
-    l.entries = base_entries(d, g.frames, g.sample_format, g.bits, counts_pm);
+    l.entries = base_entries(d, g.frames, g.sample_format, g.bits);
 
     auto geo = geo_entries(d);
     if (!geo) return std::unexpected(geo.error());
@@ -223,9 +220,7 @@ try {
     auto g = grid_of(d);
     if (!g) return std::unexpected(g.error());
 
-    // Base offset depends on the number of counts, not their values.
-    const std::vector<std::uint32_t> counts(static_cast<std::size_t>(g->frames));
-    auto l = plan(d, *g, counts);
+    auto l = plan(d, *g);
     if (!l) return std::unexpected(l.error());
     return l->base;
 }
@@ -274,7 +269,7 @@ try {
                      static_cast<unsigned long long>(g->frames));
     }
 
-    auto l = plan(d, *g, counts);
+    auto l = plan(d, *g);
     if (!l) return fail(RUMI_ERR_INVALID, std::move(l.error()));
 
     // Derive TileOffsets by prefix sum in frame-index order.
@@ -285,9 +280,13 @@ try {
         running += sizes[i];
     }
     for (auto& e : l->entries) {
-        if (e.tag != TAG_TILE_OFFSETS) continue;
-        e.payload.reserve(n * sizeof(std::uint64_t));
-        for (std::size_t i = 0; i < n; ++i) put(e.payload, offsets[i]);
+        if (e.tag == TAG_TILE_OFFSETS) {
+            e.payload.reserve(n * sizeof(std::uint64_t));
+            for (std::size_t i = 0; i < n; ++i) put(e.payload, offsets[i]);
+        } else if (e.tag == TAG_TILE_BYTE_COUNTS) {
+            e.payload.reserve(n * sizeof(std::uint32_t));
+            for (std::uint32_t c : counts) put(e.payload, c);
+        }
     }
 
     std::vector<std::byte> head;
