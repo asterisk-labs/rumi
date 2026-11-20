@@ -4,29 +4,21 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
-### Performance
+### Changed
 
-- A CPU read with no remote frames no longer copies its task list, and a wave
-  of completed remote frames reaches the decoder without a copy.
-- Reads whose frames or output interleave samples, such as `pattern="y x b"`,
-  copy each sample with a fixed-width move instead of a `memcpy` call.
-- A decoded bool frame is checked in one pass the compiler vectorizes.
+- Local CPU reads skip a copy of the task list; interleaved reads use
+  fixed-width sample copies.
+- `rumi_write_base_offset` no longer allocates memory per frame.
 
 ### Fixed
 
-- On Windows, DLPack reads release their CPU buffers with the aligned
-  allocator that made them.
-- A dtype value whose low byte matches a registered code, such as 257, is an
-  unknown dtype everywhere. `rumi_geozl_graph_open` used to treat it as that
-  code.
-- Frame-pattern names take only ASCII letters, digits and `_`, so the process
-  locale no longer decides whether a pattern parses. The error names a byte
-  outside printable ASCII in hex, so it stays valid text.
-- `rumi_write_base_offset` no longer allocates memory per frame.
-- Out-of-memory paths no longer free a transport client twice or leak a GPU
+- On Windows, CPU DLPack reads free aligned buffers with the matching allocator.
+- Invalid dtype values such as 257 are rejected consistently, including by
+  `rumi_geozl_graph_open` and the writer.
+- Frame-pattern names accept only ASCII letters, digits and `_`, regardless of
+  the process locale. Errors report non-ASCII bytes in hex.
+- Allocation failures no longer free a transport client twice or leak a GPU
   decoder handle.
-- A thread-pool job releases its captures before its batch's `wait` returns.
-- `tools/gen_epsg_kinds.py` drops EPSG codes the registry lists twice.
 
 ## [0.31.0] - 2026-11-16
 
