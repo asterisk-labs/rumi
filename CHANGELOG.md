@@ -11,6 +11,8 @@ Notable user-visible changes are recorded here.
 - A dtype value whose low byte matches a registered code, such as 257, is an
   unknown dtype everywhere. `rumi_geozl_graph_open` used to treat it as that
   code.
+- Frame-pattern names take only ASCII letters, digits and `_`, so the process
+  locale no longer decides whether a pattern parses.
 
 ## [0.31.0] - 2026-11-16
 

@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <clocale>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1285,6 +1286,16 @@ void test_frame_pattern()
                          + "\", wanted it to mention \"" + b.because + "\"");
         }
     }
+
+    CASE("a non-ASCII name is refused in any locale")
+    // Python and R set LC_CTYPE from the environment.
+    const char* was = std::setlocale(LC_CTYPE, nullptr);
+    const std::string saved = was ? was : "C";
+    std::setlocale(LC_CTYPE, "en_US.UTF-8");
+    auto accented = rumi::compile_frame_pattern(
+        "b (row\xC3\xAA h) (col w) -> row\xC3\xAA col (b h w)");
+    std::setlocale(LC_CTYPE, saved.c_str());
+    OK(!accented && accented.error().find("unexpected") != std::string::npos);
 
     CASE("a layout round trips through its name")
     for (std::uint8_t u : {UNIT_HW, UNIT_AHW, UNIT_HWA}) {

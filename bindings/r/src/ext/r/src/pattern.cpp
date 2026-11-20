@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstdio>
 #include <utility>
 #include <limits>
@@ -141,6 +140,18 @@ struct Token {
     bool                     group{};
 };
 
+// Keep parsing independent of the process locale.
+constexpr bool is_blank(char c) noexcept
+{
+    return c == ' ' || (c >= '\t' && c <= '\r');
+}
+
+constexpr bool is_name_char(char c) noexcept
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9') || c == '_';
+}
+
 std::expected<std::vector<Token>, std::string>
 tokenize(std::string_view side, const char* where)
 {
@@ -168,9 +179,9 @@ tokenize(std::string_view side, const char* where)
             if (group.empty()) return err(std::string("empty group '()' in the ") + where);
             out.push_back({group, true});
             in_paren = false;
-        } else if (std::isspace(static_cast<unsigned char>(c))) {
+        } else if (is_blank(c)) {
             flush();
-        } else if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+        } else if (is_name_char(c)) {
             name.push_back(c);
         } else {
             char buf[64];
