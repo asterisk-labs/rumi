@@ -4,6 +4,11 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Performance
+
+- A CPU read with no remote frames no longer copies its task list, and a wave
+  of completed remote frames reaches the decoder without a copy.
+
 ### Fixed
 
 - On Windows, DLPack reads release their CPU buffers with the aligned

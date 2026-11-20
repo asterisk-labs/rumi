@@ -567,6 +567,12 @@ execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
                    auto&& locator_of, auto&& decode,
                    std::span<std::byte> staging = {})
 {
+    if (std::ranges::none_of(tasks, [&](const FrameTask& task) {
+            return locator_of(*task.source) != nullptr;
+        })) {
+        return decode(tasks);
+    }
+
     std::vector<karu_req> requests;
     std::vector<FrameTask> local_tasks;
     try {
@@ -600,8 +606,6 @@ execute_task_batch(std::span<FrameTask> tasks, TransportSession& transport,
             local_tasks.push_back(task);
         }
     }
-
-    if (requests.empty()) return decode(tasks);
 
     karu_client* client = transport.client();
     if (!client) {
@@ -767,7 +771,8 @@ std::expected<void, Error>
 execute_plan(Plan& plan, TransportSession& transport, ThreadPool* pool)
 {
     Executor executor(pool);
-    return execute_plan_batches(plan, transport, [&](auto tasks) {
+    return execute_plan_batches(
+        plan, transport, [&](std::span<const FrameTask> tasks) {
         return decode_tasks(executor, plan, tasks);
     });
 }
@@ -924,7 +929,7 @@ read_items_gpu(GpuDecoder& gpu, std::span<const ReadItem> items,
                     "GPU reads do not support boolean samples yet");
     }
     auto done = execute_gpu_plan_batches(
-        plan, transport, gpu, [&](auto tasks) {
+        plan, transport, gpu, [&](std::span<const FrameTask> tasks) {
         return gpu.decode(plan, tasks, dst, dst_size, stream, force_host);
     });
     // A failed read releases its target; wait for earlier GPU writes first.
