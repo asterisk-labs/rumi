@@ -115,6 +115,25 @@ WorkerState& worker_state() noexcept
 }
 #endif
 
+// Compile-time widths avoid a variable-size memcpy per sample.
+template <std::size_t N>
+void copy_samples(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
+                  const std::byte* plane, std::byte* dst) noexcept
+{
+    const std::size_t n = N ? N : bps;
+    const std::size_t sps = t.src_pixel_stride;
+    for (std::uint32_t row = 0; row < t.h; ++row) {
+        const std::byte* src = plane
+            + static_cast<std::size_t>(t.src_y + row) * src_pitch
+            + static_cast<std::size_t>(t.src_x) * sps;
+        std::byte* out = dst + static_cast<std::size_t>(row) * t.dst_pitch;
+        for (std::uint32_t col = 0; col < t.w; ++col) {
+            std::memcpy(out + static_cast<std::size_t>(col) * t.dst_pixel_stride,
+                        src + static_cast<std::size_t>(col) * sps, n);
+        }
+    }
+}
+
 // Copy a plane row-wise when pixels are contiguous, otherwise sample-wise.
 void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
                     const std::byte* plane, std::byte* dst) noexcept
@@ -132,15 +151,13 @@ void copy_one_plane(const FrameTask& t, std::size_t bps, std::size_t src_pitch,
         return;
     }
 
-    for (std::uint32_t row = 0; row < t.h; ++row) {
-        const std::byte* src = plane
-            + static_cast<std::size_t>(t.src_y + row) * src_pitch
-            + static_cast<std::size_t>(t.src_x) * sps;
-        std::byte* out = dst + static_cast<std::size_t>(row) * t.dst_pitch;
-        for (std::uint32_t col = 0; col < t.w; ++col) {
-            std::memcpy(out + static_cast<std::size_t>(col) * t.dst_pixel_stride,
-                        src + static_cast<std::size_t>(col) * sps, bps);
-        }
+    switch (bps) {
+    case 1:  return copy_samples<1>(t, bps, src_pitch, plane, dst);
+    case 2:  return copy_samples<2>(t, bps, src_pitch, plane, dst);
+    case 4:  return copy_samples<4>(t, bps, src_pitch, plane, dst);
+    case 8:  return copy_samples<8>(t, bps, src_pitch, plane, dst);
+    case 16: return copy_samples<16>(t, bps, src_pitch, plane, dst);
+    default: return copy_samples<0>(t, bps, src_pitch, plane, dst);
     }
 }
 

@@ -8,6 +8,8 @@ Notable user-visible changes are recorded here.
 
 - A CPU read with no remote frames no longer copies its task list, and a wave
   of completed remote frames reaches the decoder without a copy.
+- Reads whose frames or output interleave samples, such as `pattern="y x b"`,
+  copy each sample with a fixed-width move instead of a `memcpy` call.
 
 ### Fixed
 
