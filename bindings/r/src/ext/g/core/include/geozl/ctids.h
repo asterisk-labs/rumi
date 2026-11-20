@@ -25,6 +25,11 @@ typedef enum {
   GEOZL_CTID_QUANT_SQRT = 0x72D783,
 } GeozlCtid;
 
+// The retired ids above. The decoder registry fails to compile when a codec
+// takes one.
+#define GEOZL_CTID_RETIRED(X)                                                  \
+  X(0x72D708) X(0x72D709) X(0x72D70A) X(0x72D70B) X(0x72D70E) X(0x72D780)
+
 #define GEOZL_CTID_FIRST 0x72D700
 #define GEOZL_CTID_LOSSLESS_LAST 0x72D77F
 #define GEOZL_CTID_LAST 0x72D7FF

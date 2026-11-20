@@ -22,8 +22,11 @@
 #include "common/graph_num1to1.h"            // GEOZL_PARAM_WIDTH
 #include "common/recipe_parse.h"             // geozl_recipe_fail
 #include "lossy/lossy_node.h"                // geozl_lossy_plan
-#include "quant_log/graph_quant_log.h"   // QUANT_LOG_PARAM_*
-#include "quant_sqrt/graph_quant_sqrt.h" // QUANT_SQRT_PARAM_*
+#include "quant_linear/quant_linear_check.h" // quant_linear_params_ok
+#include "quant_log/graph_quant_log.h"       // QUANT_LOG_PARAM_*
+#include "quant_log/quant_log_check.h"       // quant_log_params_ok
+#include "quant_sqrt/graph_quant_sqrt.h"     // QUANT_SQRT_PARAM_*
+#include "quant_sqrt/quant_sqrt_check.h"     // quant_sqrt_params_ok
 
 #include "openzl/zl_compressor.h"
 #include "openzl/zl_ctransform.h"
@@ -31,11 +34,18 @@
 
 #include <string.h>
 
+// OpenZL dereferences the compressor, so a NULL one is refused here.
+static ZL_NodeID register_encoder(ZL_Compressor *c,
+                                  const ZL_TypedEncoderDesc *desc) {
+  return c == NULL ? ZL_NODE_ILLEGAL
+                   : ZL_Compressor_registerTypedEncoder(c, desc);
+}
+
 // Register a predictor and attach the geometry it reads.
 static ZL_NodeID geometry_node(ZL_Compressor *c,
                                const ZL_TypedEncoderDesc *desc, uint32_t width,
                                uint32_t planes) {
-  ZL_NodeID base = ZL_Compressor_registerTypedEncoder(c, desc);
+  ZL_NodeID base = register_encoder(c, desc);
   if (!ZL_NodeID_isValid(base))
     return base;
   const ZL_IntParam ip[2] = {
@@ -92,7 +102,7 @@ ZL_NodeID geozl_node_planar_zigzag_lanes(ZL_Compressor *c,
 
 ZL_NodeID geozl_node_lanes(ZL_Compressor *c) {
   const ZL_TypedEncoderDesc desc = EI_LANES(GEOZL_CTID_LANES);
-  return ZL_Compressor_registerTypedEncoder(c, &desc);
+  return register_encoder(c, &desc);
 }
 ZL_NodeID geozl_node_med(ZL_Compressor *c, uint32_t width,
                             uint32_t planes) {
@@ -117,12 +127,12 @@ ZL_NodeID geozl_node_wp_static(ZL_Compressor *c, uint32_t width,
 
 ZL_NodeID geozl_node_deinterleave(ZL_Compressor *c) {
   const ZL_TypedEncoderDesc desc = EI_DEINTERLEAVE(GEOZL_CTID_DEINTERLEAVE);
-  return ZL_Compressor_registerTypedEncoder(c, &desc);
+  return register_encoder(c, &desc);
 }
 
 ZL_NodeID geozl_node_pfor(ZL_Compressor *c) {
   const ZL_TypedEncoderDesc desc = EI_PFOR(GEOZL_CTID_PFOR);
-  return ZL_Compressor_registerTypedEncoder(c, &desc);
+  return register_encoder(c, &desc);
 }
 
 ZL_NodeID geozl_node_nodata(ZL_Compressor *c, uint32_t width,
@@ -135,7 +145,7 @@ ZL_NodeID geozl_node_nodata(ZL_Compressor *c, uint32_t width,
   if (guard && !GEOZL_DT_OK(dtype))
     return ZL_NODE_ILLEGAL;
   const ZL_TypedEncoderDesc desc = EI_NODATA(GEOZL_CTID_NODATA);
-  ZL_NodeID base = ZL_Compressor_registerTypedEncoder(c, &desc);
+  ZL_NodeID base = register_encoder(c, &desc);
   if (!ZL_NodeID_isValid(base))
     return base;
   // The pattern is 8 bytes whatever the sample width, a copy param rather than
@@ -166,11 +176,15 @@ ZL_NodeID geozl_node_nodata(ZL_Compressor *c, uint32_t width,
   return ZL_RES_isError(r) ? ZL_NODE_ILLEGAL : ZL_RES_value(r);
 }
 
+// The quantizers refuse what their kernels would, so bad input fails here and
+// not as a GENERIC error once compression runs.
 ZL_NodeID geozl_node_quant_linear(ZL_Compressor *c,
                                   const quant_linear_params *params,
                                   int dtype) {
+  if (c == NULL || !quant_linear_params_ok(params, dtype))
+    return ZL_NODE_ILLEGAL;
   const ZL_TypedEncoderDesc desc = EI_QUANT_LINEAR(GEOZL_CTID_QUANT_LINEAR);
-  ZL_NodeID base = ZL_Compressor_registerTypedEncoder(c, &desc);
+  ZL_NodeID base = register_encoder(c, &desc);
   if (!ZL_NodeID_isValid(base))
     return base;
   const ZL_IntParam ip = {.paramId = QUANT_LINEAR_PARAM_DTYPE,
@@ -189,8 +203,10 @@ ZL_NodeID geozl_node_quant_linear(ZL_Compressor *c,
 
 ZL_NodeID geozl_node_quant_log(ZL_Compressor *c, const quant_log_params *params,
                                int dtype) {
+  if (c == NULL || !quant_log_params_ok(params, dtype))
+    return ZL_NODE_ILLEGAL;
   const ZL_TypedEncoderDesc desc = EI_QUANT_LOG(GEOZL_CTID_QUANT_LOG);
-  ZL_NodeID base = ZL_Compressor_registerTypedEncoder(c, &desc);
+  ZL_NodeID base = register_encoder(c, &desc);
   if (!ZL_NodeID_isValid(base))
     return base;
   const ZL_IntParam ip = {.paramId = QUANT_LOG_PARAM_DTYPE,
@@ -209,8 +225,10 @@ ZL_NodeID geozl_node_quant_log(ZL_Compressor *c, const quant_log_params *params,
 
 ZL_NodeID geozl_node_quant_sqrt(ZL_Compressor *c,
                                 const quant_sqrt_params *params, int dtype) {
+  if (c == NULL || !quant_sqrt_params_ok(params, dtype))
+    return ZL_NODE_ILLEGAL;
   const ZL_TypedEncoderDesc desc = EI_QUANT_SQRT(GEOZL_CTID_QUANT_SQRT);
-  ZL_NodeID base = ZL_Compressor_registerTypedEncoder(c, &desc);
+  ZL_NodeID base = register_encoder(c, &desc);
   if (!ZL_NodeID_isValid(base))
     return base;
   const ZL_IntParam ip = {.paramId = QUANT_SQRT_PARAM_DTYPE,

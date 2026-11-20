@@ -19,22 +19,29 @@ ZL_Report DI_geozl_lanes(ZL_Decoder *decoder,
   const ZL_Input *bitsIn = inputs[1];
   assert(ZL_Input_type(weightsIn) == ZL_Type_numeric);
   assert(ZL_Input_type(bitsIn) == ZL_Type_serial);
-  if (ZL_Input_eltWidth(weightsIn) != 1 || ZL_Input_eltWidth(bitsIn) != 1)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+  if (ZL_Input_eltWidth(weightsIn) != 1)
+    ZL_ERR(corruption, "weights are %zu bytes wide, not 1",
+           ZL_Input_eltWidth(weightsIn));
+  if (ZL_Input_eltWidth(bitsIn) != 1)
+    ZL_ERR(corruption, "payload is %zu bytes wide, not 1",
+           ZL_Input_eltWidth(bitsIn));
 
   const ZL_RBuffer encoded = ZL_Decoder_getCodecHeader(decoder);
   if (encoded.size < LANES_HEADER_FIXED)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "header is %zu bytes, under %d", encoded.size,
+           LANES_HEADER_FIXED);
   const uint8_t *headerBytes = encoded.start;
   const size_t width = headerBytes[8];
-  if (!geozl_pivco_lanes_width_ok(width) ||
-      encoded.size !=
-          LANES_HEADER_FIXED + width * GEOZL_PIVCO_LANE_HEADER_SIZE)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+  if (!geozl_pivco_lanes_width_ok(width))
+    ZL_ERR(corruption, "elements are %zu bytes wide", width);
+  if (encoded.size != LANES_HEADER_FIXED + width * GEOZL_PIVCO_LANE_HEADER_SIZE)
+    ZL_ERR(corruption, "header is %zu bytes for %zu lanes", encoded.size,
+           width);
 
   const uint64_t encodedCount = geozl_ld_le64(headerBytes);
   if (encodedCount > SIZE_MAX || encodedCount > SIZE_MAX / width)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "%llu elements overflow size_t",
+           (unsigned long long)encodedCount);
   const size_t count = (size_t)encodedCount;
   const size_t blockSize = geozl_ld_le32(headerBytes + 9);
   const uint8_t *weights = ZL_Input_ptr(weightsIn);
@@ -44,7 +51,7 @@ ZL_Report DI_geozl_lanes(ZL_Decoder *decoder,
           &header, headerBytes + LANES_HEADER_FIXED,
           encoded.size - LANES_HEADER_FIXED, count, width, blockSize,
           weights, ZL_Input_numElts(weightsIn), ZL_Input_numElts(bitsIn)) != 0)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "lane records do not fit the streams");
 
   ZL_Output *output = ZL_Decoder_create1OutStream(decoder, count, width);
   ZL_ERR_IF_NULL(output, allocation);
@@ -60,7 +67,7 @@ ZL_Report DI_geozl_lanes(ZL_Decoder *decoder,
   if (ZL_isError(report))
     return report;
   if (lanes_join(ZL_Output_ptr(output), lanes, count, width) != 0)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "%zu lanes do not join", width);
   ZL_ERR_IF_ERR(ZL_Output_commit(output, count));
   return ZL_returnSuccess();
 }

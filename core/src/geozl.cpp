@@ -264,14 +264,12 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
     std::unique_ptr<GeozlGraph> out(new GeozlGraph(dtype, sample_bytes));
     out->error_ = std::move(*recipe);
     out->method_ = method;
-    // OpenZL wants a pointer even for an empty stream.
-    static const std::uint64_t empty = 0;
     char message[GEOZL_MESSAGE_BYTES] = {};
     geozl_2d_graph_s* graph = nullptr;
     const int rc = geozl_2d_graph_open_c(
         &graph, method, width, planes,
         out->error_.empty() ? nullptr : out->error_.c_str(), code < 0 ? 0 : code,
-        mode, bits, n_bytes ? raster : &empty, samples, sample_bytes, message,
+        mode, bits, raster, samples, sample_bytes, message,
         sizeof message);
     out->graph_.reset(graph);
     if (rc != 0) {
@@ -310,14 +308,13 @@ GeozlGraph::compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
     auto* frame = static_cast<unsigned char*>(std::malloc(capacity));
     if (!frame) return fail(RUMI_ERR_OOM, "allocation failed");
 
-    static const std::uint64_t empty = 0;
     char message[GEOZL_MESSAGE_BYTES] = {};
     std::size_t size = 0;
     int rc;
     {
         const std::lock_guard lock(mutex_);
         rc = geozl_2d_compress_graph_c(
-            graph_.get(), n_bytes ? tile : &empty, n_bytes / sample_bytes_, frame,
+            graph_.get(), tile, n_bytes / sample_bytes_, frame,
             capacity, &size, message, sizeof message);
     }
     if (rc != 0) {

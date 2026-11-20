@@ -8,7 +8,7 @@ ZL_Report EI_geozl_quant_linear(ZL_Encoder *eictx, const ZL_Input *in);
 
 #define EI_QUANT_LINEAR(id)                                                    \
   {                                                                            \
-    .gd = QUANT_LINEAR_GRAPH, .transform_f = EI_geozl_quant_linear,            \
+    .gd = QUANT_LINEAR_GRAPH(id), .transform_f = EI_geozl_quant_linear,        \
     .name = "geozl.lossy.quant_linear",                                        \
   }
 

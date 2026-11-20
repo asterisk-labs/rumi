@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// An OpenZL numeric stream is 1, 2, 4 or 8 bytes per element.
+static inline int geozl_elt_width_ok(size_t eltWidth) {
+  return eltWidth == 1 || eltWidth == 2 || eltWidth == 4 || eltWidth == 8;
+}
+
 // Return width when it tiles nbElts, otherwise 0.
 static inline size_t geozl_row_width(size_t width, size_t nbElts) {
   if (nbElts == 0)

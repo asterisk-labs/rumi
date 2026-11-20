@@ -3,6 +3,8 @@
 #ifndef GEOZL_COMMON_RECIPE_PARSE_H
 #define GEOZL_COMMON_RECIPE_PARSE_H
 
+#include "common/printf_attr.h"
+
 #include <errno.h>
 #include <float.h>
 #include <locale.h>
@@ -12,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+GEOZL_PRINTF(3, 4)
 static inline int geozl_recipe_fail(char *err, size_t errSize, const char *fmt,
                                     ...) {
   if (err != NULL && errSize != 0) {

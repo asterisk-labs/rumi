@@ -8,6 +8,7 @@
 #include "openzl/zl_output.h"
 
 #include "common/endian.h"
+#include "common/raster.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -22,20 +23,25 @@ ZL_Report DI_geozl_nodata(ZL_Decoder *dictx, const ZL_Input *ins[]) {
   assert(ZL_Input_type(mask) == ZL_Type_numeric);
 
   const size_t eltWidth = ZL_Input_eltWidth(vals);
-  if (eltWidth != 1 && eltWidth != 2 && eltWidth != 4 && eltWidth != 8)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+  if (!geozl_elt_width_ok(eltWidth))
+    ZL_ERR(corruption, "values are %zu bytes wide", eltWidth);
   if (ZL_Input_eltWidth(mask) != 1)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "mask is %zu bytes wide, not 1",
+           ZL_Input_eltWidth(mask));
 
   // Header length distinguishes the plain and guarded forms.
   ZL_RBuffer header = ZL_Decoder_getCodecHeader(dictx);
   const int guarded = header.size == 4 * eltWidth;
   if (header.size != eltWidth && !guarded)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "header is %zu bytes, not %zu or %zu", header.size,
+           eltWidth, 4 * eltWidth);
 
   const size_t nbElts = ZL_Input_numElts(vals);
-  if (nbElts == 0 || ZL_Input_numElts(mask) != nbElts)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+  if (nbElts == 0)
+    ZL_ERR(corruption, "values stream is empty");
+  if (ZL_Input_numElts(mask) != nbElts)
+    ZL_ERR(corruption, "mask of %zu for %zu values", ZL_Input_numElts(mask),
+           nbElts);
   const uint8_t *h = (const uint8_t *)header.start;
   const uint64_t pattern = geozl_ld_le(h, eltWidth);
 
@@ -49,7 +55,8 @@ ZL_Report DI_geozl_nodata(ZL_Decoder *dictx, const ZL_Input *ins[]) {
     if (nodata_restore_guarded(ZL_Output_ptr(out), ZL_Input_ptr(vals),
                                ZL_Input_ptr(mask), nbElts, eltWidth, pattern,
                                repl) != 0)
-      return ZL_returnError(ZL_ErrorCode_corruption);
+      ZL_ERR(corruption,
+             "mask holds a code above 3 or one with no replacement");
   } else {
     nodata_restore(ZL_Output_ptr(out), ZL_Input_ptr(vals), ZL_Input_ptr(mask),
                    nbElts, eltWidth, pattern);

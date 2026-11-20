@@ -21,10 +21,10 @@ typedef enum {
 #define GEOZL_DT_LAST_INT GEOZL_DT_I64
 #define GEOZL_DT_OK(d) ((d) >= GEOZL_DT_U8 && (d) <= GEOZL_DT_F64)
 
-// dtype must satisfy GEOZL_DT_OK.
+// 0 for a code outside geozl_dtype.
 static inline size_t geozl_dtype_width(int dtype) {
   static const size_t w[] = {1, 2, 4, 8, 1, 2, 4, 8, 2, 4, 8};
-  return w[dtype];
+  return GEOZL_DT_OK(dtype) ? w[dtype] : 0;
 }
 
 #endif // GEOZL_DTYPE_H

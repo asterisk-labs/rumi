@@ -2453,6 +2453,20 @@ void test_geozl_c_api()
     EQ(rumi_geozl_compress(graph, RUMI_DT_UINT16, tile.data(), bytes - 1, &out,
                            &out_size), RUMI_ERR_INVALID);
     OK(out == nullptr);
+
+    CASE("GeoZL refuses a partial row and a misaligned tile as invalid input")
+    EQ(rumi_geozl_compress(graph, RUMI_DT_UINT16, tile.data(), 40 * 2, &out,
+                           &out_size), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(),
+                   ": 40 samples do not divide into rows of 16 (ZL error code 21)")
+       != nullptr);
+    std::vector<unsigned char> shifted(bytes + 1);
+    std::memcpy(shifted.data() + 1, tile.data(), bytes);
+    EQ(rumi_geozl_compress(graph, RUMI_DT_UINT16, shifted.data() + 1, bytes, &out,
+                           &out_size), RUMI_ERR_INVALID);
+    OK(std::strstr(rumi_last_error(), "src is not aligned to its 2-byte samples")
+       != nullptr);
+    OK(out == nullptr);
     rumi_geozl_graph_close(graph);
     rumi_geozl_graph_close(nullptr);
 

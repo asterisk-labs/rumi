@@ -617,7 +617,7 @@ void rumi_geozl_graph_close(rumi_geozl_graph* graph);</code></pre>
 <pre><code class="sig language-c">rumi_status rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
                                 const void* tile, size_t n_bytes,
                                 unsigned char** out_frame, size_t* out_size);</code></pre>
-      <p>Compresses one tile of the graph's dtype. Its geometry is not checked against the graph. A bounded tile outside the graph's domain is refused, and so is a <code>bool</code> tile holding a byte other than 0 or 1, which a read would refuse. <code>*out_frame</code> holds <code>*out_size</code> bytes the caller releases with <code>rumi_free</code>.</p>
+      <p>Compresses one tile of the graph's dtype, aligned to its samples. Its shape is not checked against the graph, but a row predictor refuses a tile longer than one row that is not whole rows of the graph's width. A bounded tile outside the graph's domain is refused, and so is a <code>bool</code> tile holding a byte other than 0 or 1, which a read would refuse. <code>*out_frame</code> holds <code>*out_size</code> bytes the caller releases with <code>rumi_free</code>.</p>
 <pre><code class="language-c">rumi_geozl_graph* graph = NULL;
 if (rumi_geozl_graph_open("planar&gt;zigzag&gt;pfor", RUMI_DT_UINT16, tile, tile_bytes,
                           256, 4, NULL, NULL, &amp;graph) != RUMI_OK) {

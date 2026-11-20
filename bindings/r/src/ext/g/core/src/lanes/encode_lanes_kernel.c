@@ -1,5 +1,7 @@
 #include "encode_lanes_kernel.h"
 
+#include "common/raster.h"
+
 #include <string.h>
 
 #define SPLIT_LANES(T)                                                         \
@@ -15,8 +17,7 @@
 
 int lanes_split(uint8_t *lanes, const void *src, size_t count,
                 size_t width) {
-  if (lanes == NULL || src == NULL || count == 0 ||
-      (width != 1 && width != 2 && width != 4 && width != 8))
+  if (lanes == NULL || src == NULL || count == 0 || !geozl_elt_width_ok(width))
     return 1;
   switch (width) {
   case 1:

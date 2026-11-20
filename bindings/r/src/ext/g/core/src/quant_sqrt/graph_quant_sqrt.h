@@ -4,10 +4,7 @@
 #ifndef GEOZL_CODECS_QUANT_SQRT_GRAPH_H
 #define GEOZL_CODECS_QUANT_SQRT_GRAPH_H
 
-#include "geozl/ctids.h"    // GEOZL_CTID_QUANT_SQRT
 #include "openzl/zl_data.h" // ZL_Type_*, ZL_STREAMTYPELIST
-
-#define QUANT_SQRT_CTID GEOZL_CTID_QUANT_SQRT
 
 // dtype is an int param. The parameters hold two doubles, so they ride in a copy
 // param rather than an int param that would truncate them. Int and copy ids are
@@ -15,9 +12,9 @@
 #define QUANT_SQRT_PARAM_DTYPE 1
 #define QUANT_SQRT_PARAM_PARAMS 1
 
-#define QUANT_SQRT_GRAPH                                                       \
+#define QUANT_SQRT_GRAPH(id)                                                   \
   {                                                                            \
-    .CTid = QUANT_SQRT_CTID, .inStreamType = ZL_Type_numeric,                  \
+    .CTid = (id), .inStreamType = ZL_Type_numeric,                             \
     .outStreamTypes = ZL_STREAMTYPELIST(ZL_Type_numeric)                       \
   }
 

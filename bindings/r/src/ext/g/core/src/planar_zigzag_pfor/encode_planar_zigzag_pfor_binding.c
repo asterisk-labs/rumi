@@ -8,8 +8,7 @@
 #include "openzl/zl_output.h"
 
 #include "common/endian.h"
-#include "common/graph_num1to1.h"
-#include "common/raster.h"
+#include "common/predictor_binding.h"
 #include "pfor/pfor_check.h"
 
 #include <assert.h>
@@ -26,15 +25,8 @@ ZL_Report EI_geozl_planar_zigzag_pfor(ZL_Encoder *eictx,
   if (!geozl_pfor_width_ok(eltWidth))
     return ZL_returnError(ZL_ErrorCode_node_invalid_input);
 
-  ZL_IntParam wp = ZL_Encoder_getLocalIntParam(eictx, GEOZL_PARAM_WIDTH);
-  const uint32_t width = geozl_row_width_declared(
-      (wp.paramId == GEOZL_PARAM_WIDTH) ? (uint32_t)wp.paramValue
-                                        : (uint32_t)nbElts,
-      nbElts);
-  ZL_IntParam pp = ZL_Encoder_getLocalIntParam(eictx, GEOZL_PARAM_PLANES);
-  const uint32_t planes = geozl_planes_declared(
-      (pp.paramId == GEOZL_PARAM_PLANES) ? (uint32_t)pp.paramValue : 1u, width,
-      nbElts);
+  uint32_t width, planes;
+  geozl_param_geometry(eictx, nbElts, &width, &planes);
 
   uint8_t header[PLANAR_ZIGZAG_PFOR_HEADER_SIZE];
   geozl_st_le64(header, (uint64_t)nbElts);

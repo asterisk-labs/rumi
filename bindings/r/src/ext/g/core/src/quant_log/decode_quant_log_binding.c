@@ -28,7 +28,8 @@ ZL_Report DI_geozl_quant_log(ZL_Decoder *dictx, const ZL_Input *ins[]) {
 
   ZL_RBuffer header = ZL_Decoder_getCodecHeader(dictx);
   if (header.size != QUANT_LOG_HEADER_SIZE)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "header is %zu bytes, not %d", header.size,
+           QUANT_LOG_HEADER_SIZE);
   const uint8_t *hb = (const uint8_t *)header.start;
   const int dtype = (int)hb[0];
   quant_log_params p;
@@ -38,19 +39,22 @@ ZL_Report DI_geozl_quant_log(ZL_Decoder *dictx, const ZL_Input *ins[]) {
 
   // dtype comes from the header, so check it names a real type of the stream
   // width before anything reads at it.
-  if (!QLOG_DTYPE_OK(dtype) || quant_log_width(dtype) != eltWidth)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+  if (!QLOG_DTYPE_OK(dtype))
+    ZL_ERR(corruption, "dtype %d is unknown", dtype);
+  if (quant_log_width(dtype) != eltWidth)
+    ZL_ERR(corruption, "dtype %d is not %zu bytes wide", dtype, eltWidth);
 
   // The same predicate both kernels read. Nothing it refuses comes out of the
   // encoder, only out of a damaged frame.
   if (!quant_log_params_ok(&p, dtype))
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "flags %u, step %g are invalid for dtype %d",
+           (unsigned)p.flags, p.step, dtype);
 
   ZL_Output *out = ZL_Decoder_create1OutStream(dictx, nbElts, eltWidth);
   ZL_ERR_IF_NULL(out, allocation);
   if (quant_log_decode(ZL_Output_ptr(out), ZL_Input_ptr(in), &p, dtype,
                        nbElts) != 0)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "kernel refused dtype %d", dtype);
 
   ZL_ERR_IF_ERR(ZL_Output_commit(out, nbElts));
   return ZL_returnSuccess();

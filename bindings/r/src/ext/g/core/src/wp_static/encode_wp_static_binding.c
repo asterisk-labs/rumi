@@ -1,6 +1,7 @@
 #include "encode_wp_static_binding.h"
 #include "encode_wp_static_kernel.h"
 #include "train_wp_static.h"
+#include "wp_static_header.h"
 
 #include "openzl/zl_data.h"
 #include "openzl/zl_errors.h"
@@ -9,11 +10,10 @@
 #include "openzl/zl_output.h"
 
 #include "common/endian.h"
-#include "common/raster.h"
+#include "common/predictor_binding.h"
 
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
 
 ZL_Report EI_geozl_wp_static(ZL_Encoder *eictx, const ZL_Input *in) {
   ZL_RESULT_DECLARE_SCOPE_REPORT(eictx);
@@ -22,18 +22,8 @@ ZL_Report EI_geozl_wp_static(ZL_Encoder *eictx, const ZL_Input *in) {
 
   const size_t eltWidth = ZL_Input_eltWidth(in);
   const size_t nbElts = ZL_Input_numElts(in);
-
-  ZL_IntParam wp = ZL_Encoder_getLocalIntParam(eictx, GEOZL_PARAM_WIDTH);
-  const uint32_t width = geozl_row_width_declared(
-      (wp.paramId == GEOZL_PARAM_WIDTH) ? (uint32_t)wp.paramValue
-                                        : (uint32_t)nbElts,
-      nbElts);
-
-  // one plane unless the graph builder says otherwise
-  ZL_IntParam pp = ZL_Encoder_getLocalIntParam(eictx, GEOZL_PARAM_PLANES);
-  const uint32_t planes = geozl_planes_declared(
-      (pp.paramId == GEOZL_PARAM_PLANES) ? (uint32_t)pp.paramValue : 1u, width,
-      nbElts);
+  uint32_t width, planes;
+  geozl_param_geometry(eictx, nbElts, &width, &planes);
 
   // the weights are fit to this tile, then carried to the decoder in the header
   int16_t coeffs[4];
@@ -55,14 +45,12 @@ ZL_Report EI_geozl_wp_static(ZL_Encoder *eictx, const ZL_Input *in) {
     }
   }
 
-  // header, little endian: uint32 width, uint8 shift, four int16
-  // {cN,cNW,cNE,cNN}, then the plane count when above one
-  uint8_t header[4 + 1 + 4 * 2 + 4];
+  uint8_t header[WP_STATIC_HEADER_MAX];
   geozl_st_le32(header, width);
   header[4] = shift;
   for (int i = 0; i < 4; ++i)
     geozl_st_le_i16(header + 5 + 2 * i, coeffs[i]);
-  size_t headerSize = 4 + 1 + 4 * 2;
+  size_t headerSize = WP_STATIC_HEADER_SIZE;
   if (planes > 1) {
     geozl_st_le32(header + headerSize, planes);
     headerSize += 4;

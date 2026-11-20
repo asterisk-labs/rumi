@@ -47,7 +47,7 @@ ZL_Report EI_geozl_quant_log(ZL_Encoder *eictx, const ZL_Input *in) {
   // recipe the caller has to loosen.
   if (quant_log_encode(ZL_Output_ptr(out), ZL_Input_ptr(in), &p, dtype,
                        nbElts) != 0)
-    ZL_ERR(GENERIC, "quant_log resolved parameters its own kernels reject");
+    ZL_ERR(GENERIC, "quant_log refused parameters its builder accepted");
 
   uint8_t header[QUANT_LOG_HEADER_SIZE];
   header[0] = (uint8_t)dtype;

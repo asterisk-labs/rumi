@@ -1,6 +1,8 @@
 #ifndef GEOZL_CODECS_PIVCO_LANES_H
 #define GEOZL_CODECS_PIVCO_LANES_H
 
+#include "common/raster.h"
+
 #include "openzl/zl_ctransform.h"
 #include "openzl/zl_dtransform.h"
 
@@ -28,7 +30,9 @@ typedef struct {
   size_t bitsSize;
 } GeozlPivcoLanes;
 
-int geozl_pivco_lanes_width_ok(size_t width);
+static inline int geozl_pivco_lanes_width_ok(size_t width) {
+  return geozl_elt_width_ok(width);
+}
 
 static inline int geozl_pivco_lanes_size_ok(size_t count, size_t width) {
   return geozl_pivco_lanes_width_ok(width) &&

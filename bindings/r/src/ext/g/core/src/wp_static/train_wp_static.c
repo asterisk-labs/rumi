@@ -8,7 +8,7 @@
 
 #include "train_wp_static.h"
 
-#include "common/raster.h" // geozl_row_width
+#include "common/raster.h" // geozl_elt_width_ok, geozl_row_width
 
 #include <math.h>
 #include <stdlib.h>
@@ -188,7 +188,7 @@ int wp_static_train(int16_t coeffs[4], uint8_t *shift, const void *src,
   coeffs[3] = 0;
   *shift = 0;
 
-  if (elt_width != 1 && elt_width != 2 && elt_width != 4 && elt_width != 8)
+  if (!geozl_elt_width_ok(elt_width))
     return 1;
   // covers nb_elts == 0 and a width that does not divide it
   const size_t w = geozl_row_width(width, nb_elts);

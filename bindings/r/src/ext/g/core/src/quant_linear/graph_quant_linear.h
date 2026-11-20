@@ -4,10 +4,7 @@
 #ifndef GEOZL_CODECS_QUANT_LINEAR_GRAPH_H
 #define GEOZL_CODECS_QUANT_LINEAR_GRAPH_H
 
-#include "geozl/ctids.h"    // GEOZL_CTID_QUANT_LINEAR
 #include "openzl/zl_data.h" // ZL_Type_*, ZL_STREAMTYPELIST
-
-#define QUANT_LINEAR_CTID GEOZL_CTID_QUANT_LINEAR
 
 // dtype is an int param. The parameters hold a double, so they ride in a copy
 // param rather than an int param that would truncate it. Int and copy ids are
@@ -15,9 +12,9 @@
 #define QUANT_LINEAR_PARAM_DTYPE 1
 #define QUANT_LINEAR_PARAM_PARAMS 1
 
-#define QUANT_LINEAR_GRAPH                                                     \
+#define QUANT_LINEAR_GRAPH(id)                                                 \
   {                                                                            \
-    .CTid = QUANT_LINEAR_CTID, .inStreamType = ZL_Type_numeric,                \
+    .CTid = (id), .inStreamType = ZL_Type_numeric,                             \
     .outStreamTypes = ZL_STREAMTYPELIST(ZL_Type_numeric)                       \
   }
 

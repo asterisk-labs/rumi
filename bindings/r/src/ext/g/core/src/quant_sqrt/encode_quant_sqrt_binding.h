@@ -8,7 +8,7 @@ ZL_Report EI_geozl_quant_sqrt(ZL_Encoder *eictx, const ZL_Input *in);
 
 #define EI_QUANT_SQRT(id)                                                      \
   {                                                                            \
-    .gd = QUANT_SQRT_GRAPH, .transform_f = EI_geozl_quant_sqrt,                \
+    .gd = QUANT_SQRT_GRAPH(id), .transform_f = EI_geozl_quant_sqrt,            \
     .name = "geozl.lossy.quant_sqrt",                                          \
   }
 

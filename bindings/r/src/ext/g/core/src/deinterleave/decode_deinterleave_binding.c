@@ -21,11 +21,12 @@ ZL_Report DI_geozl_deinterleave(ZL_Decoder *dictx, const ZL_Input *ins[]) {
   const size_t eltWidth = ZL_Input_eltWidth(s0);
   // the two lanes must share a width and differ by at most one element
   if (ZL_Input_eltWidth(s1) != eltWidth)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "lanes are %zu and %zu bytes wide", eltWidth,
+           ZL_Input_eltWidth(s1));
   const size_t n0 = ZL_Input_numElts(s0);
   const size_t n1 = ZL_Input_numElts(s1);
   if (n0 != n1 && n0 != n1 + 1)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "lanes of %zu and %zu samples", n0, n1);
   const size_t nbElts = n0 + n1;
 
   ZL_Output *out = ZL_Decoder_create1OutStream(dictx, nbElts, eltWidth);

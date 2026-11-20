@@ -26,7 +26,7 @@ ZL_Report DI_geozl_delta_w(ZL_Decoder *dictx, const ZL_Input *ins[]) {
   // the width is carried in the codec header, written by the encoder
   ZL_RBuffer header = ZL_Decoder_getCodecHeader(dictx);
   if (header.size != 4)
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "header is %zu bytes, not 4", header.size);
   const uint32_t width = geozl_ld_le32((const uint8_t *)header.start);
 
   ZL_Output *out = ZL_Decoder_create1OutStream(dictx, nbElts, eltWidth);
@@ -35,7 +35,7 @@ ZL_Report DI_geozl_delta_w(ZL_Decoder *dictx, const ZL_Input *ins[]) {
   // nbElts 0 is a valid empty stream, the kernel rejects it as a geometry
   if (nbElts != 0 && delta_w_decode(ZL_Output_ptr(out), ZL_Input_ptr(in), width,
                                     nbElts, eltWidth))
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "%zu samples are not rows of %u", nbElts, width);
 
   ZL_ERR_IF_ERR(ZL_Output_commit(out, nbElts));
   return ZL_returnSuccess();

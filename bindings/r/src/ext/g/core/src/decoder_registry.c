@@ -18,37 +18,58 @@
 #include "quant_sqrt/decode_quant_sqrt_binding.h"
 #include "wp_static/decode_wp_static_binding.h"
 
+#include "codec_list.h"
+
 #include "openzl/zl_dtransform.h"
 #include "openzl/zl_errors.h"
+#include "openzl/zl_portability.h" // ZL_UNUSED_ATTR
 
 #include <stddef.h>
-
-// Each row instantiates a codec's DI_ descriptor macro against its CTid.
-#define REGISTER(ctid, DI_MACRO) DI_MACRO(ctid)
+#include <stdint.h>
 
 // One table entry per codec, keyed by CTid. OpenZL copies the stream-type
 // arrays into its own arena when the decoder is registered, so this only needs
 // to live until geozl_register_decoders returns.
-static const ZL_TypedDecoderDesc kDecoders[] = {
-    REGISTER(GEOZL_CTID_DELTA_W, DI_DELTA_W),
-    REGISTER(GEOZL_CTID_DELTA_N, DI_DELTA_N),
-    REGISTER(GEOZL_CTID_PLANAR, DI_PLANAR),
-    REGISTER(GEOZL_CTID_PLANAR_ZIGZAG, DI_PLANAR_ZIGZAG),
-    REGISTER(GEOZL_CTID_PLANAR_ZIGZAG_PFOR, DI_PLANAR_ZIGZAG_PFOR),
-    REGISTER(GEOZL_CTID_PLANAR_ZIGZAG_LANES,
-             DI_PLANAR_ZIGZAG_LANES),
-    REGISTER(GEOZL_CTID_LANES, DI_LANES),
-    REGISTER(GEOZL_CTID_MED, DI_MED),
-    REGISTER(GEOZL_CTID_MED_ZIGZAG, DI_MED_ZIGZAG),
-    REGISTER(GEOZL_CTID_AVERAGE, DI_AVERAGE),
-    REGISTER(GEOZL_CTID_WP_STATIC, DI_WP_STATIC),
-    REGISTER(GEOZL_CTID_DEINTERLEAVE, DI_DEINTERLEAVE),
-    REGISTER(GEOZL_CTID_NODATA, DI_NODATA),
-    REGISTER(GEOZL_CTID_PFOR, DI_PFOR),
-    REGISTER(GEOZL_CTID_QUANT_LINEAR, DI_QUANT_LINEAR),
-    REGISTER(GEOZL_CTID_QUANT_LOG, DI_QUANT_LOG),
-    REGISTER(GEOZL_CTID_QUANT_SQRT, DI_QUANT_SQRT),
-};
+#define GEOZL_DECODER(NAME, LOSSY) DI_##NAME(GEOZL_CTID_##NAME),
+static const ZL_TypedDecoderDesc kDecoders[] = {GEOZL_CODECS(GEOZL_DECODER)};
+#undef GEOZL_DECODER
+
+// A lossy codec in the lossless band would make geozl_ctid_is_lossy lie.
+#define GEOZL_BAND(NAME, LOSSY)                                                \
+  _Static_assert(GEOZL_CTID_##NAME >= GEOZL_CTID_FIRST &&                      \
+                     GEOZL_CTID_##NAME <= GEOZL_CTID_LAST &&                   \
+                     (GEOZL_CTID_##NAME > GEOZL_CTID_LOSSLESS_LAST) ==         \
+                         (LOSSY),                                              \
+                 "GEOZL_CTID_" #NAME " is outside its band");
+GEOZL_CODECS(GEOZL_BAND)
+#undef GEOZL_BAND
+
+// Never called, the two switches are compile-time checks. -Wswitch names an
+// enumerator of ctids.h the list misses, which would otherwise leave its frames
+// without a decoder.
+#define GEOZL_CASE(NAME, LOSSY) case GEOZL_CTID_##NAME:
+static ZL_UNUSED_ATTR int geozl_ctid_listed(GeozlCtid ctid) {
+  switch (ctid) {
+    GEOZL_CODECS(GEOZL_CASE)
+    return 1;
+  }
+  return 0;
+}
+
+// OpenZL keeps the first decoder registered under a CTid and ignores the rest,
+// so a CTid listed twice, or a retired one taken again, is refused here as a
+// duplicate case.
+#define GEOZL_CASE_RETIRED(CTID) case CTID:
+static ZL_UNUSED_ATTR int geozl_ctid_unique(uint32_t ctid) {
+  switch (ctid) {
+    GEOZL_CODECS(GEOZL_CASE)
+    GEOZL_CTID_RETIRED(GEOZL_CASE_RETIRED)
+    return 1;
+  }
+  return 0;
+}
+#undef GEOZL_CASE_RETIRED
+#undef GEOZL_CASE
 
 ZL_Report geozl_register_decoders(ZL_DCtx *dctx) {
   for (size_t i = 0; i < sizeof(kDecoders) / sizeof(kDecoders[0]); ++i) {

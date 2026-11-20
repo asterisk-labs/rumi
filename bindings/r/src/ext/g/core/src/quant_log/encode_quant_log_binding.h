@@ -8,7 +8,7 @@ ZL_Report EI_geozl_quant_log(ZL_Encoder *eictx, const ZL_Input *in);
 
 #define EI_QUANT_LOG(id)                                                       \
   {                                                                            \
-    .gd = QUANT_LOG_GRAPH, .transform_f = EI_geozl_quant_log,                  \
+    .gd = QUANT_LOG_GRAPH(id), .transform_f = EI_geozl_quant_log,              \
     .name = "geozl.lossy.quant_log",                                           \
   }
 

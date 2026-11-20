@@ -1,6 +1,8 @@
 #ifndef GEOZL_CODECS_PFOR_CHECK_H
 #define GEOZL_CODECS_PFOR_CHECK_H
 
+#include "common/raster.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -17,7 +19,7 @@
 #define GEOZL_PFOR_MAX_ELTS_PER_BYTE (GEOZL_PFOR_BLOCK / 2)
 
 static inline int geozl_pfor_width_ok(size_t eltWidth) {
-  return eltWidth == 1 || eltWidth == 2 || eltWidth == 4 || eltWidth == 8;
+  return geozl_elt_width_ok(eltWidth);
 }
 
 static inline size_t geozl_pfor_body_bytes(unsigned b) {

@@ -48,7 +48,7 @@ ZL_Report EI_geozl_quant_sqrt(ZL_Encoder *eictx, const ZL_Input *in) {
   // recipe the caller has to loosen.
   if (quant_sqrt_encode(ZL_Output_ptr(out), ZL_Input_ptr(in), &p, dtype,
                         nbElts) != 0)
-    ZL_ERR(GENERIC, "quant_sqrt resolved parameters its own kernels reject");
+    ZL_ERR(GENERIC, "quant_sqrt refused parameters its builder accepted");
 
   uint8_t header[QUANT_SQRT_HEADER_SIZE];
   header[0] = (uint8_t)dtype;

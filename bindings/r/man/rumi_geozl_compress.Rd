@@ -7,8 +7,9 @@
 rumi_geozl_compress(x, graph)
 }
 \arguments{
-\item{x}{Tile samples, converted to the graph's dtype. Its geometry is
-not checked against the graph.}
+\item{x}{Tile samples, converted to the graph's dtype. Its shape is not
+checked against the graph, but a row predictor refuses a tile longer than
+one row that is not whole rows of the graph's width.}
 
 \item{graph}{A graph from \code{\link[=rumi_geozl_graph]{rumi_geozl_graph()}}.}
 }

@@ -29,9 +29,11 @@ GEOZL_API int geozl_owns_ctid(uint32_t ctid);
 // Return nonzero when ctid is in geozl's lossy range.
 GEOZL_API int geozl_ctid_is_lossy(uint32_t ctid);
 
-// Build encoder nodes. width is in samples. planes is the number of stacked
-// images; predictors that read the previous row reset between planes. Invalid
-// plane layouts are treated as one plane. Returns ZL_NODE_ILLEGAL on failure.
+// Build encoder nodes. width is in samples, and 0 or a width above the stream's
+// length is one row. A predictor fails to encode a stream of partial rows.
+// planes is the number of stacked images; predictors that read the previous row
+// reset between planes. Planes that do not split into whole rows are one
+// plane. Returns ZL_NODE_ILLEGAL on failure.
 GEOZL_API ZL_NodeID geozl_node_delta_w(ZL_Compressor *c, uint32_t width);
 GEOZL_API ZL_NodeID geozl_node_delta_n(ZL_Compressor *c, uint32_t width,
                                        uint32_t planes);
@@ -60,6 +62,8 @@ GEOZL_API ZL_NodeID geozl_node_deinterleave(ZL_Compressor *c);
 GEOZL_API ZL_NodeID geozl_node_pfor(ZL_Compressor *c);
 // Build a quantizer node from resolved parameters, the fields a frame header
 // carries. geozl_node_quant resolves them from a recipe.
+// Returns ZL_NODE_ILLEGAL when c or params is NULL, dtype is not a
+// geozl_dtype code, or params fail the check the codec's decoder applies.
 GEOZL_API ZL_NodeID geozl_node_quant_linear(ZL_Compressor *c,
                                             const quant_linear_params *params,
                                             int dtype);
@@ -84,7 +88,8 @@ GEOZL_API ZL_NodeID geozl_node_quant(ZL_Compressor *c, const char *error,
                                      char *errCtx, size_t errCtxSize);
 
 // Missing-data handling. NAN applies to floating-point data; VALUE uses the
-// caller-provided sentinel bits.
+// caller-provided sentinel bits. The geozl_2d_* calls refuse NAN with an
+// integer dtype and VALUE with a dtype whose width is not eltWidth.
 typedef enum {
   GEOZL_NODATA_NONE = 0,
   GEOZL_NODATA_NAN = 1,
@@ -110,8 +115,9 @@ GEOZL_API ZL_NodeID geozl_node_nodata(ZL_Compressor *c, uint32_t width,
 //
 // A SQRT recipe without A and B fits src. Supply both values to reuse one grid
 // across tiles. nodataBits contains the sentinel's low eltWidth bytes and is
-// read only for GEOZL_NODATA_VALUE.
-// Returns 0 on success; otherwise a ZL_ErrorCode with details in errCtx.
+// read only for GEOZL_NODATA_VALUE. src must be aligned to eltWidth and may be
+// NULL only when numElts is 0. Returns 0 on success; otherwise a ZL_ErrorCode
+// with a one-line message in errCtx and *outSize set to 0.
 GEOZL_API int geozl_2d_compress_c(const char *method, uint32_t width,
                                   uint32_t planes,
                                   const char *error, int dtype, int nodataMode,
@@ -125,9 +131,12 @@ GEOZL_API int geozl_2d_compress_c(const char *method, uint32_t width,
 // compression. That is a negative sample when src had none, a floating-point
 // sample whose magnitude exceeds src's largest magnitude under LINEAR, or a
 // value outside src's range under SQRT. Integer LINEAR and every LOG grid span
-// the whole dtype.
+// the whole dtype. A graph serves one call at a time; distinct graphs are
+// independent.
 typedef struct geozl_2d_graph_s geozl_2d_graph;
 
+// *out is NULL after a failure. src must be aligned to eltWidth and may be NULL
+// only when numElts is 0.
 GEOZL_API int geozl_2d_graph_open_c(geozl_2d_graph **out, const char *method,
                                     uint32_t width, uint32_t planes,
                                     const char *error,
@@ -137,7 +146,10 @@ GEOZL_API int geozl_2d_graph_open_c(geozl_2d_graph **out, const char *method,
                                     char *errCtx, size_t errCtxSize);
 
 // Compress one tile with an open graph. The element width comes from the graph.
-// A declared nodata value is excluded from the lossy domain check.
+// A declared nodata value is excluded from the lossy domain check. A predictor
+// that reads rows refuses a tile longer than one row that is not whole rows of
+// the graph's width. src must be aligned to the element width and may be NULL
+// only when numElts is 0, and *outSize is 0 after a failure.
 GEOZL_API int geozl_2d_compress_graph_c(geozl_2d_graph *g, const void *src,
                                         size_t numElts, void *dst,
                                         size_t dstCapacity, size_t *outSize,
@@ -158,14 +170,18 @@ GEOZL_API int geozl_2d_frame_dsize_c(const void *frame, size_t frameSize,
 GEOZL_API size_t geozl_2d_compress_bound_c(size_t srcSize, size_t coeffsSize);
 
 // Decompress a frame into dst. Set verify to 0 to skip checksum verification.
-// Returns 0 on success; otherwise a ZL_ErrorCode with details in errCtx.
+// dst must be aligned to the frame's element width, which the frame header does
+// not record, so the call cannot check it; 8 bytes always suffices.
+// Returns 0 on success; otherwise a ZL_ErrorCode with a one-line message in
+// errCtx and *outSize set to 0.
 GEOZL_API int geozl_2d_decompress_c(const void *frame, size_t frameSize,
                                     void *dst, size_t dstCapacity,
                                     size_t *outSize, int verify, char *errCtx,
                                     size_t errCtxSize);
 
 // Benchmark one graph for reps round trips. checksum controls frame checksums;
-// verify controls verification during decode. Returns the first error.
+// verify controls verification during decode. src must be aligned to eltWidth
+// and may be NULL only when numElts is 0. Returns the first error.
 GEOZL_API int geozl_2d_bench_c(const char *method, uint32_t width,
                                uint32_t planes,
                                const char *error, int dtype, int nodataMode,
@@ -177,7 +193,7 @@ GEOZL_API int geozl_2d_bench_c(const char *method, uint32_t width,
 
 // Compress one tile and attach a blob produced by geozl_coeffs_pack. Passing
 // NULL and zero writes an unannotated frame. Coefficients apply to one call and
-// do not become part of the graph.
+// do not become part of the graph. Otherwise as geozl_2d_compress_graph_c.
 GEOZL_API int geozl_2d_compress_coeffs_c(geozl_2d_graph *g, const void *src,
                                          size_t numElts, const void *coeffs,
                                          size_t coeffsSize, void *dst,
@@ -192,10 +208,14 @@ GEOZL_API int geozl_2d_frame_coeffs_c(const void *frame, size_t frameSize,
                                       void *dst, size_t dstCapacity,
                                       size_t *outSize);
 
+// A slot of this many bytes holds any recipe name geozl_2d_grid_c writes.
+#define GEOZL_2D_NAME_MAX 48
+
 // Expand a profiler prior into recipe names, one per stride-byte slot. prior is
 // a predictor name, "none" or "id" for the no-predictor path, or NULL or "" for
-// every predictor. Returns -1 for an unknown prior and writes the number of
-// names to outCount.
+// every predictor. Returns -1 for an unknown prior, or for a stride below
+// GEOZL_2D_NAME_MAX or NULL names when maxNames is nonzero, and otherwise
+// writes the number of names to outCount.
 GEOZL_API int geozl_2d_grid_c(const char *prior, size_t eltWidth, char *names,
                               size_t stride, size_t maxNames, size_t *outCount);
 

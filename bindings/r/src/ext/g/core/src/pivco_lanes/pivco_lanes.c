@@ -20,10 +20,6 @@
 #include <limits.h>
 #include <string.h>
 
-int geozl_pivco_lanes_width_ok(size_t width) {
-  return width == 1 || width == 2 || width == 4 || width == 8;
-}
-
 static int lane_weights(uint8_t weights[ZL_PIVCO_MAX_SYMBOLS],
                         size_t *weightsSize, const uint8_t *src, size_t count) {
   memset(weights, 0, ZL_PIVCO_MAX_SYMBOLS);
@@ -213,7 +209,7 @@ ZL_Report geozl_pivco_lanes_decode(ZL_Decoder *decoder,
       (header->count != 0 && lanes == NULL) ||
       (header->weightsSize != 0 && weights == NULL) ||
       (header->bitsSize != 0 && bits == NULL))
-    return ZL_returnError(ZL_ErrorCode_corruption);
+    ZL_ERR(corruption, "lane streams are missing");
   if (header->count == 0)
     return ZL_returnSuccess();
 
@@ -236,13 +232,13 @@ ZL_Report geozl_pivco_lanes_decode(ZL_Decoder *decoder,
     if (lane->mode == GEOZL_PIVCO_LANE_PFOR) {
       if (pfor_decode(dst, header->count, 1, bits + bitsOffset,
                       lane->bitsSize) != 0)
-        return ZL_returnError(ZL_ErrorCode_corruption);
+        ZL_ERR(corruption, "PFOR lane %zu does not decode", laneIndex);
     } else if (!ZL_PivCoHuffman_decode(dst, header->count, scratch, scratchSize,
                                        weights + weightsOffset,
                                        lane->weightsSize, bits + bitsOffset,
                                        lane->bitsSize, header->blockSize,
                                        NULL)) {
-      return ZL_returnError(ZL_ErrorCode_corruption);
+      ZL_ERR(corruption, "PivCo lane %zu does not decode", laneIndex);
     }
     weightsOffset += lane->weightsSize;
     bitsOffset += lane->bitsSize;

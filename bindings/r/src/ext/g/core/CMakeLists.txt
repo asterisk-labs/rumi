@@ -46,7 +46,8 @@ elseif(NOT DEFINED GEOZL_LIB_TYPE)
 endif()
 message(STATUS "geozl linkage: ${GEOZL_LIB_TYPE}")
 
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+# A parent project owns its build type. The bundled zstd still fills an empty one.
+if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
@@ -68,9 +69,11 @@ if(EMSCRIPTEN)
     add_link_options(-sMEMORY64=1 -sWASM_BIGINT=1)
 endif()
 
+# gcc leaves float-cast-overflow out of undefined, see the Makefile.
 if(GEOZL_SANITIZE)
-    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=address,undefined)
+    add_compile_options(-fsanitize=address,undefined,float-cast-overflow
+                        -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined,float-cast-overflow)
 endif()
 
 # Coverage instrumentation has to reach the library and OpenZL, not just the
@@ -104,7 +107,9 @@ if(CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         list(APPEND GEOZL_WARN /WX)
     endif()
 elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-    set(GEOZL_WARN -Wall -Wextra)
+    set(GEOZL_WARN -Wall -Wextra -Wformat=2 -Wshadow -Wstrict-prototypes
+        -Wmissing-prototypes -Wvla -Wundef -Wwrite-strings
+        -Wimplicit-fallthrough -Wpointer-arith -Wredundant-decls)
     if(GEOZL_WERROR)
         list(APPEND GEOZL_WARN -Werror)
     endif()
@@ -339,6 +344,7 @@ if(GEOZL_BUILD_FULL)
             add_executable(geozl_${fz}_fuzzer
                 ${CMAKE_CURRENT_SOURCE_DIR}/../fuzz/${fz}_fuzzer.c)
             target_link_libraries(geozl_${fz}_fuzzer PRIVATE geozl)
+            target_compile_options(geozl_${fz}_fuzzer PRIVATE ${GEOZL_WARN})
             target_link_options(geozl_${fz}_fuzzer PRIVATE -fsanitize=fuzzer)
         endforeach()
 
@@ -355,7 +361,7 @@ if(GEOZL_BUILD_FULL)
                 ${CMAKE_CURRENT_SOURCE_DIR}/src)
             # Without GEOZL_FP the kernels here contract where the library does
             # not, and the fuzzer asserts a bound about arithmetic nobody ships.
-            target_compile_options(geozl_${fz}_fuzzer PRIVATE ${GEOZL_FP})
+            target_compile_options(geozl_${fz}_fuzzer PRIVATE ${GEOZL_WARN} ${GEOZL_FP})
             target_link_options(geozl_${fz}_fuzzer PRIVATE -fsanitize=fuzzer)
             if(GEOZL_LIBM)
                 target_link_libraries(geozl_${fz}_fuzzer PRIVATE ${GEOZL_LIBM})
@@ -376,7 +382,7 @@ if(GEOZL_BUILD_FULL)
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/src/gpu
             ${GEOZL_OPENZL_DIR}/src)
-        target_compile_options(geozl_gpu_plan_fuzzer PRIVATE ${GEOZL_FP})
+        target_compile_options(geozl_gpu_plan_fuzzer PRIVATE ${GEOZL_WARN} ${GEOZL_FP})
         target_link_options(geozl_gpu_plan_fuzzer PRIVATE -fsanitize=fuzzer)
         target_link_libraries(geozl_gpu_plan_fuzzer PRIVATE
             ${GEOZL_OPENZL_TARGET} Threads::Threads)

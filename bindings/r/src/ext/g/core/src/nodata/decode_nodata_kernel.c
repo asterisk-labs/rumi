@@ -1,5 +1,7 @@
 #include "decode_nodata_kernel.h"
 
+#include "common/raster.h"
+
 #include <stdint.h>
 
 // Branchless so a scattered mask costs the same as a coherent one, and so the
@@ -63,7 +65,7 @@ void nodata_restore(void *dst, const void *values, const uint8_t *mask,
 int nodata_restore_guarded(void *dst, const void *values, const uint8_t *mask,
                            size_t nb_elts, size_t elt_width, uint64_t pattern,
                            const uint64_t repl[3]) {
-  if (elt_width != 1 && elt_width != 2 && elt_width != 4 && elt_width != 8)
+  if (!geozl_elt_width_ok(elt_width))
     return 1;
   const uint64_t all =
       (elt_width == 8) ? ~(uint64_t)0 : (((uint64_t)1 << (8 * elt_width)) - 1);

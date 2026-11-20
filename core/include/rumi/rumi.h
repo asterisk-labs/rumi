@@ -576,8 +576,8 @@ typedef struct rumi_geozl_graph rumi_geozl_graph;
 // or SQRT recipe. Zero is lossless. The raster fixes the domain of a bounded
 // graph; bounds require integer or float16/32/64 samples. nodata points to one
 // dtype sample or is NULL. A NaN sample, or a NaN found in a float raster when
-// nodata is NULL, marks all NaNs as missing. Close *out with
-// rumi_geozl_graph_close.
+// nodata is NULL, marks all NaNs as missing. The raster must be aligned to its
+// samples. Close *out with rumi_geozl_graph_close.
 RUMI_API rumi_status
 rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
                       const void* raster, size_t n_bytes,
@@ -585,9 +585,10 @@ rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
                       const char* error, const void* nodata,
                       rumi_geozl_graph** out);
 
-// Compress one tile of the graph's dtype. Its geometry is not checked against
-// the graph, and bool samples must be 0 or 1. *out_frame contains *out_size
-// bytes released with rumi_free.
+// Compress one tile of the graph's dtype, aligned to its samples. Its shape is
+// not checked against the graph, but a row predictor refuses a tile longer
+// than one row that is not whole rows of the graph's width. bool samples must
+// be 0 or 1. *out_frame contains *out_size bytes released with rumi_free.
 RUMI_API rumi_status
 rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
                     const void* tile, size_t n_bytes,

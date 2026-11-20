@@ -47,7 +47,7 @@ ZL_Report EI_geozl_quant_linear(ZL_Encoder *eictx, const ZL_Input *in) {
   // parameters this codec's own kernels reject, and no change to the recipe helps.
   if (quant_linear_encode(ZL_Output_ptr(out), ZL_Input_ptr(in), &p, dtype,
                           nbElts) != 0)
-    ZL_ERR(GENERIC, "quant_linear resolved parameters its own kernels reject");
+    ZL_ERR(GENERIC, "quant_linear refused parameters its builder accepted");
 
   uint8_t header[QUANT_LINEAR_HEADER_SIZE];
   header[0] = (uint8_t)dtype;

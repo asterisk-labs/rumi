@@ -3,6 +3,8 @@
 #include "quant_sqrt_dtype.h"
 #include "quant_sqrt_half.h"
 
+#include "common/printf_attr.h"
+
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -29,6 +31,7 @@
 // declares, and the fit will still look reasonable.
 #define QSQ_PCT_BIAS 0.624732
 
+GEOZL_PRINTF(3, 4)
 static int fail(char *err, size_t errSize, const char *fmt, ...) {
   if (err != NULL && errSize != 0) {
     va_list ap;

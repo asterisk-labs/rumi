@@ -8,7 +8,7 @@ ZL_Report DI_geozl_quant_linear(ZL_Decoder *dictx, const ZL_Input *ins[]);
 
 #define DI_QUANT_LINEAR(id)                                                    \
   {                                                                            \
-    .gd = QUANT_LINEAR_GRAPH, .transform_f = DI_geozl_quant_linear,            \
+    .gd = QUANT_LINEAR_GRAPH(id), .transform_f = DI_geozl_quant_linear,        \
     .name = "geozl.lossy.quant_linear",                                        \
   }
 

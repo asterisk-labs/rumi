@@ -43,7 +43,8 @@ typedef struct {
 
 // Device memory to write, a CUdeviceptr on CUDA or an id<MTLBuffer> on Metal,
 // with the byte offset and the bytes writable after it. On CUDA the work joins
-// stream, where NULL is the legacy default stream. Metal ignores stream.
+// stream, a stream of the device's primary context, where NULL is the legacy
+// default stream. Metal ignores stream.
 typedef struct {
   void *memory;
   size_t offset;
@@ -57,8 +58,12 @@ GEOZL_API int geozl_gpu_available(int deviceType);
 // threads caps the host threads of one decode, and 0 means one.
 // maxDecodedBytes limits the sum of GeozlGpuFrame.decodedBytes in one call and
 // must be nonzero. With verifyChecksums, frames decoded on the device check
-// their compressed checksum and the rest check both checksums. A GeozlGpu
-// serves one call at a time.
+// their compressed checksum and the rest check both checksums. Host staging
+// grows with the compressed and host-decoded bytes of a call and is kept until
+// destroy, so callers bound it by their batch size.
+//
+// A GeozlGpu serves one decode or synchronize at a time, and one that overlaps
+// another fails. geozl_gpu_destroy must not overlap any call on it.
 GEOZL_API GeozlGpu *geozl_gpu_create(int deviceType, int device, size_t threads,
                                      size_t maxDecodedBytes,
                                      int verifyChecksums, char *error,
@@ -73,14 +78,20 @@ GEOZL_API void geozl_gpu_destroy(GeozlGpu *gpu);
 // one chunk. Other graphs, including frames with multiple chunks, decode
 // completely into host staging before their samples are copied to the device.
 // Copies address at most 2^32 samples of the target and each route source.
+// The source limit depends on routing, so a call past it may report an
+// earlier failure instead of its own.
 //
 // forceHost is NULL for automatic routing, or frameCount bytes. A nonzero byte
 // decodes that entire frame on the host before copying its samples to the GPU.
 //
-// On CUDA the call returns after queuing work on target->stream. Keep the
-// target allocation and stream alive until that work finishes. A later decode
-// on the same stream need not wait and may report an earlier failure. Metal
-// finishes before returning.
+// frames[], the bytes they point to, copies[] and forceHost[] may be reused
+// once the call returns. On CUDA the call returns after queuing work on
+// target->stream. Keep the target allocation and stream alive until that work
+// finishes. A later decode on the same stream need not wait and may report an
+// earlier failure. Metal finishes before returning. Invalid arguments fail a
+// call before it waits on or reports earlier work. After a failure the
+// target's contents are unspecified, and work queued by earlier calls may
+// still write to it.
 GEOZL_API int geozl_gpu_decode(GeozlGpu *gpu, const GeozlGpuFrame frames[],
                                size_t frameCount, const GeozlGpuCopy copies[],
                                size_t copyCount, size_t sampleBytes,
@@ -92,7 +103,8 @@ GEOZL_API int geozl_gpu_synchronize(GeozlGpu *gpu, char *error,
                                     size_t errorCapacity);
 
 // Device memory for a target, owned by the caller. geozl_gpu_pointer returns
-// the CUdeviceptr or id<MTLBuffer> to pass as GeozlGpuTarget.memory.
+// the CUdeviceptr or id<MTLBuffer> to pass as GeozlGpuTarget.memory. These
+// three may run on any thread, also while a decode on gpu is in progress.
 GEOZL_API GeozlGpuMemory *geozl_gpu_alloc(GeozlGpu *gpu, size_t bytes,
                                           char *error, size_t errorCapacity);
 GEOZL_API void *geozl_gpu_pointer(const GeozlGpuMemory *memory);

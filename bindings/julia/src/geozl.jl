@@ -208,8 +208,10 @@ end
     compress(x, graph::Graph) -> Vector{UInt8}
     compress(x; graph::Graph) -> Vector{UInt8}
 
-Compress `x` with `graph` and return the frame. The element type must match;
-geometry is not checked. Lossy tiles outside the graph's domain are rejected.
+Compress `x` with `graph` and return the frame. The element type must match.
+The shape is not checked, but a row predictor refuses a tile longer than one
+row that is not whole rows of the graph's width. Lossy tiles outside the
+graph's domain are rejected.
 """
 function compress(x::AbstractArray, graph::Graph)
     graph.ptr == C_NULL && throw(ArgumentError("this graph is closed"))

@@ -10,6 +10,7 @@
 
 #include "common/endian.h"
 #include "common/fp.h"
+#include "common/raster.h"
 #include "geozl/dtype.h"
 
 #include <assert.h>
@@ -22,7 +23,7 @@ ZL_Report EI_geozl_nodata(ZL_Encoder *eictx, const ZL_Input *in) {
 
   const size_t eltWidth = ZL_Input_eltWidth(in);
   const size_t nbElts = ZL_Input_numElts(in);
-  if (eltWidth != 1 && eltWidth != 2 && eltWidth != 4 && eltWidth != 8)
+  if (!geozl_elt_width_ok(eltWidth))
     return ZL_returnError(ZL_ErrorCode_node_invalid_input);
   // An empty tile has no mask to carry and the decoder refuses one, so writing
   // it would make a frame nothing can read.

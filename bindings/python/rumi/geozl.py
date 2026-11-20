@@ -208,9 +208,10 @@ def graph(raster: ArrayLike, method: str, *, width: int | None = None,
 def compress(tile: ArrayLike, graph: Graph) -> bytes:
     """Compress a tile with a prepared graph and return its frame bytes.
 
-    ``graph`` may be given by position or by name. The dtype must match;
-    geometry is not checked. A lossy tile outside the graph's domain is
-    rejected.
+    ``graph`` may be given by position or by name. The dtype must match. The
+    shape is not checked, but a row predictor refuses a tile longer than one
+    row that is not whole rows of the graph's width. A lossy tile outside the
+    graph's domain is rejected.
     """
     if not isinstance(graph, Graph):
         raise TypeError(f"graph must be a rumi.geozl.Graph, got "

@@ -8,12 +8,19 @@ Notable user-visible changes are recorded here.
 
 - `rumi.geozl.Graph` refuses `pickle`, `copy.copy` and `copy.deepcopy` with
   `TypeError`, as `geozl.Graph` does. A copy used to share the native handle.
+- The bundled GeoZL refuses a tile longer than one row that is not whole rows
+  of a row predictor, and a raster or tile not aligned to its samples, as
+  invalid input. `rumi_geozl_*` return `RUMI_ERR_INVALID` with a one-line
+  reason, an invalid request in every binding, where these were
+  `RUMI_ERR_INTERNAL` and `RUMI_ERR_OOM`.
 
 ### Changed
 
 - Local CPU reads skip a copy of the task list; interleaved reads use
   fixed-width sample copies.
 - `rumi_write_base_offset` no longer allocates memory per frame.
+- GeoZL refusals in `rumi_geozl_*` are one line without build-machine paths,
+  and the decode error for a damaged GeoZL frame names the check it failed.
 
 ### Fixed
 
