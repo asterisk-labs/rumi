@@ -223,8 +223,8 @@ rumi.write("scene.rumi", frames, bands=bands, time=time,
 - There is no streaming or append writer. The input array, every frame array and every
   payload live in memory until `write`. Split products larger than memory into several
   files.
-- `rumi.geozl` releases the GIL, so threads compress in parallel. A graph is not
-  thread-safe, so give each thread its own:
+- `rumi.geozl` releases the GIL, so threads compress in parallel. Threads may share a
+  graph, but its compress calls take turns, so give each thread its own:
 
 ```python
 import threading

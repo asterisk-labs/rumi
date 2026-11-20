@@ -185,14 +185,15 @@ std::unexpected<Error> geozl_failure(int code, const std::string& what,
 
 }  // namespace
 
-GeozlGraph::GeozlGraph(geozl_2d_graph_s* graph, rumi_dtype dtype,
-                       std::size_t sample_bytes) noexcept
-    : graph_(graph), dtype_(dtype), sample_bytes_(sample_bytes) {}
-
-GeozlGraph::~GeozlGraph()
+void GeozlGraph::Close::operator()(geozl_2d_graph_s* graph) const noexcept
 {
-    geozl_2d_graph_close_c(graph_);
+    geozl_2d_graph_close_c(graph);
 }
+
+GeozlGraph::GeozlGraph(rumi_dtype dtype, std::size_t sample_bytes) noexcept
+    : dtype_(dtype), sample_bytes_(sample_bytes) {}
+
+GeozlGraph::~GeozlGraph() = default;
 
 std::expected<std::unique_ptr<GeozlGraph>, Error>
 GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
@@ -260,17 +261,19 @@ GeozlGraph::open(const char* method, rumi_dtype dtype, const void* raster,
     }
 
     // Own the graph before another allocation can throw.
-    std::unique_ptr<GeozlGraph> out(new GeozlGraph(nullptr, dtype, sample_bytes));
+    std::unique_ptr<GeozlGraph> out(new GeozlGraph(dtype, sample_bytes));
     out->error_ = std::move(*recipe);
     out->method_ = method;
     // OpenZL wants a pointer even for an empty stream.
     static const std::uint64_t empty = 0;
     char message[GEOZL_MESSAGE_BYTES] = {};
+    geozl_2d_graph_s* graph = nullptr;
     const int rc = geozl_2d_graph_open_c(
-        &out->graph_, method, width, planes,
+        &graph, method, width, planes,
         out->error_.empty() ? nullptr : out->error_.c_str(), code < 0 ? 0 : code,
         mode, bits, n_bytes ? raster : &empty, samples, sample_bytes, message,
         sizeof message);
+    out->graph_.reset(graph);
     if (rc != 0) {
         return geozl_failure(rc, "GeoZL graph failed (method = \"" + out->method_ + "\")",
                              message);
@@ -310,9 +313,13 @@ GeozlGraph::compress(rumi_dtype dtype, const void* tile, std::size_t n_bytes,
     static const std::uint64_t empty = 0;
     char message[GEOZL_MESSAGE_BYTES] = {};
     std::size_t size = 0;
-    const int rc = geozl_2d_compress_graph_c(
-        graph_, n_bytes ? tile : &empty, n_bytes / sample_bytes_, frame, capacity,
-        &size, message, sizeof message);
+    int rc;
+    {
+        const std::lock_guard lock(mutex_);
+        rc = geozl_2d_compress_graph_c(
+            graph_.get(), n_bytes ? tile : &empty, n_bytes / sample_bytes_, frame,
+            capacity, &size, message, sizeof message);
+    }
     if (rc != 0) {
         std::free(frame);
         return geozl_failure(rc, "GeoZL compress failed (method = \"" + method_ + "\")",

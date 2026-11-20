@@ -23,6 +23,8 @@ Notable user-visible changes are recorded here.
   scratch, where GeoZL used to write the samples misaligned.
 - A decode worker whose OpenZL context could not be allocated tries again on
   its next frame instead of failing every later read.
+- Threads that share a GeoZL graph in `rumi_geozl_*`, `rumi.geozl` or
+  `Rumi.GeoZL` take turns on it instead of crashing the process.
 
 ## [0.31.0] - 2026-11-16
 

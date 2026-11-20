@@ -2351,6 +2351,19 @@ void test_geozl_c_api()
         rumi_geozl_graph_close(b);
     }
 
+    CASE("threads that share a graph take turns and write the same frames")
+    {
+        std::vector<std::thread> threads;
+        std::atomic<int> same{0};
+        for (int i = 0; i < 4; ++i) {
+            threads.emplace_back([&] {
+                for (int k = 0; k < 25; ++k) same += frame_of(graph) == frame;
+            });
+        }
+        for (auto& t : threads) t.join();
+        EQ(same.load(), 100);
+    }
+
     CASE("a compress call refuses a tile of another dtype")
     unsigned char* out = nullptr;
     std::size_t out_size = 0;

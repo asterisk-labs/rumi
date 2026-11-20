@@ -155,8 +155,8 @@
 #'   defaults to `"int32"` for integer, `"float64"` for double, `"uint8"` for
 #'   raw and `"bool"` for logical input.
 #' @return A `rumi_geozl_graph` with the fields `method`, `width`, `planes`,
-#'   `dtype`, `itemsize`, `error` and `nodata`. Its native context is not safe
-#'   for concurrent calls and does not survive a new R session.
+#'   `dtype`, `itemsize`, `error` and `nodata`. Its compress calls take turns,
+#'   and it does not survive a new R session.
 #' @examples
 #' tile <- matrix(1000L + 1:(64 * 64) %% 97L, 64, 64)
 #' g <- rumi_geozl_graph(tile, "planar>zigzag>pfor", dtype = "uint16")

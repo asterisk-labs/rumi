@@ -1,6 +1,7 @@
 """rumi.geozl writes the frames the GeoZL package writes, with rumi's codec."""
 
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from fractions import Fraction
 
@@ -133,6 +134,15 @@ def test_a_graph_keeps_its_arguments():
                          "1 plane, LINEAR:MAX_ERROR=3>")
     with pytest.raises(TypeError, match="cannot be created directly"):
         rumi.geozl.Graph()
+
+
+def test_threads_that_share_a_graph_take_turns():
+    raster = _counts()
+    graph = rumi.geozl.graph(raster, "planar>zigzag>zstd")
+    want = rumi.geozl.compress(raster, graph)
+    with ThreadPoolExecutor(4) as pool:
+        frames = list(pool.map(lambda _: rumi.geozl.compress(raster, graph), range(64)))
+    assert frames == [want] * 64
 
 
 @pytest.mark.parametrize("error", [None, 0, "0%", 3, 0.01, "1%", "LINEAR:MAX_ERROR=0.02"])

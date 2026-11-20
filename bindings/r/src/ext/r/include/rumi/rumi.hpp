@@ -12,6 +12,7 @@
 #include <expected>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -1050,7 +1051,8 @@ base_offset(const WriteDesc& desc) noexcept;
 
 // GeoZL compression.
 
-// A GeoZL compression context for one dtype. Do not call it concurrently.
+// A GeoZL compression context for one dtype. Threads may share it, and their
+// compress calls take turns.
 class GeozlGraph {
 public:
     [[nodiscard]] static std::expected<std::unique_ptr<GeozlGraph>, Error>
@@ -1071,9 +1073,14 @@ public:
     [[nodiscard]] const std::string& error() const noexcept { return error_; }
 
 private:
-    GeozlGraph(geozl_2d_graph_s* graph, rumi_dtype dtype,
-               std::size_t sample_bytes) noexcept;
-    geozl_2d_graph_s* graph_;
+    struct Close {
+        void operator()(geozl_2d_graph_s* graph) const noexcept;
+    };
+
+    GeozlGraph(rumi_dtype dtype, std::size_t sample_bytes) noexcept;
+    std::unique_ptr<geozl_2d_graph_s, Close> graph_;
+    // A GeoZL graph serves one call at a time.
+    std::mutex        mutex_;
     rumi_dtype        dtype_;
     std::size_t       sample_bytes_;
     std::string       error_;

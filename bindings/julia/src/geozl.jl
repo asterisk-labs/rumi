@@ -134,8 +134,8 @@ end
 
 A reusable graph from [`graph`](@ref) for samples of type `T`, which
 `eltype(g)` returns. `dtype` holds the Rumi name of `T`, such as `"uint16"`,
-and `itemsize` its bytes per sample. Its native context is not safe for
-concurrent calls.
+and `itemsize` its bytes per sample. Tasks may share it, and their compress
+calls take turns.
 """
 mutable struct Graph{T}
     ptr::Ptr{Cvoid}

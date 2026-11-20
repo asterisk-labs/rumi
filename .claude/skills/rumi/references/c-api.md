@@ -236,7 +236,8 @@ and binding do not share the same C interface. The unstable API and SONAME remai
   (held band, held time, h, w) to those dims.
 - `rumi_write` does not compress. Payloads usually come from `rumi_geozl_compress`, the
   GeoZL the reader decodes with, and any other must decode as `writing.md` section 5
-  requires. A graph is not safe for concurrent calls, so give each thread its own.
+  requires. Threads may share a graph, but its compress calls take turns, so give each
+  thread its own to compress in parallel.
 - On success `*out_blob` holds the header (release with `rumi_free`); on failure the
   partial file is removed and the outputs are untouched.
 

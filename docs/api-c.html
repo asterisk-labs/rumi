@@ -604,7 +604,7 @@ void rumi_dlpack_capsule_destructor(void* capsule);</code></pre>
                                   const char* error, const void* nodata,
                                   rumi_geozl_graph** out);
 void rumi_geozl_graph_close(rumi_geozl_graph* graph);</code></pre>
-      <p>Builds a reusable graph for <code>method</code>, such as <code>"planar&gt;zigzag&gt;pfor"</code>, from <code>n_bytes</code> of native <code>dtype</code> samples. Release it with <code>rumi_geozl_graph_close</code>, which accepts <code>NULL</code>. A graph owns a compression context, so it is not safe for concurrent calls.</p>
+      <p>Builds a reusable graph for <code>method</code>, such as <code>"planar&gt;zigzag&gt;pfor"</code>, from <code>n_bytes</code> of native <code>dtype</code> samples. Release it with <code>rumi_geozl_graph_close</code>, which accepts <code>NULL</code>. A graph owns a compression context, so threads that share one take turns on it.</p>
       <table class="spec">
         <tr><th>dtype</th><td>Any sample type of 1, 2, 4 or 8 bytes. Integers and <code>float16</code>, <code>float32</code> and <code>float64</code> take a bound and a sentinel. The others compress losslessly.</td></tr>
         <tr><th>width, planes</th><td>The row in samples and the number of stacked images, whose row predictors restart. Both are positive, and more than one plane must split the raster into whole rows.</td></tr>

@@ -113,8 +113,8 @@ class Graph:
     """A reusable compression graph returned by :func:`graph`.
 
     It keeps ``method``, ``width``, ``planes``, ``dtype``, ``itemsize`` (bytes
-    per sample), ``error`` and ``nodata``. Its native context is not safe for
-    concurrent calls.
+    per sample), ``error`` and ``nodata``. Threads may share it, and their
+    compress calls take turns.
     """
 
     __slots__ = ("_h", "_dtype", "method", "width", "planes", "itemsize", "error",

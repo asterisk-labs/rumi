@@ -565,7 +565,8 @@ RUMI_API void rumi_dlpack_capsule_destructor(void* capsule);
 // Compress with the GeoZL linked into Rumi. rumi_write stores the resulting
 // bytes; it does not compress them.
 
-// A reusable graph for tiles of one dtype. It is not safe for concurrent calls.
+// A reusable graph for tiles of one dtype. Threads may share it, and their
+// compress calls take turns.
 typedef struct rumi_geozl_graph rumi_geozl_graph;
 
 // Build a graph from native dtype samples. width is the row length; planes

@@ -36,8 +36,8 @@ raw and \code{"bool"} for logical input.}
 }
 \value{
 A \code{rumi_geozl_graph} with the fields \code{method}, \code{width}, \code{planes},
-\code{dtype}, \code{itemsize}, \code{error} and \code{nodata}. Its native context is not safe
-for concurrent calls and does not survive a new R session.
+\code{dtype}, \code{itemsize}, \code{error} and \code{nodata}. Its compress calls take turns,
+and it does not survive a new R session.
 }
 \description{
 Build a graph with the GeoZL linked into Rumi. It fixes the recipe, storage
