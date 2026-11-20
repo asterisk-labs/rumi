@@ -1207,12 +1207,20 @@ void test_thread_pool_batches()
     EQ(ran.load(std::memory_order_relaxed), 1000);
 
     CASE("a batch job releases its captures before wait returns")
-    auto held = std::make_shared<int>(0);
+    std::atomic<bool> released{false};
     {
         rumi::ThreadPool::Batch batch(pool);
-        for (int i = 0; i < 64; ++i) batch.submit([held] { (void) held; });
+        // Slow deletion makes release order observable.
+        std::shared_ptr<int> held(new int(0), [&released](int* p) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            delete p;
+            released.store(true);
+        });
+        batch.submit([held = std::move(held)] { (void) held; });
         batch.wait();
-        EQ(held.use_count(), 1L);
+        OK(released.load());
+        // Keep the flag alive until a late deleter finishes.
+        while (!released.load()) std::this_thread::yield();
     }
 }
 
