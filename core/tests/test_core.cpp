@@ -2111,6 +2111,18 @@ void test_write_c_api_band_texts()
     OK(std::strcmp(rumi_last_error(), "time is null") == 0);
     desc.time = day;
 
+    CASE("a C dtype outside the registry is refused without loading it")
+    // memcpy avoids loading an invalid enum value in C++.
+    std::uint64_t unused = 0;
+    for (const int bad : {257, -1, 12}) {
+        std::memcpy(&desc.dtype, &bad, sizeof bad);
+        EQ(write(), RUMI_ERR_INVALID);
+        OK(std::strcmp(rumi_last_error(), "unknown dtype") == 0);
+        EQ(rumi_write_base_offset(&desc, &unused), RUMI_ERR_INVALID);
+        OK(std::strcmp(rumi_last_error(), "unknown dtype") == 0);
+    }
+    desc.dtype = RUMI_DT_UINT16;
+
     CASE("base offset does not inspect invalid trailer metadata")
     std::uint64_t base = 0;
     desc.band_texts = nullptr;

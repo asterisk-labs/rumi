@@ -58,6 +58,20 @@ rumi_status capi_call(F&& body) noexcept
     }
 }
 
+// Avoid loading an out-of-range C enum value in C++.
+rumi_dtype checked_dtype(const rumi_dtype& dtype) noexcept
+{
+    int value = 0;
+    static_assert(sizeof value == sizeof dtype);
+    std::memcpy(&value, &dtype, sizeof value);
+    const rumi_dtype_info* table = nullptr;
+    const size_t rows = rumi_dtype_registry(&table);
+    for (size_t i = 0; i < rows; ++i) {
+        if (table[i].code == value) return static_cast<rumi_dtype>(value);
+    }
+    return RUMI_DT_UNKNOWN;
+}
+
 }  // namespace
 
 
@@ -78,28 +92,16 @@ extern "C" rumi_status
 rumi_check_samples(const void* data, size_t n_bytes, rumi_dtype dtype)
 {
     return capi_call([&]() -> rumi_status {
-        // C callers may pass any int representation, including non-enum values.
-        int dtype_value = 0;
-        static_assert(sizeof dtype_value == sizeof dtype);
-        std::memcpy(&dtype_value, &dtype, sizeof dtype_value);
+        const rumi_dtype dt = checked_dtype(dtype);
         if (!data && n_bytes) {
             set_error("rumi_check_samples: null argument");
             return RUMI_ERR_INVALID;
         }
-        const rumi_dtype_info* table = nullptr;
-        const size_t rows = rumi_dtype_registry(&table);
-        bool known = false;
-        for (size_t i = 0; i < rows; ++i) {
-            if (table[i].code == dtype_value) {
-                known = true;
-                break;
-            }
-        }
-        if (!known) {
+        if (dt == RUMI_DT_UNKNOWN) {
             set_error("rumi_check_samples: unknown dtype");
             return RUMI_ERR_INVALID;
         }
-        if (dtype_value != RUMI_DT_BOOL) return RUMI_OK;
+        if (dt != RUMI_DT_BOOL) return RUMI_OK;
         const auto* p = static_cast<const unsigned char*>(data);
         for (size_t i = 0; i < n_bytes; ++i) {
             if (p[i] > 1) {
@@ -1522,8 +1524,8 @@ rumi_geozl_graph_open(const char* method, rumi_dtype dtype,
             set_error("rumi_geozl_graph_open: null output");
             return RUMI_ERR_INVALID;
         }
-        auto graph = rumi::GeozlGraph::open(method, dtype, raster, n_bytes,
-                                            width, planes, error, nodata);
+        auto graph = rumi::GeozlGraph::open(method, checked_dtype(dtype), raster,
+                                            n_bytes, width, planes, error, nodata);
         if (!graph) {
             set_error(graph.error().message);
             return graph.error().status;
@@ -1544,7 +1546,8 @@ rumi_geozl_compress(rumi_geozl_graph* graph, rumi_dtype dtype,
             return RUMI_ERR_INVALID;
         }
         unsigned char* frame = nullptr;
-        auto size = graph->impl->compress(dtype, tile, n_bytes, &frame);
+        auto size = graph->impl->compress(checked_dtype(dtype), tile, n_bytes,
+                                          &frame);
         if (!size) {
             set_error(size.error().message);
             return size.error().status;
@@ -1579,7 +1582,7 @@ rumi::WriteDesc write_layout(const rumi_write_desc& desc)
     d.time_count        = desc.time_count;
     d.tile_size         = desc.tile_size;
     d.samples_per_pixel = desc.samples_per_pixel;
-    d.dtype             = desc.dtype;
+    d.dtype             = checked_dtype(desc.dtype);
     d.transform         = desc.transform;
     d.epsg              = desc.epsg;
     d.pixel_is_point    = desc.pixel_is_point != 0;

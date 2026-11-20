@@ -159,7 +159,7 @@ std::expected<Grid, std::string> grid_of(const WriteDesc& d)
 
     Grid g{};
     if (!sample_encoding(d.dtype, &g.sample_format, &g.bits))
-        return errf("unknown dtype %d", static_cast<int>(d.dtype));
+        return errf("unknown dtype");
 
     g.across = 1 + (d.image_width  - 1) / d.tile_size;
     g.down   = 1 + (d.image_length - 1) / d.tile_size;
