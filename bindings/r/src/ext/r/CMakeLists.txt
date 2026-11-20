@@ -130,6 +130,10 @@ if(RUMI_WERROR)
     )
 endif()
 
+set(RUMI_LIBRARY_CHECKS
+    _GLIBCXX_ASSERTIONS
+    _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+
 # Sanitizers must be enabled for both compilation and linking.
 if(RUMI_SANITIZE)
     target_compile_options(rumi_config INTERFACE
@@ -210,7 +214,8 @@ if(RUMI_BUILD_TESTS)
     add_executable(rumi_tests tests/test_core.cpp ${RUMI_SOURCES})
     add_dependencies(rumi_tests rumi_c_header_check)
     target_link_libraries(rumi_tests PRIVATE rumi_config)
-    target_compile_definitions(rumi_tests PRIVATE RUMI_STATIC)
+    target_compile_definitions(rumi_tests PRIVATE RUMI_STATIC
+                               ${RUMI_LIBRARY_CHECKS})
     if(RUMI_SANITIZE STREQUAL "thread")
         # TSAN cannot run the post-fork thread-creation test.
         target_compile_definitions(rumi_tests PRIVATE RUMI_TSAN)
@@ -227,7 +232,8 @@ if(RUMI_BUILD_FUZZERS)
             ${CMAKE_CURRENT_SOURCE_DIR}/../fuzz/${surface}_fuzzer.cpp
             ${RUMI_SOURCES})
         target_link_libraries(rumi_${surface}_fuzzer PRIVATE rumi_config)
-        target_compile_definitions(rumi_${surface}_fuzzer PRIVATE RUMI_STATIC)
+        target_compile_definitions(rumi_${surface}_fuzzer PRIVATE RUMI_STATIC
+                                   ${RUMI_LIBRARY_CHECKS})
         target_compile_options(rumi_${surface}_fuzzer PRIVATE
             -fsanitize=fuzzer-no-link)
         target_link_options(rumi_${surface}_fuzzer PRIVATE -fsanitize=fuzzer)
