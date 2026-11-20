@@ -3,6 +3,11 @@
 #include "rumi/rumi.hpp"
 #include "rumi/thread_pool.hpp"
 
+#include "openzl/zl_compress.h"
+#include "openzl/zl_compressor.h"
+#include "openzl/zl_ctransform.h"
+#include "openzl/zl_version.h"
+
 #include <atomic>
 #include <chrono>
 #include <clocale>
@@ -2257,6 +2262,51 @@ void test_read_many_c_api()
     }
 }
 
+// A frame whose one codec copies its samples under ctid, a CTid none of the
+// decoders Rumi registers knows. Empty when OpenZL cannot write it.
+std::vector<unsigned char> foreign_frame(ZL_IDType ctid,
+                                         const std::vector<std::uint16_t>& tile)
+{
+    static const ZL_Type numeric[1] = {ZL_Type_numeric};
+    ZL_TypedEncoderDesc desc{};
+    desc.gd.CTid = ctid;
+    desc.gd.inStreamType = ZL_Type_numeric;
+    desc.gd.outStreamTypes = numeric;
+    desc.gd.nbOutStreams = 1;
+    desc.transform_f = [](ZL_Encoder* e, const ZL_Input* in) noexcept {
+        const std::size_t n = ZL_Input_numElts(in), w = ZL_Input_eltWidth(in);
+        ZL_Output* out = ZL_Encoder_createTypedStream(e, 0, n, w);
+        if (!out) return ZL_returnError(ZL_ErrorCode_allocation);
+        std::memcpy(ZL_Output_ptr(out), ZL_Input_ptr(in), n * w);
+        return ZL_Output_commit(out, n);
+    };
+    desc.name = "foreign";
+    std::vector<unsigned char> frame(ZL_compressBound(tile.size() * 2));
+    ZL_Compressor* c = ZL_Compressor_create();
+    ZL_CCtx* cctx = ZL_CCtx_create();
+    ZL_TypedRef* in = ZL_TypedRef_createNumeric(tile.data(), 2, tile.size());
+    ZL_Report r = ZL_returnError(ZL_ErrorCode_allocation);
+    if (c && cctx && in) {
+        const ZL_NodeID node = ZL_Compressor_registerTypedEncoder(c, &desc);
+        const ZL_GraphID graph =
+            ZL_Compressor_registerStaticGraph_fromNode1o(c, node, ZL_GRAPH_STORE);
+        // Equal sizes would otherwise let OpenZL store the input instead.
+        (void) ZL_CCtx_setParameter(cctx, ZL_CParam_storeOnExpansion,
+                                    ZL_TernaryParam_disable);
+        (void) ZL_CCtx_setParameter(cctx, ZL_CParam_formatVersion,
+                                    ZL_MAX_FORMAT_VERSION);
+        if (!ZL_isError(ZL_Compressor_selectStartingGraphID(c, graph))
+            && !ZL_isError(ZL_CCtx_refCompressor(cctx, c))) {
+            r = ZL_CCtx_compressTypedRef(cctx, frame.data(), frame.size(), in);
+        }
+    }
+    ZL_TypedRef_free(in);
+    ZL_CCtx_free(cctx);
+    ZL_Compressor_free(c);
+    frame.resize(ZL_isError(r) ? 0 : ZL_validResult(r));
+    return frame;
+}
+
 void test_geozl_c_api()
 {
     std::vector<std::uint16_t> tile(16 * 16);
@@ -2324,6 +2374,35 @@ void test_geozl_c_api()
     rumi_source_free(src);
     rumi_free(blob);
     std::remove(path.c_str());
+
+    CASE("a frame needing a codec Rumi lacks names it as unsupported")
+    for (const auto& [ctid, what] :
+         {std::pair{ZL_IDType{0x72D7FE}, "a geozl codec this build lacks, update geozl"},
+          std::pair{ZL_IDType{0x123456}, "an unknown OpenZL custom codec"}}) {
+        const std::vector<unsigned char> foreign = foreign_frame(ctid, tile);
+        OK(!foreign.empty());
+        const unsigned char* one[1] = {foreign.data()};
+        const std::size_t one_size[1] = {foreign.size()};
+        unsigned char* header = nullptr;
+        std::size_t header_size = 0;
+        EQ(rumi_write(path.c_str(), &desc, one, one_size, 1, &header, &header_size),
+           RUMI_OK);
+        rumi_source* file = nullptr;
+        rumi_spec* parsed = nullptr;
+        EQ(rumi_source_file(path.c_str(), &file), RUMI_OK);
+        EQ(rumi_spec_parse(header, header_size, &parsed), RUMI_OK);
+        if (file && parsed) {
+            EQ(rumi_read(file, parsed, nullptr, 0, nullptr, 0, 0, 16, 0, 16, nullptr,
+                         back.data(), bytes), RUMI_ERR_UNSUPPORTED);
+            const std::string want = std::string("rumi: file uses ") + what
+                                   + " (CTid " + std::to_string(ctid) + ")";
+            OK(std::strstr(rumi_last_error(), want.c_str()) != nullptr);
+        }
+        rumi_spec_destroy(parsed);
+        rumi_source_free(file);
+        rumi_free(header);
+        std::remove(path.c_str());
+    }
 
     CASE("a zero bound in any spelling is the lossless graph")
     for (const char* zero : {"", "0", "-0.0", "0%", "LINEAR:MAX_ERROR=0",
