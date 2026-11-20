@@ -467,6 +467,9 @@ plan_counts(std::span<const std::uint32_t> counts) noexcept;
 void pack_counts(std::span<const std::uint32_t> counts,
                  const CountPacking& p, std::byte* out) noexcept;
 
+[[nodiscard]] std::vector<std::byte>
+encode_blob(BlobHeader fields, std::span<const std::uint32_t> counts);
+
 struct Header {
     std::uint32_t image_width{};
     std::uint32_t image_length{};

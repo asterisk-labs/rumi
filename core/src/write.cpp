@@ -346,8 +346,6 @@ try {
     } leave_nothing{path};
 
     BlobHeader bh{};
-    bh.magic             = MAGIC;
-    bh.version           = VERSION;
     bh.image_width       = d.image_width;
     bh.image_length      = d.image_length;
     bh.time_count        = d.time_count;
@@ -366,12 +364,7 @@ try {
                      static_cast<unsigned long long>(derived_base_offset(spp, n)));
     }
 
-    bh.count_min  = cp.min;
-    bh.count_bits = cp.bits;
-
-    std::vector<std::byte> blob(HEADER_SIZE + cp.bytes);
-    std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
-    pack_counts(counts, cp, blob.data() + HEADER_SIZE);
+    std::vector<std::byte> blob = encode_blob(bh, counts);
 
     leave_nothing.keep = true;
     return blob;

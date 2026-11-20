@@ -109,6 +109,20 @@ void pack_counts(std::span<const std::uint32_t> counts,
     }
 }
 
+std::vector<std::byte>
+encode_blob(BlobHeader fields, std::span<const std::uint32_t> counts)
+{
+    const CountPacking cp = plan_counts(counts);
+    fields.magic      = MAGIC;
+    fields.version    = VERSION;
+    fields.count_min  = cp.min;
+    fields.count_bits = cp.bits;
+    std::vector<std::byte> blob(HEADER_SIZE + cp.bytes);
+    std::memcpy(blob.data(), &fields, sizeof fields);
+    pack_counts(counts, cp, blob.data() + HEADER_SIZE);
+    return blob;
+}
+
 // Expanded once from the dtype registry.
 static const rumi_dtype_info k_dtype_table[] = {
 #define RUMI_DTYPE(code, sym, name, sf, bits, store, comp, dlcode, dlbits, lanes, numpy) \

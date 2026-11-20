@@ -653,8 +653,6 @@ try {
     if (!decoded) return fail(RUMI_ERR_FORMAT, std::move(decoded.error()));
 
     BlobHeader bh{};
-    bh.magic             = MAGIC;
-    bh.version           = VERSION;
     bh.image_width       = static_cast<std::uint32_t>(iw);
     bh.image_length      = static_cast<std::uint32_t>(ih);
     bh.time_count        = time_count;
@@ -665,18 +663,12 @@ try {
     bh.sample_format     = sff;
     bh.frame_unit        = frame_unit;
 
-    const CountPacking cp = plan_counts(counts);
-    bh.count_min  = cp.min;
-    bh.count_bits = cp.bits;
-
     std::vector<std::byte> blob;
     try {
-        blob.resize(HEADER_SIZE + cp.bytes);
+        blob = encode_blob(bh, counts);
     } catch (const std::bad_alloc&) {
         return fail(RUMI_ERR_OOM, "allocation failed for the output blob");
     }
-    std::memcpy(blob.data(), &bh, sizeof(BlobHeader));
-    pack_counts(counts, cp, blob.data() + HEADER_SIZE);
     if (geo) {
         // Extract the six affine coefficients from the row-major matrix.
         static constexpr std::size_t FREE[6] = {0, 1, 3, 4, 5, 7};
