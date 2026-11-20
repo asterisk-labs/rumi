@@ -399,6 +399,20 @@ def test_check_samples_rejects_invalid_dtype_values(dtype):
     assert lib.rumi_check_samples(sample, 1, dtype) == lib.RUMI_ERR_INVALID
 
 
+@pytest.mark.parametrize("dtype", [257, 280, -1])
+def test_geozl_graph_open_rejects_invalid_dtype_values(dtype):
+    from rumi._ffi import ffi, lib
+
+    tile = ffi.new("unsigned char[]", 16)
+    graph = ffi.new("rumi_geozl_graph**")
+    status = lib.rumi_geozl_graph_open(
+        b"planar>zigzag>zstd", dtype, tile, 16, 16, 1, ffi.NULL, ffi.NULL, graph
+    )
+    assert status == lib.RUMI_ERR_INVALID
+    assert ffi.string(lib.rumi_last_error()) == b"unknown dtype"
+    assert graph[0] == ffi.NULL
+
+
 def test_dtype_codes_match_the_torch_dlpack_registry():
     current = {"UNKNOWN": 0}
     for code, symbol in re.findall(

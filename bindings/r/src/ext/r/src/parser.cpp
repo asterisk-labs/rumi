@@ -5,6 +5,7 @@
 #include <bit>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace rumi {
 
@@ -143,7 +144,7 @@ std::size_t dtype_size(rumi_dtype dt) noexcept
     std::size_t n = 0;
     const rumi_dtype_info* t = dtype_table(&n);
     for (std::size_t i = 0; i < n; ++i) {
-        if (t[i].code == static_cast<std::uint8_t>(dt)) {
+        if (t[i].code == std::to_underlying(dt)) {
             return t[i].storage_bytes;
         }
     }
@@ -197,7 +198,7 @@ parse_blob(std::span<const std::byte> blob)
     std::size_t dtype_count = 0;
     const rumi_dtype_info* dtypes = dtype_table(&dtype_count);
     for (std::size_t i = 0; i < dtype_count; ++i) {
-        if (dtypes[i].code != static_cast<std::uint8_t>(dt)) continue;
+        if (dtypes[i].code != std::to_underlying(dt)) continue;
         h.bytes_per_sample = dtypes[i].storage_bytes;
         h.component_bytes = dtypes[i].component_bytes;
         break;

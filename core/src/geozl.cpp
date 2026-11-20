@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 
 namespace rumi {
 
@@ -37,7 +38,7 @@ const char* dtype_name(rumi_dtype dtype) noexcept
     const rumi_dtype_info* table = nullptr;
     const std::size_t rows = rumi_dtype_registry(&table);
     for (std::size_t i = 0; i < rows; ++i) {
-        if (table[i].code == static_cast<std::uint8_t>(dtype)) return table[i].name;
+        if (table[i].code == std::to_underlying(dtype)) return table[i].name;
     }
     return "unknown";
 }

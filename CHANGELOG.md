@@ -8,6 +8,9 @@ Notable user-visible changes are recorded here.
 
 - On Windows, DLPack reads release their CPU buffers with the aligned
   allocator that made them.
+- A dtype value whose low byte matches a registered code, such as 257, is an
+  unknown dtype everywhere. `rumi_geozl_graph_open` used to treat it as that
+  code.
 
 ## [0.31.0] - 2026-11-16
 
