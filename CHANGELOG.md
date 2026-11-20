@@ -14,6 +14,8 @@ Notable user-visible changes are recorded here.
 - Frame-pattern names take only ASCII letters, digits and `_`, so the process
   locale no longer decides whether a pattern parses.
 - `rumi_write_base_offset` no longer allocates memory per frame.
+- Out-of-memory paths no longer free a transport client twice or leak a GPU
+  decoder handle.
 
 ## [0.31.0] - 2026-11-16
 

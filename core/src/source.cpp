@@ -72,7 +72,7 @@ karu_client* TransportSession::client() noexcept
     try {
         client_ = std::shared_ptr<karu_client>(created, karu_client_free);
     } catch (...) {
-        karu_client_free(created);
+        // The constructor calls the deleter if it throws.
         status_ = KARU_ERR_NOMEM;
         return nullptr;
     }

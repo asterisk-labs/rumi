@@ -293,22 +293,22 @@ GpuDecoder::create(int device_type, int device, std::size_t threads,
                     "GPU reads are unavailable while RUMI_VERIFY is enabled");
     }
 
-    std::array<char, 512> message{};
-    GeozlGpu* handle = geozl_gpu_create(
-        device_type, device, static_cast<std::size_t>(requested_threads),
-        max_decoded_bytes, 0,
-        message.data(), message.size());
-    if (!handle) {
-        return fail(RUMI_ERR_UNSUPPORTED,
-                    message[0] ? message.data() : "GPU device is unavailable");
-    }
-    // The decoder owns the handle from here, so every failure releases it.
+    // Own the handle before any later step can fail.
     auto impl = std::make_unique<Impl>();
-    impl->gpu = handle;
     impl->max_decoded_bytes = max_decoded_bytes;
     impl->device_type = device_type;
     impl->device = device;
     std::unique_ptr<GpuDecoder> decoder(new GpuDecoder(std::move(impl)));
+
+    std::array<char, 512> message{};
+    decoder->impl_->gpu = geozl_gpu_create(
+        device_type, device, static_cast<std::size_t>(requested_threads),
+        max_decoded_bytes, 0,
+        message.data(), message.size());
+    if (!decoder->impl_->gpu) {
+        return fail(RUMI_ERR_UNSUPPORTED,
+                    message[0] ? message.data() : "GPU device is unavailable");
+    }
 #if RUMI_GPU_CUDA
     if (device_type == RUMI_DEVICE_CUDA) {
         auto cuda = cuda_device(device);
