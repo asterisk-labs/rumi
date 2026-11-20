@@ -10,6 +10,7 @@ Notable user-visible changes are recorded here.
   of completed remote frames reaches the decoder without a copy.
 - Reads whose frames or output interleave samples, such as `pattern="y x b"`,
   copy each sample with a fixed-width move instead of a `memcpy` call.
+- A decoded bool frame is checked in one pass the compiler vectorizes.
 
 ### Fixed
 

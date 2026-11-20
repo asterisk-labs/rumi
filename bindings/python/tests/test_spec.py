@@ -1100,18 +1100,21 @@ def test_georeferencing_fields_have_one_legal_shape(tmp_path, because, mutate):
 def test_a_decoded_bool_frame_contains_only_zero_or_one(tmp_path):
     """The one-bit file encoding still occupies one decoded byte."""
     geozl = pytest.importorskip("geozl")
-    for fill, ok in ((0x01, True), (0x03, False)):
-        buf = np.full((16, 16), fill, np.uint8)
+    for bad in (None, 0, 37):
+        buf = np.ones((16, 16), np.uint8)
+        if bad is not None:
+            buf.flat[bad] = 0x03
         payload = geozl.compress(buf, graph=geozl.graph(buf, "planar>zigzag>zstd"))
         entries = spec_entries(16, 16, 16, 1, [payload], bits=1, fmt=1,
                                unit=0, time=1)
-        path = tmp_path / f"{fill:02x}.rumi"
+        path = tmp_path / f"{bad}.rumi"
         path.write_bytes(build_file(entries, [payload]))
         header = rumi.info(source=path).header
-        if ok:
+        if bad is None:
             assert np.unique(rumi.read(path, header)) == [True]
         else:
-            with pytest.raises(OSError, match="neither 0 nor 1"):
+            with pytest.raises(OSError, match=f"byte {bad} of a decoded bool "
+                                              "frame is neither 0 nor 1"):
                 rumi.read(path, header)
 
 

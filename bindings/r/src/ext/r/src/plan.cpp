@@ -300,14 +300,18 @@ rumi_status execute_task(const FrameTask& t, const FrameSpec& spec,
         return RUMI_ERR_DECODE;
     }
 
-    // Boolean storage is one byte per sample, restricted to 0 or 1.
+    // The OR pass vectorizes; locate the bad byte only on failure.
     if (spec.bits_per_sample == 1) {
-        for (std::size_t i = 0; i < t.frame_bytes; ++i) {
-            if (frame[i] != std::byte{0} && frame[i] != std::byte{1}) {
-                say(msg, "rumi: byte %zu of a decoded bool frame is neither "
-                    "0 nor 1%s", i, item);
-                return RUMI_ERR_DECODE;
-            }
+        const std::span<const std::byte> bytes(frame, t.frame_bytes);
+        std::byte any{0};
+        for (const std::byte b : bytes) any |= b;
+        if (any > std::byte{1}) {
+            const auto bad = std::ranges::find_if(
+                bytes, [](std::byte b) { return b > std::byte{1}; });
+            say(msg, "rumi: byte %zu of a decoded bool frame is neither "
+                "0 nor 1%s", static_cast<std::size_t>(bad - bytes.begin()),
+                item);
+            return RUMI_ERR_DECODE;
         }
     }
 
