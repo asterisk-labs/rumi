@@ -34,7 +34,7 @@ Sources: `COMPATIBILITY.md`, `CHANGELOG.md`, `SPEC.md`, `NOTICE`, `.gitmodules`,
 
 | Component | Version | Where it is pinned |
 | --- | --- | --- |
-| GeoZL | 0.33.0 | `extern/geozl` submodule, linked into `librumi` and reached as `rumi.geozl`. `@asterisk-labs/geozl` 0.33.0 in the JavaScript package |
+| GeoZL | 0.34.0 | `extern/geozl` submodule, linked into `librumi` and reached as `rumi.geozl`. `@asterisk-labs/geozl` 0.34.0 in the JavaScript package |
 | OpenZL | upstream commit `b7f498b` | through GeoZL's submodule |
 | Karu | 0.4.0 | `extern/karu` submodule; named in `NOTICE` |
 | curl, OpenSSL | 8.22.0, 3.x | bundled in release wheels (`tools/build_static_curl.sh` on Linux) |

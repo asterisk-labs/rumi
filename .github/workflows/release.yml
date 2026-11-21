@@ -335,7 +335,7 @@ jobs:
           source /tmp/rumi-wheel-test/bin/activate
           python -m pip install -q --upgrade pip
           python -m pip install wheelhouse/*.whl
-          python -m pip install -q pytest 'geozl==0.33.0' 'torch==2.11.*'
+          python -m pip install -q pytest 'geozl==0.34.0' 'torch==2.11.*'
           python - <<'PY'
           from rumi._ffi import lib
           assert lib.rumi_gpu_available(lib.RUMI_DEVICE_METAL)

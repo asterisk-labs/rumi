@@ -8,7 +8,7 @@ Notable user-visible changes are recorded here.
 
 - `rumi.geozl.Graph` refuses `pickle`, `copy.copy` and `copy.deepcopy` with
   `TypeError`, as `geozl.Graph` does. A copy used to share the native handle.
-- The bundled GeoZL refuses a tile longer than one row that is not whole rows
+- GeoZL 0.34.0 refuses a tile longer than one row that is not whole rows
   of a row predictor, and a raster or tile not aligned to its samples, as
   invalid input. `rumi_geozl_*` return `RUMI_ERR_INVALID` with a one-line
   reason, an invalid request in every binding, where these were
