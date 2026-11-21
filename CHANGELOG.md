@@ -4,41 +4,7 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
-### Breaking
-
-- `rumi.geozl.Graph` refuses `pickle`, `copy.copy` and `copy.deepcopy` with
-  `TypeError`, as `geozl.Graph` does. A copy used to share the native handle.
-- GeoZL 0.34.0 refuses a tile longer than one row that is not whole rows
-  of a row predictor, and a raster or tile not aligned to its samples, as
-  invalid input. `rumi_geozl_*` return `RUMI_ERR_INVALID` with a one-line
-  reason, an invalid request in every binding, where these were
-  `RUMI_ERR_INTERNAL` and `RUMI_ERR_OOM`.
-
-### Changed
-
-- Local CPU reads skip a copy of the task list; interleaved reads use
-  fixed-width sample copies.
-- `rumi_write_base_offset` no longer allocates memory per frame.
-- GeoZL refusals in `rumi_geozl_*` are one line without build-machine paths,
-  and the decode error for a damaged GeoZL frame names the check it failed.
-
-### Fixed
-
-- On Windows, CPU DLPack reads free aligned buffers with the matching allocator.
-- Invalid dtype values such as 257 are rejected consistently, including by
-  `rumi_geozl_graph_open` and the writer.
-- Frame-pattern names accept only ASCII letters, digits and `_`, regardless of
-  the process locale. Errors report non-ASCII bytes in hex.
-- Allocation failures no longer free a transport client twice or leak a GPU
-  decoder handle.
-- A read into memory that is not aligned to its samples decodes through
-  scratch, where GeoZL used to write the samples misaligned.
-- A decode worker whose OpenZL context could not be allocated tries again on
-  its next frame instead of failing every later read.
-- Threads that share a GeoZL graph in `rumi_geozl_*`, `rumi.geozl` or
-  `Rumi.GeoZL` take turns on it instead of crashing the process.
-
-## [0.31.0] - 2026-11-16
+## [0.31.0] - 2026-11-20
 
 ### Breaking
 
@@ -84,6 +50,13 @@ Notable user-visible changes are recorded here.
 - R refuses a matrix as `bands` or `time`, as Python and Julia do.
 - A Julia `Dataset` opened from bytes exposes them as a read-only view, so
   nothing reachable through it can free the buffer the native source reads.
+- `rumi.geozl.Graph` refuses `pickle`, `copy.copy` and `copy.deepcopy` with
+  `TypeError`, as `geozl.Graph` does. A copy used to share the native handle.
+- GeoZL 0.34.0 refuses a tile longer than one row that is not whole rows
+  of a row predictor, and a raster or tile not aligned to its samples, as
+  invalid input. `rumi_geozl_*` return `RUMI_ERR_INVALID` with a one-line
+  reason, an invalid request in every binding, where these were
+  `RUMI_ERR_INTERNAL` and `RUMI_ERR_OOM`.
 
 ### Added
 
@@ -159,10 +132,28 @@ Notable user-visible changes are recorded here.
 - R and Julia retain the `n` axis for a one-item `read_many`. R previously
   failed on that read.
 - Julia maps `RUMI_ERR_INVALID` to `ArgumentError`.
+- Local CPU reads skip a copy of the task list; interleaved reads use
+  fixed-width sample copies.
+- `rumi_write_base_offset` no longer allocates memory per frame.
+- GeoZL refusals in `rumi_geozl_*` are one line without build-machine paths,
+  and the decode error for a damaged GeoZL frame names the check it failed.
 
 ### Fixed
 
 - R processes on Windows exit cleanly after a parallel read.
+- On Windows, CPU DLPack reads free aligned buffers with the matching allocator.
+- Invalid dtype values such as 257 are rejected consistently, including by
+  `rumi_geozl_graph_open` and the writer.
+- Frame-pattern names accept only ASCII letters, digits and `_`, regardless of
+  the process locale. Errors report non-ASCII bytes in hex.
+- Allocation failures no longer free a transport client twice or leak a GPU
+  decoder handle.
+- A read into memory that is not aligned to its samples decodes through
+  scratch, where GeoZL used to write the samples misaligned.
+- A decode worker whose OpenZL context could not be allocated tries again on
+  its next frame instead of failing every later read.
+- Threads that share a GeoZL graph in `rumi_geozl_*`, `rumi.geozl` or
+  `Rumi.GeoZL` take turns on it instead of crashing the process.
 
 ## [0.30.0] - 2026-11-11
 
