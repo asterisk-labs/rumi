@@ -1,7 +1,7 @@
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="img/rumi-banner-dark.svg">
-    <img src="img/rumi-banner-light.svg" alt="rumi" width="720">
+    <img src="img/rumi-banner-light.svg" alt="rumi" width="614">
   </picture>
   <p>
     <a href="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml"><img src="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
