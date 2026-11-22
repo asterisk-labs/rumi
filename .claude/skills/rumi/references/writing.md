@@ -3,7 +3,7 @@
 Sources: `bindings/python/rumi/_write.py`, `geozl.py` and `_time.py`,
 `core/src/write.cpp`, `core/src/geozl.cpp`, `core/src/trailer.cpp`,
 `core/src/geokeys.cpp`, and the Georeferencing, Trailer and Header blob sections of
-`SPEC.md`. Examples describe rumi 0.31.0, whose `rumi.geozl` links GeoZL 0.34.0.
+`SPEC.md`. Examples describe rumi 0.32.0, whose `rumi.geozl` links GeoZL 0.34.0.
 
 ## Contents
 

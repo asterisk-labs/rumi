@@ -4,6 +4,8 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-22
+
 ### Breaking
 
 - Dropped `rumi.open`, `rumi_open`, `rumi_close`, `Rumi.open` and `Dataset`.
@@ -825,7 +827,8 @@ Notable user-visible changes are recorded here.
 - Reads use positional I/O and validate payload bounds before allocation.
 - Release wheels target Linux x86-64 and macOS arm64.
 
-[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/asterisk-labs/rumi/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/asterisk-labs/rumi/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/asterisk-labs/rumi/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/asterisk-labs/rumi/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/asterisk-labs/rumi/compare/v0.28.1...v0.29.0

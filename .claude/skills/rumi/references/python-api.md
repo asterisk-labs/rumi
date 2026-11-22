@@ -1,6 +1,6 @@
 # Python API
 
-Everything here describes `rumi` 0.31.0, as implemented in `bindings/python/rumi/`
+Everything here describes `rumi` 0.32.0, as implemented in `bindings/python/rumi/`
 (`_frames.py`, `geozl.py`, `_write.py`, `_read.py`, `_info.py`,
 `_config.py`, `_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
 
