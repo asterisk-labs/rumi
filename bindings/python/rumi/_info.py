@@ -192,12 +192,6 @@ def info(source: InfoSource | None = None, *,
     the ``bands``, ``time``, ``time_kind``, ``transform``, ``crs`` and
     ``pixel_is_point`` fields are ``None``.
     """
-    from ._dataset import Dataset
-
-    if isinstance(source, Dataset):
-        if header is not None:
-            raise TypeError("header is already carried by this Dataset")
-        return source.metadata
     native_source = _Source(source) if source is not None else None
     try:
         return _metadata(native_source, header)

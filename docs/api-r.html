@@ -88,29 +88,18 @@ remotes::install_github("asterisk-labs/rumi", subdir = "bindings/r")</code></pre
 <pre data-run="skip"><code class="language-r">library(rumi)
 
 header &lt;- readBin("scene.header", "raw", file.info("scene.header")$size)
-dataset &lt;- rumi_open("scene.rumi", header)
-chip &lt;- rumi_read(dataset, time = 1:3, bands = c(4, 8),
+chip &lt;- rumi_read("scene.rumi", header, time = 1:3, bands = c(4, 8),
                   window = c(1, 1, 256, 256))
-dim(chip)                                    # 256 256 2 3
-rumi_close(dataset)</code></pre>
+dim(chip)                                    # 256 256 2 3</code></pre>
 
       <h2 class="part" id="functions">Functions</h2>
       <p>Bad arguments stop with an R error, and native failures signal a classed condition, as <a href="#errors">Errors</a> describes.</p>
 
-      <h3 id="rumi_open">rumi_open</h3>
-<pre><code class="sig language-r">rumi_open(source, header)</code></pre>
-      <p>Opens a source with its external header. Opening checks the header against the source and reads the metadata, and every later read uses this pair.</p>
-      <table class="spec">
-        <tr><th>source</th><td>One local path, URI or VSI path, or the file's bytes as a raw vector. A leading <code>~</code> is expanded. The dataset keeps a raw vector alive while it is open.</td></tr>
-        <tr><th>header</th><td>The external header as a raw vector, as <code>readBin()</code> returns it.</td></tr>
-      </table>
-      <p>Returns a <code>rumi_dataset</code> with the fields <code>pointer</code>, <code>source</code>, <code>header</code> and <code>metadata</code>. <code>print</code> shows the shape, dtype, tile, frame layout, bands, CRS and first time step. It wraps native state, so it does not survive saving and reloading. Garbage collection closes it, and <a href="#rumi_close"><code>rumi_close</code></a> closes it at once.</p>
-
       <h3 id="rumi_info">rumi_info</h3>
 <pre><code class="sig language-r">rumi_info(source = NULL, header = NULL)</code></pre>
-      <p>Inspects a source, an external header or both, and returns a <code>rumi_metadata</code> list. A dataset from <code>rumi_open</code> returns the metadata it read, and passing a header beside it is an error. A path or raw vector alone is read and its canonical external header rebuilt in <code>header</code>. A header alone opens nothing, so <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code> are <code>NULL</code>. Given both, Rumi checks that they match.</p>
+      <p>Inspects a source, an external header or both, and returns a <code>rumi_metadata</code> list. A path or raw vector alone is read and its canonical external header rebuilt in <code>header</code>. A header alone opens nothing, so <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code> are <code>NULL</code>. Given both, Rumi checks that they match.</p>
       <table class="spec">
-        <tr><th>source</th><td>A dataset from <code>rumi_open</code>, a path or the file's bytes as a raw vector, or <code>NULL</code>.</td></tr>
+        <tr><th>source</th><td>A path, URI or VSI path, the file's bytes as a raw vector, or <code>NULL</code>. A leading <code>~</code> is expanded.</td></tr>
         <tr><th>header</th><td>The external header as a raw vector, or <code>NULL</code>. At least one of the two is required.</td></tr>
       </table>
       <p>The list holds these fields.</p>
@@ -129,7 +118,7 @@ rumi_close(dataset)</code></pre>
         <tr><th>pixel_is_point</th><td><code>TRUE</code> for a PixelIsPoint raster, <code>FALSE</code> for PixelIsArea.</td></tr>
         <tr><th>header</th><td>The header bytes.</td></tr>
       </table>
-<pre data-run="skip"><code class="language-r">info &lt;- rumi_info(dataset)
+<pre data-run="skip"><code class="language-r">info &lt;- rumi_info("scene.rumi", header)
 info$shape                                   # 2 3 6 8
 info$bands                                   # "B02" "B03" "B04"
 
@@ -137,20 +126,20 @@ header &lt;- rumi_info("scene.rumi")$header    # rebuild a lost header
 rumi_info(header = header)$bands             # NULL</code></pre>
 
       <h3 id="rumi_read">rumi_read</h3>
-<pre><code class="sig language-r">rumi_read(source, header = NULL, time = NULL, bands = NULL,
+<pre><code class="sig language-r">rumi_read(source, header, time = NULL, bands = NULL,
     window = NULL, pattern = NULL)</code></pre>
       <p>Reads a window and a selection of time steps and bands. Only the frames the read needs are fetched.</p>
       <table class="spec">
-        <tr><th>source</th><td>A dataset from <code>rumi_open</code>, a path or the file's bytes as a raw vector. A path or raw vector is read with <code>header</code> and closed after the read.</td></tr>
-        <tr><th>header</th><td>The external header when <code>source</code> is not a dataset. A dataset already carries one, so passing it there is an error.</td></tr>
+        <tr><th>source</th><td>A path, URI or VSI path, or the file's bytes as a raw vector. A leading <code>~</code> is expanded.</td></tr>
+        <tr><th>header</th><td>The external header as a raw vector, as <code>readBin()</code> returns it.</td></tr>
         <tr><th>time</th><td>Whole one-based time indices in output order, or <code>NULL</code> for all.</td></tr>
         <tr><th>bands</th><td>Whole one-based band indices in output order, or <code>NULL</code> for all.</td></tr>
         <tr><th>window</th><td><code>c(row, column, height, width)</code> with a one-based origin, or <code>NULL</code> for the whole image. It must lie inside the image.</td></tr>
         <tr><th>pattern</th><td>An output pattern that arranges the result, as in <a href="#arrays">Arrays</a>. <code>NULL</code> keeps the native order.</td></tr>
       </table>
       <p>Returns an array shaped <code>(X, Y, Band)</code> for an Image or <code>(X, Y, Band, Time)</code> for a Cube. A Cube keeps its time dimension when one step is selected.</p>
-      <p>A path or raw vector is read with its header alone, as Python's <code>rumi.read</code> does. It skips the index and trailer that <code>rumi_open</code> reads to check the pair, which saves range requests on a remote source. The result then has no band or time dimnames, and its <code>rumi_metadata</code> attribute holds only the header's fields. Open a dataset first for the labels.</p>
-<pre data-run="skip"><code class="language-r">chip &lt;- rumi_read(dataset, time = c(2, 1), bands = c(3, 1),
+      <p>Every read is stateless and uses the header alone, as Python's <code>rumi.read</code> does, so it fetches only the frames it needs. It does not read the index and trailer, so the result has no band or time dimnames and its <code>rumi_metadata</code> attribute holds only the header's fields. <a href="#rumi_info"><code>rumi_info(source, header)</code></a> returns the band labels and time, and checks that the header belongs to the file.</p>
+<pre data-run="skip"><code class="language-r">chip &lt;- rumi_read("scene.rumi", header, time = c(2, 1), bands = c(3, 1),
                   window = c(2, 3, 3, 4))
 dim(chip)                                    # 4 3 2 2
 
@@ -159,27 +148,23 @@ bytes &lt;- readBin("scene.rumi", "raw", file.info("scene.rumi")$size)
 same &lt;- rumi_read(bytes, header, bands = 1)</code></pre>
 
       <h3 id="rumi_read_many">rumi_read_many</h3>
-<pre><code class="sig language-r">rumi_read_many(sources, headers = NULL, windows = NULL, time = NULL,
+<pre><code class="sig language-r">rumi_read_many(sources, headers, windows = NULL, time = NULL,
     bands = NULL, pattern = NULL)</code></pre>
       <p>Reads one window from each of several sources in one call and stacks them along a last <code>n</code> dimension, as a training batch needs.</p>
       <table class="spec">
-        <tr><th>sources</th><td>A list of datasets from <code>rumi_open</code>, or a list or character vector of paths and raw vectors. Datasets and bare sources do not mix.</td></tr>
-        <tr><th>headers</th><td>A list with one raw external header per source when <code>sources</code> are not datasets. Each source is read with its header alone, as in <a href="#rumi_read"><code>rumi_read</code></a>, and closed after the read.</td></tr>
+        <tr><th>sources</th><td>A list or character vector of paths and raw vectors.</td></tr>
+        <tr><th>headers</th><td>A list with one raw external header per source. Each source is read with its header alone, as in <a href="#rumi_read"><code>rumi_read</code></a>.</td></tr>
         <tr><th>windows</th><td>One <code>c(row, column, height, width)</code> per source, as a list or as the rows of a matrix. All windows have the same height and width. A <code>NULL</code> entry reads that whole image, and <code>NULL</code> reads every whole image, which must then share a size.</td></tr>
         <tr><th>others</th><td>As in <a href="#rumi_read"><code>rumi_read</code></a>, applied to every source.</td></tr>
       </table>
-      <p>Returns <code>(X, Y, Band, n)</code>, or <code>(X, Y, Band, Time, n)</code> when the first source is a Cube. Dimension names come from the first dataset, and sources read with their headers alone have no band or time names.</p>
-<pre data-run="skip"><code class="language-r">batch &lt;- rumi_read_many(list(dataset, dataset),
+      <p>Returns <code>(X, Y, Band, n)</code>, or <code>(X, Y, Band, Time, n)</code> when the first source is a Cube. Like <code>rumi_read</code>, the result has no band or time dimnames.</p>
+<pre data-run="skip"><code class="language-r">batch &lt;- rumi_read_many(list("scene.rumi", "scene.rumi"), list(header, header),
                         windows = list(c(1, 1, 2, 3), c(3, 4, 2, 3)),
                         bands = 2)
 dim(batch)                                   # 3 2 1 2 2
 
 batch &lt;- rumi_read_many(c("a.rumi", "b.rumi"), list(header_a, header_b),
                         windows = rbind(c(1, 1, 256, 256), c(257, 1, 256, 256)))</code></pre>
-
-      <h3 id="rumi_close">rumi_close</h3>
-<pre><code class="sig language-r">rumi_close(dataset)</code></pre>
-      <p>Releases the native source and header and returns <code>NULL</code> invisibly. A later read on the dataset stops with an error, and closing it again does nothing.</p>
 
       <h3 id="rumi_frames">rumi_frames</h3>
 <pre><code class="sig language-r">rumi_frames(x, pattern, tile_size = 512L, dtype = NULL)</code></pre>
@@ -300,11 +285,9 @@ rumi_get_num_threads()                       # 8</code></pre>
       <ol class="toc-sections">
         <li><a href="#install">Install</a></li>
         <li><a href="#functions">Functions</a></li>
-        <li><a href="#rumi_open">rumi_open</a></li>
         <li><a href="#rumi_info">rumi_info</a></li>
         <li><a href="#rumi_read">rumi_read</a></li>
         <li><a href="#rumi_read_many">rumi_read_many</a></li>
-        <li><a href="#rumi_close">rumi_close</a></li>
         <li><a href="#rumi_frames">rumi_frames</a></li>
         <li><a href="#rumi_frame_start">rumi_frame_start</a></li>
         <li><a href="#rumi_geozl_graph">rumi_geozl_graph</a></li>

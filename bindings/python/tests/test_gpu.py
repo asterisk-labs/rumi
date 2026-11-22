@@ -273,10 +273,9 @@ def test_gpu_context_uses_and_pins_the_read_thread_count(
 def test_partial_read_writes_a_gpu_tensor(
         scenes, device, torch_type):
     path, header, data = scenes[0]
-    with rumi.open(path, header) as dataset:
-        result = dataset.read(
-            framework="torch", device=device,
-            bands=[3, 1], window=(7, 11, 63, 75))
+    result = rumi.read(
+        path, header, framework="torch", device=device,
+        bands=[3, 1], window=(7, 11, 63, 75))
 
     assert result.device.type == torch_type
     expected = data[[3, 1], 7:70, 11:86]

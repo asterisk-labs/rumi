@@ -3,7 +3,7 @@
 }
 
 .header <- function(header) {
-  if (!is.raw(header))
+  if (missing(header) || !is.raw(header))
     stop("`header` must be a raw vector", call. = FALSE)
   header
 }
@@ -73,64 +73,29 @@
   enc2utf8(path.expand(source))
 }
 
-#' Open a Rumi source
-#'
-#' `source` and its external `header` stay paired for every partial read.
-#' Opening validates the header against the source and reads its metadata.
-#'
-#' @param source A local path, URI or VSI path, or the file's bytes as a raw
-#'   vector. The dataset keeps a raw vector alive while it is open.
-#' @param header Raw external-header bytes.
-#' @return A `rumi_dataset` list with `pointer`, `source`, `header` and
-#'   `metadata`.
-#' @export
-rumi_open <- function(source, header) .open(source, header, TRUE)
-
-# A one-shot read skips the check, which reads the index and trailer and costs
-# range requests on a remote source, so its metadata holds the header alone.
-.open <- function(source, header, check) {
-  value <- .rumi_call(rumi_r_open, .source(source), .header(header), check)
-  value$metadata <- tryCatch(.metadata(value$metadata), error = function(e) {
-    .rumi_call(rumi_r_close, value$pointer)
-    stop(e)
-  })
-  class(value) <- "rumi_dataset"
+# A read takes the header alone, because checking it against the source
+# reads the index and trailer and costs range requests on a remote source.
+.pair <- function(source, header) {
+  value <- .rumi_call(rumi_r_open, .source(source), .header(header))
+  value$metadata <- .metadata(value$metadata)
   value
 }
 
-#' Close a Rumi dataset
-#' @param dataset A dataset returned by [rumi_open()].
-#' @export
-rumi_close <- function(dataset) {
-  .dataset(dataset)
-  invisible(.rumi_call(rumi_r_close, dataset$pointer))
-}
-
-.dataset <- function(dataset, name = "dataset") {
-  if (!inherits(dataset, "rumi_dataset") || !is.list(dataset) ||
-      !identical(names(dataset), c("pointer", "source", "header", "metadata")))
-    stop(sprintf("`%s` must come from rumi_open()", name), call. = FALSE)
-  dataset
-}
+.release <- function(pair) invisible(.rumi_call(rumi_r_close, pair$pointer))
 
 #' Inspect a Rumi source or header
 #'
 #' A source alone is read and its canonical external header rebuilt. A header
-#' alone opens nothing, so `bands`, `time`, `time_kind`, `transform`, `crs`
+#' alone reads no source, so `bands`, `time`, `time_kind`, `transform`, `crs`
 #' and `pixel_is_point` are `NULL`. Given both, Rumi checks that they match.
 #'
-#' @param source A dataset returned by [rumi_open()], a local path, URI or VSI
-#'   path, or the file's bytes as a raw vector.
-#' @param header Raw external-header bytes. A dataset already carries one.
+#' @param source A local path, URI or VSI path, or the file's bytes as a raw
+#'   vector.
+#' @param header Raw external-header bytes.
 #' @return A `rumi_metadata` list. Its `time` holds `Date` values when every
 #'   coordinate is a whole UTC day and UTC `POSIXct` values otherwise.
 #' @export
 rumi_info <- function(source = NULL, header = NULL) {
-  if (inherits(source, "rumi_dataset")) {
-    if (!is.null(header))
-      stop("`header` is already carried by this dataset", call. = FALSE)
-    return(.dataset(source, "source")$metadata)
-  }
   if (!is.null(source))
     source <- .source(source)
   if (!is.null(header))
@@ -174,8 +139,8 @@ rumi_info <- function(source = NULL, header = NULL) {
   value
 }
 
-.decorate <- function(x, dataset, bands, time, batch = FALSE) {
-  metadata <- dataset$metadata
+# The header names no bands or time steps, so only the axes are named.
+.decorate <- function(x, metadata, batch = FALSE) {
   axes <- c("x", "y", "band")
   if (metadata$time_count > 1L)
     axes <- c(axes, "time")
@@ -183,22 +148,8 @@ rumi_info <- function(source = NULL, header = NULL) {
     axes <- c(axes, "n")
   attr(x, "rumi_axes") <- axes
   attr(x, "rumi_metadata") <- metadata
-
   labels <- vector("list", length(dim(x)))
   names(labels) <- axes
-  picked_bands <- if (is.null(bands)) seq_along(metadata$bands) else bands
-  if (length(metadata$bands))
-    labels$band <- metadata$bands[picked_bands]
-  picked_time <- if (is.null(time)) seq_len(metadata$time_count) else time
-  if (metadata$time_count > 1L && length(metadata$time)) {
-    if (is.matrix(metadata$time)) {
-      picked <- metadata$time[picked_time, , drop = FALSE]
-      labels$time <- paste(.time_text(picked[, 1L]), .time_text(picked[, 2L]),
-                           sep = "/")
-    } else {
-      labels$time <- .time_text(metadata$time[picked_time])
-    }
-  }
   dimnames(x) <- labels
   x
 }
@@ -209,98 +160,80 @@ rumi_info <- function(source = NULL, header = NULL) {
 #' `(row, column, height, width)`. The returned Image is `(X, Y, Band)` and a
 #' Cube is `(X, Y, Band, Time)`, matching R's column-major memory order.
 #'
-#' A path or raw vector is read with its header alone, without reading the
-#' index and trailer or checking the pair as [rumi_open()] does. The result
-#' then has no band or time dimnames, and its `rumi_metadata` attribute holds
-#' only the header's fields.
+#' A read uses the header alone, without the index and trailer, so the result
+#' has no band or time dimnames and its `rumi_metadata` attribute holds only
+#' the header's fields. [rumi_info()] with both `source` and `header` checks
+#' the pair and returns the band texts and time coordinates.
 #'
 #' Native failures other than an invalid request signal a condition of class
 #' `rumi_error_<kind>` and `rumi_error`, with the kind, such as `"io"` or
 #' `"decode"`, in its `kind` field.
 #'
-#' @param source A dataset returned by [rumi_open()]. Alternatively, a path or
-#'   a raw vector of file bytes, read with `header` and closed after the
-#'   read.
-#' @param header External header when `source` is not a dataset.
+#' @param source A local path, URI or VSI path, or the file's bytes as a raw
+#'   vector.
+#' @param header Raw external-header bytes for `source`.
 #' @param time,bands One-based indices, in output order, or `NULL` for all.
 #' @param window One-based `(row, column, height, width)`, or `NULL` for all.
 #' @param pattern Optional Rumi output pattern.
 #' @export
-rumi_read <- function(source, header = NULL, time = NULL, bands = NULL,
+rumi_read <- function(source, header, time = NULL, bands = NULL,
                       window = NULL, pattern = NULL) {
-  if (inherits(source, "rumi_dataset")) {
-    if (!is.null(header))
-      stop("`header` is already carried by this dataset", call. = FALSE)
-    dataset <- .dataset(source, "source")
-  } else {
-    dataset <- .open(source, header, FALSE)
-    on.exit(rumi_close(dataset), add = TRUE)
-  }
+  pair <- .pair(source, header)
+  on.exit(.release(pair), add = TRUE)
   time <- .selection(time, "time")
   bands <- .selection(bands, "bands")
-  x <- .rumi_call(rumi_r_read, dataset$pointer, time, bands,
+  x <- .rumi_call(rumi_r_read, pair$pointer, time, bands,
                   .window(window), .pattern(pattern))
   if (is.null(pattern))
-    x <- .decorate(x, dataset, bands, time)
+    x <- .decorate(x, pair$metadata)
   x
 }
 
 #' Read one window from several Rumi sources
 #'
-#' Paths and raw vectors are read with their headers alone, as in
-#' [rumi_read()], so the result then has no band or time dimnames.
+#' Each source is read with its header alone, as in [rumi_read()], so the
+#' result has no band or time dimnames.
 #'
-#' @param sources A list of datasets from [rumi_open()], or a list or
-#'   character vector of paths and raw vectors, read with `headers` and
-#'   closed after the read.
-#' @param headers A list with one raw external header per source when
-#'   `sources` are not datasets.
+#' @param sources A list or character vector of paths and raw vectors of file
+#'   bytes.
+#' @param headers A list with one raw external header per source.
 #' @param windows A list or matrix with one `(row, column, height, width)` row
 #'   per source. All windows have the same height and width. A `NULL` entry,
 #'   or `NULL` for all, reads the whole image.
 #' @inheritParams rumi_read
 #' @return An array with a last `n` dimension, one entry per source.
 #' @export
-rumi_read_many <- function(sources, headers = NULL, windows = NULL, time = NULL,
+rumi_read_many <- function(sources, headers, windows = NULL, time = NULL,
                            bands = NULL, pattern = NULL) {
-  if (inherits(sources, "rumi_dataset") || is.raw(sources))
+  if (is.raw(sources))
     stop("`sources` must be a list with one entry per item; use list(source)",
          call. = FALSE)
   if (is.character(sources))
     sources <- as.list(sources)
   if (!is.list(sources) || !length(sources))
-    stop("`sources` must be a non-empty list of datasets or sources",
+    stop("`sources` must be a non-empty list of sources", call. = FALSE)
+  if (missing(headers) || !is.list(headers) ||
+      length(headers) != length(sources))
+    stop("`headers` must be a list with one raw header per source",
          call. = FALSE)
-  opened <- vapply(sources, inherits, logical(1), "rumi_dataset")
-  if (all(opened)) {
-    if (!is.null(headers))
-      stop("`headers` are already carried by these datasets", call. = FALSE)
-    datasets <- lapply(sources, .dataset, "sources")
-  } else if (any(opened)) {
-    stop("`sources` cannot mix datasets and bare sources", call. = FALSE)
-  } else {
-    if (!is.list(headers) || length(headers) != length(sources))
-      stop("`headers` must be a list with one raw header per source",
-           call. = FALSE)
-    datasets <- vector("list", length(sources))
-    on.exit(lapply(Filter(Negate(is.null), datasets), rumi_close), add = TRUE)
-    for (i in seq_along(sources))
-      datasets[[i]] <- .open(sources[[i]], headers[[i]], FALSE)
-  }
+  pairs <- vector("list", length(sources))
+  on.exit(lapply(Filter(Negate(is.null), pairs), .release), add = TRUE)
+  for (i in seq_along(sources))
+    pairs[[i]] <- .pair(sources[[i]], headers[[i]])
   if (is.null(windows)) {
-    windows <- vector("list", length(datasets))
+    windows <- vector("list", length(pairs))
   } else if (is.matrix(windows)) {
     windows <- lapply(seq_len(nrow(windows)), function(i) windows[i, ])
   }
-  if (!is.list(windows) || length(windows) != length(datasets))
+  if (!is.list(windows) || length(windows) != length(pairs))
     stop("`windows` must have one window per source", call. = FALSE)
   windows <- lapply(windows, .window)
   time <- .selection(time, "time")
   bands <- .selection(bands, "bands")
-  x <- .rumi_call(rumi_r_read_many, lapply(datasets, `[[`, "pointer"), windows,
+  x <- .rumi_call(rumi_r_read_many, lapply(pairs, `[[`, "pointer"), windows,
                   time, bands, .pattern(pattern))
   if (is.null(pattern))
-    x <- .decorate(x, datasets[[1L]], bands, time, batch = TRUE)
+    x <- .decorate(x, pairs[[1L]]$metadata, batch = TRUE)
   x
 }
 
@@ -587,13 +520,6 @@ print.rumi_frames <- function(x, ...) {
   cat("<Rumi frames> ", length(x$data), " frames of ", x$layout, ", ",
       x$image_width, " x ", x$image_length, " in tiles of ", x$tile_size, ", ",
       x$dtype, ", ", done, " compressed\n", sep = "")
-  invisible(x)
-}
-
-#' @export
-print.rumi_dataset <- function(x, ...) {
-  cat("<Rumi dataset>\n")
-  print(x$metadata)
   invisible(x)
 }
 

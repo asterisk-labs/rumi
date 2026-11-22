@@ -6,7 +6,7 @@
 \usage{
 rumi_read(
   source,
-  header = NULL,
+  header,
   time = NULL,
   bands = NULL,
   window = NULL,
@@ -14,11 +14,10 @@ rumi_read(
 )
 }
 \arguments{
-\item{source}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}. Alternatively, a path or
-a raw vector of file bytes, read with \code{header} and closed after the
-read.}
+\item{source}{A local path, URI or VSI path, or the file's bytes as a raw
+vector.}
 
-\item{header}{External header when \code{source} is not a dataset.}
+\item{header}{Raw external-header bytes for \code{source}.}
 
 \item{time, bands}{One-based indices, in output order, or \code{NULL} for all.}
 
@@ -32,10 +31,10 @@ read.}
 Cube is \verb{(X, Y, Band, Time)}, matching R's column-major memory order.
 }
 \details{
-A path or raw vector is read with its header alone, without reading the
-index and trailer or checking the pair as \code{\link[=rumi_open]{rumi_open()}} does. The result
-then has no band or time dimnames, and its \code{rumi_metadata} attribute holds
-only the header's fields.
+A read uses the header alone, without the index and trailer, so the result
+has no band or time dimnames and its \code{rumi_metadata} attribute holds only
+the header's fields. \code{\link[=rumi_info]{rumi_info()}} with both \code{source} and \code{header} checks
+the pair and returns the band texts and time coordinates.
 
 Native failures other than an invalid request signal a condition of class
 \verb{rumi_error_<kind>} and \code{rumi_error}, with the kind, such as \code{"io"} or

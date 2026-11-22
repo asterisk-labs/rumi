@@ -8,13 +8,14 @@ float_path = joinpath(@__DIR__, "fixtures", "binding-f64.rumi")
 float_header_path = joinpath(@__DIR__, "fixtures", "binding-f64.header")
 
 @testset "package API" begin
-    @test Rumi.open !== Base.open
     @test Rumi.read !== Base.read
     @test Rumi.write !== Base.write
-    @test :open ∉ names(Rumi)
+    # Rumi keeps no handle between calls, so it defines no open of its own.
+    @test Rumi.open === Base.open
+    @test !isdefined(Rumi, :Dataset)
     @test :read ∉ names(Rumi)
     @test :write ∉ names(Rumi)
-    @test Set(names(Rumi)) == Set([:Rumi, :Dataset, :FrameTable, :Metadata, :RumiError])
+    @test Set(names(Rumi)) == Set([:Rumi, :FrameTable, :Metadata, :RumiError])
     @test sizeof(Rumi.RumiBFloat16) == 2
 end
 
@@ -53,15 +54,9 @@ end
     @test isfile(float_path)
     @test isfile(float_header_path)
     header = Base.read(header_path)
-    file = Rumi.open(path, header)
-    metadata = Rumi.info(file)
+    metadata = Rumi.info(path; header)
 
-    @test isopen(file)
-    @test file.source == path
-    @test file.source isa String
-    @test file._bytes === nothing
-    @test file.header == header
-    @test file.metadata === metadata
+    @test metadata.header == header
     @test metadata.shape == (2, 3, 6, 8)
     @test metadata.time_count == 2
     @test metadata.dtype == "uint16"
@@ -72,145 +67,102 @@ end
     @test metadata.time == [Date(2026, 1, 1), Date(2026, 1, 6)]
     @test eltype(metadata.time) == Date
 
-    whole = Rumi.read(file)
+    pick(; kwargs...) = Rumi.read(path, header; kwargs...)
+    whole = pick()
     @test size(whole) == (8, 6, 3, 2)
     @test whole[1, 1, 1, 1] == 0
     @test whole[8, 6, 3, 2] == 12507
 
-    chip = Rumi.read(file; time=[2, 1], bands=[3, 1], window=(2, 3, 3, 4))
+    chip = pick(; time=[2, 1], bands=[3, 1], window=(2, 3, 3, 4))
     @test size(chip) == (4, 3, 2, 2)
     @test chip[1, 1, 1, 1] == 12102
     @test chip[4, 3, 2, 2] == 305
 
-    reordered = Rumi.read(
-        file;
-        time=[1], bands=[2, 3], window=(1, 1, 2, 3),
-        pattern="t y x b",
-    )
+    reordered = pick(; time=[1], bands=[2, 3], window=(1, 1, 2, 3), pattern="t y x b")
     @test size(reordered) == (2, 3, 2, 1)
     @test reordered[1, 1, 1, 1] == 1000
     @test reordered[2, 3, 2, 1] == 2102
 
     # An integer, a vector and a range select alike.
-    @test Rumi.read(file; bands=2, time=2:2) == whole[:, :, 2:2, 2:2]
-    @test Rumi.read(file; bands=2:3) == Rumi.read(file; bands=[2, 3]) == whole[:, :, 2:3, :]
-    @test Rumi.read(file; time=2:-1:1) == whole[:, :, :, [2, 1]]
-    @test Rumi.read(file; window=[2, 3, 3, 4]) == Rumi.read(file; window=(2, 3, 3, 4))
-    @test_throws ArgumentError("bands takes a list or a range, not a tuple") Rumi.read(
-        file; bands=(1, 3))
-    @test_throws ArgumentError("time takes a list or a range, not a tuple") Rumi.read(
-        file; time=(1,))
-    @test_throws ArgumentError("every bands index must be an integer") Rumi.read(file; bands=true)
-    @test_throws ArgumentError("every time index must be an integer") Rumi.read(
-        file; time=[true, false])
-    @test_throws "takes an integer, a list or a range" Rumi.read(file; bands=Set([1]))
-    @test_throws ArgumentError("bands selects the 4th band, but this file has 3") Rumi.read(
-        file; bands=1:10^9)
-    @test_throws "window must be" Rumi.read(file; window=(1, 1, 2))
-    @test_throws "window must be" Rumi.read(file; window=[1 1 2 2])
+    @test pick(; bands=2, time=2:2) == whole[:, :, 2:2, 2:2]
+    @test pick(; bands=2:3) == pick(; bands=[2, 3]) == whole[:, :, 2:3, :]
+    @test pick(; time=2:-1:1) == whole[:, :, :, [2, 1]]
+    @test pick(; window=[2, 3, 3, 4]) == pick(; window=(2, 3, 3, 4))
+    @test_throws ArgumentError("bands takes a list or a range, not a tuple") pick(; bands=(1, 3))
+    @test_throws ArgumentError("time takes a list or a range, not a tuple") pick(; time=(1,))
+    @test_throws ArgumentError("every bands index must be an integer") pick(; bands=true)
+    @test_throws ArgumentError("every time index must be an integer") pick(; time=[true, false])
+    @test_throws "takes an integer, a list or a range" pick(; bands=Set([1]))
+    @test_throws ArgumentError("bands selects the 4th band, but this file has 3") pick(
+        ; bands=1:10^9)
+    @test_throws "window must be" pick(; window=(1, 1, 2))
+    @test_throws "window must be" pick(; window=[1 1 2 2])
 
-    direct = Rumi.read(path, header; time=[2], bands=[1], window=(1, 1, 1, 1))
+    direct = pick(; time=[2], bands=[1], window=(1, 1, 1, 1))
     @test size(direct) == (1, 1, 1, 1)
     @test only(direct) == 10000
     withenv("HOME" => dirname(path)) do
-        expanded = Rumi.open(joinpath("~", basename(path)), header)
-        @test size(Rumi.read(expanded; window=(1, 1, 1, 1))) == (1, 1, 3, 2)
-        close(expanded)
+        home = joinpath("~", basename(path))
+        @test size(Rumi.read(home, header; window=(1, 1, 1, 1))) == (1, 1, 3, 2)
+        @test Rumi.info(home; header).header == header
     end
-    @test_throws ArgumentError("bands selects a band before the first") Rumi.read(file; bands=[0])
-    @test_throws ArgumentError("bands selects no band") Rumi.read(file; bands=Int[])
-    @test_throws "the window extends past the image" Rumi.read(file; window=(5, 1, 4, 1))
+    @test_throws ArgumentError("bands selects a band before the first") pick(; bands=[0])
+    @test_throws ArgumentError("bands selects no band") pick(; bands=Int[])
+    @test_throws "the window extends past the image" pick(; window=(5, 1, 4, 1))
     @test_throws "every window must have the same height" Rumi.read_many(
-        [file, file]; windows=[(1, 1, 2, 2), (1, 1, 1, 1)])
-    @test size(Rumi.read_many([file]; windows=[(1, 1, 2, 3)])) == (3, 2, 3, 2, 1)
+        [path, path], [header, header]; windows=[(1, 1, 2, 2), (1, 1, 1, 1)])
+    @test size(Rumi.read_many([path], [header]; windows=[(1, 1, 2, 3)])) == (3, 2, 3, 2, 1)
     bad_header = copy(header)
     bad_header[1] = xor(bad_header[1], 0x01)
-    @test_throws RumiError Rumi.open(path, bad_header)
-    @test kind(() -> Rumi.open(path, bad_header)) === :parse
-    @test kind(() -> Rumi.open(path * ".missing", header)) === :io
+    @test_throws RumiError Rumi.read(path, bad_header)
+    @test kind(() -> Rumi.read(path, bad_header)) === :parse
+    @test kind(() -> Rumi.info(; header=bad_header)) === :parse
+    @test_throws "does not match source" Rumi.info(path; header=bad_header)
+    @test kind(() -> Rumi.info(path * ".missing"; header)) === :io
     @test kind(() -> Rumi.info(Base.read(path)[1:200])) === :format
-    @test_throws "header must be an AbstractVector{UInt8}" Rumi.open(path, "header")
-    @test_throws "source must be a path, a URI or the file's bytes" Rumi.open(1, header)
-    @test_throws "header is already carried" Rumi.read(file, header)
+    @test_throws "header must be an AbstractVector{UInt8}" Rumi.read(path, "header")
+    @test_throws "source must be a path, a URI or the file's bytes" Rumi.read(1, header)
+    @test_throws MethodError Rumi.read(path)
 
-    batch = Rumi.read_many(
-        [file, file];
-        windows=[(1, 1, 2, 3), (3, 4, 2, 3)],
-        bands=[2],
-    )
+    many(; kwargs...) = Rumi.read_many([path, path], [header, header]; kwargs...)
+    batch = many(; windows=[(1, 1, 2, 3), (3, 4, 2, 3)], bands=[2])
     @test size(batch) == (3, 2, 1, 2, 2)
     @test batch[:, :, :, :, 1] == whole[1:3, 1:2, 2:2, :]
     @test batch[:, :, :, :, 2] == whole[4:6, 3:4, 2:2, :]
-    @test Rumi.read_many([file, file]; windows=[1 1 2 3; 3 4 2 3], bands=[2]) == batch
-    @test Rumi.read_many([file, file]; windows=[nothing, (1, 1, 6, 8)]) == cat(whole, whole; dims=5)
-    @test Rumi.read_many([file]) == reshape(whole, size(whole)..., 1)
-    @test_throws "window per row" Rumi.read_many([file]; windows=[1 1 2])
-    @test_throws "one entry per Dataset" Rumi.read_many([file]; windows=[1 1 2 3; 1 1 2 3])
-    @test_throws "a vector with one window per Dataset" Rumi.read_many(
-        [file]; windows=((1, 1, 2, 3),))
-    @test_throws "a list or a range, not a tuple" Rumi.read_many([file]; bands=(1, 2))
-    @test_throws "vector of Datasets" Rumi.read_many([path])
-    @test_throws "already carried by these Datasets" Rumi.read_many([file], [header])
+    @test many(; windows=[1 1 2 3; 3 4 2 3], bands=[2]) == batch
+    @test many(; windows=[nothing, (1, 1, 6, 8)]) == cat(whole, whole; dims=5)
+    @test Rumi.read_many([path], [header]) == reshape(whole, size(whole)..., 1)
+    @test_throws "window per row" Rumi.read_many([path], [header]; windows=[1 1 2])
+    @test_throws "one entry per source" Rumi.read_many(
+        [path], [header]; windows=[1 1 2 3; 1 1 2 3])
+    @test_throws "a vector with one window per source" Rumi.read_many(
+        [path], [header]; windows=((1, 1, 2, 3),))
+    @test_throws "a list or a range, not a tuple" Rumi.read_many([path], [header]; bands=(1, 2))
+    @test_throws MethodError Rumi.read_many([path])
     @test_throws "use read for one" Rumi.read_many(Base.read(path), [header])
     @test_throws "one header per source" Rumi.read_many([path], header)
+    @test_throws "the same length" Rumi.read_many([path, path], [header])
 
-    floating = Rumi.open(float_path, Base.read(float_header_path))
-    float_chip = Rumi.read(floating; time=[2], bands=[3], window=(2, 3, 3, 4))
+    float_chip = Rumi.read(float_path, Base.read(float_header_path);
+                           time=[2], bands=[3], window=(2, 3, 3, 4))
     @test eltype(float_chip) == Float64
     @test size(float_chip) == (4, 3, 1, 1)
     @test float_chip[1, 1, 1, 1] == 1210.2
-    close(floating)
-
-    close(file)
-    @test !isopen(file)
-    @test_throws ArgumentError("this Rumi Dataset is closed") Rumi.read(file)
-    @test Rumi.info(file) === metadata
-
-    opened = Rumi.open(path, header) do dataset
-        @test isopen(dataset)
-        dataset
-    end
-    @test !isopen(opened)
-    @test Rumi.open(dataset -> size(Rumi.read(dataset)), path, header) == (8, 6, 3, 2)
 end
 
 @testset "bytes sources" begin
     header = Base.read(header_path)
     whole = Rumi.read(path, header)
     bytes = Base.read(path)
-    file = Rumi.open(bytes, header)
-    @test file.source isa AbstractVector{UInt8}
-    @test file.source == bytes
-    @test file.source !== bytes
-    # The Dataset reads its own copy.
-    fill!(bytes, 0x00)
-    @test Rumi.read(file) == whole
-
-    # Nothing reached through the Dataset can resize, rewrite or drop that copy.
-    source = file.source
-    @test_throws MethodError resize!(source, 0)
-    @test_throws MethodError empty!(source)
-    @test_throws MethodError push!(source, 0x00)
-    @test_throws Exception source[1] = 0x00
-    @test_throws ErrorException file.source = codeunits("other")
-    @test_throws ErrorException file._bytes = nothing
-    copied = collect(file.source)
-    resize!(copied, 0)
-    source = nothing
-    GC.gc()
-    @test Rumi.read(file) == whole
-    @test file.source == Base.read(path)
-    close(file)
-
-    bytes = Base.read(path)
     @test Rumi.read(bytes, header; bands=[3, 1]) == whole[:, :, [3, 1], :]
     @test Rumi.read(view(bytes, :), header) == whole
     @test Rumi.read_many([bytes, path], [header, header]) == cat(whole, whole; dims=5)
     @test Rumi.info(bytes).header == header
-    @test Rumi.open(dataset -> Rumi.read(dataset; time=1), bytes, header) == whole[:, :, :, 1:1]
+    @test Rumi.info(bytes; header).header == header
+    @test Rumi.read(bytes, header; time=1) == whole[:, :, :, 1:1]
 
-    # A one-shot read borrows the caller's bytes only for the call, so resizing
-    # them afterwards breaks nothing.
+    # A read borrows the caller's bytes only for the call, so resizing them
+    # afterwards breaks nothing.
     loose = Base.read(path)
     @test Rumi.read(loose, header) == whole
     @test Rumi.read_many([loose], [header]) == reshape(whole, size(whole)..., 1)
@@ -222,18 +174,18 @@ end
     @test kind(() -> Rumi.read(loose, header)) === :format
 end
 
-@testset "one-shot reads" begin
+@testset "reads without the pair check" begin
     header = Base.read(header_path)
     bytes = Base.read(path)
-    whole = Rumi.open(Rumi.read, path, header)
-    @test Rumi.read(path, header) == whole
+    whole = Rumi.read(path, header)
+    @test Rumi.read(bytes, header) == whole
     @test Rumi.read(bytes, header; bands=2:3, window=(2, 3, 3, 4)) == whole[3:6, 2:4, 2:3, :]
     @test Rumi.read_many([path, bytes], [header, header]; windows=[1 1 2 3; 3 4 2 3]) ==
           cat(whole[1:3, 1:2, :, :], whole[4:6, 3:4, :, :]; dims=5)
 
     # Without rumi_info the trailer is never fetched, so a file cut inside it still reads.
     cut = bytes[1:end-10]
-    @test kind(() -> Rumi.open(cut, header)) === :format
+    @test kind(() -> Rumi.info(cut; header)) === :format
     @test Rumi.read(cut, header) == whole
     @test Rumi.read_many([cut], [header]) == reshape(whole, size(whole)..., 1)
 
@@ -281,8 +233,8 @@ end
         bytes[at] = fields(kind, epoch, patched)
         message = "the $nth time step falls outside the years 1 to 9999"
         @test_throws RumiError(:format, message) Rumi.info(bytes)
-        @test_throws RumiError(:format, message) Rumi.open(bytes, header)
-        # A one-shot read never fetches the trailer, so it still returns the samples.
+        @test_throws RumiError(:format, message) Rumi.info(bytes; header)
+        # A read never fetches the trailer, so it still returns the samples.
         @test Rumi.read(bytes, header) == (table === cube ? zeros(UInt8, 4, 4, 1, 2) : zeros(UInt8, 4, 4, 1))
     end
     rm(path)
@@ -313,11 +265,6 @@ end
     @test_throws ArgumentError("external header does not match source") Rumi.info(
         path; header=other)
     @test_throws ArgumentError("info needs a source, a header, or both") Rumi.info()
-    file = Rumi.open(path, header)
-    @test Rumi.info(file) === file.metadata
-    @test_throws ArgumentError("header is already carried by this Dataset") Rumi.info(
-        file; header)
-    close(file)
     @test_throws "header must be" Rumi.info(; header="bytes")
 end
 
@@ -399,9 +346,9 @@ end
     end
     header = Rumi.write(path, table; bands=["B04", "B08"], time=["2025-08-08"])
     @test first(findfirst(UInt8[0xa1, 0xb0, 0xc0, 0xd0], Base.read(path))) == start + 1
-    file = Rumi.open(path, header)
-    @test Rumi._header(file).base_frame_offset == start
-    close(file)
+    spec = Rumi._parse_header(header)
+    @test Rumi._header(spec).base_frame_offset == start
+    Rumi._free_spec(spec)
     rm(path)
 
     cube = (4, 4, 2, 3)
@@ -423,8 +370,7 @@ end
     @test header isa Vector{UInt8}
     @test filesize(path) > 12 * 4
 
-    file = Rumi.open(path, header)
-    metadata = Rumi.info(file)
+    metadata = Rumi.info(path; header)
     @test metadata.shape == (2, 3, 5)
     @test metadata.dtype == "uint16"
     @test metadata.tile == (2, 2)
@@ -438,8 +384,7 @@ end
     @test eltype(metadata.time) == Date
     @test metadata.pixel_is_point == false
     # The placeholder payloads are not GeoZL frames.
-    @test kind(() -> Rumi.read(file)) === :decode
-    close(file)
+    @test kind(() -> Rumi.read(path, header)) === :decode
 
     header = Rumi.write(path, table; bands=("B04", "B08"), time=[Date(2025, 8, 8)])
     @test Rumi.info(path; header).bands == ["B04", "B08"]
@@ -449,24 +394,21 @@ end
     steps.compressed .= Ref(UInt8[1])
     header = Rumi.write(path, steps; bands=["red"],
                         time=[Date(2025, 8, 8), DateTime(2025, 8, 13, 10, 30)])
-    file = Rumi.open(path, header)
-    @test Rumi.info(file).time == [DateTime(2025, 8, 8), DateTime(2025, 8, 13, 10, 30)]
-    @test eltype(Rumi.info(file).time) == DateTime
-    @test Rumi.info(file).transform === nothing
-    close(file)
+    metadata = Rumi.info(path; header)
+    @test metadata.time == [DateTime(2025, 8, 8), DateTime(2025, 8, 13, 10, 30)]
+    @test eltype(metadata.time) == DateTime
+    @test metadata.transform === nothing
 
     intervals = [("2025-08-01", "2025-08-08"),
                  ("2025-08-08T00:00:00", "2025-08-15T14:00:00+02:00")]
     header = Rumi.write(path, steps; bands=["red"], time=intervals,
                         transform=[10, 0, 0, 0, -10, 0, 0, 0, 1], crs=32631,
                         pixel_is_point=true)
-    file = Rumi.open(path, header)
-    metadata = Rumi.info(file)
+    metadata = Rumi.info(path; header)
     @test metadata.time_kind == :interval
     @test metadata.time[1] === (DateTime(2025, 8, 1), DateTime(2025, 8, 8))
     @test metadata.time[2] == (DateTime(2025, 8, 8), DateTime(2025, 8, 15, 12))
     @test metadata.pixel_is_point == true
-    close(file)
 
     # Every binding's date type holds the years 1 to 9999, so the writer keeps to them.
     edges = [Date(1, 1, 1), DateTime(9999, 12, 31, 23, 59, 59)]
@@ -573,9 +515,7 @@ wide[[(y * 40 + x) % 83 == 0 for x in 0:39, y in 0:47]] .= typemin(Int64)
         table.compressed[i] = Rumi.GeoZL.compress(data, Rumi.GeoZL.graph(data, "planar>zigzag>pfor"))
     end
     header = Rumi.write(path, table; bands=["B02", "B03", "B04"], time=["2026-01-01"])
-    file = Rumi.open(path, header)
-    @test Rumi.read(file) == counts
-    close(file)
+    @test Rumi.read(path, header) == counts
 
     bounded = Rumi.frames(reshape(reflectance, 40, 48, 1), LAYOUT; tile_size=16)
     for (i, data) in enumerate(bounded.data)
@@ -583,9 +523,7 @@ wide[[(y * 40 + x) % 83 == 0 for x in 0:39, y in 0:47]] .= typemin(Int64)
         bounded.compressed[i] = Rumi.GeoZL.compress(data, graph)
     end
     header = Rumi.write(path, bounded; bands=["B04"], time=["2026-01-01"])
-    file = Rumi.open(path, header)
-    @test maximum(abs.(Rumi.read(file)[:, :, 1] .- reflectance)) <= 0.01
-    close(file)
+    @test maximum(abs.(Rumi.read(path, header)[:, :, 1] .- reflectance)) <= 0.01
     rm(path)
 
     graph = Rumi.GeoZL.graph(counts, "planar>zigzag>zstd")

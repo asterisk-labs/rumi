@@ -68,7 +68,7 @@ test_that("a file with time outside the years 1 to 9999 is refused", {
                    "the 2nd time step falls outside the years 1 to 9999")
   expect_identical(late$kind, "format")
   expect_null(conditionCall(late))
-  expect_error(rumi_open(bytes, header), "the 2nd time step falls outside",
+  expect_error(rumi_info(bytes, header), "the 2nd time step falls outside",
                class = "rumi_error_format")
 
   expect_identical(rumi:::.ordinal(c(1)), "1st")
@@ -89,10 +89,8 @@ test_that("fixture files are installed", {
 })
 
 if (file.exists(path) && file.exists(header_path)) {
-  test_that("open validates and exposes all metadata", {
-    file <- rumi_open(path, readBin(header_path, "raw", file.info(header_path)$size))
-    on.exit(rumi_close(file))
-    info <- rumi_info(file)
+  test_that("info checks a pair and exposes all metadata", {
+    info <- rumi_info(path, readBin(header_path, "raw", file.info(header_path)$size))
     expect_named(info, c("header", "shape", "time_count", "dtype", "tile",
                          "frame_layout", "index_order", "frames", "bands",
                          "time", "time_kind", "transform", "crs",
@@ -105,9 +103,6 @@ if (file.exists(path) && file.exists(header_path)) {
     expect_identical(info$time_kind, "instant")
     expect_identical(info$time, as.Date(c("2026-01-01", "2026-01-06")))
     expect_false(info$pixel_is_point)
-    expect_identical(names(file), c("pointer", "source", "header", "metadata"))
-    expect_identical(file$source, path)
-    expect_error(rumi_info(file, file$header), "already carried")
   })
 
   test_that("info reads a source, a header or both", {
@@ -142,81 +137,65 @@ if (file.exists(path) && file.exists(header_path)) {
     expect_identical(rumi_info(bytes)$header, header)
     expect_identical(rumi_info(bytes, header)$bands, c("B02", "B03", "B04"))
     expect_identical(rumi_read(bytes, header), expected)
-
-    file <- rumi_open(bytes, header)
-    on.exit(rumi_close(file))
-    expect_identical(file$source, bytes)
-    # The dataset keeps its own reference to the bytes it reads, so changing
-    # the caller's vector or the dataset's field copies it instead.
-    bytes[] <- as.raw(0)
-    file$source[] <- as.raw(0)
-    rm(bytes)
-    gc()
-    expect_identical(as.vector(rumi_read(file)), as.vector(expected))
     expect_identical(
-      as.vector(rumi_read(file, time = 2, bands = 3, window = c(2, 3, 3, 4))),
-      as.vector(rumi_read(path, header, 2, 3, c(2, 3, 3, 4)))
+      rumi_read(bytes, header, time = 2, bands = 3, window = c(2, 3, 3, 4)),
+      rumi_read(path, header, 2, 3, c(2, 3, 3, 4))
     )
   })
 
-  test_that("a one-shot read takes the header alone", {
+  test_that("a read takes the header alone", {
     header <- readBin(header_path, "raw", file.info(header_path)$size)
     bytes <- readBin(path, "raw", file.info(path)$size)
-    file <- rumi_open(path, header)
-    on.exit(rumi_close(file))
-    opened <- rumi_read(file, bands = 2)
     once <- rumi_read(path, header, bands = 2)
-    expect_identical(as.vector(once), as.vector(opened))
-    expect_identical(dim(once), dim(opened))
+    expect_equal(dim(once), c(8, 6, 1, 2))
+    expect_identical(names(dimnames(once)), c("x", "y", "band", "time"))
     expect_null(dimnames(once)$band)
     expect_null(dimnames(once)$time)
-    expect_identical(dimnames(opened)$band, "B03")
-    expect_identical(attr(once, "rumi_axes"), attr(opened, "rumi_axes"))
+    expect_identical(attr(once, "rumi_axes"), c("x", "y", "band", "time"))
     expect_null(attr(once, "rumi_metadata")$bands)
     expect_equal(attr(once, "rumi_metadata")$shape, c(2, 3, 6, 8))
+    expect_identical(rumi_info(path, header)$bands[2], "B03")
 
     # Without the trailer, the pair cannot be checked but the frames still read.
     cut <- bytes[-length(bytes)]
     expect_error(rumi_info(cut, header), "trailer")
-    expect_error(rumi_open(cut, header), "trailer")
-    expect_identical(as.vector(rumi_read(cut, header, bands = 2)), as.vector(opened))
+    expect_identical(rumi_read(cut, header, bands = 2), once)
     batch <- rumi_read_many(list(cut, path), list(header, header), bands = 2)
-    expect_identical(as.vector(batch[, , , , 1]), as.vector(opened))
+    expect_identical(as.vector(batch[, , , , 1]), as.vector(once))
     expect_null(dimnames(batch)$band)
   })
 
-  test_that("open expands the home directory", {
+  test_that("a path expands the home directory", {
     skip_on_os("windows")
     old_home <- Sys.getenv("HOME", unset = NA_character_)
     on.exit(if (is.na(old_home)) Sys.unsetenv("HOME") else
       Sys.setenv(HOME = old_home))
     Sys.setenv(HOME = dirname(path))
     header <- readBin(header_path, "raw", file.info(header_path)$size)
-    file <- rumi_open(file.path("~", basename(path)), header)
-    on.exit(rumi_close(file), add = TRUE)
-    expect_identical(file$source, path)
+    home <- file.path("~", basename(path))
+    expect_identical(rumi_read(home, header), rumi_read(path, header))
+    expect_identical(rumi_info(home, header)$bands, c("B02", "B03", "B04"))
   })
 
   test_that("partial reads use native R dimensions", {
     header <- readBin(header_path, "raw", file.info(header_path)$size)
-    file <- rumi_open(path, header)
-    on.exit(rumi_close(file))
-    whole <- rumi_read(file)
+    whole <- rumi_read(path, header)
     expect_equal(dim(whole), c(8, 6, 3, 2))
     expect_equal(whole[1, 1, 1, 1], 0)
     expect_equal(whole[8, 6, 3, 2], 12507)
 
-    chip <- rumi_read(file, time = c(2, 1), bands = c(3, 1),
+    chip <- rumi_read(path, header, time = c(2, 1), bands = c(3, 1),
                       window = c(2, 3, 3, 4))
     expect_equal(dim(chip), c(4, 3, 2, 2))
     expect_equal(chip[1, 1, 1, 1], 12102)
     expect_equal(chip[4, 3, 2, 2], 305)
-    expect_identical(dimnames(chip)$band, c("B04", "B02"))
-    expect_identical(dimnames(chip)$time, c("2026-01-06", "2026-01-01"))
+    info <- rumi_info(path, header)
+    expect_identical(info$bands[c(3, 1)], c("B04", "B02"))
+    expect_identical(info$time[c(2, 1)], as.Date(c("2026-01-06", "2026-01-01")))
     # time comes before bands when they are positional.
-    expect_identical(rumi_read(file, NULL, c(2, 1), c(3, 1), c(2, 3, 3, 4)), chip)
+    expect_identical(rumi_read(path, header, c(2, 1), c(3, 1), c(2, 3, 3, 4)), chip)
 
-    one <- rumi_read(file, time = 2, bands = 1,
+    one <- rumi_read(path, header, time = 2, bands = 1,
                      window = c(1, 1, 1, 1))
     expect_equal(dim(one), c(1, 1, 1, 1))
     expect_equal(one[1, 1, 1, 1], 10000)
@@ -224,9 +203,7 @@ if (file.exists(path) && file.exists(header_path)) {
 
   test_that("float64 reads write directly to an R double array", {
     header <- readBin(float_header_path, "raw", file.info(float_header_path)$size)
-    file <- rumi_open(float_path, header)
-    on.exit(rumi_close(file))
-    chip <- rumi_read(file, time = 2, bands = 3,
+    chip <- rumi_read(float_path, header, time = 2, bands = 3,
                       window = c(2, 3, 3, 4))
     expect_type(chip, "double")
     expect_equal(dim(chip), c(4, 3, 1, 1))
@@ -235,10 +212,9 @@ if (file.exists(path) && file.exists(header_path)) {
 
   test_that("read_many keeps an n dimension", {
     header <- readBin(header_path, "raw", file.info(header_path)$size)
-    file <- rumi_open(path, header)
-    on.exit(rumi_close(file))
+    headers <- list(header, header)
     batch <- rumi_read_many(
-      list(file, file),
+      list(path, path), headers,
       windows = list(c(1, 1, 2, 3), c(3, 4, 2, 3)),
       bands = 2
     )
@@ -248,21 +224,21 @@ if (file.exists(path) && file.exists(header_path)) {
     expect_identical(attr(batch, "rumi_axes"), c("x", "y", "band", "time", "n"))
     expect_identical(names(dimnames(batch))[5L], "n")
 
-    rows <- rumi_read_many(list(file, file),
+    rows <- rumi_read_many(list(path, path), headers,
                            windows = rbind(c(1, 1, 2, 3), c(3, 4, 2, 3)),
                            bands = 2)
     expect_identical(rows, batch)
-    whole <- rumi_read_many(list(file, file), windows = list(NULL, c(1, 1, 6, 8)))
+    whole <- rumi_read_many(list(path, path), headers,
+                            windows = list(NULL, c(1, 1, 6, 8)))
     expect_equal(dim(whole), c(8, 6, 3, 2, 2))
   })
 
-  test_that("read_many opens paths and raw vectors with their headers", {
+  test_that("read_many reads paths and raw vectors with their headers", {
     header <- readBin(header_path, "raw", file.info(header_path)$size)
     bytes <- readBin(path, "raw", file.info(path)$size)
-    file <- rumi_open(path, header)
-    on.exit(rumi_close(file))
     windows <- list(c(1, 1, 2, 3), c(3, 4, 2, 3))
-    expected <- rumi_read_many(list(file, file), windows = windows, bands = 2)
+    expected <- rumi_read_many(list(path, path), list(header, header),
+                               windows = windows, bands = 2)
 
     batch <- rumi_read_many(list(path, bytes), list(header, header), windows,
                             bands = 2)
@@ -274,48 +250,38 @@ if (file.exists(path) && file.exists(header_path)) {
     expect_error(rumi_read_many(list(path, path)), "one raw header per source")
     expect_error(rumi_read_many(list(path, path), header),
                  "one raw header per source")
-    expect_error(rumi_read_many(list(file, file), list(header, header)),
-                 "already carried")
-    expect_error(rumi_read_many(list(file, path), list(header, header)),
-                 "cannot mix")
     expect_error(rumi_read_many(bytes, list(header)), "use list\\(source\\)")
     expect_error(rumi_read_many(list(path), list(header), windows = windows),
                  "one window per source")
   })
 
-  test_that("invalid headers, selections and closed datasets fail", {
+  test_that("invalid headers and selections fail", {
     header <- readBin(header_path, "raw", file.info(header_path)$size)
     bad <- header
     bad[[1L]] <- as.raw(bitwXor(as.integer(bad[[1L]]), 1L))
-    expect_error(rumi_open(path, bad), "magic")
+    expect_error(rumi_read(path, bad), "magic")
 
-    file <- rumi_open(path, header)
-    expect_error(rumi_read(file, bands = 0), "bands selects a band before the first")
-    expect_error(rumi_read(file, bands = integer(0)), "bands selects no band")
-    expect_error(rumi_read(file, bands = matrix(c(1, 2), 1)),
+    expect_error(rumi_read(path, header, bands = 0),
+                 "bands selects a band before the first")
+    expect_error(rumi_read(path, header, bands = integer(0)), "bands selects no band")
+    expect_error(rumi_read(path, header, bands = matrix(c(1, 2), 1)),
                  "`bands` must be a vector of indices, not a matrix or array",
                  fixed = TRUE)
-    expect_error(rumi_read(file, time = array(2, c(1, 1, 1))),
+    expect_error(rumi_read(path, header, time = array(2, c(1, 1, 1))),
                  "`time` must be a vector of indices, not a matrix or array",
                  fixed = TRUE)
-    expect_error(rumi_read_many(list(file), bands = matrix(1)), "not a matrix")
-    expect_error(rumi_read(file, time = 3), "time selects the 3rd time step")
-    expect_error(rumi_read_many(file), "use list\\(source\\)")
-    expect_error(rumi_read(file, window = c(6, 8, 2, 2)), "past")
-    expect_error(rumi_read(file, header), "already carried")
+    expect_error(rumi_read_many(list(path), list(header), bands = matrix(1)),
+                 "not a matrix")
+    expect_error(rumi_read(path, header, time = 3), "time selects the 3rd time step")
+    expect_error(rumi_read(path, header, window = c(6, 8, 2, 2)), "past")
     expect_error(rumi_read(path), "must be a raw vector")
     expect_error(rumi_read(1, header), "one non-empty path or a raw vector")
-    expect_error(rumi_close(list()), "`dataset` must come from rumi_open")
-    rumi_close(file)
-    closed <- expect_error(rumi_read(file), "this Rumi Dataset is closed")
-    expect_null(conditionCall(closed))
     shape <- expect_error(rumi_frame_start(c(70, 40), "b (row h) (col w) -> row col b (h w)"),
                           "names 3 axes")
     expect_null(conditionCall(shape))
     axes <- expect_error(rumi_frames(array(0L, c(5, 3, 2)), "(row h) (col w) -> row col (h w)"),
                          "names 2 axes")
     expect_null(conditionCall(axes))
-    expect_no_error(rumi_close(file))
   })
 
   test_that("native failures carry their kind", {
@@ -330,7 +296,7 @@ if (file.exists(path) && file.exists(header_path)) {
 
     bad <- header
     bad[[1L]] <- as.raw(bitwXor(as.integer(bad[[1L]]), 1L))
-    parse <- expect_error(rumi_open(path, bad), "magic", class = "rumi_error_parse")
+    parse <- expect_error(rumi_read(path, bad), "magic", class = "rumi_error_parse")
     expect_identical(parse$kind, "parse")
 
     bytes <- readBin(path, "raw", file.info(path)$size)

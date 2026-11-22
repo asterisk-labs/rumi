@@ -6,17 +6,19 @@ external-header API as the Python and R bindings.
 ```julia
 using Rumi
 
-file = Rumi.open("scene.rumi", Base.read("scene.header"))
-chip = Rumi.read(file; bands=[4, 8], time=1:3,
+header = Base.read("scene.header")
+chip = Rumi.read("scene.rumi", header; bands=[4, 8], time=1:3,
                  window=(1, 1, 256, 256))
-meta = Rumi.info(file)
-close(file)
+meta = Rumi.info("scene.rumi"; header)
 ```
 
-A source is a local path, a remote URI or the file's bytes. The `do` form,
-`Rumi.open(source, header) do file ... end`, closes the Dataset afterwards.
-`Rumi.info(source)` reads a file without its external header and rebuilds it
-in `meta.header`, and `Rumi.info(; header)` inspects a header alone.
+A source is a local path, a remote URI or the file's bytes. Every call takes
+the source and its header and keeps nothing between calls. A read uses the
+header alone, and `Rumi.info(source; header)` checks that the two match.
+`Rumi.read_many(sources, headers; windows)` reads one window from each source
+into one batch. `Rumi.info(source)` reads a file without its external header
+and rebuilds it in `meta.header`, and `Rumi.info(; header)` inspects a header
+alone.
 
 Selections and window origins are one-based in Julia. A selection is an
 integer, a vector or a range such as `2:5`, and a tuple is refused. The window

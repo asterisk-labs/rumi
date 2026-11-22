@@ -124,10 +124,9 @@ jobs:
             using Rumi
             root = ENV["PACKAGE_PATH"]
             header = Base.read(joinpath(root, "test", "fixtures", "binding.header"))
-            file = Rumi.open(joinpath(root, "test", "fixtures", "binding.rumi"), header)
-            @assert size(Rumi.read(file)) == (8, 6, 3, 2)
+            source = joinpath(root, "test", "fixtures", "binding.rumi")
+            @assert size(Rumi.read(source, header)) == (8, 6, 3, 2)
             @assert occursin("artifacts", Rumi._find_library())
-            close(file)
           '
 
   julia-compat:

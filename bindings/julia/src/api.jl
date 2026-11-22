@@ -155,60 +155,16 @@ function _metadata(source::Ptr{Cvoid}, header::Union{Nothing,Vector{UInt8}})
 end
 
 """
-    open(source, header) -> Dataset
-    open(f, source, header)
-
-Pair a source with its external header. `source` is a local path, a remote
-URI or the file's bytes as an `AbstractVector{UInt8}`. Opening checks that the
-header matches the source and reads the transform, CRS, band descriptions and
-time axis. The second form passes the Dataset to `f` and closes it when `f`
-returns.
-"""
-function open(source, header)
-    source isa Dataset && throw(ArgumentError("header is already carried by this Dataset"))
-    # An immutable copy, so nothing reached through the Dataset can resize or
-    # rewrite the bytes the native source borrows.
-    owned = source isa AbstractVector{UInt8} ? String(Vector{UInt8}(source)) : nothing
-    value = owned === nothing ? _source_value(source) : codeunits(owned)
-    owned_header = _header_value(header)
-    native_source = _open_source(value)
-    spec = C_NULL
-    try
-        spec = _parse_header(owned_header)
-        metadata = GC.@preserve owned _metadata(native_source, owned_header)
-        return finalizer(close, Dataset(value, owned_header, metadata, native_source, spec, owned))
-    catch
-        _free_source(native_source)
-        spec == C_NULL || _free_spec(spec)
-        rethrow()
-    end
-end
-
-function open(f::Function, source, header)
-    file = open(source, header)
-    try
-        return f(file)
-    finally
-        close(file)
-    end
-end
-
-"""
     info(source; header=nothing) -> Metadata
     info(; header) -> Metadata
 
 Inspect a source, an external header, or both. `source` is a local path, a
-remote URI, the file's bytes or a [`Dataset`](@ref). A source alone is read
-and its canonical header rebuilt. A header alone opens nothing, and leaves
-`bands`, `time`, `time_kind`, `transform`, `crs` and `pixel_is_point` as
-`nothing`. Given both, the header must match the source. A Dataset returns
-its metadata and takes no header.
+remote URI or the file's bytes. A source alone is read and its canonical
+header rebuilt. A header alone reads no source, and leaves `bands`, `time`,
+`time_kind`, `transform`, `crs` and `pixel_is_point` as `nothing`. Given both,
+the header must match the source, the check [`read`](@ref) leaves out.
 """
 function info(source=nothing; header=nothing)
-    if source isa Dataset
-        header === nothing || throw(ArgumentError("header is already carried by this Dataset"))
-        return source.metadata
-    end
     owned_header = header === nothing ? nothing : _header_value(header)
     source === nothing && return _metadata(Ptr{Cvoid}(C_NULL), owned_header)
     value = _source_value(source)
@@ -227,11 +183,6 @@ function _header(spec::Ptr{Cvoid})
         (Ptr{Cvoid}, Ref{_Header}), spec, result,
     ))
     return result[]
-end
-
-function _header(file::Dataset)
-    isopen(file) || throw(ArgumentError("this Rumi Dataset is closed"))
-    return _header(file._spec)
 end
 
 # A tuple is refused so that (1, 3) never means two indices here and a range
@@ -290,10 +241,10 @@ function _windows(windows, count::Integer)
         windows
     else
         throw(ArgumentError(
-            "windows is a vector with one window per Dataset, or a matrix with one per row"))
+            "windows is a vector with one window per source, or a matrix with one per row"))
     end
     length(entries) == count ||
-        throw(ArgumentError("windows must have one entry per Dataset"))
+        throw(ArgumentError("windows must have one entry per source"))
     return entries
 end
 
@@ -309,25 +260,19 @@ function _array(header::_Header, layout::_Layout)
     return Array{T}(undef, reverse(shape))
 end
 
+# Like Python's read, this skips rumi_info, which would fetch the index and
+# trailer before the frames.
 """
-    read(file::Dataset; time=nothing, bands=nothing, window=nothing, pattern=nothing) -> Array
-    read(source, header; kwargs...) -> Array
+    read(source, header; time=nothing, bands=nothing, window=nothing, pattern=nothing) -> Array
 
-Read a selection into a new array of the file's element type. `time` and
-`bands` take a one-based index, a vector of them or a range, and `nothing`
-for all. `window` is `(row, column, height, width)` with a one-based origin.
-The second form opens `source` with `header`, reads it and closes it. It skips
-the check [`open`](@ref) makes that the header matches the source.
+Read a selection of `source` into a new array of the file's element type.
+`source` is a local path, a remote URI or the file's bytes, and `header` its
+external header. `time` and `bands` take a one-based index, a vector of them
+or a range, and `nothing` for all. `window` is `(row, column, height, width)`
+with a one-based origin. A read uses the header alone and does not check that
+it matches the source; `Rumi.info(source; header)` checks a pair.
 """
-function read(file::Dataset; time=nothing, bands=nothing, window=nothing, pattern=nothing)
-    isopen(file) || throw(ArgumentError("this Rumi Dataset is closed"))
-    return GC.@preserve file _read(file._source, file._spec, time, bands, window, pattern)
-end
-
-# Like Python's read, a one-shot read skips rumi_info, which would fetch the
-# index and trailer before the frames.
 function read(source, header; time=nothing, bands=nothing, window=nothing, pattern=nothing)
-    source isa Dataset && throw(ArgumentError("header is already carried by this Dataset"))
     value = _source_value(source)
     owned_header = _header_value(header)
     native_source = _open_source(value)
@@ -370,32 +315,21 @@ function _read(source::Ptr{Cvoid}, spec::Ptr{Cvoid}, time, bands, window, patter
 end
 
 """
-    read_many(files::AbstractVector{Dataset}; windows=nothing, time=nothing,
-              bands=nothing, pattern=nothing) -> Array
-    read_many(sources, headers; kwargs...) -> Array
+    read_many(sources, headers; windows=nothing, time=nothing, bands=nothing,
+              pattern=nothing) -> Array
 
-Read one window from each Dataset into one array with the item axis last.
-`windows` holds one window or `nothing` per Dataset, or is an n-by-4 matrix
-with one window per row. Without it every whole image is read. The second
-form opens each source with its header, reads them and closes them.
+Read one window from each source, with its header at the same position in
+`headers`, into one array with the item axis last. `windows` holds one window
+or `nothing` per source, or is an n-by-4 matrix with one window per row.
+Without it every whole image is read. As with [`read`](@ref), each header is
+used alone and not checked against its source.
 """
-function read_many(files; windows=nothing, time=nothing, bands=nothing, pattern=nothing)
-    files isa AbstractVector && all(file -> file isa Dataset, files) || throw(ArgumentError(
-        "read_many takes a vector of Datasets, or sources with one header each"))
-    all(isopen, files) || throw(ArgumentError("this Rumi Dataset is closed"))
-    sources = Ptr{Cvoid}[file._source for file in files]
-    specs = Ptr{Cvoid}[file._spec for file in files]
-    return GC.@preserve files _read_many(sources, specs, windows, time, bands, pattern)
-end
-
 function read_many(sources, headers; windows=nothing, time=nothing, bands=nothing,
                    pattern=nothing)
     sources isa AbstractVector && !(sources isa AbstractVector{UInt8}) ||
         throw(ArgumentError("read_many takes a vector of sources; use read for one"))
     headers isa AbstractVector && !(headers isa AbstractVector{UInt8}) ||
         throw(ArgumentError("read_many needs one header per source"))
-    any(source -> source isa Dataset, sources) &&
-        throw(ArgumentError("headers are already carried by these Datasets"))
     length(sources) == length(headers) ||
         throw(ArgumentError("sources and headers must have the same length"))
     values = [_source_value(source) for source in sources]

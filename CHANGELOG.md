@@ -4,6 +4,12 @@ Notable user-visible changes are recorded here.
 
 ## [Unreleased]
 
+### Breaking
+
+- Dropped `rumi.open`, `rumi_open`, `rumi_close`, `Rumi.open` and `Dataset`.
+  Just pass the source and its header to `read`. R reads lose their band and
+  time names; `rumi_info` has them. Use open was a bad idea :c
+
 ## [0.31.0] - 2026-11-20
 
 ### Breaking

@@ -3,11 +3,10 @@ from __future__ import annotations
 import operator
 import os
 from collections.abc import Sequence
-from typing import TypeAlias, cast
+from typing import cast
 
 import numpy as np
 
-from ._dataset import Dataset
 from ._dlpack import RumiArray
 from ._ffi import _check, c_int, ffi, lib
 from ._framework import resolve_framework
@@ -15,8 +14,6 @@ from ._native import Header, ReadSource, _Source, _Spec, normalize_source
 
 Axis = int | list[int] | range | np.ndarray | None
 Window = Sequence[int] | np.ndarray | None
-_ReadSource = ReadSource
-_ReadTarget: TypeAlias = ReadSource | Dataset
 _WINDOW = ("row", "column", "height", "width")
 
 
@@ -201,7 +198,7 @@ def _decode_backend_code(value: str) -> int:
     raise ValueError("decode_backend must be 'auto' or 'cpu'")
 
 
-def read(source: _ReadTarget, header: Header | None = None, *,
+def read(source: ReadSource, header: Header, *,
          time: Axis = None, bands: Axis = None, window: Window = None,
          pattern: str | None = None, framework: str = "numpy",
          device: str | None = None, decode_backend: str = "auto"):
@@ -234,20 +231,11 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     first parallel read to set its size.
     """
     backend = _decode_backend_code(decode_backend)
-    if isinstance(source, Dataset):
-        if header is not None:
-            raise TypeError("header is already carried by this Dataset")
-        source._check_open()
-        native_source = source._native_source
-        spec = source._spec
-    else:
-        source = normalize_source(source)
-        if header is None:
-            raise TypeError("read() missing required argument: 'header'")
-        if not isinstance(header, (bytes, bytearray, memoryview)):
-            raise TypeError("read needs one bytes-like header")
-        native_source = _Source(source)
-        spec = _Spec(header)
+    source = normalize_source(source)
+    if not isinstance(header, (bytes, bytearray, memoryview)):
+        raise TypeError("read needs one bytes-like header")
+    native_source = _Source(source)
+    spec = _Spec(header)
     consumer = resolve_framework(framework, spec.fields.dtype)
     fields = spec.fields
     times = _resolve_axis(time, "time", fields.time_count)
@@ -274,8 +262,8 @@ def read(source: _ReadTarget, header: Header | None = None, *,
     return consumer.convert(arr)
 
 
-def read_many(sources: Sequence[_ReadTarget],
-              headers: Sequence[Header] | None = None, *,
+def read_many(sources: Sequence[ReadSource],
+              headers: Sequence[Header], *,
               windows: Sequence[Window] | np.ndarray | None = None,
               time: Axis = None, bands: Axis = None,
               pattern: str | None = None, framework: str = "numpy",
@@ -319,29 +307,16 @@ def read_many(sources: Sequence[_ReadTarget],
         raise ValueError("read_many requires at least one item")
     raw_windows = _window_entries(windows)
 
-    if all(isinstance(source, Dataset) for source in sources):
-        if headers is not None:
-            raise TypeError("headers are already carried by these Datasets")
-        datasets = cast(list[Dataset], sources)
-        for dataset in datasets:
-            dataset._check_open()
-        native_sources = [dataset._native_source for dataset in datasets]
-        specs = [dataset._spec for dataset in datasets]
-    elif any(isinstance(source, Dataset) for source in sources):
-        raise TypeError("read_many cannot mix Datasets and bare sources")
-    else:
-        raw_sources = cast(list[ReadSource], sources)
-        if headers is None:
-            raise TypeError("read_many() missing required argument: 'headers'")
-        if isinstance(headers, (bytes, bytearray, memoryview)):
-            raise TypeError("read_many needs one header per source")
-        raw_headers = list(headers)
-        if len(raw_headers) != len(raw_sources):
-            raise ValueError(
-                f"sources and headers length mismatch: "
-                f"{len(raw_sources)} vs {len(raw_headers)}")
-        native_sources = [_Source(normalize_source(source)) for source in raw_sources]
-        specs = [_Spec(raw) for raw in raw_headers]
+    raw_sources = cast(list[ReadSource], sources)
+    if isinstance(headers, (bytes, bytearray, memoryview)):
+        raise TypeError("read_many needs one header per source")
+    raw_headers = list(headers)
+    if len(raw_headers) != len(raw_sources):
+        raise ValueError(
+            f"sources and headers length mismatch: "
+            f"{len(raw_sources)} vs {len(raw_headers)}")
+    native_sources = [_Source(normalize_source(source)) for source in raw_sources]
+    specs = [_Spec(raw) for raw in raw_headers]
 
     if raw_windows is not None and len(raw_windows) != len(sources):
         raise ValueError(

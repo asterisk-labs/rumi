@@ -1,7 +1,7 @@
 # Python API
 
 Everything here describes `rumi` 0.31.0, as implemented in `bindings/python/rumi/`
-(`_frames.py`, `geozl.py`, `_write.py`, `_read.py`, `_dataset.py`, `_info.py`,
+(`_frames.py`, `geozl.py`, `_write.py`, `_read.py`, `_info.py`,
 `_config.py`, `_dlpack.py`, `_framework.py`, `_gpu.py`, `_native.py`, and `_ffi.py`).
 
 ## Contents
@@ -31,8 +31,8 @@ pip install rumi-eo
 - The binding loads `librumi` from `RUMI_LIB`, or the copy bundled under `rumi/_lib/`.
   Import fails when neither exists or when the native C interface
   does not match the binding. The pre-1.0 API version remains 1.
-- Public names: `frames`, `FrameTable`, `Frame`, `geozl`, `frame_start`, `write`, `open`,
-  `Dataset`, `read`, `read_many`, `RumiArray`, `DType`, `RumiError`, `info`, `Metadata`,
+- Public names: `frames`, `FrameTable`, `Frame`, `geozl`, `frame_start`, `write`,
+  `read`, `read_many`, `RumiArray`, `DType`, `RumiError`, `info`, `Metadata`,
   `set_num_threads`, `get_num_threads`, `set_checksum_verification`,
   `get_checksum_verification`, `__version__`.
   Everything under `rumi._*` is private.
@@ -175,14 +175,14 @@ rumi.write(path, frames, *, bands, time, transform=None, crs=None, pixel_is_poin
 ## 5. `read`
 
 ```text
-rumi.read(source, header=None, *, time=None, bands=None, window=None, pattern=None,
+rumi.read(source, header, *, time=None, bands=None, window=None, pattern=None,
           framework="numpy", device=None, decode_backend="auto")
 ```
 
 | Argument | Meaning |
 | --- | --- |
-| `source` | one `str` or `os.PathLike` (local path, URI or VSI path), the file's bytes as `bytes`, `bytearray` or `memoryview`, or a `rumi.Dataset` |
-| `header` | the bytes returned by `write` or `info(source=...).header`; required for a bare source, refused for a `Dataset` |
+| `source` | one `str` or `os.PathLike` (local path, URI or VSI path), the file's bytes as `bytes`, `bytearray` or `memoryview` |
+| `header` | the bytes returned by `write` or `info(source=...).header`; always required |
 | `time`, `bands` | `None` (all, file order), one zero-based `int`, a list of positions (any order, repeats allowed), a `range`, or a 1-D integer NumPy array. A tuple raises `TypeError: bands takes a list or a range, not a tuple`, and a bool `TypeError: bands takes integer indices, not a bool`. A `range` expands no further than one entry past the axis |
 | `window` | `None` (whole image) or four integers `(row, column, height, width)` as a tuple, list or 1-D array, never a `str` |
 | `pattern` | output axes over `n t b y x` (`patterns.md`); `None` gives `b y x`, or `t b y x` for a Cube |
@@ -200,16 +200,14 @@ hwc = rumi.read(path, header, time=range(0, 2), bands=range(1, 4),
 A sequence of sources raises `TypeError: read takes one source; use read_many for
 multiple sources`. Selection errors are listed in `debugging.md`.
 
-`rumi.open(source, header)` pairs a source with its header, validates them once, and
-returns a `rumi.Dataset` with `source`, `header` and `metadata`. Pass it to `read`
-(or call `dataset.read(...)`) without a header. `read_many` takes a list of Datasets
-with `headers=None`, or bare sources with one header each, never a mix. Close a Dataset
-with `close()` or a `with` block.
+Every read is stateless. `read` resolves the source and parses the header for that
+call and keeps nothing afterwards; it does not check that the header belongs to the
+file. `info(source=..., header=...)` does that check when it matters.
 
 ## 6. `read_many`
 
 ```text
-rumi.read_many(sources, headers=None, *, windows=None, time=None, bands=None, pattern=None,
+rumi.read_many(sources, headers, *, windows=None, time=None, bands=None, pattern=None,
                framework="numpy", device=None, decode_backend="auto")
 ```
 

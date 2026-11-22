@@ -7,7 +7,6 @@ from ._config import (
     set_checksum_verification,
     set_num_threads,
 )
-from ._dataset import Dataset, open
 from ._dlpack import RumiArray
 from ._dtype import DType
 from ._ffi import RumiError
@@ -18,7 +17,7 @@ from ._write import frame_start, write
 
 __version__ = version("rumi-eo")
 
-__all__ = ["DType", "Dataset", "Frame", "FrameTable", "Metadata", "RumiArray", "RumiError",
+__all__ = ["DType", "Frame", "FrameTable", "Metadata", "RumiArray", "RumiError",
            "frame_start", "frames", "geozl", "get_checksum_verification", "get_num_threads",
-           "info", "open", "read", "read_many", "set_checksum_verification",
+           "info", "read", "read_many", "set_checksum_verification",
            "set_num_threads", "write", "__version__"]

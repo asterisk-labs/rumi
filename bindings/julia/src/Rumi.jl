@@ -6,9 +6,9 @@ using Downloads
 using LazyArtifacts
 using Libdl
 
-import Base: close, isopen, show
+import Base: show
 
-export Dataset, FrameTable, Metadata, RumiError
+export FrameTable, Metadata, RumiError
 
 include("lib.jl")
 include("types.jl")

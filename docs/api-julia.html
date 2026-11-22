@@ -86,67 +86,52 @@ Pkg.add("Rumi")</code></pre>
       <p>The package calls <code>librumi</code> directly, and compresses frames with the GeoZL inside it. It loads the library named by <code>RUMI_LIB</code>, then the one <code>make build</code> writes to <code>core/build</code> in a checkout, then the artifact a release publishes for Linux x86-64 and macOS arm64, downloaded on first use and kept in the Julia depot. Loading fails with a <code>librumi</code> built for another C API version.</p>
 <pre data-run="skip"><code class="language-julia">using Rumi
 
-file = Rumi.open("scene.rumi", Base.read("scene.header"))
-chip = Rumi.read(file; bands = [4, 8], time = 1:3, window = (1, 1, 256, 256))
+header = Base.read("scene.header")
+chip = Rumi.read("scene.rumi", header; bands = [4, 8], time = 1:3, window = (1, 1, 256, 256))
 size(chip)                                   # (256, 256, 2, 3)
-meta = Rumi.info(file)
-close(file)</code></pre>
+meta = Rumi.info("scene.rumi"; header)</code></pre>
 
       <h2 class="part" id="functions">Functions</h2>
-      <p>Call every function with the module prefix, such as <code>Rumi.open</code> or <code>Rumi.info</code>. The package exports only the types <code>Dataset</code>, <code>FrameTable</code>, <code>Metadata</code> and <code>RumiError</code>. Invalid requests throw <code>ArgumentError</code>, and other library failures throw a <a href="#errors"><code>RumiError</code></a> that names its kind.</p>
-
-      <h3 id="open">open</h3>
-<pre><code class="sig language-julia">Rumi.open(source, header) -&gt; Dataset
-Rumi.open(f, source, header)</code></pre>
-      <p>Pairs a source with its external header. Opening checks that the header matches the source and reads the transform, CRS, band descriptions and time axis. A leading <code>~</code> in a path is expanded. The second form passes the Dataset to <code>f</code>, closes it when <code>f</code> returns or throws, and returns what <code>f</code> returns.</p>
-      <table class="spec">
-        <tr><th>source</th><td>A local path, a remote URI, or the file's bytes as an <code>AbstractVector{UInt8}</code>. The Dataset keeps its own immutable copy of the bytes.</td></tr>
-        <tr><th>header</th><td>The external header bytes, any <code>AbstractVector{UInt8}</code>. The Dataset keeps its own copy.</td></tr>
-        <tr><th>f</th><td>A function that takes the open Dataset, usually written as a <code>do</code> block.</td></tr>
-      </table>
-      <p>Returns a <a href="#types"><code>Dataset</code></a>. A header that cannot be parsed throws <code>RumiError</code> of kind <code>:parse</code>, a source that cannot be opened one of kind <code>:io</code>, and a header that does not match the source throws <code>ArgumentError</code>.</p>
-<pre data-run="skip"><code class="language-julia">chip = Rumi.open("scene.rumi", Base.read("scene.header")) do file
-    Rumi.read(file; bands = 2:3, window = (1, 1, 256, 256))
-end</code></pre>
+      <p>Call every function with the module prefix, such as <code>Rumi.read</code> or <code>Rumi.info</code>. The package exports only the types <code>FrameTable</code>, <code>Metadata</code> and <code>RumiError</code>. Invalid requests throw <code>ArgumentError</code>, and other library failures throw a <a href="#errors"><code>RumiError</code></a> that names its kind.</p>
 
       <h3 id="read">read</h3>
-<pre><code class="sig language-julia">Rumi.read(file::Dataset; time=nothing, bands=nothing, window=nothing,
-    pattern=nothing) -&gt; Array
-Rumi.read(source, header; kwargs...) -&gt; Array</code></pre>
-      <p>Reads a selection into a new array of the file's element type. The second form opens the source, reads it and closes it. It skips the check <code>Rumi.open</code> makes that the header matches the source, so it fetches only the frames the selection needs.</p>
+<pre><code class="sig language-julia">Rumi.read(source, header; time=nothing, bands=nothing, window=nothing,
+    pattern=nothing) -&gt; Array</code></pre>
+      <p>Reads a selection into a new array of the file's element type. Every read is stateless and uses the header alone, so it fetches only the frames the selection needs. It does not check that the header belongs to the file, which <a href="#info"><code>Rumi.info(source; header)</code></a> does.</p>
       <table class="spec">
-        <tr><th>source, header</th><td>As in <a href="#open"><code>Rumi.open</code></a>, for the second form. Bytes are read in place for the call, without a copy.</td></tr>
+        <tr><th>source</th><td>A local path, a remote URI, or the file's bytes as an <code>AbstractVector{UInt8}</code>. A leading <code>~</code> in a path is expanded, and bytes are read in place for the call, without a copy.</td></tr>
+        <tr><th>header</th><td>The external header bytes, any <code>AbstractVector{UInt8}</code>.</td></tr>
         <tr><th>time</th><td>One-based time steps, as an integer, a vector of integers or a range such as <code>2:5</code>, kept in the order given. <code>nothing</code> reads every step. A tuple is refused, so <code>(1, 3)</code> never stands for a range, and so is a <code>Bool</code>.</td></tr>
         <tr><th>bands</th><td>One-based bands, in the same form.</td></tr>
         <tr><th>window</th><td><code>(row, column, height, width)</code> with a one-based origin, as a tuple or a vector of four integers. It must lie inside the image, and <code>nothing</code> reads the whole image.</td></tr>
         <tr><th>pattern</th><td>The output axes, as in <a href="#arrays">Arrays</a>. <code>nothing</code> uses <code>"t b y x"</code> when the file has more than one time step, otherwise <code>"b y x"</code>.</td></tr>
       </table>
-      <p>An empty selection, an index outside the file, a tuple selection, a window past the image or a closed Dataset throws <code>ArgumentError</code>.</p>
-<pre data-run="skip"><code class="language-julia">chip = Rumi.read(file; time = [2, 1], bands = [3, 1], window = (2, 3, 3, 4))
+      <p>An empty selection, an index outside the file, a tuple selection, or a window past the image throws <code>ArgumentError</code>.</p>
+<pre data-run="skip"><code class="language-julia">chip = Rumi.read("scene.rumi", header; time = [2, 1], bands = [3, 1], window = (2, 3, 3, 4))
 size(chip)                                   # (4, 3, 2, 2)
-size(Rumi.read(file; time = 2, bands = 1:3)) # (8, 6, 3, 1)</code></pre>
+size(Rumi.read("scene.rumi", header; time = 2, bands = 1:3))   # (8, 6, 3, 1)</code></pre>
 
       <h3 id="read_many">read_many</h3>
-<pre><code class="sig language-julia">Rumi.read_many(files::AbstractVector{Dataset}; windows=nothing, time=nothing,
-    bands=nothing, pattern=nothing) -&gt; Array
-Rumi.read_many(sources, headers; kwargs...) -&gt; Array</code></pre>
-      <p>Reads one window from each Dataset into one array, as a training batch needs. Every file takes the same time steps and bands, checked against the first file, and every window must have the same height and width. The second form opens each source with its header, reads them and closes them, without the check <code>Rumi.open</code> makes.</p>
+<pre><code class="sig language-julia">Rumi.read_many(sources, headers; windows=nothing, time=nothing,
+    bands=nothing, pattern=nothing) -&gt; Array</code></pre>
+      <p>Reads one window from each source into one array, as a training batch needs. Every file takes the same time steps and bands, checked against the first file, and every window must have the same height and width. Each source is read with its header alone, as in <a href="#read"><code>read</code></a>.</p>
       <table class="spec">
-        <tr><th>sources, headers</th><td>One source and one external header per item, as in <a href="#open"><code>Rumi.open</code></a>, for the second form.</td></tr>
-        <tr><th>windows</th><td>A vector with one window per Dataset, as in <a href="#read"><code>read</code></a>, or a <code>Matrix</code> of integers with one <code>(row, column, height, width)</code> window per row. An entry of <code>nothing</code> reads that whole image, and <code>nothing</code> alone reads every whole image.</td></tr>
+        <tr><th>sources, headers</th><td>One source and one external header per item, as in <a href="#read"><code>read</code></a>.</td></tr>
+        <tr><th>windows</th><td>A vector with one window per source, as in <a href="#read"><code>read</code></a>, or a <code>Matrix</code> of integers with one <code>(row, column, height, width)</code> window per row. An entry of <code>nothing</code> reads that whole image, and <code>nothing</code> alone reads every whole image.</td></tr>
         <tr><th>time, bands</th><td>As in <code>read</code>.</td></tr>
-        <tr><th>pattern</th><td>As in <code>read</code>. <code>nothing</code> uses <code>"n t b y x"</code> or <code>"n b y x"</code>, which puts the <code>n</code> axis last in Julia. The <code>n</code> axis stays for one Dataset.</td></tr>
+        <tr><th>pattern</th><td>As in <code>read</code>. <code>nothing</code> uses <code>"n t b y x"</code> or <code>"n b y x"</code>, which puts the <code>n</code> axis last in Julia. The <code>n</code> axis stays for one source.</td></tr>
       </table>
       <p>An empty list, a <code>windows</code> list of the wrong length, windows of different sizes, or sources and headers of different lengths throw <code>ArgumentError</code>.</p>
-<pre data-run="skip"><code class="language-julia">batch = Rumi.read_many([file, file]; windows = [1 1 2 3; 3 4 2 3], bands = [2])
+<pre data-run="skip"><code class="language-julia">batch = Rumi.read_many(["scene.rumi", "scene.rumi"], [header, header];
+                       windows = [1 1 2 3; 3 4 2 3], bands = [2])
 size(batch)                                  # (3, 2, 1, 2, 2)</code></pre>
 
       <h3 id="info">info</h3>
 <pre><code class="sig language-julia">Rumi.info(source; header=nothing) -&gt; Metadata
 Rumi.info(; header) -&gt; Metadata</code></pre>
-      <p>Inspects a source, an external header, or both. A source alone is read, and its canonical external header is rebuilt. A header alone opens nothing. Given both, the header must match the source, or <code>ArgumentError</code> is thrown. A Dataset returns the metadata <code>Rumi.open</code> read, and a header beside it is refused.</p>
+      <p>Inspects a source, an external header, or both. A source alone is read, and its canonical external header is rebuilt. A header alone opens nothing. Given both, the header must match the source, or <code>ArgumentError</code> is thrown.</p>
       <table class="spec">
-        <tr><th>source</th><td>A local path, a remote URI, the file's bytes, or a <a href="#types"><code>Dataset</code></a>.</td></tr>
+        <tr><th>source</th><td>A local path, a remote URI or the file's bytes.</td></tr>
         <tr><th>header</th><td>The external header bytes, any <code>AbstractVector{UInt8}</code>.</td></tr>
       </table>
       <p>Returns a <code>Metadata</code> with these fields. Without a source, <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code> are <code>nothing</code>.</p>
@@ -250,7 +235,6 @@ Rumi.get_checksum_verification() -&gt; Bool</code></pre>
 
       <h3 id="types">Types</h3>
       <table class="spec">
-        <tr><th>Dataset</th><td>What <code>Rumi.open</code> returns. <code>source</code> holds the path or URI, with <code>~</code> expanded, or for bytes a read-only view of the Dataset's own immutable copy, so resizing, writing or reassigning it never touches the buffer the native source reads. <code>header</code> holds the external header and <code>metadata</code> what <code>Rumi.info</code> returns. None of the three can be reassigned. <code>isopen(file)</code> tells whether it is open and <code>close(file)</code> frees it, which also happens when it is garbage collected. A closed Dataset throws <code>ArgumentError</code> with the message <code>"this Rumi Dataset is closed"</code> on read.</td></tr>
         <tr><th>Metadata</th><td>What <code>Rumi.info</code> returns, with the fields above.</td></tr>
         <tr><th>FrameTable</th><td>What <code>Rumi.frames</code> returns. <code>data</code> holds one array per frame and <code>compressed</code> one payload per frame, <code>nothing</code> until it is set. <code>layout</code> names the axes of one frame, such as <code>"h w"</code>, <code>dtype</code> the sample type and <code>pattern</code> the pattern text. <code>tiles_across</code> and <code>tiles_down</code> give the grid. <code>row</code> and <code>col</code> hold each frame's one-based grid cell, and <code>band</code> and <code>time</code> its one-based band and time step when frames are split by that axis, or <code>nothing</code> otherwise. <code>length(table)</code> is the frame count.</td></tr>
         <tr><th>RumiError</th><td>A library failure other than an invalid request, with the fields <code>kind</code> and <code>message</code>, as in <a href="#errors">Errors</a>.</td></tr>
@@ -295,7 +279,6 @@ end</code></pre>
       <ol class="toc-sections">
         <li><a href="#install">Install</a></li>
         <li><a href="#functions">Functions</a></li>
-        <li><a href="#open">open</a></li>
         <li><a href="#read">read</a></li>
         <li><a href="#read_many">read_many</a></li>
         <li><a href="#info">info</a></li>

@@ -79,42 +79,6 @@ struct Metadata
     pixel_is_point::Union{Nothing,Bool}
 end
 
-"""
-    Dataset
-
-A source paired with its external header, from [`open`](@ref). `source` is
-the path or URI as given, with `~` expanded, or for bytes a read-only view of
-the Dataset's own immutable copy, so resizing, writing or reassigning it never
-touches the buffer the native source reads. `header` is the external header
-and `metadata` what [`info`](@ref) returns. These fields cannot be reassigned.
-"""
-mutable struct Dataset
-    const source::Union{String,Base.CodeUnits{UInt8,String}}
-    const header::Vector{UInt8}
-    const metadata::Metadata
-    _source::Ptr{Cvoid}
-    _spec::Ptr{Cvoid}
-    # The bytes the native source borrows, or nothing for a path.
-    const _bytes::Union{Nothing,String}
-end
-
-isopen(file::Dataset) = file._source != C_NULL && file._spec != C_NULL
-
-function show(io::IO, file::Dataset)
-    state = isopen(file) ? "open" : "closed"
-    print(io, "Rumi.Dataset(", state, ", shape=", file.metadata.shape,
-          ", dtype=", repr(file.metadata.dtype), ")")
-end
-
-function close(file::Dataset)
-    source, spec = file._source, file._spec
-    file._source = C_NULL
-    file._spec = C_NULL
-    source == C_NULL || ccall(_sym(:rumi_source_free), Cvoid, (Ptr{Cvoid},), source)
-    spec == C_NULL || ccall(_sym(:rumi_spec_destroy), Cvoid, (Ptr{Cvoid},), spec)
-    return nothing
-end
-
 const _DTYPES = Dict{Int,Tuple{DataType,String}}(
     1 => (UInt8, "uint8"),
     2 => (Int8, "int8"),

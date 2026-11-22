@@ -11,7 +11,6 @@ from rumi._ffi import _check, lib
 
 PUBLIC = (
     "DType",
-    "Dataset",
     "Frame",
     "FrameTable",
     "Metadata",
@@ -23,7 +22,6 @@ PUBLIC = (
     "get_checksum_verification",
     "get_num_threads",
     "info",
-    "open",
     "read",
     "read_many",
     "set_checksum_verification",
@@ -56,7 +54,6 @@ def test_public_function_parameters_stay_stable():
         "get_checksum_verification": (),
         "get_num_threads": (),
         "info": ("source", "header"),
-        "open": ("source", "header"),
         "read": (
             "source", "header", "time", "bands", "window", "pattern", "framework",
             "device", "decode_backend",
@@ -75,14 +72,14 @@ def test_public_function_parameters_stay_stable():
 
 def test_read_defaults_stay_stable():
     read = inspect.signature(rumi.read).parameters
-    assert read["header"].default is None
+    assert read["header"].default is inspect.Parameter.empty
     assert read["framework"].default == "numpy"
     assert all(read[name].default is None
                for name in ("pattern", "time", "bands", "window", "device"))
     assert read["decode_backend"].default == "auto"
 
     many = inspect.signature(rumi.read_many).parameters
-    assert many["headers"].default is None
+    assert many["headers"].default is inspect.Parameter.empty
     assert many["framework"].default == "numpy"
     assert all(many[name].default is None
                for name in ("windows", "pattern", "time", "bands", "device"))

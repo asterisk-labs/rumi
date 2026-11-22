@@ -79,8 +79,7 @@ for frame in frames:
 
 path = "scene.rumi"
 header = rumi.write(path, frames, bands=["B2", "B3", "B4", "B8"], time=["2024-08-25"])
-with rumi.open(path, header) as file:
-    chip = file.read(bands=[2, 3], window=(0, 0, 256, 256))
+chip = rumi.read(path, header, bands=[2, 3], window=(0, 0, 256, 256))
 ```
 
 ## AI agent skill

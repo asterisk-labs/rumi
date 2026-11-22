@@ -6,7 +6,7 @@
 \usage{
 rumi_read_many(
   sources,
-  headers = NULL,
+  headers,
   windows = NULL,
   time = NULL,
   bands = NULL,
@@ -14,12 +14,10 @@ rumi_read_many(
 )
 }
 \arguments{
-\item{sources}{A list of datasets from \code{\link[=rumi_open]{rumi_open()}}, or a list or
-character vector of paths and raw vectors, read with \code{headers} and
-closed after the read.}
+\item{sources}{A list or character vector of paths and raw vectors of file
+bytes.}
 
-\item{headers}{A list with one raw external header per source when
-\code{sources} are not datasets.}
+\item{headers}{A list with one raw external header per source.}
 
 \item{windows}{A list or matrix with one \verb{(row, column, height, width)} row
 per source. All windows have the same height and width. A \code{NULL} entry,
@@ -33,6 +31,6 @@ or \code{NULL} for all, reads the whole image.}
 An array with a last \code{n} dimension, one entry per source.
 }
 \description{
-Paths and raw vectors are read with their headers alone, as in
-\code{\link[=rumi_read]{rumi_read()}}, so the result then has no band or time dimnames.
+Each source is read with its header alone, as in \code{\link[=rumi_read]{rumi_read()}}, so the
+result has no band or time dimnames.
 }

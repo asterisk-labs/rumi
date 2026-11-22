@@ -224,14 +224,12 @@ static const unsigned char *header_bytes(SEXP header_s) {
   return XLENGTH(header_s) ? RAW(header_s) : &empty;
 }
 
-// check reads the index and trailer to validate the pair. A one-shot read
-// skips it, as Python does, and takes the header's fields alone.
-SEXP rumi_r_open(SEXP source_s, SEXP header_s, SEXP check_s) {
+// A read takes the header's fields alone, as Python does, without reading the
+// index and trailer to validate the pair.
+SEXP rumi_r_open(SEXP source_s, SEXP header_s) {
   const char *path = source_path(source_s);
   if (TYPEOF(header_s) != RAWSXP)
     bad("`header` must be raw");
-
-  int check = Rf_asLogical(check_s) == TRUE;
 
   // Register cleanup before allocating native state. The protected slot keeps
   // a raw source alive as long as the pointer.
@@ -249,7 +247,7 @@ SEXP rumi_r_open(SEXP source_s, SEXP header_s, SEXP check_s) {
     status = source_open(source_s, path, &value->source);
   rumi_metadata native = {0};
   if (status == RUMI_OK)
-    status = rumi_info(check ? value->source : NULL, header_bytes(header_s),
+    status = rumi_info(NULL, header_bytes(header_s),
                        XLENGTH(header_s), &native);
   if (status != RUMI_OK) {
     char copy[1024];
@@ -261,14 +259,11 @@ SEXP rumi_r_open(SEXP source_s, SEXP header_s, SEXP check_s) {
 
   SEXP metadata = PROTECT(R_UnwindProtect(
       metadata_to_r_unwind, &native, metadata_free_unwind, &native, NULL));
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 2));
   SET_VECTOR_ELT(out, 0, pointer);
-  SET_VECTOR_ELT(out, 1, source_s);
-  SET_VECTOR_ELT(out, 2, header_s);
-  SET_VECTOR_ELT(out, 3, metadata);
-  static const char *const out_names[] = {"pointer", "source", "header",
-                                          "metadata"};
-  names(out, out_names, 4);
+  SET_VECTOR_ELT(out, 1, metadata);
+  static const char *const out_names[] = {"pointer", "metadata"};
+  names(out, out_names, 2);
   UNPROTECT(3);
   return out;
 }
@@ -933,7 +928,7 @@ SEXP rumi_r_geozl_compress(SEXP ptr, SEXP bytes, SEXP dtype_s);
 SEXP rumi_r_shutdown_pool(void);
 
 static const R_CallMethodDef calls[] = {
-    {"rumi_r_open", (DL_FUNC)&rumi_r_open, 3},
+    {"rumi_r_open", (DL_FUNC)&rumi_r_open, 2},
     {"rumi_r_info", (DL_FUNC)&rumi_r_info, 2},
     {"rumi_r_close", (DL_FUNC)&rumi_r_close, 1},
     {"rumi_r_read", (DL_FUNC)&rumi_r_read, 5},

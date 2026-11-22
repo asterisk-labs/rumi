@@ -7,10 +7,10 @@
 rumi_info(source = NULL, header = NULL)
 }
 \arguments{
-\item{source}{A dataset returned by \code{\link[=rumi_open]{rumi_open()}}, a local path, URI or VSI
-path, or the file's bytes as a raw vector.}
+\item{source}{A local path, URI or VSI path, or the file's bytes as a raw
+vector.}
 
-\item{header}{Raw external-header bytes. A dataset already carries one.}
+\item{header}{Raw external-header bytes.}
 }
 \value{
 A \code{rumi_metadata} list. Its \code{time} holds \code{Date} values when every
@@ -18,6 +18,6 @@ coordinate is a whole UTC day and UTC \code{POSIXct} values otherwise.
 }
 \description{
 A source alone is read and its canonical external header rebuilt. A header
-alone opens nothing, so \code{bands}, \code{time}, \code{time_kind}, \code{transform}, \code{crs}
+alone reads no source, so \code{bands}, \code{time}, \code{time_kind}, \code{transform}, \code{crs}
 and \code{pixel_is_point} are \code{NULL}. Given both, Rumi checks that they match.
 }

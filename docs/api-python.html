@@ -153,12 +153,12 @@ rumi.geozl.compress(tile, graph) -&gt; bytes</code></pre>
       <p>A source is a local path, a remote URI or the file's bytes. Remote reads go through <a href="https://github.com/asterisk-labs/karu" rel="noopener noreferrer">Karu</a>, which covers HTTP, S3, GCS, Azure, Hugging Face, Source Cooperative and <code>/vsisubfile/</code>. Indices and window origins count from 0. <code>time</code> and <code>bands</code> take one index, a list of indices, a <code>range</code> or a 1-D integer NumPy array, and <code>None</code> selects them all. A tuple or a bool is refused, so a range is written <code>range(start, stop)</code>.</p>
 
       <h3 id="read">read</h3>
-<pre><code class="sig language-python">rumi.read(source, header=None, *, time=None, bands=None, window=None,
+<pre><code class="sig language-python">rumi.read(source, header, *, time=None, bands=None, window=None,
     pattern=None, framework="numpy", device=None, decode_backend="auto")</code></pre>
       <p>Reads one raster, or the part of it you select. Only the frames under the selection are fetched and decoded.</p>
       <table class="spec">
-        <tr><th>source</th><td>A path, a URI, the file's bytes, or a <a href="#open"><code>Dataset</code></a>.</td></tr>
-        <tr><th>header</th><td>The header <code>write</code> returned. For an existing file, <code>info(source=...).header</code> rebuilds it. A <code>Dataset</code> carries its own.</td></tr>
+        <tr><th>source</th><td>A path, a URI or the file's bytes.</td></tr>
+        <tr><th>header</th><td>The header <code>write</code> returned. For an existing file, <code>info(source=...).header</code> rebuilds it.</td></tr>
         <tr><th>time, bands</th><td>The time steps and bands to read.</td></tr>
         <tr><th>window</th><td>Four integers <code>(row, column, height, width)</code> in pixels, as a tuple, a list or a 1-D array.</td></tr>
         <tr><th>pattern</th><td>The output axis order. The default is <code>(T, B, Y, X)</code>, without the time axis for an Image.</td></tr>
@@ -171,7 +171,7 @@ rumi.geozl.compress(tile, graph) -&gt; bytes</code></pre>
       <p>GeoZL decodes on the GPU the frames that end in PFOR or PivCo, such as <code>planar&gt;zigzag&gt;lanes</code> or <code>planar&gt;zigzag&gt;pfor</code>. Other frames decode on the CPU and are copied over. <a href="https://asterisk.coop/geozl/gpu-codecs.html" rel="noopener noreferrer">What a GPU wants</a> explains why.</p>
 
       <h3 id="read_many">read_many</h3>
-<pre><code class="sig language-python">rumi.read_many(sources, headers=None, *, windows=None, time=None, bands=None,
+<pre><code class="sig language-python">rumi.read_many(sources, headers, *, windows=None, time=None, bands=None,
     pattern=None, framework="numpy", device=None, decode_backend="auto")</code></pre>
       <p>Reads one window from each source as a single plan and stacks the results along a leading <code>n</code> axis, in the order given. This is the call a training data loader makes.</p>
       <table class="spec">
@@ -186,12 +186,6 @@ rumi.geozl.compress(tile, graph) -&gt; bytes</code></pre>
       <p>Inspects a source, a header, or both. From a source, Rumi reads the index, georeferencing, band labels and time, and rebuilds the external header. A header alone opens nothing and gives only what a reader needs. With both, Rumi checks that they match.</p>
       <p>The returned <code>Metadata</code> has <code>header</code>, <code>shape</code> as <code>(B, Y, X)</code> or <code>(T, B, Y, X)</code>, <code>time_count</code>, <code>dtype</code>, <code>tile</code> as <code>(height, width)</code>, <code>frame_layout</code>, <code>index_order</code>, <code>frames</code>, <code>bands</code>, <code>time</code>, <code>time_kind</code>, <code>transform</code>, <code>crs</code> and <code>pixel_is_point</code>. The last six are <code>None</code> without a source.</p>
 <pre data-run="skip"><code class="language-python">header = rumi.info(source="s3://bucket/scene.rumi").header</code></pre>
-
-      <h3 id="open">open</h3>
-<pre><code class="sig language-python">rumi.open(source, header) -&gt; Dataset</code></pre>
-      <p>Pairs a source with its header and checks the metadata once. A <code>Dataset</code> has <code>source</code>, <code>header</code> and <code>metadata</code>, <code>info()</code> returns the metadata, and <code>read(**kwargs)</code> takes the arguments of <a href="#read"><code>read</code></a>. It works as a context manager and closes on exit.</p>
-<pre data-run="skip"><code class="language-python">with rumi.open(path, header) as ds:
-    chip = ds.read(bands=[2, 3], window=(0, 0, 256, 256))</code></pre>
 
       <h2 class="part" id="output">Output</h2>
 
@@ -260,7 +254,6 @@ rumi.get_checksum_verification() -&gt; bool</code></pre>
         <li><a href="#read">read</a></li>
         <li><a href="#read_many">read_many</a></li>
         <li><a href="#info">info</a></li>
-        <li><a href="#open">open</a></li>
         <li><a href="#output">Output</a></li>
         <li><a href="#rumiarray">RumiArray</a></li>
         <li><a href="#dtype">DType</a></li>

@@ -103,9 +103,7 @@ test_that("write records the layout, bands, time and georeferencing", {
                        crs = "EPSG:32631")
   expect_type(header, "raw")
 
-  file <- rumi_open(path, header)
-  on.exit(rumi_close(file), add = TRUE)
-  info <- rumi_info(file)
+  info <- rumi_info(path, header)
   expect_equal(info$shape, c(2, 3, 5))
   expect_identical(info$dtype, "uint16")
   expect_identical(info$tile, c(2L, 2L))
@@ -151,11 +149,8 @@ test_that("a Cube takes instants or intervals, one per step", {
 
   days <- as.Date(c("2025-08-08", "2025-08-13"))
   header <- rumi_write(path, frames, bands = "red", time = days)
-  file <- rumi_open(path, header)
-  expect_identical(rumi_info(file)$time_kind, "instant")
-  expect_identical(rumi_info(file)$time, days)
-  expect_identical(dimnames(rumi_read(file))$time, c("2025-08-08", "2025-08-13"))
-  rumi_close(file)
+  expect_identical(rumi_info(path, header)$time_kind, "instant")
+  expect_identical(rumi_info(path, header)$time, days)
 
   clock <- as.POSIXct(c("2025-08-08 10:30:00", "2025-08-13 00:00:00"), tz = "UTC")
   header <- rumi_write(path, frames, bands = "red", time = clock)
@@ -165,14 +160,11 @@ test_that("a Cube takes instants or intervals, one per step", {
   steps <- list(c("2025-08-01", "2025-08-08"),
                 c("2025-08-08T00:00:00", "2025-08-15T14:00:00+02:00"))
   header <- rumi_write(path, frames, bands = "red", time = steps)
-  file <- rumi_open(path, header)
-  on.exit(rumi_close(file), add = TRUE)
-  info <- rumi_info(file)
+  info <- rumi_info(path, header)
   expect_identical(info$time_kind, "interval")
   expect_s3_class(info$time, "POSIXct")
-  expect_equal(unname(info$time[2, 2]), as.POSIXct("2025-08-15 12:00:00", tz = "UTC"))
-  expect_match(dimnames(rumi_read(file))$time[2],
-               "2025-08-08 UTC/2025-08-15 12:00:00 UTC")
+  expect_equal(unname(info$time[2, ]),
+               as.POSIXct(c("2025-08-08 00:00:00", "2025-08-15 12:00:00"), tz = "UTC"))
 })
 
 test_that("the writer refuses time outside the years 1 to 9999", {

@@ -1,8 +1,7 @@
 # rumi for R
 
-R reader and writer for Rumi Image and Cube files. The external header is
-always paired with the source, a path or the file's bytes as a raw vector, when
-a dataset is opened.
+R reader and writer for Rumi Image and Cube files. Every read takes the source,
+a path or the file's bytes as a raw vector, together with its external header.
 
 The source package builds its bundled native code. It needs CMake, libcurl and
 OpenSSL; no separate Rumi installation is required.
@@ -11,11 +10,10 @@ OpenSSL; no separate Rumi installation is required.
 library(rumi)
 
 header <- readBin("scene.header", "raw", file.info("scene.header")$size)
-dataset <- rumi_open("scene.rumi", header)
-chip <- rumi_read(dataset, time = 1:3, bands = c(4, 8),
+chip <- rumi_read("scene.rumi", header, time = 1:3, bands = c(4, 8),
                   window = c(1, 1, 256, 256))
-metadata <- rumi_info(dataset)
-rumi_close(dataset)
+# Checks the pair and returns the band texts and time coordinates.
+metadata <- rumi_info("scene.rumi", header)
 
 # A file without its external header rebuilds it.
 header <- rumi_info("scene.rumi")$header
@@ -23,10 +21,11 @@ header <- rumi_info("scene.rumi")$header
 
 Selections and window origins are one-based. The window order is
 `(row, column, height, width)`. An Image is returned as an array shaped
-`(X, Y, Band)` and a Cube as `(X, Y, Band, Time)`. The exact affine transform,
-CRS, band descriptions and time coordinates stay in `rumi_info(dataset)` and in
-the array's `rumi_metadata` attribute. Metadata keeps Rumi's canonical
-`(Band, Y, X)` or `(Time, Band, Y, X)` shape.
+`(X, Y, Band)` and a Cube as `(X, Y, Band, Time)`. A read uses the header
+alone, so the array has no band or time dimnames, and its `rumi_metadata`
+attribute holds the header's fields. The affine transform, CRS, band texts and
+time coordinates come from `rumi_info(source, header)`. Metadata keeps Rumi's
+canonical `(Band, Y, X)` or `(Time, Band, Y, X)` shape.
 
 Native failures other than a bad request signal a condition of class
 `rumi_error_<kind>` and `rumi_error`, such as `rumi_error_io`, so
