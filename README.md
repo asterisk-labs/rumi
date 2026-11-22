@@ -1,15 +1,18 @@
-<p align="center">
-  <img src="img/rumi-lockup-tight.svg" alt="rumi" width="750"/>
-</p>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/rumi-banner-dark.svg">
+    <img src="img/rumi-banner-light.svg" alt="rumi" width="720">
+  </picture>
+  <p>
+    <a href="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml"><img src="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+    <a href="https://pypi.org/project/rumi-eo/"><img src="https://img.shields.io/pypi/v/rumi-eo?color=2b8a3e&style=flat-square" alt="PyPI"/></a>
+    <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-0078D6?style=flat-square" alt="Linux and macOS"/>
+    <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-2b8a3e?style=flat-square" alt="GPLv3"/></a>
+  </p>
+  <p><i>rumi is the Quechua word for stone.</i></p>
+</div>
 
-<p align="center">
-  <a href="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml"><img src="https://github.com/asterisk-labs/rumi/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <a href="https://pypi.org/project/rumi-eo/"><img src="https://img.shields.io/pypi/v/rumi-eo.svg?color=2b8a3e" alt="PyPI"/></a>
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-blue" alt="Linux and macOS"/>
-  <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-green.svg" alt="GPLv3"/></a>
-</p>
-
-<p align="center"><i>rumi is the Quechua word for stone.</i></p>
+---
 
 Rumi is stateless raster storage for AI4EO. It cuts an Image or a Cube into
 independently compressed [GeoZL](https://github.com/asterisk-labs/geozl) frames and
